@@ -88,12 +88,18 @@ var (
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
-	// paymentlane metrics
+	// paymentlane metrics, the producing side's view; core reports the processed one under
+	// paymentlane/imported/*, and the two disagreeing means the block was not packed here.
 	laneSizeGauge              = metrics.NewRegisteredGauge("paymentlane/laneSize", nil)         // gas, at seal
 	laneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/idleLane", nil)         // gas wasted, at seal
 	laneYieldCounter           = metrics.NewRegisteredCounter("paymentlane/generalYielded", nil) // txs dropped for the quota
 	laneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 	laneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
+	// A quota that is not moving rests on the floor, is pinned at the ceiling, sits in a frozen
+	// range where the two meet, or is held by the safety cap. laneSize alone cannot say which.
+	laneFloorGauge   = metrics.NewRegisteredGauge("paymentlane/laneMin", nil)
+	laneCeilingGauge = metrics.NewRegisteredGauge("paymentlane/laneMax", nil)
+	laneCapGauge     = metrics.NewRegisteredGauge("paymentlane/laneCap", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -145,6 +151,9 @@ type environment struct {
 
 	// lane is this block's BEP-703 state, resolved from the parent in makeEnv.
 	lane *core.LaneState
+	// laneYielded counts drops this env made for the quota, so the seal log reports it once; the
+	// laneYieldCounter metric accumulates across discarded envs and cannot be read per block.
+	laneYielded int
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -955,6 +964,7 @@ LOOP:
 		}
 		if !env.lane.Admits(env.gasPool.Gas(), class, tx.Gas()) {
 			laneYieldCounter.Inc(1)
+			env.laneYielded++
 			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "idle", env.lane.Budget.IdleLane())
 			txs.Pop()
 			continue
@@ -1287,6 +1297,8 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 		return &newPayloadResult{err: err}
 	}
 	if err := work.lane.WriteCommitmentAndVerify(block, work.gasPool.Used()); err != nil {
+		laneDeclineCounter.Inc(1)
+		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
 	}
 
@@ -1663,11 +1675,16 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 
 		if err := env.lane.WriteCommitmentAndVerify(block, env.gasPool.Used()); err != nil {
 			laneDeclineCounter.Inc(1)
+			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
 		if env.lane.On() {
+			floor, ceiling, safetyCap := env.lane.Bounds()
 			laneSizeGauge.Update(int64(env.lane.Budget.LaneSize))
 			laneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+			laneFloorGauge.Update(int64(floor))
+			laneCeilingGauge.Update(int64(ceiling))
+			laneCapGauge.Update(int64(safetyCap))
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.
@@ -1680,7 +1697,8 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "lane", env.lane.Budget.LaneSize,
-				"laneIdle", env.lane.Budget.IdleLane(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+				"laneIdle", env.lane.Budget.IdleLane(), "laneYielded", env.laneYielded,
+				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

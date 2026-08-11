@@ -6,8 +6,38 @@ import (
 
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 )
+
+// Reported from the import path, the only one every node type shares - a non-mining node and a
+// validator whose block came from a builder included.
+var (
+	laneImportedSizeGauge    = metrics.NewRegisteredGauge("paymentlane/imported/laneSize", nil)
+	laneImportedPaymentGauge = metrics.NewRegisteredGauge("paymentlane/imported/paymentGasUsed", nil)
+	laneImportedIdleGauge    = metrics.NewRegisteredGauge("paymentlane/imported/idleLane", nil)
+
+	laneRejectedCounter    = metrics.NewRegisteredCounter("paymentlane/rejected", nil)
+	laneUnavailableCounter = metrics.NewRegisteredCounter("paymentlane/stateUnavailable", nil)
+)
+
+func recordLaneImported(c paymentlane.Commitment) {
+	laneImportedSizeGauge.Update(int64(c.LaneSize))
+	laneImportedPaymentGauge.Update(int64(c.PaymentGasUsed))
+	laneImportedIdleGauge.Update(int64(paymentlane.Budget{
+		LaneSize:    c.LaneSize,
+		PaymentUsed: c.PaymentGasUsed,
+	}.IdleLane()))
+}
+
+func laneReject(err error) error {
+	if errors.Is(err, paymentlane.ErrStateUnavailable) {
+		laneUnavailableCounter.Inc(1)
+	} else {
+		laneRejectedCounter.Inc(1)
+	}
+	return err
+}
 
 // laneReader is the lane's whole state capability: accounts for classification, storage words for
 // the parameters.
@@ -76,6 +106,21 @@ func (ls *LaneState) CheckQuota(committed uint64) error {
 	}
 	ls.Budget.LaneSize = committed
 	return nil
+}
+
+func (ls *LaneState) Bounds() (floor, ceiling, safetyCap uint64) {
+	if !ls.On() {
+		return 0, 0, 0
+	}
+	return paymentlane.Bounds(ls.cfg, ls.gasLimit)
+}
+
+// Params is the only way an operator learns what a node actually read out of 0x2007.
+func (ls *LaneState) Params() paymentlane.Params {
+	if !ls.On() {
+		return paymentlane.Params{}
+	}
+	return ls.cfg
 }
 
 // Classify returns tx's lane class, or ClassGeneral when the lane is off.

@@ -80,12 +80,16 @@ func (s Signal) NextLaneSize(p Params, gasLimit uint64) uint64 {
 	ceiling := laneCeiling(p, gasLimit)
 	size := min(max(next, laneFloor(p, gasLimit)), ceiling)
 
-	// Safety clamp, outside the BEP and LAST, deliberately able to push the quota below its own
-	// floor. Below 25M of GasLimit the quota can exceed what a breathe block holds, and that halt
-	// would be unrecoverable: isBreatheBlock is sticky while the head stays in the previous UTC
-	// day, so every candidate block is again a breathe block and fails identically. Uses the
-	// protocol constant, never the miner-local gasReserved, so both sides agree.
-	return min(size, satSub(gasLimit, params.SystemTxsGasHardLimit))
+	return min(size, reserveCap(gasLimit))
+}
+
+// reserveCap is the safety clamp, outside the BEP and LAST, deliberately able to push the quota
+// below its own floor. Below 25M of GasLimit the quota can exceed what a breathe block holds, and
+// that halt would be unrecoverable: isBreatheBlock is sticky while the head stays in the previous
+// UTC day, so every candidate block is again a breathe block and fails identically. Uses the
+// protocol constant, never the miner-local gasReserved, so both sides agree.
+func reserveCap(gasLimit uint64) uint64 {
+	return satSub(gasLimit, params.SystemTxsGasHardLimit)
 }
 
 func (s Signal) congestionAtLeast(triggerRatio uint64) bool {
@@ -112,6 +116,11 @@ func laneCeiling(p Params, gasLimit uint64) uint64 {
 
 func laneFloor(p Params, gasLimit uint64) uint64 {
 	return min(max(mulDivFloor(p.MinRatio, gasLimit, RatioDenom), p.MinGas), laneCeiling(p, gasLimit))
+}
+
+// Bounds reports the three clamps NextLaneSize applies, for metrics rather than consensus.
+func Bounds(p Params, gasLimit uint64) (floor, ceiling, safetyCap uint64) {
+	return laneFloor(p, gasLimit), laneCeiling(p, gasLimit), reserveCap(gasLimit)
 }
 
 // mulDivFloor returns floor(a*b/d) over 128 bits, saturating instead of panicking when the

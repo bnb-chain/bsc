@@ -96,15 +96,22 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 
 	lane, err := ResolveLaneState(config, lastBlock, header, statedb.Reader())
 	if err != nil {
-		return nil, err
+		return nil, laneReject(err)
 	}
 	var laneCommitted paymentlane.Commitment
 	if lane.On() { // verify the commitment
 		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
-			return nil, err
+			return nil, laneReject(err)
 		}
 		if err = lane.CheckQuota(laneCommitted.LaneSize); err != nil {
-			return nil, err
+			return nil, laneReject(err)
+		}
+		// activation+1, the only block whose parent carries no commitment, and the only place the
+		// parameters this node read are put on record.
+		if lastBlock.UncleHash == types.EmptyUncleHash {
+			floor, ceiling, safetyCap := lane.Bounds()
+			log.Info("Payment lane activated", "number", header.Number, "quota", laneCommitted.LaneSize,
+				"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", lane.Params())
 		}
 	}
 
@@ -166,7 +173,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		class, err := lane.Classify(tx)
 		if err != nil {
 			bloomProcessors.Close()
-			return nil, fmt.Errorf("could not classify tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			return nil, laneReject(fmt.Errorf("could not classify tx %d [%v]: %w", i, tx.Hash().Hex(), err))
 		}
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
@@ -210,7 +217,10 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 
 	// verify the payment used is correct
 	if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
-		return nil, err
+		return nil, laneReject(err)
+	}
+	if lane.On() {
+		recordLaneImported(laneCommitted)
 	}
 
 	return &ProcessResult{
