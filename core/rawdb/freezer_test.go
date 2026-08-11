@@ -636,6 +636,43 @@ func TestFreezerCloseSync(t *testing.T) {
 	}
 }
 
+// TestFreezerLegacyPrunedTail reopens a store pruned while its tables were still
+// marked prunable, as v1.6.5 - v1.7.7 left them.
+func TestFreezerLegacyPrunedTail(t *testing.T) {
+	t.Parallel()
+
+	f, dir := newFreezerForTesting(t, map[string]freezerTableConfig{
+		"a": {noSnappy: true, prunable: true},
+		"b": {noSnappy: true, prunable: true},
+	})
+	_, err := f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		for i := uint64(0); i < 10; i++ {
+			if err := appendSameItem(op, []string{"a", "b"}, i, []byte{byte(i)}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	_, err = f.TruncateTail(5)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Table "a" is non-prunable now, its on-disk tail is still 5.
+	tables := map[string]freezerTableConfig{
+		"a": {noSnappy: true, prunable: false},
+		"b": {noSnappy: true, prunable: true},
+	}
+	for _, readonly := range []bool{false, true} {
+		f, err := NewFreezer(dir, "", readonly, 2049, tables)
+		require.NoError(t, err, "readonly %v", readonly)
+		tail, err := f.Tail()
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), tail, "readonly %v", readonly)
+		require.NoError(t, f.Close())
+	}
+}
+
 func TestFreezerSuite(t *testing.T) {
 	ancienttest.TestAncientSuite(t, func(kinds []string) ethdb.AncientStore {
 		tables := make(map[string]freezerTableConfig)

@@ -430,9 +430,9 @@ func (f *Freezer) validate() error {
 			return fmt.Errorf("freezer table %s has a differing head: %d != %d", kind, table.items.Load(), head)
 		}
 		if !table.config.prunable {
-			// non-prunable tables have to start at 0
+			// BSC: v1.6.5 - v1.7.7 pruned these tables, the tail can't be undone
 			if table.itemHidden.Load() != 0 {
-				return fmt.Errorf("non-prunable freezer table '%s' has a non-zero tail: %d", kind, table.itemHidden.Load())
+				log.Warn("Non-prunable freezer table has a legacy tail", "table", kind, "tail", table.itemHidden.Load())
 			}
 		} else {
 			// prunable tables have to have the same length
@@ -499,9 +499,9 @@ func (f *Freezer) repair() error {
 			return err
 		}
 		if !table.config.prunable {
-			// non-prunable tables have to start at 0
+			// BSC: v1.6.5 - v1.7.7 pruned these tables, the tail can't be undone
 			if table.itemHidden.Load() != 0 {
-				panic(fmt.Sprintf("non-prunable freezer table %s has non-zero tail: %v", kind, table.itemHidden.Load()))
+				log.Warn("Non-prunable freezer table has a legacy tail", "table", kind, "tail", table.itemHidden.Load())
 			}
 		} else {
 			// prunable tables have to have the same length
