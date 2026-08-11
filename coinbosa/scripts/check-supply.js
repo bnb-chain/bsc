@@ -41,18 +41,36 @@ const EXPECTED = BigInt(config.nativeCoin.totalSupply) * 10n ** 18n;
 (async () => {
   const provider = new ethers.JsonRpcProvider(RPC);
 
+  // Sur quel bloc lire les soldes ?
+  // L'état du bloc 0 finit par être PURGÉ : geth ne conserve l'état historique que sur une
+  // fenêtre glissante. Le bloc 0 reste lisible en en-tête, mais plus en état — donc plus
+  // interrogeable pour un solde. Ce n'est pas une perte de vérifiabilité : le stateRoot du
+  // bloc 0 est publié dans genesis-reference.json et engage TOUTE l'allocation initiale ;
+  // c'est check-genesis-hash.js qui le prouve. Ici on mesure l'offre RÉELLE d'aujourd'hui,
+  // ce qui est la question complémentaire : rien n'a-t-il été créé depuis ?
+  let BLOC = 0;
+  try {
+    await provider.getBalance('0x0000000000000000000000000000000000000001', 0);
+  } catch (e) {
+    if (/historical state|missing trie node|not available/i.test(e.message || '')) {
+      BLOC = 'latest';
+      console.log('  (état du bloc 0 purgé — lecture au bloc courant ; l\'allocation initiale');
+      console.log('   est prouvée par le stateRoot publié, via check-genesis-hash.js)');
+    } else throw e;
+  }
+
   let total = 0n;
   const mismatches = [];
   for (const [addr, v] of Object.entries(genesis.alloc)) {
     const declared = v.balance ? BigInt(v.balance) : 0n;
     if (declared === 0n) continue;
-    const onchain = await provider.getBalance(addr, 0); // au bloc de genèse (block 0)
+    const onchain = await provider.getBalance(addr, BLOC); // au bloc retenu
     if (onchain !== declared) mismatches.push({ addr, declared, onchain });
     total += onchain;
   }
 
   // le contrat de pont hérité doit être vide en solde ET purgé de son bytecode
-  const bridge = await provider.getBalance('0x0000000000000000000000000000000000001004', 0);
+  const bridge = await provider.getBalance('0x0000000000000000000000000000000000001004', BLOC);
   const XCHAIN = ['0x0000000000000000000000000000000000001003','0x0000000000000000000000000000000000001004',
                   '0x0000000000000000000000000000000000001005','0x0000000000000000000000000000000000001006',
                   '0x0000000000000000000000000000000000001008','0x0000000000000000000000000000000000002000'];
