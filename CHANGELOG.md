@@ -1,4 +1,14 @@
 # Changelog
+
+## v1.7.8
+v1.7.8 is a maintenance release.
+
+## MetaInfo
+Mandatory Update Required: No
+Target Audience: all BSC Mainnet/Testnet users
+Procedure: simply binary replacement should be good
+Schedule(Timeline): no scheduled upgrade timeline
+
 ## v1.7.7
 v1.7.7 is for BSC Mainnet [Pasteur hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-673.md),the hard fork time is 2026-08-25 02:30:00 AM UTC
 
