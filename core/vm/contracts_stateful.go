@@ -125,6 +125,18 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 // spawnBootstrap derives a context bound to a different self address, sharing
 // this frame's state, gas budget, rules and frame accounting. Used by the B20
 // factory to run a new token's initCalls inside the creating frame.
+//
+// ReadOnly is carried across. Nothing reaches here from a read-only frame today
+// — createB20 refuses one before it spawns — but that made the refusal the only
+// barrier, and deleting it left the whole test suite green.
+//
+// Measured, with that refusal removed and a bundle holding one grantRole:
+// carrying the flag fails the call with write protection and rolls back, while
+// dropping it grants the role and writes the sentinel from inside a STATICCALL.
+// So this is real protection, and its reach is exactly the initCalls — the
+// factory's own writes go through StateDB and b20Storage, neither of which
+// consults ReadOnly, so with an empty bundle they still land. createB20's guard
+// therefore stays load-bearing; this only stops it being the sole barrier.
 func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *PrecompileContext {
 	return &PrecompileContext{
 		evm:        ctx.evm,
@@ -132,6 +144,7 @@ func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *Preco
 		Self:       self,
 		Caller:     caller,
 		DirectCall: true,
+		ReadOnly:   ctx.ReadOnly,
 		Rules:      ctx.Rules,
 		gas:        ctx.gas,
 		frame:      ctx.frameGas(),
