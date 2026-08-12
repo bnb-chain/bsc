@@ -59,6 +59,61 @@ func TestB20NamespaceRoots(t *testing.T) {
 	}
 }
 
+// TestB20FeatureIDs pins the three activation feature ids as literals.
+//
+// Nothing pinned them, and changing any of the three canonical names left the
+// whole B20 suite green. That matters more than an ordinary constant: a feature
+// id is what governance names in an activate() proposal, so a typo means the
+// proposal opens an id no gate ever reads. The feature the network meant to open
+// stays shut, and the vote looks like it succeeded.
+//
+// BEP-702 3.15 publishes these ids, so this list is the contract with the spec.
+// NOTE: the spec has been renamed to N20 ahead of the code, so it currently says
+// keccak256("bsc.n20_asset") and keccak256("bsc.n20_stablecoin") — different
+// values from the two below. The code rename has to carry these with it.
+// "bsc.policy_registry" contains no b20 and is unaffected.
+func TestB20FeatureIDs(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  common.Hash
+		want string
+	}{
+		{"bsc.b20_asset", featureB20Asset, "0x31878586514f9d016ce7c189a3d4e9a41924e23063e9711eebb579ec61cb15d5"},
+		{"bsc.b20_stablecoin", featureB20Stablecoin, "0x8c527c688a2852724aabfe69efdd2dbaf4f2ca3782f91595570a95eab45f900d"},
+		{"bsc.policy_registry", featurePolicyRegistry, "0xcc84b168b7eedbce699f3234b0a635f610f4aa826d72cc6a19f5b9a264557edf"},
+	} {
+		if got := tc.got.Hex(); got != tc.want {
+			t.Errorf("feature id for %q = %s, want %s", tc.name, got, tc.want)
+		}
+		// The preimage too, so a rename cannot quietly keep the old hash.
+		if got := crypto.Keccak256Hash([]byte(tc.name)); got != tc.got {
+			t.Errorf("%q does not hash to the registered id: %s vs %s", tc.name, got.Hex(), tc.got.Hex())
+		}
+	}
+
+	// Distinctness is what makes one switch per feature meaningful.
+	seen := map[common.Hash]bool{}
+	for _, f := range []common.Hash{featureB20Asset, featureB20Stablecoin, featurePolicyRegistry} {
+		if seen[f] {
+			t.Errorf("duplicate feature id %s — two features would share one switch", f.Hex())
+		}
+		seen[f] = true
+	}
+
+	// And the variant-to-feature mapping, which decides which switch createB20
+	// consults. Swapping the two arms would gate each variant on the other's
+	// feature.
+	if f, ok := variantFeature(b20VariantAsset); !ok || f != featureB20Asset {
+		t.Errorf("variantFeature(asset) = %s ok=%v, want the asset feature", f.Hex(), ok)
+	}
+	if f, ok := variantFeature(b20VariantStablecoin); !ok || f != featureB20Stablecoin {
+		t.Errorf("variantFeature(stablecoin) = %s ok=%v, want the stablecoin feature", f.Hex(), ok)
+	}
+	if _, ok := variantFeature(0x02); ok {
+		t.Error("an unrecognized variant must map to no feature")
+	}
+}
+
 // TestB20ERC7201Formula checks erc7201Root against the vector published with
 // ERC-7201 itself, rather than against a second copy of our own arithmetic.
 //
