@@ -40,13 +40,29 @@ import (
 // standard's efficiency claim. No synthetic overhead is added to approximate
 // them.
 
-// b20CalldataWordGas prices one 32-byte word of input, charged once per
-// dispatch. It stands for what bytecode pays to bring its own calldata into
-// memory before decoding: CALLDATACOPY's per-word copy cost plus the memory
-// expansion that receives it (3 + 3).
+// b20CalldataWordGas is the per-word part of bringing calldata into memory:
+// CALLDATACOPY's copy cost plus the linear part of the memory expansion that
+// receives it (3 + 3).
 const b20CalldataWordGas = params.CopyGas + params.MemoryGas
 
 // chargeCalldata meters the input of one call frame, at its entry point.
+//
+// It mirrors what bytecode pays to copy its own calldata into empty memory
+// before decoding, which is not only the per-word part:
+//
+//	GasFastestStep            CALLDATACOPY's own cost
+//	+ CopyGas   × words       the copy
+//	+ MemoryGas × words       memory expansion, linear
+//	+ words² / QuadCoeffDiv   memory expansion, quadratic
+//
+// The base and the quadratic term were missing, so every non-empty input was
+// charged less than the operation it claims to mirror — 3 gas short at one word,
+// and 1,956 short at a thousand, where the quadratic term dominates. BEP-702
+// section 3.14 makes "never cheaper than the same work through bytecode" a MUST,
+// so the gap was a violation and not a rounding choice. See memoryGasCost in
+// gas_table.go, which is where the quadratic coefficient comes from.
+//
+// Zero words are free: bytecode with no arguments emits no copy at all.
 //
 // Internal calls dispatched inside a frame — an announce bundle's entries, the
 // factory's initCalls — are not charged again. They perform no calldata read:
@@ -56,7 +72,12 @@ const b20CalldataWordGas = params.CopyGas + params.MemoryGas
 // deliberately not charged.
 func (ctx *PrecompileContext) chargeCalldata(input []byte) {
 	words := (uint64(len(input)) + 31) / 32
-	ctx.chargeStateGas(words * b20CalldataWordGas)
+	if words == 0 {
+		return
+	}
+	ctx.chargeStateGas(GasFastestStep +
+		words*b20CalldataWordGas +
+		words*words/params.QuadCoeffDiv)
 }
 
 // chargeKeccak meters a keccak256 over size bytes: the same base plus per-word
