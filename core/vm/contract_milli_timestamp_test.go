@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -111,5 +112,189 @@ func TestMilliTimestamp_DirectRunFails(t *testing.T) {
 	c := &milliTimestamp{}
 	if _, err := c.Run(nil); err == nil {
 		t.Fatalf("direct Run() must return an error")
+	}
+}
+
+// milliTimestampAddr is test-local on purpose: production code inlines the
+// address literal in the PrecompiledContractsJenner map and exports no
+// constant for it.
+var milliTimestampAddr = common.BytesToAddress([]byte{0x70})
+
+// newJennerTestEVM builds an EVM on a Chapel-derived Parlia config with
+// JennerTime scheduled; jennerActive selects a block right after or right
+// before activation. It returns the EVM and the block's millisecond
+// timestamp the precompile is expected to report.
+func newJennerTestEVM(t *testing.T, jennerActive bool) (*EVM, uint64) {
+	t.Helper()
+	cfg := *params.ChapelChainConfig
+	jennerTime := uint64(1_800_000_000)
+	cfg.JennerTime = &jennerTime
+
+	blockTime := jennerTime + 1
+	if !jennerActive {
+		blockTime = jennerTime - 1
+	}
+	wantMilli := blockTime*1000 + 123
+
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	if err != nil {
+		t.Fatalf("state.New: %v", err)
+	}
+	blockCtx := BlockContext{
+		CanTransfer:    func(StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:       func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		BlockNumber:    big.NewInt(60_000_000),
+		Time:           blockTime,
+		Difficulty:     big.NewInt(2),
+		GasLimit:       30_000_000,
+		MilliTimestamp: wantMilli,
+	}
+	return NewEVM(blockCtx, statedb, &cfg, Config{}), wantMilli
+}
+
+// TestMilliTimestamp_PreActivation verifies that before Jenner, calling 0x70
+// behaves exactly like calling an empty, codeless account: success with empty
+// return data — not a revert, not an "invalid precompile" error.
+func TestMilliTimestamp_PreActivation(t *testing.T) {
+	evm, _ := newJennerTestEVM(t, false)
+	if _, isPrecompile := evm.precompile(milliTimestampAddr); isPrecompile {
+		t.Fatalf("0x70 must not be a precompile before Jenner")
+	}
+	for _, addr := range ActivePrecompiles(evm.chainRules) {
+		if addr == milliTimestampAddr {
+			t.Fatalf("0x70 must not be in ActivePrecompiles before Jenner")
+		}
+	}
+	ret, gas, err := evm.Call(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000), new(uint256.Int))
+	if err != nil {
+		t.Fatalf("pre-activation call must succeed like an empty account call, got %v", err)
+	}
+	if len(ret) != 0 {
+		t.Fatalf("pre-activation call must return empty data, got %x", ret)
+	}
+	if gas.RegularGas != 100_000 {
+		t.Fatalf("pre-activation call must not consume gas in the callee, left %d", gas.RegularGas)
+	}
+}
+
+// TestMilliTimestamp_PostActivation verifies that after Jenner, 0x70 is
+// recognized as a precompile (including by the independent ActivePrecompiles
+// switch feeding EIP-2929 warm-address preheating) and returns the block's
+// millisecond timestamp for exactly 20 gas.
+func TestMilliTimestamp_PostActivation(t *testing.T) {
+	evm, wantMilli := newJennerTestEVM(t, true)
+	if _, isPrecompile := evm.precompile(milliTimestampAddr); !isPrecompile {
+		t.Fatalf("0x70 must be a precompile after Jenner")
+	}
+	found := false
+	for _, addr := range ActivePrecompiles(evm.chainRules) {
+		if addr == milliTimestampAddr {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("0x70 must be in ActivePrecompiles(rules) after Jenner (EIP-2929 warm set)")
+	}
+	ret, gas, err := evm.Call(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000), new(uint256.Int))
+	if err != nil {
+		t.Fatalf("post-activation call: %v", err)
+	}
+	if got := new(big.Int).SetBytes(ret).Uint64(); got != wantMilli {
+		t.Fatalf("post-activation call returned %d, want %d", got, wantMilli)
+	}
+	if used := 100_000 - gas.RegularGas; used != params.MilliTimestampGas {
+		t.Fatalf("call must consume exactly %d gas, used %d", params.MilliTimestampGas, used)
+	}
+}
+
+// TestMilliTimestamp_StaticCall verifies the precompile works in a static
+// (read-only) context: it is a pure read and must not be rejected.
+func TestMilliTimestamp_StaticCall(t *testing.T) {
+	evm, wantMilli := newJennerTestEVM(t, true)
+	ret, _, err := evm.StaticCall(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000))
+	if err != nil {
+		t.Fatalf("STATICCALL must succeed: %v", err)
+	}
+	if got := new(big.Int).SetBytes(ret).Uint64(); got != wantMilli {
+		t.Fatalf("STATICCALL returned %d, want %d", got, wantMilli)
+	}
+}
+
+// TestMilliTimestamp_AllCallKindsUseBlockContext pins down that all four real
+// dispatch sites (Call/CallCode/DelegateCall/StaticCall) route through
+// RunWithBlockContext and none of them ever hits the Run() error branch.
+func TestMilliTimestamp_AllCallKindsUseBlockContext(t *testing.T) {
+	evm, wantMilli := newJennerTestEVM(t, true)
+	caller := common.Address{1}
+	zero := new(uint256.Int)
+
+	kinds := map[string]func() ([]byte, GasBudget, error){
+		"CALL": func() ([]byte, GasBudget, error) {
+			return evm.Call(caller, milliTimestampAddr, nil, NewGasBudget(100_000), zero)
+		},
+		"CALLCODE": func() ([]byte, GasBudget, error) {
+			return evm.CallCode(caller, milliTimestampAddr, nil, NewGasBudget(100_000), zero)
+		},
+		"DELEGATECALL": func() ([]byte, GasBudget, error) {
+			return evm.DelegateCall(caller, caller, milliTimestampAddr, nil, NewGasBudget(100_000), zero)
+		},
+		"STATICCALL": func() ([]byte, GasBudget, error) {
+			return evm.StaticCall(caller, milliTimestampAddr, nil, NewGasBudget(100_000))
+		},
+	}
+	for kind, call := range kinds {
+		ret, _, err := call()
+		if err != nil {
+			t.Fatalf("%s must dispatch via RunWithBlockContext, got error %v", kind, err)
+		}
+		if got := new(big.Int).SetBytes(ret).Uint64(); got != wantMilli {
+			t.Fatalf("%s returned %d, want %d", kind, got, wantMilli)
+		}
+	}
+}
+
+// TestMilliTimestamp_BSCOnlyGate_VM verifies that a non-Parlia config can
+// never select PrecompiledContractsJenner, even with JennerTime set and
+// passed (params-level assertions live in params/config_jenner_test.go).
+func TestMilliTimestamp_BSCOnlyGate_VM(t *testing.T) {
+	cfg := *params.ChapelChainConfig
+	jennerTime := uint64(1_800_000_000)
+	cfg.JennerTime = &jennerTime
+	cfg.Parlia = nil // not a BSC chain anymore
+
+	rules := cfg.Rules(big.NewInt(60_000_000), false, jennerTime+1)
+	if rules.IsJenner {
+		t.Fatalf("Rules().IsJenner must be false on a non-Parlia config")
+	}
+	if _, ok := activePrecompiledContracts(rules)[milliTimestampAddr]; ok {
+		t.Fatalf("non-Parlia config must not activate the Jenner precompile set")
+	}
+	for _, addr := range ActivePrecompiles(rules) {
+		if addr == milliTimestampAddr {
+			t.Fatalf("non-Parlia config must not list 0x70 in ActivePrecompiles")
+		}
+	}
+}
+
+// TestPrecompiledContractsJenner_IsFreshMap guards against the map-aliasing
+// pitfall: adding 0x70 to the Jenner map must not leak into the previous
+// fork's map (maps are reference types; PrecompiledContractsBLS/Verkle are
+// existing aliases of that dangerous kind).
+func TestPrecompiledContractsJenner_IsFreshMap(t *testing.T) {
+	if _, ok := PrecompiledContractsPasteur[milliTimestampAddr]; ok {
+		t.Fatalf("0x70 leaked into PrecompiledContractsPasteur: PrecompiledContractsJenner must be an independent map literal")
+	}
+	if _, ok := PrecompiledContractsJenner[milliTimestampAddr]; !ok {
+		t.Fatalf("PrecompiledContractsJenner must contain 0x70")
+	}
+	// Jenner must be a strict superset of the prior fork's map.
+	for addr := range PrecompiledContractsPasteur {
+		if _, ok := PrecompiledContractsJenner[addr]; !ok {
+			t.Fatalf("PrecompiledContractsJenner is missing entry %v from the prior fork", addr)
+		}
+	}
+	if len(PrecompiledContractsJenner) != len(PrecompiledContractsPasteur)+1 {
+		t.Fatalf("PrecompiledContractsJenner must be the prior fork's map plus exactly 0x70")
 	}
 }
