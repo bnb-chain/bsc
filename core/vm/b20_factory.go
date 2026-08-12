@@ -116,6 +116,13 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Decoded exactly as createB20 decodes the same argument. Prediction is
+		// only meaningful if the two agree on what the input means: truncating
+		// variant[31] answered for encodings creation rejects, and named
+		// addresses in unroutable variant spaces.
+		if !isEnumWord(variant, b20VariantStablecoin) {
+			return nil, revPanic(0x21)
+		}
 		addr := b20DeriveAddress(variant[31], sender, salt)
 		return addrKey(addr).Bytes(), nil
 	case selIsB20:
