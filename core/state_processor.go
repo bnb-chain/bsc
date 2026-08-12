@@ -94,7 +94,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		return nil, errors.New("could not get parent block")
 	}
 
-	lane, err := ResolveLaneState(config, lastBlock, header, statedb.Reader())
+	lane, err := ResolveLaneState(config, lastBlock, header, statedb)
 	if err != nil {
 		return nil, laneReject(err)
 	}
@@ -169,12 +169,9 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		// System transactions never reach here
-		class, err := lane.Classify(tx)
-		if err != nil {
-			bloomProcessors.Close()
-			return nil, laneReject(fmt.Errorf("could not classify tx %d [%v]: %w", i, tx.Hash().Hex(), err))
-		}
+		// System transactions never reach here. Classified after every earlier transaction has
+		// run and before this one does - the point the producer classified at too.
+		class := lane.Classify(tx)
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
 			telemetry.StringAttribute("tx.hash", tx.Hash().Hex()),

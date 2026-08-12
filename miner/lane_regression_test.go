@@ -42,9 +42,7 @@ func TestBidCommitTransactionBooksNothingForAFailedTransaction(t *testing.T) {
 	tx, err := types.SignTx(types.NewTransaction(0, common.Address{0xaa}, big.NewInt(1), 20_000, common.Big0, nil),
 		types.LatestSigner(config), key)
 	require.NoError(t, err)
-	class, err := env.lane.Classify(tx)
-	require.NoError(t, err)
-	require.Equal(t, paymentlane.ClassPayment, class, "the fixture must be a payment transaction")
+	require.Equal(t, paymentlane.ClassPayment, env.lane.Classify(tx), "the fixture must be a payment transaction")
 
 	r := &BidRuntime{env: env}
 	require.ErrorIs(t, r.commitTransaction(w.chain, config, tx, false), core.ErrIntrinsicGas)

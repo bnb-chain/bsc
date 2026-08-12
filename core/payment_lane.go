@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/core/paymentlane"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
@@ -39,13 +40,6 @@ func laneReject(err error) error {
 	return err
 }
 
-// laneReader is the lane's whole state capability: accounts for classification, storage words for
-// the parameters.
-type laneReader interface {
-	paymentlane.AccountReader
-	paymentlane.StorageReader
-}
-
 // LaneState is one block's lane state: the recursion inputs read from the parent, plus the
 // payment total accumulated as the block executes.
 // The zero value - and a nil pointer - mean the lane is off, and every method is safe in that
@@ -60,15 +54,21 @@ type LaneState struct {
 
 // ResolveLaneState derives one block's lane. One implementation for the importer and
 // the producer on purpose: every input is a choice the two must make identically.
-func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, reader laneReader) (*LaneState, error) {
+//
+// statedb must be the block's own state, opened on the parent root and not yet advanced.
+// Taking the whole StateDB rather than two readers is what stops the two views being wired up
+// the wrong way round: parameters and the payment-contract list come from Reader(), pinned to
+// the parent post-state; classification reads the live database as it advances.
+func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (*LaneState, error) {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil
 	}
-	cfg, err := paymentlane.LoadParams(reader)
+	parentState := statedb.Reader()
+	cfg, err := paymentlane.LoadParams(parentState)
 	if err != nil {
 		return nil, err
 	}
-	listed, err := paymentlane.LoadPaymentContracts(reader)
+	listed, err := paymentlane.LoadPaymentContracts(parentState)
 	if err != nil {
 		return nil, err
 	}
@@ -79,9 +79,33 @@ func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, 
 	return &LaneState{
 		cfg:      cfg,
 		signal:   signal,
-		class:    paymentlane.NewClassifier(parent.Root, reader, listed),
+		class:    paymentlane.NewClassifier(statedb, listed),
 		gasLimit: header.GasLimit,
 	}, nil
+}
+
+// VerifyHeaderQuota adjudicates the quota a header commits to against the derivation from its
+// parent - the whole of the lane that is settled before any transaction runs. It exists for the
+// caller that must not hold a LaneState: BEP-675's blind-seal path has no execution state for
+// the block it is about to sign, so it cannot classify, and parentState is the only reader it
+// can soundly supply.
+func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header, parentState paymentlane.StorageReader) error {
+	if !config.IsGauss(parent.Number, parent.Time) {
+		return nil
+	}
+	c, err := paymentlane.Decode(header.UncleHash)
+	if err != nil {
+		return err
+	}
+	cfg, err := paymentlane.LoadParams(parentState)
+	if err != nil {
+		return err
+	}
+	signal, err := paymentlane.NewSignalFromParent(parent)
+	if err != nil {
+		return err
+	}
+	return signal.CheckNextLaneSize(c.LaneSize, cfg, header.GasLimit)
 }
 
 // On reports whether the lane binds this block.
@@ -123,10 +147,12 @@ func (ls *LaneState) Params() paymentlane.Params {
 	return ls.cfg
 }
 
-// Classify returns tx's lane class, or ClassGeneral when the lane is off.
-func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) {
+// Classify returns tx's lane class, or ClassGeneral when the lane is off. Call it where the
+// transaction is about to run: gate 7 reads the live state, so producer and importer agree
+// only if both ask at the same point in the sequence.
+func (ls *LaneState) Classify(tx *types.Transaction) paymentlane.Class {
 	if !ls.On() {
-		return paymentlane.ClassGeneral, nil
+		return paymentlane.ClassGeneral
 	}
 	return ls.class.Classify(tx)
 }
@@ -149,21 +175,12 @@ func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, txGasLimit u
 	return ls.Budget.Admits(shared, class, txGasLimit)
 }
 
-// stickyErr reports the first classifier state-read failure, and is the backstop for the one site
-// that swallows a classification error: the miner's packing loop, which drops that account and
-// carries on. Everywhere else the error is returned where it happens. VerifyPackedBid and
-// WriteCommitmentAndVerify turn a swallowed one into a rejected bid and a refusal to seal.
-func (ls *LaneState) stickyErr() error { return ls.class.Err() }
-
-// VerifyPackedBid is the bid path's verdict on an environment it did not pack: quota and sticky
-// error together, because a caller that tested the quota alone would pass a bid whose bucket is
-// unknown, and the miner would then decline to seal it after discarding a good local block.
+// VerifyPackedBid is the bid path's verdict on an environment it did not pack itself. Sound
+// only because that environment was re-executed locally, so the payment total is this node's
+// own classification rather than the builder's word.
 func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 	if !ls.On() {
 		return nil
-	}
-	if err := ls.stickyErr(); err != nil {
-		return err
 	}
 	if idle := ls.Budget.IdleLane(); idle > shared {
 		return fmt.Errorf("%w: idle lane %d exceeds the %d gas left in the pool", paymentlane.ErrViolated, idle, shared)
@@ -183,9 +200,6 @@ func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane
 func (ls *LaneState) WriteCommitmentAndVerify(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil
-	}
-	if err := ls.stickyErr(); err != nil {
-		return err
 	}
 	if len(block.Uncles()) != 0 {
 		return errors.New("payment lane and uncles cannot share the uncle hash slot")

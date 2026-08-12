@@ -123,10 +123,7 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
-	class, err := b.lane.Classify(tx)
-	if err != nil {
-		panic(err)
-	}
+	class := b.lane.Classify(tx)
 	usedBefore := b.gasPool.Used()
 	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx, NewReceiptBloomGenerator())
 	if err != nil {
@@ -424,7 +421,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
-		lane, err := ResolveLaneState(config, parent.Header(), b.header, statedb.Reader())
+		lane, err := ResolveLaneState(config, parent.Header(), b.header, statedb)
 		if err != nil {
 			panic(err)
 		}

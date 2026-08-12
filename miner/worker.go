@@ -729,7 +729,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 	}
 	// Before StartPrefetcher: an error after it would leave a prefetcher with no env to discard it.
-	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, state.Reader())
+	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, state)
 	if err != nil {
 		return nil, err
 	}
@@ -816,10 +816,10 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	class, err := env.lane.Classify(tx)
-	if err != nil {
-		return nil, err
-	}
+	// The authoritative classification, where the importer also takes it. commitTransactions
+	// asks earlier to size its budget; the straight line between the two touches no state, so
+	// the answers agree - keep it that way.
+	class := env.lane.Classify(tx)
 	var (
 		snap       = env.state.Snapshot()
 		gp         = env.gasPool.Snapshot()
@@ -956,12 +956,8 @@ LOOP:
 		}
 		prefetchCurr.Store(tx)
 
-		class, err := env.lane.Classify(tx)
-		if err != nil {
-			log.Warn("Payment lane classification failed", "hash", ltx.Hash, "err", err)
-			txs.Pop()
-			continue
-		}
+		// Advisory: sizes the budget below. applyTransaction re-asks at the point that counts.
+		class := env.lane.Classify(tx)
 		if !env.lane.Admits(env.gasPool.Gas(), class, tx.Gas()) {
 			laneYieldCounter.Inc(1)
 			env.laneYielded++
@@ -989,7 +985,7 @@ LOOP:
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
-		_, err = w.commitTransaction(env, tx, bloomProcessors)
+		_, err := w.commitTransaction(env, tx, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift

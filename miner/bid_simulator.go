@@ -1380,10 +1380,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
-	class, err := env.lane.Classify(tx)
-	if err != nil {
-		return err
-	}
+	class := env.lane.Classify(tx)
 	usedBefore := env.gasPool.Used()
 
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, core.NewReceiptBloomGenerator())

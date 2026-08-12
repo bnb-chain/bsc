@@ -90,25 +90,19 @@ func bidBlockWith(header *types.Header, txs ...*types.Transaction) *buildertypes
 	}
 }
 
-// TestVerifyBidBlockLaneQuota checks the cheap validator-side quota gate.
+// The quota gate is exact, and the only lane verdict reachable before blind-signing. Only the
+// header is read: the transactions are not classified here, so nothing about them is asserted.
 func TestVerifyBidBlockLaneQuota(t *testing.T) {
 	w, header, local, laneSize := laneBidBlockHarness(t)
-
-	stranger := common.Address{0xbe, 0xef}
-	transfer := types.NewTx(&types.LegacyTx{To: &stranger, Value: common.Big1, Gas: params.TxGas})
 
 	for _, tc := range []struct {
 		name       string
 		commitment common.Hash
-		gasUsed    uint64
-		txs        []*types.Transaction
 		wantErr    error
 	}{
 		{
 			name:       "a truthful commitment is accepted",
 			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: params.TxGas}),
-			gasUsed:    laneSize,
-			txs:        []*types.Transaction{transfer},
 		},
 		{
 			name:       "an unstamped uncle slot is refused",
@@ -121,25 +115,17 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 			wantErr:    paymentlane.ErrQuotaMismatch,
 		},
 		{
-			name:       "more payment gas than these transactions can consume is refused",
-			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: 2 * params.TxGas}),
-			gasUsed:    laneSize,
-			txs:        []*types.Transaction{transfer},
-			wantErr:    paymentlane.ErrUntruthy,
-		},
-		{
-			name:       "understated payment gas is beyond what this check can see",
-			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize}),
-			gasUsed:    params.TxGas,
-			txs:        []*types.Transaction{transfer},
+			// Classification needs the live state of the builder's block, which this node does
+			// not have. Budget.VerifyCommitment settles the total against replay on import.
+			name:       "paymentGasUsed is not examined here, however wrong it is",
+			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: laneSize}),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := types.CopyHeader(header)
 			h.UncleHash = tc.commitment
-			h.GasUsed = tc.gasUsed
 
-			err := w.verifyBidBlockLaneQuota(bidBlockWith(h, tc.txs...), local)
+			err := w.verifyBidBlockLaneQuota(bidBlockWith(h), local)
 			if tc.wantErr == nil {
 				require.NoError(t, err)
 				return
@@ -147,47 +133,4 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 			require.ErrorIs(t, err, tc.wantErr)
 		})
 	}
-}
-
-// TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits checks the declared-gas ceiling.
-func TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits(t *testing.T) {
-	w, header, local, laneSize := laneBidBlockHarness(t)
-
-	stranger := common.Address{0xbe, 0xef}
-	fat := types.NewTx(&types.LegacyTx{To: &stranger, Value: common.Big1, Gas: 5_000_000})
-
-	h := types.CopyHeader(header)
-	h.GasUsed = 6_000_000
-	h.UncleHash = paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: 5_000_000})
-	require.NoError(t, w.verifyBidBlockLaneQuota(bidBlockWith(h, fat), local),
-		"a payment total up to the declared limit must be accepted, or honest blocks are refused")
-
-	h.UncleHash = paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: 5_000_001})
-	require.ErrorIs(t, w.verifyBidBlockLaneQuota(bidBlockWith(h, fat), local), paymentlane.ErrUntruthy,
-		"one gas past every declared limit in the block is still refused")
-}
-
-// TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion ignores the system-tx suffix.
-func TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion(t *testing.T) {
-	w, header, local, laneSize := laneBidBlockHarness(t)
-
-	stranger := common.Address{0xbe, 0xef}
-	transfer := types.NewTx(&types.LegacyTx{To: &stranger, Value: common.Big1, Gas: params.TxGas})
-	trailing := types.NewTx(&types.LegacyTx{To: &stranger, Nonce: 1, Value: common.Big1, Gas: params.TxGas})
-
-	h := types.CopyHeader(header)
-	h.GasUsed = laneSize
-	h.UncleHash = paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: params.TxGas})
-
-	decoded := &buildertypes.DecodedBidBlock{
-		Header:        h,
-		Txs:           []*types.Transaction{transfer, trailing},
-		SystemTxStart: 1,
-	}
-	require.NoError(t, w.verifyBidBlockLaneQuota(decoded, local),
-		"one user transfer permits exactly 21,000 of payment gas")
-
-	h.UncleHash = paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: 2 * params.TxGas})
-	require.ErrorIs(t, w.verifyBidBlockLaneQuota(decoded, local), paymentlane.ErrUntruthy,
-		"the system-tx region must not raise the ceiling")
 }

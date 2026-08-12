@@ -1,48 +1,39 @@
 package paymentlane
 
 import (
-	"errors"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
-// accountFn lets each test define its own parent-state lookup.
-type accountFn struct {
-	fn    func(common.Address) (*types.StateAccount, error)
+// codeFn lets each test define its own live-state code lookup.
+type codeFn struct {
+	fn    func(common.Address) common.Hash
 	reads []common.Address // every address actually read, in order
 }
 
-func (r *accountFn) Account(addr common.Address) (*types.StateAccount, error) {
+func (r *codeFn) GetCodeHash(addr common.Address) common.Hash {
 	r.reads = append(r.reads, addr)
 	return r.fn(addr)
 }
 
 // forbidReads fails the test if the classifier touches state at all.
-func forbidReads(t *testing.T) *accountFn {
+func forbidReads(t *testing.T) *codeFn {
 	t.Helper()
-	return &accountFn{fn: func(addr common.Address) (*types.StateAccount, error) {
+	return &codeFn{fn: func(addr common.Address) common.Hash {
 		t.Fatalf("classifier read state for %x, but every static gate should have decided first", addr)
-		return nil, nil
+		return common.Hash{}
 	}}
 }
 
-// absentAccounts models the common "destination never seen" case.
-func absentAccounts() *accountFn {
-	return &accountFn{fn: func(common.Address) (*types.StateAccount, error) { return nil, nil }}
-}
-
-func codedAccounts() *accountFn {
-	return &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
-		return &types.StateAccount{CodeHash: common.HexToHash("0xdead").Bytes()}, nil
-	}}
+// absentAccounts models the common "destination never seen" case: the zero hash, not EmptyCodeHash.
+func absentAccounts() *codeFn {
+	return &codeFn{fn: func(common.Address) common.Hash { return common.Hash{} }}
 }
 
 var (
@@ -158,8 +149,7 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 						}
 
 						reader := absentAccounts()
-						got, err := NewClassifier(common.Hash{}, reader, listed).Classify(tx)
-						require.NoError(t, err)
+						got := NewClassifier(reader, listed).Classify(tx)
 						require.Equal(t, wantClass, got,
 							"type=%d dest=%s accessList=%v data=%v value=%v", txType, dest.name, withAL, withData, withValue)
 						require.Equal(t, wantRead, len(reader.reads) == 1,
@@ -172,55 +162,56 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	}
 }
 
-// Precompiles are still payment destinations here.
-func TestPrecompileDestinationIsPayment(t *testing.T) {
-	for _, addr := range vm.ActivePrecompiles(params.Rules{
-		IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true,
-		IsCancun: true, IsPrague: true, IsOsaka: true, IsInBSC: true,
-	}) {
-		tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &addr, value: big.NewInt(1)})
-		got, err := NewClassifier(common.Hash{}, absentAccounts(), nil).Classify(tx)
-		require.NoError(t, err)
-		require.Equal(t, ClassPayment, got, "precompile %x", addr)
-	}
+// TestCodeGateFollowsTheLiveState: same destination, same transaction, opposite answers either
+// side of the moment it gains code. That is what keeps a transfer to an address this very block
+// deployed to, or delegated, from running code inside the quota. The code here arrives by an
+// EIP-7702 authorisation; a deployment is the same flip, and TestCodeHashBoundaryCases covers
+// both encodings.
+func TestCodeGateFollowsTheLiveState(t *testing.T) {
+	delegated := false
+	designator := types.AddressToDelegation(common.HexToAddress("0x00000000000000000000000000000000000f0009"))
+	r := &codeFn{fn: func(common.Address) common.Hash {
+		if delegated {
+			return common.BytesToHash(crypto.Keccak256(designator))
+		}
+		return common.Hash{}
+	}}
+	c := NewClassifier(r, nil)
+	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
+
+	require.Equal(t, ClassPayment, c.Classify(tx), "no code yet, so a plain transfer")
+	delegated = true
+	require.Equal(t, ClassGeneral, c.Classify(tx),
+		"the destination now holds code, so the transfer would execute it - not a payment")
+	require.Len(t, r.reads, 2, "gate 7 must be re-read every time; a memo here caches a stale answer")
 }
 
-// Cover every "no code" encoding the readers can return.
+// Cover every code-hash encoding the live state can return.
 func TestCodeHashBoundaryCases(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
+	designator := types.AddressToDelegation(common.HexToAddress("0x00000000000000000000000000000000000f0009"))
+
 	for _, tc := range []struct {
-		name string
-		acct *types.StateAccount
-		want Class
+		name     string
+		codeHash common.Hash
+		want     Class
 	}{
-		{"absent account", nil, ClassPayment},
-		{"empty code hash", &types.StateAccount{CodeHash: types.EmptyCodeHash.Bytes()}, ClassPayment},
-		{"nil code hash", &types.StateAccount{CodeHash: nil}, ClassPayment},
-		{"zero-length code hash", &types.StateAccount{CodeHash: []byte{}}, ClassPayment},
-		{"contract code hash", &types.StateAccount{CodeHash: common.HexToHash("0xbeef").Bytes()}, ClassGeneral},
+		// The trap: an account that does not exist reads as the ZERO hash, not EmptyCodeHash.
+		{"absent account (zero hash)", common.Hash{}, ClassPayment},
+		{"existing account, no code", types.EmptyCodeHash, ClassPayment},
+		{"contract code hash", common.HexToHash("0xbeef"), ClassGeneral},
+		// EIP-7702 designators are code, so a delegated account is not a lane destination.
+		{"eip-7702 designator", common.BytesToHash(crypto.Keccak256(designator)), ClassGeneral},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := &accountFn{fn: func(common.Address) (*types.StateAccount, error) { return tc.acct, nil }}
-			got, err := NewClassifier(common.Hash{}, r, nil).Classify(tx)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
+			r := &codeFn{fn: func(common.Address) common.Hash { return tc.codeHash }}
+			require.Equal(t, tc.want, NewClassifier(r, nil).Classify(tx))
 		})
 	}
 }
 
-// EIP-7702 designators must stay general.
-func TestDelegationDesignatorIsGeneral(t *testing.T) {
-	designator := types.AddressToDelegation(common.HexToAddress("0x00000000000000000000000000000000000f0009"))
-	r := &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
-		return &types.StateAccount{CodeHash: crypto.Keccak256(designator)}, nil
-	}}
-	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
-	got, err := NewClassifier(common.Hash{}, r, nil).Classify(tx)
-	require.NoError(t, err)
-	require.Equal(t, ClassGeneral, got)
-}
-
-// Listed membership must win over calldata/value heuristics.
+// Listed membership must win over calldata/value heuristics, and must short-circuit so that no
+// listed destination is ever decided by the live state.
 func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 	// ERC-20 transfer(address,uint256): calldata present, zero value.
 	calldata := make([]byte, 68)
@@ -228,8 +219,7 @@ func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 
 	for _, txType := range []byte{types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, data: calldata})
-		got, err := NewClassifier(common.Hash{}, forbidReads(t), listedSet(listedDest)).Classify(tx)
-		require.NoError(t, err)
+		got := NewClassifier(forbidReads(t), listedSet(listedDest)).Classify(tx)
 		require.Equal(t, ClassPayment, got, "tx type %d", txType)
 	}
 }
@@ -238,68 +228,7 @@ func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	for _, txType := range []byte{types.BlobTxType, types.SetCodeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, value: big.NewInt(1)})
-		got, err := NewClassifier(common.Hash{}, forbidReads(t), listedSet(listedDest)).Classify(tx)
-		require.NoError(t, err)
+		got := NewClassifier(forbidReads(t), listedSet(listedDest)).Classify(tx)
 		require.Equal(t, ClassGeneral, got, "tx type %d", txType)
 	}
-}
-
-// State-read failures must fail shut and keep Err sticky.
-func TestErrorPropagatesFailShutAndSticks(t *testing.T) {
-	boom := errors.New("snapshot not covered yet")
-	calls := 0
-	r := &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
-		calls++
-		if calls == 1 {
-			return nil, boom
-		}
-		return nil, nil // a later read succeeds
-	}}
-	c := NewClassifier(common.HexToHash("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"), r, nil)
-
-	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
-	got, err := c.Classify(tx)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrStateUnavailable)
-	require.ErrorIs(t, err, boom)
-	require.Equal(t, ClassGeneral, got, "the failure value must be general, not payment")
-	require.Error(t, c.Err())
-
-	// A later success must not clear the sticky error.
-	other := common.HexToAddress("0x00000000000000000000000000000000000f000a")
-	got, err = c.Classify(makeTx(t, txOpts{txType: types.LegacyTxType, to: &other, value: big.NewInt(1)}))
-	require.NoError(t, err)
-	require.Equal(t, ClassPayment, got)
-	require.Error(t, c.Err(), "Err must stay set after a later success")
-	require.ErrorIs(t, c.Err(), boom)
-}
-
-// Memoize successful reads per destination, but never memoize failures.
-func TestMemoDoesOneReadPerDistinctDestination(t *testing.T) {
-	dests := []common.Address{
-		common.HexToAddress("0x00000000000000000000000000000000000f0011"),
-		common.HexToAddress("0x00000000000000000000000000000000000f0012"),
-		common.HexToAddress("0x00000000000000000000000000000000000f0013"),
-	}
-	r := absentAccounts()
-	c := NewClassifier(common.Hash{}, r, nil)
-	for i := 0; i < 30; i++ {
-		dest := dests[i%len(dests)]
-		got, err := c.Classify(makeTx(t, txOpts{txType: types.LegacyTxType, to: &dest, value: big.NewInt(1)}))
-		require.NoError(t, err)
-		require.Equal(t, ClassPayment, got)
-	}
-	require.Len(t, r.reads, len(dests), "absent accounts must be memoised too - they are the hot path")
-
-	// A failed read must not be cached.
-	failing := &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
-		return nil, errors.New("missing trie node")
-	}}
-	c2 := NewClassifier(common.Hash{}, failing, nil)
-	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
-	_, err := c2.Classify(tx)
-	require.Error(t, err)
-	_, err = c2.Classify(tx)
-	require.Error(t, err)
-	require.Len(t, failing.reads, 2, "errors must not be memoised")
 }

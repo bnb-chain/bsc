@@ -3,7 +3,6 @@ package core
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -198,8 +197,11 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	}
 }
 
-// TestPaymentLaneClassifiesAgainstTheParentState checks classification against parent state.
-func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
+// TestPaymentLaneClassifiesAgainstTheLiveState is the attack the live-state gate closes, run
+// through the real EVM and a real import. burnerInitCode deploys `5b600056` - JUMPDEST, PUSH1
+// 0, JUMP - which loops until its gas is gone; the transfer behind it, one nonce later so that
+// it packs second, used to book that loop as payment gas against the parent post-state.
+func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 	signer := types.LatestSigner(config)
 
@@ -229,15 +231,18 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	})
 
 	require.Len(t, blocks[2].Transactions(), 2, "block 3 must carry the deployment and the transfer")
+	require.Greater(t, blocks[2].GasUsed(), uint64(burnGas),
+		"premise: the loop really ran, so this is the attack and not a transfer that executed nothing")
+
 	sameBlock, err := paymentlane.Decode(blocks[2].UncleHash())
 	require.NoError(t, err)
-	require.EqualValues(t, burnGas, sameBlock.PaymentGasUsed,
-		"a transfer to an address created by this same block is still a payment, and it executed code")
+	require.Zero(t, sameBlock.PaymentGasUsed,
+		"the destination holds code by the time the transfer runs, so the loop it executes is general gas")
 
 	nextBlock, err := paymentlane.Decode(blocks[3].UncleHash())
 	require.NoError(t, err)
 	require.Zero(t, nextBlock.PaymentGasUsed,
-		"once the code is in the parent post-state the same transfer is general")
+		"and it stays general once the code is older than the block")
 
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
 	require.NoError(t, err)
@@ -246,43 +251,26 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification checks sticky classification errors.
-func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T) {
-	to := common.Address{0x44}
-	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
+// The bid path's only lane verdict on a re-executed environment: whatever the quota still holds
+// idle must fit in what the pool has left.
+func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
+	ls := &LaneState{class: paymentlane.NewClassifier(codelessAccounts{}, nil)}
 
 	ls.Budget.LaneSize = 100
 	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
 	require.ErrorIs(t, ls.VerifyPackedBid(99), paymentlane.ErrViolated,
 		"a bid that leaves less than the idle quota must be rejected")
 
-	_, err := ls.Classify(types.NewTx(&types.LegacyTx{To: &to, Value: common.Big1, Gas: paymentTxGas}))
-	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable)
-	require.ErrorIs(t, ls.VerifyPackedBid(0), paymentlane.ErrStateUnavailable,
-		"a swallowed classification failure must reject the bid, not wait for the seal")
-}
-
-// TestPaymentLaneWriteCommitmentAndVerifyRefusesASwallowedClassification checks the seal-time backstop.
-func TestPaymentLaneWriteCommitmentAndVerifyRefusesASwallowedClassification(t *testing.T) {
-	to := common.Address{0x44}
-	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
-	_, err := ls.Classify(types.NewTx(&types.LegacyTx{To: &to, Value: common.Big1, Gas: paymentTxGas}))
-	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable)
-
-	block := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(1), UncleHash: types.EmptyUncleHash})
-	require.ErrorIs(t, ls.WriteCommitmentAndVerify(block, 0), paymentlane.ErrStateUnavailable,
-		"a block built with an unknown class must not be sealed")
-	require.Equal(t, types.EmptyUncleHash, block.UncleHash(), "and it must refuse before stamping")
+	ls.Budget.PaymentUsed = 40
+	require.NoError(t, ls.VerifyPackedBid(60), "payment gas already booked shrinks the idle quota one for one")
 }
 
 // --- helpers -------------------------------------------------------------------
 
-// failingAccountReader makes every classification that reaches the parent state fail.
-type failingAccountReader struct{}
+// codelessAccounts reports every destination as holding no code.
+type codelessAccounts struct{}
 
-func (failingAccountReader) Account(common.Address) (*types.StateAccount, error) {
-	return nil, errors.New("no state")
-}
+func (codelessAccounts) GetCodeHash(common.Address) common.Hash { return common.Hash{} }
 
 type ecdsaKey struct {
 	priv *ecdsa.PrivateKey

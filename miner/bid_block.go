@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -35,21 +34,17 @@ type bidBlockTaskInfo struct {
 
 var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
 
-// verifyBidBlockLaneQuota adjudicates a builder-authored BEP-703 commitment as far as it
-// can be adjudicated without replaying the block, and must run before this validator
-// signs: a BidBlock header is adopted verbatim, and handleBidBlockResult broadcasts
-// before InsertChain.
+// verifyBidBlockLaneQuota is the lane's verdict on a builder-authored header, and must run
+// before this validator signs: the header is adopted verbatim and broadcast before InsertChain.
+// verifyCascadingFields has already settled that the commitment decodes and that the block rule
+// holds over its values.
 //
-// What admission already settled, in verifyCascadingFields: the commitment decodes at all,
-// and the block rule holds over the committed values. What is added here:
-//
-//	laneSize        Exactly. It is a pure function of the parent, the grandparent and
-//	                0x2007's parameters, so the builder does not get to choose it - and the
-//	                gas limit it derives from is the validator's own, since
-//	                preSealVerifyBidBlock pins header.GasLimit to CalcGasLimit.
-//	paymentGasUsed  From above only, and only as far as bidBlockPaymentCeiling can bound it.
-//	                Over-stating is the profitable direction, which is why an upper bound is
-//	                the right shape.
+// Only laneSize is checked, and exactly: a pure function of the parent and 0x2007's parameters
+// over the validator's own gas limit (preSealVerifyBidBlock pins it to CalcGasLimit), so a
+// mismatch is never a false positive. paymentGasUsed is not - classification needs the live
+// state of the builder's block, which this node does not have, and bounding it against the
+// local one would reject honest bids. Import settles it via Budget.VerifyCommitment, which is
+// where BEP-675 already puts what sealing cannot verify.
 func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, local *environment) error {
 	header := decoded.Header
 	if header.ParentHash != local.header.ParentHash {
@@ -60,48 +55,9 @@ func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, 
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, local.state.Reader())
-	if err != nil {
-		return err
-	}
-	if !lane.On() {
-		return nil
-	}
-	c, err := paymentlane.Decode(header.UncleHash)
-	if err != nil {
-		return err
-	}
-	if err := lane.CheckQuota(c.LaneSize); err != nil {
-		return err
-	}
-	ceiling, err := bidBlockPaymentCeiling(lane, decoded, header.GasUsed)
-	if err != nil {
-		return err
-	}
-	if c.PaymentGasUsed > ceiling {
-		return fmt.Errorf("%w: committed payment %d exceeds what these transactions can consume as payment (%d)",
-			paymentlane.ErrUntruthy, c.PaymentGasUsed, ceiling)
-	}
-	return nil
-}
-
-// bidBlockPaymentCeiling is the largest payment total the BidBlock's user transactions could
-// produce: each payment-class transaction's declared gas limit, which needs no execution state.
-func bidBlockPaymentCeiling(lane *core.LaneState, decoded *buildertypes.DecodedBidBlock, headerGasUsed uint64) (uint64, error) {
-	var ceiling uint64
-	for _, tx := range decoded.Txs[:decoded.SystemTxStart] {
-		class, err := lane.Classify(tx)
-		if err != nil {
-			return 0, err
-		}
-		if class != paymentlane.ClassPayment {
-			continue
-		}
-		if ceiling += tx.Gas(); ceiling >= headerGasUsed {
-			return headerGasUsed, nil
-		}
-	}
-	return ceiling, nil
+	// Reader(), never local.state: the local environment is packed with this validator's own
+	// transactions, so as a live state it belongs to a different block.
+	return core.VerifyHeaderQuota(w.chainConfig, parent, header, local.state.Reader())
 }
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
