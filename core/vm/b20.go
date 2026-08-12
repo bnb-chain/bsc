@@ -122,7 +122,7 @@ func hadNoCode(state StateDB, addr common.Address) bool {
 }
 
 // ensureSentinel plants the account sentinel on this precompile's own address
-// if it is not already there, mirroring Base's __initialize().
+// if it is not already there.
 //
 // Tokens get theirs from createB20, but the registries have no factory: they
 // come into existence through their first governance or issuer write. Storage

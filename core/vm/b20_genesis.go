@@ -40,9 +40,13 @@ import (
 // The sentinel on both registries. Their state is storage-only, which leaves
 // their accounts EIP-161-empty; a state-clearing pass would reap them and take
 // the activation flags and every policy with them. The sentinel keeps the
-// accounts non-empty. It is written before the storage for the same reason the
-// factory writes it before a token's: the EVM may prune writes made under an
-// empty account.
+// accounts non-empty.
+//
+// It is written first only for readability. Emptiness is evaluated at Finalise
+// over the end state, not per write, so writing the code after the storage
+// produces the same root — measured, both orders agree. What is load-bearing is
+// that the code is written at all: storage alone on a code-less account is reaped
+// by the clearing pass, which the seeding tests do cover.
 
 // SeedB20Activation installs the B20 activation state at a fork boundary. It is
 // idempotent: an already-seeded registry is left untouched, so replaying the
