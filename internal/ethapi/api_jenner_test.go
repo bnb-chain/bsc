@@ -131,24 +131,40 @@ func TestJennerBlockOverrides_Call(t *testing.T) {
 		t.Fatalf("time override: 0x44 = %x, want unchanged %x", randao, headRandao)
 	}
 
-	// prevRandao only: 0x44 follows the override, milli keeps the block's
-	// original value ("omitted fields keep original values").
-	prevRandao := common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
-	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{PrevRandao: &prevRandao})
-	if randao != prevRandao {
-		t.Fatalf("prevRandao override: 0x44 = %x, want %x", randao, prevRandao)
+	// prevRandao only: on this client prevRandao carries the millisecond
+	// remainder (BEP-520 header semantics) — it is assembled on top of the
+	// block's own seconds.
+	remainder := common.BigToHash(big.NewInt(123))
+	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{PrevRandao: &remainder})
+	if milli != head.Time*1000+123 {
+		t.Fatalf("prevRandao override: 0x70 = %d, want %d", milli, head.Time*1000+123)
 	}
-	if milli != headMilli {
-		t.Fatalf("prevRandao override: 0x70 = %d, want unchanged head milli %d", milli, headMilli)
+	if randao != remainder {
+		t.Fatalf("prevRandao override: 0x44 = %x, want %x", randao, remainder)
 	}
 
-	// time + prevRandao together: BOTH take effect, independently.
-	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{Time: &overrideTime, PrevRandao: &prevRandao})
-	if milli != 5_000*1000 {
-		t.Fatalf("combined override: 0x70 = %d, want %d", milli, uint64(5_000)*1000)
+	// time + prevRandao together: seconds from time, remainder from
+	// prevRandao, assembled into one millisecond timestamp.
+	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{Time: &overrideTime, PrevRandao: &remainder})
+	if milli != 5_000*1000+123 {
+		t.Fatalf("combined override: 0x70 = %d, want %d", milli, uint64(5_000)*1000+123)
 	}
-	if randao != prevRandao {
-		t.Fatalf("combined override: 0x44 = %x, want %x", randao, prevRandao)
+	if randao != remainder {
+		t.Fatalf("combined override: 0x44 = %x, want %x", randao, remainder)
+	}
+
+	// A prevRandao that is not a valid millisecond remainder (>= 1000) must
+	// be rejected: users cannot pass arbitrary random values on this client.
+	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	for _, bad := range []common.Hash{
+		common.BigToHash(big.NewInt(1000)),
+		common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234"),
+	} {
+		bad := bad
+		_, err := api.Call(context.Background(), TransactionArgs{To: &jennerProbeAddr}, &latest, nil, &override.BlockOverrides{PrevRandao: &bad})
+		if err == nil {
+			t.Fatalf("prevRandao %x (>= 1000) must be rejected", bad)
+		}
 	}
 }
 
@@ -163,13 +179,14 @@ func TestJennerBlockOverrides_EstimateGas(t *testing.T) {
 	nrOrHash := rpc.BlockNumberOrHash{BlockNumber: &latest}
 
 	overrideTime := hexutil.Uint64(5_000)
-	blockOverrides := override.BlockOverrides{Time: &overrideTime}
+	remainder := common.BigToHash(big.NewInt(123))
+	blockOverrides := override.BlockOverrides{Time: &overrideTime, PrevRandao: &remainder}
 
-	right := hexutil.Bytes(padMilli(5_000 * 1000))
+	right := hexutil.Bytes(padMilli(5_000*1000 + 123))
 	if _, err := api.EstimateGas(context.Background(), TransactionArgs{To: &jennerAssertAddr, Input: &right}, &nrOrHash, nil, &blockOverrides); err != nil {
-		t.Fatalf("estimateGas must succeed when 0x70 == overridden time*1000: %v", err)
+		t.Fatalf("estimateGas must succeed when 0x70 == time*1000 + prevRandao remainder: %v", err)
 	}
-	wrong := hexutil.Bytes(padMilli(5_000*1000 + 1))
+	wrong := hexutil.Bytes(padMilli(5_000 * 1000))
 	if _, err := api.EstimateGas(context.Background(), TransactionArgs{To: &jennerAssertAddr, Input: &wrong}, &nrOrHash, nil, &blockOverrides); err == nil {
 		t.Fatalf("estimateGas must fail when the asserted milli value mismatches")
 	}
@@ -208,12 +225,13 @@ func decodeJennerProbeResult(t *testing.T, res *simBlockResult, call int) (commo
 }
 
 // TestJennerBlockOverrides_SimulateV1 covers the eth_simulateV1 path (fresh
-// simulated headers, MakeHeader + the MilliTimestamp pin in processBlock):
+// simulated headers whose MixDigest follows the BSC millisecond semantics):
 //   - time-only override across several chained blocks: 0x70 tracks each
-//     block's own overridden time without drift;
-//   - time + prevRandao: both apply (0x70 == time*1000 AND 0x44 == prevRandao);
+//     block's own overridden time without drift, remainder .000;
+//   - time + prevRandao: assembled (0x70 == time*1000 + remainder);
 //   - prevRandao without time (a real combination: sanitizeChain fills the
-//     default timestamp): 0x44 == prevRandao and 0x70 == sanitizedTime*1000.
+//     default timestamp): 0x70 == sanitizedTime*1000 + remainder;
+//   - a prevRandao >= 1000 is rejected by sanitizeChain.
 func TestJennerBlockOverrides_SimulateV1(t *testing.T) {
 	t.Parallel()
 	backend := newJennerBSCBackend(t)
@@ -229,18 +247,19 @@ func TestJennerBlockOverrides_SimulateV1(t *testing.T) {
 		t1         = hexutil.Uint64(base.Time + 100)
 		t2         = hexutil.Uint64(base.Time + 200)
 		t3         = hexutil.Uint64(base.Time + 300)
-		prevRandao = common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
+		remainder3 = common.BigToHash(big.NewInt(123))
+		remainder4 = common.BigToHash(big.NewInt(999))
 	)
 	results := runJennerSimulation(t, backend, []simBlock{
 		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1}, Calls: []TransactionArgs{probeCall}},
 		{BlockOverrides: &override.BlockOverrides{Number: n2, Time: &t2}, Calls: []TransactionArgs{probeCall}},
-		{BlockOverrides: &override.BlockOverrides{Number: n3, Time: &t3, PrevRandao: &prevRandao}, Calls: []TransactionArgs{probeCall}},
-		{BlockOverrides: &override.BlockOverrides{Number: n4, PrevRandao: &prevRandao}, Calls: []TransactionArgs{probeCall}},
+		{BlockOverrides: &override.BlockOverrides{Number: n3, Time: &t3, PrevRandao: &remainder3}, Calls: []TransactionArgs{probeCall}},
+		{BlockOverrides: &override.BlockOverrides{Number: n4, PrevRandao: &remainder4}, Calls: []TransactionArgs{probeCall}},
 	})
 
-	// Blocks 1-2: time-only, chained. 0x70 tracks each block's own time; the
-	// simulated headers are post-merge (difficulty 0), so 0x44 reads the
-	// (zero) MixDigest.
+	// Blocks 1-2: time-only, chained. 0x70 tracks each block's own time with
+	// a .000 remainder; the simulated headers are post-merge (difficulty 0),
+	// so 0x44 reads the (zero) MixDigest.
 	for i, wantTime := range []uint64{uint64(t1), uint64(t2)} {
 		randao, milli := decodeJennerProbeResult(t, results[i], 0)
 		if milli != wantTime*1000 {
@@ -250,35 +269,49 @@ func TestJennerBlockOverrides_SimulateV1(t *testing.T) {
 			t.Fatalf("block %d: 0x44 = %x, want zero (no prevRandao override)", i+1, randao)
 		}
 	}
-	// Block 3: time + prevRandao — both take effect.
+	// Block 3: time + prevRandao — assembled into one millisecond timestamp.
 	randao, milli := decodeJennerProbeResult(t, results[2], 0)
-	if milli != uint64(t3)*1000 {
-		t.Fatalf("block 3: 0x70 = %d, want %d", milli, uint64(t3)*1000)
+	if milli != uint64(t3)*1000+123 {
+		t.Fatalf("block 3: 0x70 = %d, want %d", milli, uint64(t3)*1000+123)
 	}
-	if randao != prevRandao {
-		t.Fatalf("block 3: 0x44 = %x, want %x", randao, prevRandao)
+	if randao != remainder3 {
+		t.Fatalf("block 3: 0x44 = %x, want %x", randao, remainder3)
 	}
 	// Block 4: prevRandao without time. sanitizeChain fills the default
-	// timestamp (previous block + timestampIncrement); the pin in
-	// processBlock must use that sanitized time, not decode garbage
-	// milliseconds out of the prevRandao-carrying MixDigest.
+	// timestamp (previous block + timestampIncrement) and the remainder
+	// rides on top of it.
 	sanitizedTime := results[3].Block.Time()
 	if want := uint64(t3) + timestampIncrement; sanitizedTime != want {
 		t.Fatalf("block 4: sanitized time = %d, want %d", sanitizedTime, want)
 	}
 	randao, milli = decodeJennerProbeResult(t, results[3], 0)
-	if milli != sanitizedTime*1000 {
-		t.Fatalf("block 4: 0x70 = %d, want sanitized time*1000 = %d", milli, sanitizedTime*1000)
+	if milli != sanitizedTime*1000+999 {
+		t.Fatalf("block 4: 0x70 = %d, want sanitized time*1000 + 999 = %d", milli, sanitizedTime*1000+999)
 	}
-	if randao != prevRandao {
-		t.Fatalf("block 4: 0x44 = %x, want %x", randao, prevRandao)
+	if randao != remainder4 {
+		t.Fatalf("block 4: 0x44 = %x, want %x", randao, remainder4)
+	}
+
+	// An invalid remainder (>= 1000) must be rejected before execution.
+	bad := common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
+	ctx := context.Background()
+	stateDB, baseHeader, err := backend.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber))
+	if err != nil {
+		t.Fatalf("state and header: %v", err)
+	}
+	sim := &simulator{b: backend, state: stateDB, base: baseHeader, chainConfig: backend.ChainConfig(), budget: newGasBudget(0)}
+	if _, err := sim.execute(ctx, []simBlock{
+		{BlockOverrides: &override.BlockOverrides{Number: n1, PrevRandao: &bad}, Calls: []TransactionArgs{probeCall}},
+	}); err == nil {
+		t.Fatalf("simulateV1 must reject a prevRandao >= 1000")
 	}
 }
 
-// TestJennerBlockOverrides_NonBSCRegression pins down that the change leaks
-// nothing into non-Parlia chains: PREVRANDAO override behavior is unchanged
-// on a merged (post-merge Ethereum) config, and 0x70 stays an empty account
-// there (Jenner never activates outside BSC).
+// TestJennerBlockOverrides_NonBSCRegression pins down the behavior on a
+// non-Parlia (merged Ethereum) config: 0x70 stays an empty account there
+// (Jenner never activates outside BSC), the prevRandao override still
+// reaches PREVRANDAO, and — since this is the BSC client — the millisecond
+// bound on prevRandao (< 1000) applies uniformly on every config.
 func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 	t.Parallel()
 	acc := newTestAccount()
@@ -305,26 +338,36 @@ func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 		t.Fatalf("non-BSC: 0x70 must stay an empty account, probe word = %d", milli)
 	}
 
-	// eth_call, time + prevRandao: the prevRandao override stays effective.
-	prevRandao := common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
-	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{Time: &overrideTime, PrevRandao: &prevRandao})
-	if randao != prevRandao {
-		t.Fatalf("non-BSC combined override: PREVRANDAO = %x, want %x", randao, prevRandao)
+	// eth_call, time + prevRandao (a valid millisecond remainder): the
+	// override reaches PREVRANDAO, and 0x70 stays empty regardless.
+	remainder := common.BigToHash(big.NewInt(999))
+	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{Time: &overrideTime, PrevRandao: &remainder})
+	if randao != remainder {
+		t.Fatalf("non-BSC combined override: PREVRANDAO = %x, want %x", randao, remainder)
 	}
 	if milli != 0 {
 		t.Fatalf("non-BSC: 0x70 must stay an empty account, probe word = %d", milli)
 	}
 
-	// eth_simulateV1 with time + prevRandao: unchanged behavior as well.
+	// The millisecond bound applies client-wide: an arbitrary random value
+	// is rejected on the merged config too (deliberate BSC-client deviation
+	// from upstream, see BlockOverrides.PrevRandao).
+	bad := common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
+	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+	if _, err := api.Call(context.Background(), TransactionArgs{To: &jennerProbeAddr}, &latest, nil, &override.BlockOverrides{PrevRandao: &bad}); err == nil {
+		t.Fatalf("prevRandao >= 1000 must be rejected on every config on this client")
+	}
+
+	// eth_simulateV1 with time + a valid prevRandao remainder.
 	n1 := (*hexutil.Big)(new(big.Int).Add(head.Number, big.NewInt(1)))
 	t1 := hexutil.Uint64(head.Time + 100)
 	results := runJennerSimulation(t, backend, []simBlock{
-		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1, PrevRandao: &prevRandao},
+		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1, PrevRandao: &remainder},
 			Calls: []TransactionArgs{{To: &jennerProbeAddr, Gas: newUint64(500_000)}}},
 	})
 	randao, milli = decodeJennerProbeResult(t, results[0], 0)
-	if randao != prevRandao {
-		t.Fatalf("non-BSC simulateV1: PREVRANDAO = %x, want %x", randao, prevRandao)
+	if randao != remainder {
+		t.Fatalf("non-BSC simulateV1: PREVRANDAO = %x, want %x", randao, remainder)
 	}
 	if milli != 0 {
 		t.Fatalf("non-BSC simulateV1: 0x70 must stay an empty account, probe word = %d", milli)
