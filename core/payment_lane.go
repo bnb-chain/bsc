@@ -49,7 +49,14 @@ type LaneState struct {
 	cfg      paymentlane.Params
 	signal   paymentlane.Signal
 	class    *paymentlane.Classifier
+	state    laneStateDB
 	gasLimit uint64
+}
+
+// laneStateDB is the live state: what the classifier reads, and whether reading it worked.
+type laneStateDB interface {
+	paymentlane.CodeReader
+	Error() error
 }
 
 // ResolveLaneState derives one block's lane. One implementation for the importer and
@@ -80,8 +87,19 @@ func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, 
 		cfg:      cfg,
 		signal:   signal,
 		class:    paymentlane.NewClassifier(statedb, listed),
+		state:    statedb,
 		gasLimit: header.GasLimit,
 	}, nil
+}
+
+// checkState reports a failed state read as the local fault it is. StateDB answers such a read
+// with the zero code hash, which classifies as payment, and holds the error until Commit - after
+// every verdict below. Unchecked, the lane calls a good block untruthful and costs us the peer.
+func (ls *LaneState) checkState() error {
+	if err := ls.state.Error(); err != nil {
+		return fmt.Errorf("%w: %w", paymentlane.ErrStateUnavailable, err)
+	}
+	return nil
 }
 
 // VerifyHeaderQuota adjudicates the quota a header commits to against the derivation from its
@@ -193,6 +211,9 @@ func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane
 	if !ls.On() {
 		return nil
 	}
+	if err := ls.checkState(); err != nil {
+		return err
+	}
 	return ls.Budget.VerifyCommitment(ls.gasLimit, totalGasUsed, poolUsed, c)
 }
 
@@ -203,6 +224,9 @@ func (ls *LaneState) WriteCommitmentAndVerify(block *types.Block, poolUsed uint6
 	}
 	if len(block.Uncles()) != 0 {
 		return errors.New("payment lane and uncles cannot share the uncle hash slot")
+	}
+	if err := ls.checkState(); err != nil {
+		return err
 	}
 	block.SetUncleHash(paymentlane.Encode(paymentlane.Commitment{
 		LaneSize:       ls.Budget.LaneSize,

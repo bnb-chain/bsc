@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -254,7 +255,7 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 // The bid path's only lane verdict on a re-executed environment: whatever the quota still holds
 // idle must fit in what the pool has left.
 func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
-	ls := &LaneState{class: paymentlane.NewClassifier(codelessAccounts{}, nil)}
+	ls := &LaneState{class: paymentlane.NewClassifier(liveState{}, nil), state: liveState{}}
 
 	ls.Budget.LaneSize = 100
 	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
@@ -265,12 +266,36 @@ func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
 	require.NoError(t, ls.VerifyPackedBid(60), "payment gas already booked shrinks the idle quota one for one")
 }
 
+// TestPaymentLaneReportsAFailedReadAsLocal pins the error CLASS, not the rejection: a failed read
+// classifies as payment, so the verdict would otherwise be that the block lied - and peers pay.
+func TestPaymentLaneReportsAFailedReadAsLocal(t *testing.T) {
+	broken := errors.New("missing trie node")
+	live := liveState{err: broken}
+	ls := &LaneState{
+		class:    paymentlane.NewClassifier(live, nil),
+		state:    live,
+		gasLimit: laneTestGasLimit,
+	}
+	// The flip itself: the block booked this gas as general, the failed read books it as payment.
+	ls.Budget.PaymentUsed = paymentTxGas
+
+	err := ls.VerifyImported(paymentTxGas, paymentTxGas, paymentlane.Commitment{})
+	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable, "a failed read is this node's fault, not the block's")
+	require.ErrorIs(t, err, broken, "the cause has to survive for whoever reads the log")
+	require.NotErrorIs(t, err, paymentlane.ErrUntruthy, "calling a good block untruthful is what costs peers")
+
+	require.ErrorIs(t, ls.WriteCommitmentAndVerify(types.NewBlockWithHeader(&types.Header{}), 0),
+		paymentlane.ErrStateUnavailable, "nor may the producing side sign over a dirty classification")
+}
+
 // --- helpers -------------------------------------------------------------------
 
-// codelessAccounts reports every destination as holding no code.
-type codelessAccounts struct{}
+// liveState fakes the block's live state, every destination codeless. A non-nil err is a read
+// that failed the way StateDB reports one: the zero hash now, the error only later.
+type liveState struct{ err error }
 
-func (codelessAccounts) GetCodeHash(common.Address) common.Hash { return common.Hash{} }
+func (liveState) GetCodeHash(common.Address) common.Hash { return common.Hash{} }
+func (s liveState) Error() error                         { return s.err }
 
 type ecdsaKey struct {
 	priv *ecdsa.PrivateKey
