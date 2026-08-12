@@ -59,6 +59,17 @@ type PrecompiledContract interface {
 	Name() string
 }
 
+// BlockContextPrecompiledContract is an optional extension of
+// PrecompiledContract for precompiles that need read-only access to the
+// block context (e.g. the BEP-706 millisecond-timestamp precompile).
+// RunPrecompiledContract dispatches to RunWithBlockContext whenever a
+// precompile implements this interface, so Run is never reached on the
+// real call paths (Call/CallCode/DelegateCall/StaticCall).
+type BlockContextPrecompiledContract interface {
+	PrecompiledContract
+	RunWithBlockContext(blockCtx BlockContext, input []byte) ([]byte, error)
+}
+
 // PrecompiledContracts contains the precompiled contracts supported at the given fork.
 type PrecompiledContracts map[common.Address]PrecompiledContract
 
@@ -619,7 +630,7 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 // - the returned bytes,
 // - the remaining gas budget,
 // - any error that occurred
-func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules) (ret []byte, remaining GasBudget, err error) {
+func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules, blockCtx BlockContext) (ret []byte, remaining GasBudget, err error) {
 	gasCost := p.RequiredGas(input)
 	prior, ok := gas.Charge(GasCosts{RegularGas: gasCost})
 	if !ok {
@@ -633,6 +644,13 @@ func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address comm
 	// fork is activated.
 	if rules.IsAmsterdam {
 		stateDB.Touch(address)
+	}
+	// Precompiles that need the block context implement the optional
+	// BlockContextPrecompiledContract interface and are dispatched here;
+	// every other precompile keeps the plain Run(input) path.
+	if bp, ok := p.(BlockContextPrecompiledContract); ok {
+		output, err := bp.RunWithBlockContext(blockCtx, input)
+		return output, gas, err
 	}
 	output, err := p.Run(input)
 	return output, gas, err
