@@ -4,6 +4,8 @@ import (
 	"math"
 	"math/big"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/params/forks"
 )
 
 // testJennerTime is an arbitrary activation time used by the Jenner tests. It
@@ -67,6 +69,98 @@ func TestIsJenner_BSCOnlyGate(t *testing.T) {
 	}
 	if r := bsc.Rules(num, false, activeTime); !r.IsJenner {
 		t.Fatalf("Rules().IsJenner must be true on a Parlia config past the fork time")
+	}
+}
+
+func TestLatestFork_Jenner(t *testing.T) {
+	c := *ChapelChainConfig
+	c.JennerTime = newUint64(testJennerTime)
+
+	if got := c.LatestFork(testJennerTime - 1); got == forks.Jenner {
+		t.Fatalf("LatestFork must not report Jenner before the fork time, got %v", got)
+	}
+	if got := c.LatestFork(testJennerTime); got != forks.Jenner {
+		t.Fatalf("LatestFork at the fork time: got %v, want Jenner", got)
+	}
+	if got := c.LatestFork(testJennerTime + 1); got != forks.Jenner {
+		t.Fatalf("LatestFork after the fork time: got %v, want Jenner", got)
+	}
+	// Right before Jenner, the latest fork must be Pasteur (the latest
+	// scheduled fork on Chapel).
+	if got := c.LatestFork(testJennerTime - 1); got != forks.Pasteur {
+		t.Fatalf("LatestFork right before Jenner: got %v, want Pasteur", got)
+	}
+	// forks.Fork arithmetic used by logForkReadiness: the enum value right
+	// after the pre-Jenner latest fork chain must eventually reach Jenner,
+	// and Timestamp must resolve for it (see TestTimestampFunc_Jenner).
+	if forks.Jenner <= forks.Amsterdam {
+		t.Fatalf("Jenner must be the newest fork enum value")
+	}
+}
+
+// TestVerifyForkOrdering_JennerNotEarlier pins down the "equal or later than
+// every other fork, never earlier" invariant enforced via CheckConfigForkOrder.
+func TestVerifyForkOrdering_JennerNotEarlier(t *testing.T) {
+	// Chapel has PasteurTime scheduled; use it as the reference fork.
+	pasteur := *ChapelChainConfig.PasteurTime
+
+	// Earlier than another defined fork: must be rejected.
+	c := *ChapelChainConfig
+	c.JennerTime = newUint64(pasteur - 1)
+	if err := c.CheckConfigForkOrder(); err == nil {
+		t.Fatalf("CheckConfigForkOrder must reject JennerTime earlier than PasteurTime")
+	}
+
+	// Equal is explicitly allowed.
+	c = *ChapelChainConfig
+	c.JennerTime = newUint64(pasteur)
+	if err := c.CheckConfigForkOrder(); err != nil {
+		t.Fatalf("CheckConfigForkOrder must accept JennerTime equal to PasteurTime: %v", err)
+	}
+
+	// Later is allowed.
+	c = *ChapelChainConfig
+	c.JennerTime = newUint64(testJennerTime)
+	if err := c.CheckConfigForkOrder(); err != nil {
+		t.Fatalf("CheckConfigForkOrder must accept JennerTime later than PasteurTime: %v", err)
+	}
+
+	// Unset (nil) is allowed: the fork is optional until scheduled.
+	c = *ChapelChainConfig
+	c.JennerTime = nil
+	if err := c.CheckConfigForkOrder(); err != nil {
+		t.Fatalf("CheckConfigForkOrder must accept a nil JennerTime: %v", err)
+	}
+}
+
+func TestCheckCompatible_Jenner(t *testing.T) {
+	stored := newJennerTestConfig()
+	// Moving the Jenner time after a block past the fork point has been
+	// imported must be rejected.
+	newcfg := newJennerTestConfig()
+	newcfg.JennerTime = newUint64(testJennerTime + 100)
+	err := stored.CheckCompatible(newcfg, 10, testJennerTime+1)
+	if err == nil {
+		t.Fatalf("CheckCompatible must reject rescheduling Jenner after activation")
+	}
+	if err.What != "Jenner fork timestamp" {
+		t.Fatalf("unexpected compat error: %v", err)
+	}
+	// Before activation the same change is fine.
+	if err := stored.CheckCompatible(newcfg, 10, testJennerTime-1); err != nil {
+		t.Fatalf("CheckCompatible must accept rescheduling Jenner before activation: %v", err)
+	}
+}
+
+func TestTimestampFunc_Jenner(t *testing.T) {
+	c := newJennerTestConfig()
+	got := c.Timestamp(forks.Jenner)
+	if got == nil || *got != testJennerTime {
+		t.Fatalf("Timestamp(forks.Jenner) = %v, want %d", got, testJennerTime)
+	}
+	cNil := &ChainConfig{Parlia: &ParliaConfig{}}
+	if cNil.Timestamp(forks.Jenner) != nil {
+		t.Fatalf("Timestamp(forks.Jenner) must be nil when JennerTime is unset")
 	}
 }
 

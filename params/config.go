@@ -1605,6 +1605,10 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
 		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
 		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+		// Jenner must always be the latest fork: keeping it last in this list
+		// makes the ordering check reject any JennerTime earlier than another
+		// defined fork (equal is allowed).
+		{name: "jenner", timestamp: c.JennerTime, optional: true},
 	} {
 		if lastFork.name != "" {
 			switch {
@@ -1829,6 +1833,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.PasteurTime, newcfg.PasteurTime, headTimestamp) {
 		return newTimestampCompatError("Pasteur fork timestamp", c.PasteurTime, newcfg.PasteurTime)
 	}
+	if isForkTimestampIncompatible(c.JennerTime, newcfg.JennerTime, headTimestamp) {
+		return newTimestampCompatError("Jenner fork timestamp", c.JennerTime, newcfg.JennerTime)
+	}
 	if isForkTimestampIncompatible(c.UBTTime, newcfg.UBTTime, headTimestamp) {
 		return newTimestampCompatError("UBT fork timestamp", c.UBTTime, newcfg.UBTTime)
 	}
@@ -1870,6 +1877,10 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
+	// Jenner is defined to always be the latest BSC fork (enforced by the
+	// fork ordering check in CheckConfigForkOrder), so it stays on top.
+	case c.IsJenner(london, time):
+		return forks.Jenner
 	case c.IsAmsterdam(london, time):
 		return forks.Amsterdam
 	case c.IsBPO5(london, time):
@@ -1959,6 +1970,11 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
+	// Keep Jenner first: it is defined to be the latest fork, and
+	// logForkReadiness in core/blockchain.go relies on Timestamp(current+1)
+	// resolving for the fork enum value right after the current one.
+	case fork == forks.Jenner:
+		return c.JennerTime
 	case fork == forks.Amsterdam:
 		return c.AmsterdamTime
 	case fork == forks.BPO5:
