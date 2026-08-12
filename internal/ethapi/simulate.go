@@ -301,6 +301,12 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		header.ExcessBlobGas = &excess
 	}
 	blockContext := core.NewEVMBlockContext(header, sim.newSimulatedChainContext(ctx, headers), nil)
+	// The simulated header's MixDigest either is zero or carries a prevRandao
+	// override, so deriving the millisecond timestamp (BEP-706) from it via
+	// Header.MilliTimestamp() would decode garbage in the latter case. Pin it
+	// to the block's (possibly overridden or sanitized-default) time with a
+	// .000 remainder instead — BlockOverrides has no millisecond field.
+	blockContext.MilliTimestamp = header.Time * 1000
 	if block.BlockOverrides.BlobBaseFee != nil {
 		blockContext.BlobBaseFee = block.BlockOverrides.BlobBaseFee.ToInt()
 	}

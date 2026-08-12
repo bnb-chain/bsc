@@ -158,6 +158,11 @@ func (o *BlockOverrides) Apply(blockCtx *vm.BlockContext) error {
 	}
 	if o.Time != nil {
 		blockCtx.Time = uint64(*o.Time)
+		// Keep the millisecond timestamp (consumed by the BEP-706 precompile
+		// on BSC) consistent with the overridden time. BlockOverrides has no
+		// millisecond field, so the sub-second remainder is pinned to .000.
+		// The field is inert on non-BSC chains, so no gate is needed.
+		blockCtx.MilliTimestamp = uint64(*o.Time) * 1000
 	}
 	if o.GasLimit != nil {
 		blockCtx.GasLimit = uint64(*o.GasLimit)
