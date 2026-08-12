@@ -37,6 +37,33 @@ func jennerTestChainConfig(jennerTime uint64) *params.ChainConfig {
 	return &config
 }
 
+// TestChainOverridesJenner verifies that the --override.jenner plumbing
+// (ChainOverrides.apply) actually lands on ChainConfig.JennerTime and that
+// the fork-ordering invariant still guards overridden values.
+func TestChainOverridesJenner(t *testing.T) {
+	// All forks up to Pasteur must be scheduled for Jenner to be settable
+	// (CheckConfigForkOrder enforces this — see TestChainOverridesJenner's
+	// rejection case below for the guard itself).
+	cfg := *jennerTestChainConfig(0)
+	cfg.JennerTime = nil
+	jennerTime := uint64(1_800_000_000)
+	o := &ChainOverrides{OverrideJenner: &jennerTime}
+	if err := o.apply(&cfg); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if cfg.JennerTime == nil || *cfg.JennerTime != jennerTime {
+		t.Fatalf("OverrideJenner must set JennerTime, got %v", cfg.JennerTime)
+	}
+
+	// Overriding Jenner to a time earlier than an already-scheduled fork must
+	// be rejected by the CheckConfigForkOrder call at the end of apply().
+	chapel := *params.ChapelChainConfig
+	early := *chapel.PasteurTime - 1
+	if err := (&ChainOverrides{OverrideJenner: &early}).apply(&chapel); err == nil {
+		t.Fatalf("apply must reject a Jenner override earlier than Pasteur")
+	}
+}
+
 // TestJennerForkTransition runs a real chain across the Jenner activation
 // boundary and checks the BEP-706 precompile behavior end to end:
 //   - before activation, a contract staticcalling 0x70 sees a successful call

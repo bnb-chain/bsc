@@ -73,6 +73,7 @@ var (
 		utils.OverrideOsaka,
 		utils.OverrideMendel,
 		utils.OverridePasteur,
+		utils.OverrideJenner,
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
 		utils.OverrideUBT,
