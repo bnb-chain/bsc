@@ -703,11 +703,6 @@ func (cm *chainMaker) GetHeaderByNumber(number uint64) *types.Header {
 func (cm *chainMaker) GetHeaderByHash(hash common.Hash) *types.Header {
 	b := cm.chainByHash[hash]
 	if b == nil {
-		// chainByHash holds only generated blocks, and blockByNumber answers for bottom, so
-		// without this a Gauss-from-genesis chain cannot resolve its own grandparent.
-		if cm.bottom != nil && cm.bottom.Hash() == hash {
-			return cm.bottom.Header()
-		}
 		return nil
 	}
 	return b.Header()
