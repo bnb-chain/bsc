@@ -277,6 +277,26 @@ func TestMilliTimestamp_BSCOnlyGate_VM(t *testing.T) {
 	}
 }
 
+// TestPrecompiles_UBTShadowsJenner pins down the selection precedence when
+// both UBT and Jenner rules are active (only representable on a hypothetical
+// Parlia+UBT devnet via RPC simulation — consensus never sets both): the UBT
+// set keeps winning, exactly as it already shadows Pasteur and every other
+// BSC fork set, and every UBT precompile stays available.
+func TestPrecompiles_UBTShadowsJenner(t *testing.T) {
+	m := activePrecompiledContracts(params.Rules{IsJenner: true, IsUBT: true})
+	if _, ok := m[milliTimestampAddr]; ok {
+		t.Fatalf("UBT must keep shadowing Jenner: 0x70 must not be in the active set")
+	}
+	for addr := range PrecompiledContractsVerkle {
+		if _, ok := m[addr]; !ok {
+			t.Fatalf("UBT precompile %v must remain available when Jenner is also active", addr)
+		}
+	}
+	if len(m) != len(PrecompiledContractsVerkle) {
+		t.Fatalf("active set must be exactly the UBT set: got %d entries, want %d", len(m), len(PrecompiledContractsVerkle))
+	}
+}
+
 // TestPrecompiledContractsJenner_IsFreshMap guards against the map-aliasing
 // pitfall: adding 0x70 to the Jenner map must not leak into the previous
 // fork's map (maps are reference types; PrecompiledContractsBLS/Verkle are

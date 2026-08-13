@@ -562,10 +562,14 @@ func init() {
 
 func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	switch {
-	case rules.IsJenner:
-		return PrecompiledContractsJenner
+	// UBT (binary-tree devnet experiment) deliberately stays above Jenner:
+	// it already shadows every BSC fork's precompile set (see IsPasteur
+	// below), and Jenner keeps that pre-existing precedence instead of
+	// silently swapping an active UBT set for a Pasteur-derived one.
 	case rules.IsUBT:
 		return PrecompiledContractsVerkle
+	case rules.IsJenner:
+		return PrecompiledContractsJenner
 	case rules.IsPasteur:
 		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
