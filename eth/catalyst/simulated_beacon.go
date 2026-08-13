@@ -103,6 +103,14 @@ type SimulatedBeacon struct {
 
 func payloadVersion(config *params.ChainConfig, time uint64) engine.PayloadVersion {
 	switch config.LatestFork(time) {
+	case forks.Jenner:
+		// Jenner (BEP-706) does not change the Engine payload version: report
+		// the version of the underlying fork set. Jenner is always the latest
+		// fork, so it may sit on top of Amsterdam (V4) or any older fork (V3).
+		if config.IsAmsterdam(config.LondonBlock, time) {
+			return engine.PayloadV4
+		}
+		return engine.PayloadV3
 	case forks.Amsterdam:
 		return engine.PayloadV4
 	case forks.BPO5, forks.BPO4, forks.BPO3, forks.BPO2, forks.BPO1, forks.Pasteur, forks.Mendel, forks.Osaka,
@@ -209,7 +217,9 @@ func (c *SimulatedBeacon) sealBlock(withdrawals []*types.Withdrawal, timestamp u
 		Random:                random,
 		BeaconRoot:            &common.Hash{},
 	}
-	if c.eth.BlockChain().Config().LatestFork(timestamp) == forks.Amsterdam {
+	// Not a LatestFork equality check: Jenner may sit on top of an active
+	// Amsterdam, which still needs the slot number attribute.
+	if cfg := c.eth.BlockChain().Config(); cfg.IsAmsterdam(cfg.LondonBlock, timestamp) {
 		slotNumber := uint64(0)
 		attribute.SlotNumber = &slotNumber
 	}
