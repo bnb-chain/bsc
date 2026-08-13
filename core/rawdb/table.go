@@ -101,10 +101,6 @@ func (t *table) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	return t.db.ResetTable(kind, startAt, onlyEmpty)
 }
 
-func (t *table) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	return t.db.ResetTableForIncr(kind, startAt, onlyEmpty)
-}
-
 func (t *table) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return t.db.ReadAncients(fn)
 }
@@ -229,10 +225,6 @@ func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) erro
 	return nil
 }
 
-func (t *table) CleanBlock(kvStore ethdb.KeyValueStore, start uint64) error {
-	return nil
-}
-
 // tableBatch is a wrapper around a database batch that prefixes each key access
 // with a pre-configured string.
 type tableBatch struct {
@@ -273,6 +265,11 @@ func (b *tableBatch) Write() error {
 // Reset resets the batch for reuse.
 func (b *tableBatch) Reset() {
 	b.batch.Reset()
+}
+
+// Close closes the batch and releases all associated resources.
+func (b *tableBatch) Close() {
+	b.batch.Close()
 }
 
 // tableReplayer is a wrapper around a batch replayer which truncates

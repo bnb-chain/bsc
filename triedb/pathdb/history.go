@@ -22,6 +22,7 @@ import (
 	"iter"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -121,6 +122,20 @@ func (ident stateIdent) String() string {
 	return ident.addressHash.Hex() + ident.path
 }
 
+func (ident stateIdent) bloomSize() int {
+	if ident.typ == typeAccount {
+		return 0
+	}
+	if ident.typ == typeStorage {
+		return 0
+	}
+	scheme := accountIndexScheme
+	if ident.addressHash != (common.Hash{}) {
+		scheme = storageIndexScheme
+	}
+	return scheme.getBitmapSize(len(ident.path))
+}
+
 // newAccountIdent constructs a state identifier for an account.
 func newAccountIdent(addressHash common.Hash) stateIdent {
 	return stateIdent{
@@ -180,15 +195,60 @@ func newStorageIdentQuery(address common.Address, addressHash common.Hash, stora
 	}
 }
 
-// newTrienodeIdentQuery constructs a state identifier for a trie node.
-// the addressHash denotes the address hash of the associated account;
-// the path denotes the path of the node within the trie;
-//
-// nolint:unused
-func newTrienodeIdentQuery(addrHash common.Hash, path []byte) stateIdentQuery {
-	return stateIdentQuery{
-		stateIdent: newTrienodeIdent(addrHash, string(path)),
+// indexElem defines the element for indexing.
+type indexElem interface {
+	key() stateIdent
+	ext() []uint16
+}
+
+type accountIndexElem struct {
+	addressHash common.Hash
+}
+
+func (a accountIndexElem) key() stateIdent {
+	return stateIdent{
+		typ:         typeAccount,
+		addressHash: a.addressHash,
 	}
+}
+
+func (a accountIndexElem) ext() []uint16 {
+	return nil
+}
+
+type storageIndexElem struct {
+	addressHash common.Hash
+	storageHash common.Hash
+}
+
+func (a storageIndexElem) key() stateIdent {
+	return stateIdent{
+		typ:         typeStorage,
+		addressHash: a.addressHash,
+		storageHash: a.storageHash,
+	}
+}
+
+func (a storageIndexElem) ext() []uint16 {
+	return nil
+}
+
+type trienodeIndexElem struct {
+	owner common.Hash
+	path  string
+	data  []uint16
+}
+
+func (a trienodeIndexElem) key() stateIdent {
+	return stateIdent{
+		typ:         typeTrienode,
+		addressHash: a.owner,
+		path:        a.path,
+	}
+}
+
+func (a trienodeIndexElem) ext() []uint16 {
+	return a.data
 }
 
 // history defines the interface of historical data, shared by stateHistory
@@ -198,7 +258,7 @@ type history interface {
 	typ() historyType
 
 	// forEach returns an iterator to traverse the state entries in the history.
-	forEach() iter.Seq[stateIdent]
+	forEach() iter.Seq[indexElem]
 }
 
 var (
@@ -263,57 +323,138 @@ func truncateFromTail(store ethdb.AncientStore, typ historyType, ntail uint64) (
 	return int(ntail - otail), nil
 }
 
-// truncateIncrChainFreezerFromHead removes the extra incr chain histories from the head with the given
-// parameters. It returns the number of items removed from the head.
-func truncateIncrChainFreezerFromHead(store ethdb.AncientStore, nhead uint64) (int, error) {
-	ohead, err := store.Ancients()
+// purgeHistory resets the history and also purges the associated index data.
+func purgeHistory(store ethdb.ResettableAncientStore, disk ethdb.KeyValueStore, typ historyType) {
+	if store == nil {
+		return
+	}
+	frozen, err := store.Ancients()
 	if err != nil {
-		return 0, err
+		log.Crit("Failed to retrieve head of history", "type", typ, "err", err)
 	}
-	otail, err := store.Tail()
-	if err != nil {
-		return 0, err
+	if frozen == 0 {
+		return
 	}
-	// Ensure that the truncation target falls within the specified range.
-	if ohead < nhead || nhead < otail {
-		return 0, fmt.Errorf("out of range, tail: %d, head: %d, target: %d", otail, ohead, nhead)
+	// Purge all state history indexing data first
+	batch := disk.NewBatch()
+	if typ == typeStateHistory {
+		rawdb.DeleteStateHistoryIndexMetadata(batch)
+		rawdb.DeleteStateHistoryIndexes(batch)
+	} else {
+		rawdb.DeleteTrienodeHistoryIndexMetadata(batch)
+		rawdb.DeleteTrienodeHistoryIndexes(batch)
 	}
-	// Short circuit if nothing to truncate.
-	if ohead == nhead {
-		return 0, nil
+	if err := batch.Write(); err != nil {
+		log.Crit("Failed to purge history index", "type", typ, "err", err)
 	}
-	ohead, err = store.TruncateHead(nhead)
-	if err != nil {
-		return 0, err
+	if err := store.Reset(); err != nil {
+		log.Crit("Failed to reset history", "type", typ, "err", err)
 	}
-	return int(ohead - nhead), nil
+	log.Info("Truncated extraneous history", "type", typ)
 }
 
-// truncateIncrChainFreezerFromTail removes the extra incremental chain histories from the tail
-// with the given parameters. It returns the number of items removed from the tail.
-func truncateIncrChainFreezerFromTail(store ethdb.AncientStore, ntail uint64) (int, error) {
-	ohead, err := store.Ancients()
+// syncHistory explicitly sync the provided history stores.
+func syncHistory(stores ...ethdb.AncientWriter) error {
+	for _, store := range stores {
+		if store == nil {
+			continue
+		}
+		if err := store.SyncAncient(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// repairHistory truncates any leftover history objects in either the state
+// history or the trienode history, which may occur due to an unclean shutdown
+// or other unexpected events.
+//
+// Additionally, this mechanism ensures that the state history and trienode
+// history remain aligned. Since the trienode history is optional and not
+// required by regular users, a gap between the trienode history and the
+// persistent state may appear if the trienode history was disabled during the
+// previous run. This process detects and resolves such gaps, preventing
+// unexpected panics.
+func repairHistory(db ethdb.Database, isUBT bool, readOnly bool, stateID uint64, enableTrienode bool) (ethdb.ResettableAncientStore, ethdb.ResettableAncientStore, error) {
+	ancient, err := db.AncientDatadir()
 	if err != nil {
-		return 0, err
+		// TODO error out if ancient store is disabled. A tons of unit tests
+		// disable the ancient store thus the error here will immediately fail
+		// all of them. Fix the tests first.
+		return nil, nil, nil
 	}
-	otail, err := store.Tail()
+	// State history is mandatory as it is the key component that ensures
+	// resilience to deep reorgs.
+	states, err := rawdb.NewStateFreezer(ancient, isUBT, readOnly)
 	if err != nil {
-		return 0, err
+		log.Crit("Failed to open state history freezer", "err", err)
 	}
-	if ohead == otail {
-		return 0, nil
+
+	// Trienode history is optional and only required for building archive
+	// node with state proofs.
+	var trienodes ethdb.ResettableAncientStore
+	if enableTrienode {
+		trienodes, err = rawdb.NewTrienodeFreezer(ancient, isUBT, readOnly)
+		if err != nil {
+			log.Crit("Failed to open trienode history freezer", "err", err)
+		}
 	}
-	// Ensure that the truncation target falls within the specified range.
-	if otail > ntail || ntail > ohead {
-		return 0, fmt.Errorf("out of range, tail: %d, head: %d, target: %d", otail, ohead, ntail)
+
+	// Reset the both histories if the trie database is not initialized yet.
+	// This action is necessary because these histories are not expected
+	// to exist without an initialized trie database.
+	if stateID == 0 {
+		purgeHistory(states, db, typeStateHistory)
+		purgeHistory(trienodes, db, typeTrienodeHistory)
+		return states, trienodes, nil
 	}
-	// Short circuit if nothing to truncate.
-	if otail == ntail {
-		return 0, nil
-	}
-	otail, err = store.TruncateTail(ntail)
+	// Truncate excessive history entries in either the state history or
+	// the trienode history, ensuring both histories remain aligned with
+	// the state.
+	shead, err := states.Ancients()
 	if err != nil {
-		return 0, err
+		return nil, nil, err
 	}
-	return int(ntail - otail), nil
+	if stateID > shead { // Gap is not permitted in the state history
+		return nil, nil, fmt.Errorf("gap between state [#%d] and state history [#%d]", stateID, shead)
+	}
+	truncTo := min(shead, stateID)
+
+	if trienodes != nil {
+		thead, err := trienodes.Ancients()
+		if err != nil {
+			return nil, nil, err
+		}
+		if stateID <= thead {
+			truncTo = min(truncTo, thead)
+		} else {
+			if thead == 0 {
+				_, err = trienodes.TruncateTail(stateID)
+				if err != nil {
+					return nil, nil, err
+				}
+				log.Warn("Initialized trienode history")
+			} else {
+				return nil, nil, fmt.Errorf("gap between state [#%d] and trienode history [#%d]", stateID, thead)
+			}
+		}
+	}
+	// Truncate the extra history elements above in freezer in case it's not
+	// aligned with the state. It might happen after an unclean shutdown.
+	truncate := func(store ethdb.AncientStore, typ historyType, nhead uint64) {
+		if store == nil {
+			return
+		}
+		pruned, err := truncateFromHead(store, typ, nhead)
+		if err != nil {
+			log.Crit("Failed to truncate extra histories", "typ", typ, "err", err)
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra histories", "typ", typ, "number", pruned)
+		}
+	}
+	truncate(states, typeStateHistory, truncTo)
+	truncate(trienodes, typeTrienodeHistory, truncTo)
+	return states, trienodes, nil
 }

@@ -67,7 +67,7 @@ func newPriceHeap(basefee *uint256.Int, blobfee *uint256.Int, index map[common.A
 func (h *evictHeap) reinit(basefee *uint256.Int, blobfee *uint256.Int, force bool) {
 	// If the update is mostly the same as the old, don't sort pointlessly
 	basefeeJumps := dynamicFeeJumps(basefee)
-	blobfeeJumps := dynamicFeeJumps(blobfee)
+	blobfeeJumps := dynamicBlobFeeJumps(blobfee)
 
 	if !force && math.Abs(h.basefeeJumps-basefeeJumps) < 0.01 && math.Abs(h.blobfeeJumps-blobfeeJumps) < 0.01 { // TODO(karalabe): 0.01 enough, maybe should be smaller? Maybe this optimization is moot?
 		return
@@ -94,8 +94,8 @@ func (h *evictHeap) Less(i, j int) bool {
 	lastI := txsI[len(txsI)-1]
 	lastJ := txsJ[len(txsJ)-1]
 
-	prioI := min(evictionPriority(h.basefeeJumps, lastI.evictionExecFeeJumps, h.blobfeeJumps, lastI.evictionBlobFeeJumps), 0)
-	prioJ := min(evictionPriority(h.basefeeJumps, lastJ.evictionExecFeeJumps, h.blobfeeJumps, lastJ.evictionBlobFeeJumps), 0)
+	prioI := evictionPriority(h.basefeeJumps, lastI.evictionExecFeeJumps, h.blobfeeJumps, lastI.evictionBlobFeeJumps)
+	prioJ := evictionPriority(h.basefeeJumps, lastJ.evictionExecFeeJumps, h.blobfeeJumps, lastJ.evictionBlobFeeJumps)
 	if prioI == prioJ {
 		return lastI.evictionExecTip.Lt(lastJ.evictionExecTip)
 	}

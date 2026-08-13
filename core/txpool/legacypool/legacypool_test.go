@@ -91,8 +91,12 @@ func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *types.Block
 	return types.NewBlock(bc.CurrentBlock(), nil, nil, trie.NewStackTrie(nil))
 }
 
-func (bc *testBlockChain) StateAt(common.Hash) (*state.StateDB, error) {
+func (bc *testBlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
 	return bc.statedb, nil
+}
+
+func (bc *testBlockChain) Genesis() *types.Block {
+	return types.NewBlock(bc.CurrentBlock(), nil, nil, trie.NewStackTrie(nil))
 }
 
 func (bc *testBlockChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription {
@@ -2267,48 +2271,6 @@ func TestSlotCount(t *testing.T) {
 	bigTx := pricedDataTransaction(0, 0, big.NewInt(0), key, uint64(10*txSlotSize))
 	if slots := numSlots(bigTx); slots != 11 {
 		t.Fatalf("big transactions slot count mismatch: have %d want %d", slots, 11)
-	}
-}
-
-// Tests the local pending transaction announced again correctly.
-func TestTransactionPendingReannouce(t *testing.T) {
-	t.Parallel()
-
-	// Create the pool to test the limit enforcement with
-	statedb, _ := state.New(common.Hash{}, state.NewDatabaseForTesting())
-	blockchain := newTestBlockChain(params.TestChainConfig, 1000000, statedb, new(event.Feed))
-
-	config := testTxPoolConfig
-	// This ReannounceTime will be modified to time.Minute when creating tx_pool.
-	config.ReannounceTime = time.Second
-	reannounceInterval = time.Second
-
-	pool := New(config, blockchain)
-	pool.Init(config.PriceLimit, blockchain.CurrentBlock(), newReserver())
-	// Modify ReannounceTime to trigger quicker.
-	pool.config.ReannounceTime = time.Second
-	defer pool.Close()
-
-	key, _ := crypto.GenerateKey()
-	account := crypto.PubkeyToAddress(key.PublicKey)
-	pool.currentState.AddBalance(account, uint256.NewInt(1000000), tracing.BalanceChangeUnspecified)
-
-	events := make(chan core.ReannoTxsEvent, testTxPoolConfig.AccountQueue)
-	sub := pool.reannoTxFeed.Subscribe(events)
-	defer sub.Unsubscribe()
-
-	// Generate a batch of transactions and add to tx_pool locally.
-	txs := make([]*types.Transaction, 0, testTxPoolConfig.AccountQueue)
-	for i := uint64(0); i < testTxPoolConfig.AccountQueue; i++ {
-		txs = append(txs, transaction(i, 100000, key))
-	}
-	pool.Add(txs, true)
-
-	select {
-	case ev := <-events:
-		t.Logf("received reannouce event, txs length: %d", len(ev.Txs))
-	case <-time.After(5 * time.Second):
-		t.Errorf("reannouce event not fired")
 	}
 }
 

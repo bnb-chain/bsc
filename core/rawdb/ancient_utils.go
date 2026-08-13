@@ -36,12 +36,8 @@ type freezerInfo struct {
 	name  string      // The identifier of freezer
 	head  uint64      // The number of last stored item in the freezer
 	tail  uint64      // The number of first stored item in the freezer
+	count uint64      // The number of stored items in the freezer
 	sizes []tableSize // The storage size per table
-}
-
-// count returns the number of stored items in the freezer.
-func (info *freezerInfo) count() uint64 {
-	return info.head - info.tail + 1
 }
 
 // size returns the storage size of the entire freezer.
@@ -67,7 +63,11 @@ func inspect(name string, order map[string]freezerTableConfig, reader ethdb.Anci
 	if err != nil {
 		return freezerInfo{}, err
 	}
-	info.head = ancients - 1
+	if ancients > 0 {
+		info.head = ancients - 1
+	} else {
+		info.head = 0
+	}
 
 	// Retrieve the number of first stored item
 	tail, err := reader.Tail()
@@ -75,6 +75,12 @@ func inspect(name string, order map[string]freezerTableConfig, reader ethdb.Anci
 		return freezerInfo{}, err
 	}
 	info.tail = tail
+
+	if ancients == 0 {
+		info.count = 0
+	} else {
+		info.count = info.head - info.tail + 1
+	}
 	return info, nil
 }
 
@@ -143,33 +149,6 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 	return infos, nil
 }
 
-func inspectIncrFreezers(db *snapDBWrapper) ([]freezerInfo, error) {
-	var infos []freezerInfo
-	for _, freezer := range freezers {
-		switch freezer {
-		case ChainFreezerName:
-			info, err := inspect(ChainFreezerName, incrChainFreezerTableConfigs, db.chainFreezer)
-			if err != nil {
-				return nil, err
-			}
-			infos = append(infos, info)
-
-		case MerkleStateFreezerName:
-			info, err := inspect(freezer, incrStateFreezerTableConfigs, db.stateFreezer)
-			if err != nil {
-				return nil, err
-			}
-			infos = append(infos, info)
-		case VerkleStateFreezerName:
-			continue
-
-		default:
-			return nil, fmt.Errorf("unknown freezer, supported ones: %v", freezers)
-		}
-	}
-	return infos, nil
-}
-
 // InspectFreezerTable dumps out the index of a specific freezer table. The passed
 // ancient indicates the path of root ancient directory where the chain freezer can
 // be opened. Start and end specify the range for dumping out indexes.
@@ -185,6 +164,8 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 
 	case MerkleStateFreezerName, VerkleStateFreezerName:
 		path, tables = filepath.Join(ancient, freezerName), stateFreezerTableConfigs
+	case MerkleTrienodeFreezerName, VerkleTrienodeFreezerName:
+		path, tables = filepath.Join(ancient, freezerName), trienodeFreezerTableConfigs
 	default:
 		return fmt.Errorf("unknown freezer, supported ones: %v", freezers)
 	}
@@ -200,6 +181,7 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 	if err != nil {
 		return err
 	}
+	defer table.Close()
 	table.dumpIndexStdout(start, end)
 	return nil
 }

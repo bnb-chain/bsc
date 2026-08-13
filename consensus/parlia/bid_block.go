@@ -65,6 +65,11 @@ func (p *Parlia) isUnsignedSystemTxCandidate(tx *types.Transaction) bool {
 	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false
 	}
+	// Canonical system txs are legacy (see getSystemMessage); typed envelopes
+	// carry fields the shape check does not bind, so never blind-sign them.
+	if tx.Type() != types.LegacyTxType {
+		return false
+	}
 	if tx.GasPrice() == nil || tx.EffectiveGasPriceForBSC().Sign() != 0 {
 		return false
 	}

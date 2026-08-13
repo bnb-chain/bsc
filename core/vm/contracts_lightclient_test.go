@@ -406,7 +406,9 @@ func TestCometBFTLightBlockValidateRejectsDuplicateTrustedValidatorsAtPasteur(t 
 	_, err = pasteurPrecompile.Run(mutatedInput)
 	require.ErrorContains(t, err, "duplicate validator")
 
-	legacyPrecompile := ActivePrecompiledContracts(params.Rules{IsOsaka: true})[common.BytesToAddress([]byte{0x67})]
+	// IsInBSC so the pre-Pasteur set carries the BSC (0x67) precompile; without
+	// it the standard set is selected and 0x67 is absent.
+	legacyPrecompile := ActivePrecompiledContracts(params.Rules{IsOsaka: true, IsInBSC: true})[common.BytesToAddress([]byte{0x67})]
 	_, err = legacyPrecompile.Run(mutatedInput)
 	require.NoError(t, err)
 }

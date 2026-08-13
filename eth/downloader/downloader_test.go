@@ -31,9 +31,9 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -50,12 +50,12 @@ type downloadTester struct {
 }
 
 // newTester creates a new downloader test mocker.
-func newTester(t *testing.T) *downloadTester {
-	return newTesterWithNotification(t, nil)
+func newTester(t *testing.T, mode ethconfig.SyncMode) *downloadTester {
+	return newTesterWithNotification(t, mode, nil)
 }
 
 // newTesterWithNotification creates a new downloader test mocker.
-func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
+func newTesterWithNotification(t *testing.T, mode ethconfig.SyncMode, success func()) *downloadTester {
 	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{})
 	if err != nil {
 		panic(err)
@@ -76,7 +76,7 @@ func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
 		chain: chain,
 		peers: make(map[string]*downloadTesterPeer),
 	}
-	tester.downloader = New(db, new(event.TypeMux), tester.chain, tester.dropPeer, success)
+	tester.downloader = New(db, mode, tester.chain, tester.dropPeer, success)
 	return tester
 }
 
@@ -317,7 +317,7 @@ func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *et
 // RequestReceipts constructs a getReceipts method associated with a particular
 // peer in the download tester. The returned function can be used to retrieve
 // batches of block receipts from the particularly requested peer.
-func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, gasUsed []uint64, timestamps []uint64, sink chan *eth.Response) (*eth.Request, error) {
 	blobs := eth.ServiceGetReceiptsQuery68(dlp.chain, hashes)
 
 	receipts := make([]types.Receipts, len(blobs))
@@ -329,12 +329,11 @@ func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, sink chan *
 	for i, receipt := range receipts {
 		hashes[i] = types.DeriveSha(receipt, hasher)
 	}
-	req := &eth.Request{
-		Peer: dlp.id,
-	}
+
+	// deliver the response right away
 	resp := eth.ReceiptsRLPResponse(types.EncodeBlockReceiptLists(receipts))
 	res := &eth.Response{
-		Req:  req,
+		Req:  &eth.Request{Peer: dlp.id},
 		Res:  &resp,
 		Meta: hashes,
 		Time: 1,
@@ -343,7 +342,7 @@ func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, sink chan *
 	go func() {
 		sink <- res
 	}()
-	return req, nil
+	return res.Req, nil
 }
 
 // ID retrieves the peer's unique identifier.
@@ -427,7 +426,7 @@ func (dlp *downloadTesterPeer) RequestTrieNodes(id uint64, root common.Hash, cou
 		Paths: encPaths,
 		Bytes: uint64(bytes),
 	}
-	nodes, _ := snap.ServiceGetTrieNodesQuery(dlp.chain, req, time.Now())
+	nodes, _ := snap.ServiceGetTrieNodesQuery(dlp.chain, req)
 	go dlp.dl.downloader.SnapSyncer.OnTrieNodes(dlp, id, nodes)
 	return nil
 }
@@ -455,11 +454,11 @@ func assertOwnChain(t *testing.T, tester *downloadTester, length int) {
 	}
 }
 
-func TestCanonicalSynchronisation68Full(t *testing.T) { testCanonSync(t, eth.ETH68, FullSync) }
-func TestCanonicalSynchronisation68Snap(t *testing.T) { testCanonSync(t, eth.ETH68, SnapSync) }
+func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH70, FullSync) }
+func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH70, SnapSync) }
 
 func testCanonSync(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	// Create a small enough block chain to download
@@ -475,11 +474,11 @@ func testCanonSync(t *testing.T, protocol uint, mode SyncMode) {
 
 // Tests that if a large batch of blocks are being downloaded, it is throttled
 // until the cached blocks are retrieved.
-func TestThrottling68Full(t *testing.T) { testThrottling(t, eth.ETH68, FullSync) }
-func TestThrottling68Snap(t *testing.T) { testThrottling(t, eth.ETH68, SnapSync) }
+func TestThrottlingFull(t *testing.T) { testThrottling(t, eth.ETH68, FullSync) }
+func TestThrottlingSnap(t *testing.T) { testThrottling(t, eth.ETH68, SnapSync) }
 
 func testThrottling(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	// Create a long block chain to download and the tester
@@ -559,7 +558,7 @@ func TestForkedSync68Full(t *testing.T) { testForkedSync(t, eth.ETH68, FullSync)
 func TestForkedSync68Snap(t *testing.T) { testForkedSync(t, eth.ETH68, SnapSync) }
 
 func testForkedSync(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chainA := testChainForkLightA.shorten(len(testChainBase.blocks) + 80)
@@ -585,7 +584,7 @@ func TestHeavyForkedSync68Full(t *testing.T) { testHeavyForkedSync(t, eth.ETH68,
 func TestHeavyForkedSync68Snap(t *testing.T) { testHeavyForkedSync(t, eth.ETH68, SnapSync) }
 
 func testHeavyForkedSync(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chainA := testChainForkLightA.shorten(len(testChainBase.blocks) + 80)
@@ -613,7 +612,7 @@ func TestBoundedForkedSync68Full(t *testing.T) { testBoundedForkedSync(t, eth.ET
 func TestBoundedForkedSync68Snap(t *testing.T) { testBoundedForkedSync(t, eth.ETH68, SnapSync) }
 
 func testBoundedForkedSync(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chainA := testChainForkLightA
@@ -644,7 +643,7 @@ func TestBoundedHeavyForkedSync68Snap(t *testing.T) {
 }
 
 func testBoundedHeavyForkedSync(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	// Create a long enough forked chain
@@ -666,11 +665,11 @@ func testBoundedHeavyForkedSync(t *testing.T, protocol uint, mode SyncMode) {
 }
 
 // Tests that a canceled download wipes all previously accumulated state.
-func TestCancel68Full(t *testing.T) { testCancel(t, eth.ETH68, FullSync) }
-func TestCancel68Snap(t *testing.T) { testCancel(t, eth.ETH68, SnapSync) }
+func TestCancelFull(t *testing.T) { testCancel(t, eth.ETH68, FullSync) }
+func TestCancelSnap(t *testing.T) { testCancel(t, eth.ETH68, SnapSync) }
 
 func testCancel(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(MaxHeaderFetch)
@@ -696,7 +695,7 @@ func TestMultiSynchronisation68Full(t *testing.T) { testMultiSynchronisation(t, 
 func TestMultiSynchronisation68Snap(t *testing.T) { testMultiSynchronisation(t, eth.ETH68, SnapSync) }
 
 func testMultiSynchronisation(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	// Create various peers with various parts of the chain
@@ -719,7 +718,7 @@ func TestMultiProtoSynchronisation68Full(t *testing.T) { testMultiProtoSync(t, e
 func TestMultiProtoSynchronisation68Snap(t *testing.T) { testMultiProtoSync(t, eth.ETH68, SnapSync) }
 
 func testMultiProtoSync(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	// Create a small enough block chain to download
@@ -745,11 +744,11 @@ func testMultiProtoSync(t *testing.T, protocol uint, mode SyncMode) {
 
 // Tests that if a block is empty (e.g. header only), no body request should be
 // made, and instead the header should be assembled into a whole block in itself.
-func TestEmptyShortCircuit68Full(t *testing.T) { testEmptyShortCircuit(t, eth.ETH68, FullSync) }
-func TestEmptyShortCircuit68Snap(t *testing.T) { testEmptyShortCircuit(t, eth.ETH68, SnapSync) }
+func TestEmptyShortCircuitFull(t *testing.T) { testEmptyShortCircuit(t, eth.ETH68, FullSync) }
+func TestEmptyShortCircuitSnap(t *testing.T) { testEmptyShortCircuit(t, eth.ETH68, SnapSync) }
 
 func testEmptyShortCircuit(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	// Create a block chain to download
@@ -796,7 +795,7 @@ func TestMissingHeaderAttack68Full(t *testing.T) { testMissingHeaderAttack(t, et
 func TestMissingHeaderAttack68Snap(t *testing.T) { testMissingHeaderAttack(t, eth.ETH68, SnapSync) }
 
 func testMissingHeaderAttack(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
@@ -821,7 +820,7 @@ func TestShiftedHeaderAttack68Full(t *testing.T) { testShiftedHeaderAttack(t, et
 func TestShiftedHeaderAttack68Snap(t *testing.T) { testShiftedHeaderAttack(t, eth.ETH68, SnapSync) }
 
 func testShiftedHeaderAttack(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
@@ -851,7 +850,7 @@ func TestHighTDStarvationAttack68Snap(t *testing.T) {
 }
 
 func testHighTDStarvationAttack(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(1)
@@ -865,6 +864,7 @@ func testHighTDStarvationAttack(t *testing.T, protocol uint, mode SyncMode) {
 func TestBlockHeaderAttackerDropping68(t *testing.T) { testBlockHeaderAttackerDropping(t, eth.ETH68) }
 
 func testBlockHeaderAttackerDropping(t *testing.T, protocol uint) {
+	mode := FullSync
 	// Define the disconnection requirement for individual hash fetch errors
 	tests := []struct {
 		result error
@@ -887,7 +887,7 @@ func testBlockHeaderAttackerDropping(t *testing.T, protocol uint) {
 		{errCancelContentProcessing, false}, // Synchronisation was canceled, origin may be innocent, don't drop
 	}
 	// Run the tests and check disconnection status
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 	chain := testChainBase.shorten(1)
 
@@ -914,7 +914,7 @@ func TestSyncProgress68Full(t *testing.T) { testSyncProgress(t, eth.ETH68, FullS
 func TestSyncProgress68Snap(t *testing.T) { testSyncProgress(t, eth.ETH68, SnapSync) }
 
 func testSyncProgress(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
@@ -990,7 +990,7 @@ func TestForkedSyncProgress68Full(t *testing.T) { testForkedSyncProgress(t, eth.
 func TestForkedSyncProgress68Snap(t *testing.T) { testForkedSyncProgress(t, eth.ETH68, SnapSync) }
 
 func testForkedSyncProgress(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chainA := testChainForkLightA.shorten(len(testChainBase.blocks) + MaxHeaderFetch)
@@ -1060,7 +1060,7 @@ func TestFailedSyncProgress68Full(t *testing.T) { testFailedSyncProgress(t, eth.
 func TestFailedSyncProgress68Snap(t *testing.T) { testFailedSyncProgress(t, eth.ETH68, SnapSync) }
 
 func testFailedSyncProgress(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
@@ -1108,7 +1108,16 @@ func testFailedSyncProgress(t *testing.T, protocol uint, mode SyncMode) {
 		}
 	}()
 	<-starting
-	checkProgress(t, tester.downloader, "completing", afterFailedSync)
+	completing := tester.downloader.Progress()
+	if completing.StartingBlock != afterFailedSync.StartingBlock || completing.HighestBlock != afterFailedSync.HighestBlock {
+		t.Fatalf("completing progress bounds mismatch:\nhave %+v\nwant starting=%d highest=%d", completing, afterFailedSync.StartingBlock, afterFailedSync.HighestBlock)
+	}
+	if completing.CurrentBlock < afterFailedSync.CurrentBlock {
+		t.Fatalf("completing progress current block regressed:\nhave %+v\nafter failed sync %+v", completing, afterFailedSync)
+	}
+	if mode == FullSync && completing.CurrentBlock != afterFailedSync.CurrentBlock {
+		t.Fatalf("completing progress current block mismatch:\nhave %+v\nafter failed sync %+v", completing, afterFailedSync)
+	}
 
 	// Check final progress after successful sync
 	progress <- struct{}{}
@@ -1125,7 +1134,7 @@ func TestFakedSyncProgress68Full(t *testing.T) { testFakedSyncProgress(t, eth.ET
 func TestFakedSyncProgress68Snap(t *testing.T) { testFakedSyncProgress(t, eth.ETH68, SnapSync) }
 
 func testFakedSyncProgress(t *testing.T, protocol uint, mode SyncMode) {
-	tester := newTester(t)
+	tester := newTester(t, mode)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
@@ -1282,11 +1291,11 @@ func TestRemoteHeaderRequestSpan(t *testing.T) {
 // TestInvalidBodyPeerDrop verifies that a peer serving corrupted block bodies
 // is signalled through res.Done so the eth protocol handler can drop it.
 func TestInvalidBodyPeerDrop(t *testing.T) {
-	tester := newTester(t)
+	tester := newTester(t, FullSync)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
-	peer := tester.newPeer("corrupt", eth.ETH68, chain.blocks[1:])
+	peer := tester.newPeer("corrupt", eth.ETH70, chain.blocks[1:])
 	peer.corruptBodies = true
 
 	go tester.sync("corrupt", nil, FullSync)

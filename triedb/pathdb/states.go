@@ -170,12 +170,13 @@ func (s *stateSet) accountList() []common.Hash {
 	if list != nil {
 		return list
 	}
-	// No old sorted account list exists, generate a new one. It's possible that
-	// multiple threads waiting for the write lock may regenerate the list
-	// multiple times, which is acceptable.
 	s.listLock.Lock()
 	defer s.listLock.Unlock()
 
+	// Double check after acquiring the write lock
+	if list = s.accountListSorted; list != nil {
+		return list
+	}
 	list = slices.SortedFunc(maps.Keys(s.accountData), common.Hash.Cmp)
 	s.accountListSorted = list
 	return list
@@ -200,12 +201,13 @@ func (s *stateSet) storageList(accountHash common.Hash) []common.Hash {
 	}
 	s.listLock.RUnlock()
 
-	// No old sorted account list exists, generate a new one. It's possible that
-	// multiple threads waiting for the write lock may regenerate the list
-	// multiple times, which is acceptable.
 	s.listLock.Lock()
 	defer s.listLock.Unlock()
 
+	// Double check after acquiring the write lock
+	if list := s.storageListSorted[accountHash]; list != nil {
+		return list
+	}
 	list := slices.SortedFunc(maps.Keys(s.storageData[accountHash]), common.Hash.Cmp)
 	s.storageListSorted[accountHash] = list
 	return list
@@ -330,30 +332,20 @@ func (s *stateSet) updateSize(delta int) {
 	s.size = 0
 }
 
-type statesData struct {
-	RawStorageKey bool
-	Acc           accounts
-	Storages      []storage
-}
-
-type accounts struct {
-	AddrHashes []common.Hash
-	Accounts   [][]byte
-}
-
-type storage struct {
-	AddrHash common.Hash
-	Keys     []common.Hash
-	Vals     [][]byte
-}
-
 // encode serializes the content of state set into the provided writer.
 func (s *stateSet) encode(w io.Writer) error {
 	// Encode accounts
 	if err := rlp.Encode(w, s.rawStorageKey); err != nil {
 		return err
 	}
-	var enc accounts
+	type accounts struct {
+		AddrHashes []common.Hash
+		Accounts   [][]byte
+	}
+	enc := accounts{
+		AddrHashes: make([]common.Hash, 0, len(s.accountData)),
+		Accounts:   make([][]byte, 0, len(s.accountData)),
+	}
 	for addrHash, blob := range s.accountData {
 		enc.AddrHashes = append(enc.AddrHashes, addrHash)
 		enc.Accounts = append(enc.Accounts, blob)
@@ -362,7 +354,12 @@ func (s *stateSet) encode(w io.Writer) error {
 		return err
 	}
 	// Encode storages
-	storages := make([]storage, 0, len(s.storageData))
+	type Storage struct {
+		AddrHash common.Hash
+		Keys     []common.Hash
+		Vals     [][]byte
+	}
+	storages := make([]Storage, 0, len(s.storageData))
 	for addrHash, slots := range s.storageData {
 		keys := make([]common.Hash, 0, len(slots))
 		vals := make([][]byte, 0, len(slots))
@@ -370,7 +367,7 @@ func (s *stateSet) encode(w io.Writer) error {
 			keys = append(keys, key)
 			vals = append(vals, val)
 		}
-		storages = append(storages, storage{
+		storages = append(storages, Storage{
 			AddrHash: addrHash,
 			Keys:     keys,
 			Vals:     vals,
@@ -383,6 +380,10 @@ func (s *stateSet) encode(w io.Writer) error {
 func (s *stateSet) decode(r *rlp.Stream) error {
 	if err := r.Decode(&s.rawStorageKey); err != nil {
 		return fmt.Errorf("load diff raw storage key flag: %v", err)
+	}
+	type accounts struct {
+		AddrHashes []common.Hash
+		Accounts   [][]byte
 	}
 	var (
 		dec        accounts
@@ -397,6 +398,11 @@ func (s *stateSet) decode(r *rlp.Stream) error {
 	s.accountData = accountSet
 
 	// Decode storages
+	type storage struct {
+		AddrHash common.Hash
+		Keys     []common.Hash
+		Vals     [][]byte
+	}
 	var (
 		storages   []storage
 		storageSet = make(map[common.Hash]map[common.Hash][]byte)
@@ -502,7 +508,10 @@ func (s *StateSetWithOrigin) encode(w io.Writer) error {
 		Addresses []common.Address
 		Accounts  [][]byte
 	}
-	var accounts Accounts
+	accounts := Accounts{
+		Addresses: make([]common.Address, 0, len(s.accountOrigin)),
+		Accounts:  make([][]byte, 0, len(s.accountOrigin)),
+	}
 	for address, blob := range s.accountOrigin {
 		accounts.Addresses = append(accounts.Addresses, address)
 		accounts.Accounts = append(accounts.Accounts, blob)
@@ -574,6 +583,18 @@ func (s *StateSetWithOrigin) decode(r *rlp.Stream) error {
 		}
 	}
 	s.storageOrigin = storageSet
+
+	// Compute the size of origin data, keeping consistent with NewStateSetWithOrigin
+	var size int
+	for _, data := range s.accountOrigin {
+		size += common.HashLength + len(data)
+	}
+	for _, slots := range s.storageOrigin {
+		for _, data := range slots {
+			size += 2*common.HashLength + len(data)
+		}
+	}
+	s.size = s.stateSet.size + uint64(size)
 	return nil
 }
 

@@ -102,16 +102,15 @@ type txPool interface {
 
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
-	Pending(filter txpool.PendingFilter) map[common.Address][]*txpool.LazyTransaction
+	Pending(filter txpool.PendingFilter) (map[common.Address][]*txpool.LazyTransaction, int)
 
 	// SubscribeTransactions subscribes to new transaction events. The subscriber
 	// can decide whether to receive notifications only for newly seen transactions
 	// or also for reorged out ones.
 	SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool) event.Subscription
 
-	// SubscribeReannoTxsEvent should return an event subscription of
-	// ReannoTxsEvent and send events to the given channel.
-	SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription
+	// FilterType returns whether the given tx type is supported by the txPool.
+	FilterType(kind byte) bool
 }
 
 // votePool defines the methods needed from a votes pool implementation to
@@ -128,16 +127,16 @@ type votePool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	NodeID                    enode.ID         // P2P node ID used for tx propagation topology
-	Database                  ethdb.Database   // Database for direct sync insertions
-	Chain                     *core.BlockChain // Blockchain to serve data from
-	TxPool                    txPool           // Transaction pool to propagate from
-	VotePool                  votePool
-	Network                   uint64                 // Network identifier to adfvertise
-	Sync                      ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache                uint64                 // Megabytes to alloc for snap sync bloom
-	EventMux                  *event.TypeMux         // Legacy event mux, deprecate for `feed`
-	RequiredBlocks            map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	NodeID         enode.ID         // P2P node ID used for tx propagation topology
+	Database       ethdb.Database   // Database for direct sync insertions
+	Chain          *core.BlockChain // Blockchain to serve data from
+	TxPool         txPool           // Transaction pool to propagate from
+	VotePool       votePool
+	Network        uint64                 // Network identifier to adfvertise
+	Sync           ethconfig.SyncMode     // Whether to snap or full sync
+	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
+	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+
 	DirectBroadcast           bool
 	DisablePeerTxBroadcast    bool
 	PeerSet                   *peerSet
@@ -149,8 +148,15 @@ type handlerConfig struct {
 }
 
 type handler struct {
-	nodeID                     enode.ID
-	networkID                  uint64
+	nodeID    enode.ID
+	networkID uint64
+	Sync      ethconfig.SyncMode // Whether to snap or full sync
+
+	database ethdb.Database
+	txpool   txPool
+	chain    *core.BlockChain
+	maxPeers int
+
 	disablePeerTxBroadcast     bool
 	enableEVNFeatures          bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
@@ -162,18 +168,14 @@ type handler struct {
 	acceptTxs       atomic.Bool
 	directBroadcast bool
 
-	database             ethdb.Database
-	txpool               txPool
 	votepool             votePool
 	maliciousVoteMonitor *monitor.MaliciousVoteMonitor
-	chain                *core.BlockChain
-	maxPeers             int
-	maxPeersPerIP        int
-	peersPerIP           map[string]int
-	peerPerIPLock        sync.Mutex
+
+	maxPeersPerIP int
+	peersPerIP    map[string]int
+	peerPerIPLock sync.Mutex
 
 	downloader     *downloader.Downloader
-	blockFetcher   *fetcher.BlockFetcher
 	txFetcher      *fetcher.TxFetcher
 	peers          *peerSet
 	txBroadcastKey [16]byte
@@ -182,32 +184,27 @@ type handler struct {
 	txsCh          chan core.NewTxsEvent
 	txsSub         event.Subscription
 	blockRange     *blockRangeState
-	reannoTxsCh    chan core.ReannoTxsEvent
-	reannoTxsSub   event.Subscription
-	minedBlockSub  *event.TypeMuxSubscription
-	voteCh         chan core.NewVoteEvent
-	votesSub       event.Subscription
-	voteMonitorSub event.Subscription
-
 	requiredBlocks map[uint64]common.Hash
 
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
-	stopCh   chan struct{}
 
-	chainSync *chainSyncer
-	wg        sync.WaitGroup
+	wg sync.WaitGroup
 
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
+
+	minedBlockSub  *event.TypeMuxSubscription
+	voteCh         chan core.NewVoteEvent
+	votesSub       event.Subscription
+	voteMonitorSub event.Subscription
+	blockFetcher   *fetcher.BlockFetcher
+	stopCh         chan struct{}
+	chainSync      *chainSyncer
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
 func newHandler(config *handlerConfig) (*handler, error) {
-	// Create the protocol manager with the base fields
-	if config.EventMux == nil {
-		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
-	}
 	if config.PeerSet == nil {
 		config.PeerSet = newPeerSet() // Nicety initialization for tests
 	}
@@ -215,12 +212,12 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		nodeID:                     config.NodeID,
 		networkID:                  config.Network,
 		disablePeerTxBroadcast:     config.DisablePeerTxBroadcast,
-		eventMux:                   config.EventMux,
 		database:                   config.Database,
 		txpool:                     config.TxPool,
 		votepool:                   config.VotePool,
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
+		eventMux:                   new(event.TypeMux),
 		txBroadcastKey:             newBroadcastChoiceKey(),
 		peersPerIP:                 make(map[string]int),
 		requiredBlocks:             config.RequiredBlocks,
@@ -243,40 +240,13 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	for _, nodeID := range config.ProxyedNodeIds {
 		h.proxyedNodeIdsMap[nodeID] = struct{}{}
 	}
-	if h.chain.NoTries() {
-	} else if config.Sync == ethconfig.FullSync {
-		// The database seems empty as the current block is the genesis. Yet the snap
-		// block is ahead, so snap sync was enabled for this node at a certain point.
-		// The scenarios where this can happen is
-		// * if the user manually (or via a bad block) rolled back a snap sync node
-		//   below the sync point.
-		// * the last snap sync is not finished while user specifies a full sync this
-		//   time. But we don't have any recent state for full sync.
-		// In these cases however it's safe to reenable snap sync.
-		fullBlock, snapBlock := h.chain.CurrentBlock(), h.chain.CurrentSnapBlock()
-		if fullBlock.Number.Uint64() == 0 && snapBlock.Number.Uint64() > 0 {
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-		} else if !h.chain.HasState(fullBlock.Root) {
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
-		}
-	} else {
-		head := h.chain.CurrentBlock()
-		if head.Number.Uint64() > 0 && h.chain.HasState(head.Root) {
-			log.Info("Switch sync mode from snap sync to full sync", "reason", "snap sync complete")
-		} else {
-			// If snap sync was requested and our database is empty, grant it
-			h.snapSync.Store(true)
-			log.Info("Enabled snap sync", "head", head.Number, "hash", head.Hash())
-		}
-	}
+
+	// Construct the downloader (long sync)
+	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, nil)
 	// If snap sync is requested but snapshots are disabled, fail loudly
-	if h.snapSync.Load() && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().Scheme() == rawdb.HashScheme) {
+	if h.downloader.ConfigSyncMode() == ethconfig.SnapSync && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().Scheme() == rawdb.HashScheme) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
-	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, nil)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -402,7 +372,16 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return errors
 	}
-	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
+	validateMeta := func(tx common.Hash, kind byte) error {
+		if h.txpool.Has(tx) {
+			return txpool.ErrAlreadyKnown
+		}
+		if !h.txpool.FilterType(kind) {
+			return types.ErrTxTypeNotSupported
+		}
+		return nil
+	}
+	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
@@ -489,7 +468,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		return err
 	}
 	reject := false // reserved peer slots
-	if h.snapSync.Load() {
+	if h.downloader.ConfigSyncMode() == ethconfig.SnapSync {
 		if snap == nil {
 			// If we are running snap-sync, we want to reserve roughly half the peer
 			// slots for peers supporting the snap protocol.
@@ -740,12 +719,6 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 		}
 	}
 
-	// announce local pending transactions again
-	h.wg.Add(1)
-	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
-	h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
-	go h.txReannounceLoop()
-
 	// broadcast mined blocks
 	h.wg.Add(1)
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
@@ -753,7 +726,7 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 
 	// broadcast block range
 	h.wg.Add(1)
-	h.blockRange = newBlockRangeState(h.chain, h.eventMux)
+	h.blockRange = newBlockRangeState(h.chain, h.downloader)
 	go h.blockRangeLoop(h.blockRange)
 
 	// start sync handlers
@@ -785,7 +758,6 @@ func (h *handler) startMaliciousVoteMonitor() {
 func (h *handler) Stop() {
 	h.txsSub.Unsubscribe() // quits txBroadcastLoop
 	h.blockRange.stop()
-	h.reannoTxsSub.Unsubscribe()  // quits txReannounceLoop
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	if h.votepool != nil {
 		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
@@ -999,26 +971,8 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		annCount += len(hashes)
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
-	log.Debug("Distributed transactions", "plaintxs", len(txs)-blobTxs-largeTxs, "blobtxs", blobTxs, "largetxs", largeTxs,
+	log.Trace("Distributed transactions", "plaintxs", len(txs)-blobTxs-largeTxs, "blobtxs", blobTxs, "largetxs", largeTxs,
 		"bcastpeers", len(txset), "bcastcount", directCount, "annpeers", len(annos), "anncount", annCount)
-}
-
-// ReannounceTransactions will announce a batch of local pending transactions
-// to a square root of all peers.
-func (h *handler) ReannounceTransactions(txs types.Transactions) {
-	hashes := make([]common.Hash, 0, txs.Len())
-	for _, tx := range txs {
-		hashes = append(hashes, tx.Hash())
-	}
-
-	// Announce transactions hash to a batch of peers
-	peersCount := uint(math.Sqrt(float64(h.peers.len())))
-	peers := h.peers.headPeers(peersCount)
-	for _, peer := range peers {
-		peer.AsyncSendPooledTransactionHashes(hashes)
-	}
-	log.Debug("Transaction reannounce", "txs", len(txs),
-		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
 }
 
 // BroadcastVote will propagate a batch of votes to all peers
@@ -1095,21 +1049,6 @@ func (h *handler) txBroadcastLoop() {
 	}
 }
 
-// txReannounceLoop announces local pending transactions to connected peers again.
-func (h *handler) txReannounceLoop() {
-	defer h.wg.Done()
-	for {
-		select {
-		case event := <-h.reannoTxsCh:
-			h.ReannounceTransactions(event.Txs)
-		case <-h.reannoTxsSub.Err():
-			return
-		case <-h.stopCh:
-			return
-		}
-	}
-}
-
 // voteBroadcastLoop announces new vote to connected peers.
 func (h *handler) voteBroadcastLoop() {
 	defer h.wg.Done()
@@ -1128,18 +1067,10 @@ func (h *handler) voteBroadcastLoop() {
 // enableSyncedFeatures enables the post-sync functionalities when the initial
 // sync is finished.
 func (h *handler) enableSyncedFeatures() {
-	// Mark the local node as synced.
 	h.synced.Store(true)
 	if !h.acceptTxs.Load() {
 		h.acceptTxs.Store(true)
 		log.Info("Enable transaction acceptance when synced.")
-	}
-
-	// If we were running snap sync and it finished, disable doing another
-	// round on next sync cycle
-	if h.snapSync.Load() {
-		log.Info("Snap sync complete, auto disabling")
-		h.snapSync.Store(false)
 	}
 }
 
@@ -1149,16 +1080,19 @@ type blockRangeState struct {
 	next    atomic.Pointer[eth.BlockRangeUpdatePacket]
 	headCh  chan core.ChainHeadEvent
 	headSub event.Subscription
-	syncSub *event.TypeMuxSubscription
+	syncCh  chan downloader.SyncEvent
+	syncSub event.Subscription
 }
 
-func newBlockRangeState(chain *core.BlockChain, typeMux *event.TypeMux) *blockRangeState {
+func newBlockRangeState(chain *core.BlockChain, dl *downloader.Downloader) *blockRangeState {
 	headCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
 	headSub := chain.SubscribeChainHeadEvent(headCh)
-	syncSub := typeMux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
+	syncCh := make(chan downloader.SyncEvent, 16)
+	syncSub := dl.SubscribeSyncEvents(syncCh)
 	st := &blockRangeState{
 		headCh:  headCh,
 		headSub: headSub,
+		syncCh:  syncCh,
 		syncSub: syncSub,
 	}
 	st.update(chain, chain.CurrentBlock())
@@ -1174,11 +1108,8 @@ func (h *handler) blockRangeLoop(st *blockRangeState) {
 
 	for {
 		select {
-		case ev := <-st.syncSub.Chan():
-			if ev == nil {
-				continue
-			}
-			if _, ok := ev.Data.(downloader.StartEvent); ok && h.snapSync.Load() {
+		case ev := <-st.syncCh:
+			if ev.Type == downloader.SyncStarted && ev.Mode == ethconfig.SnapSync {
 				h.blockRangeWhileSnapSyncing(st)
 			}
 		case <-st.headCh:
@@ -1206,12 +1137,8 @@ func (h *handler) blockRangeWhileSnapSyncing(st *blockRangeState) {
 				h.broadcastBlockRange(st)
 			}
 		// back to processing head block updates when sync is done
-		case ev := <-st.syncSub.Chan():
-			if ev == nil {
-				continue
-			}
-			switch ev.Data.(type) {
-			case downloader.FailedEvent, downloader.DoneEvent:
+		case ev := <-st.syncCh:
+			if ev.Type == downloader.SyncFailed || ev.Type == downloader.SyncCompleted {
 				return
 			}
 		// ignore head updates, but exit when the subscription ends
@@ -1253,12 +1180,6 @@ func (st *blockRangeState) update(chain *core.BlockChain, latest *types.Header) 
 // However, there is a special case: if the range would move back, i.e. due to SetHead, we
 // want to send it immediately.
 func (st *blockRangeState) shouldSend() bool {
-	// TODO(Nathan): enable blockRangeLoop when eth69 enabled
-	eth69Enabled := false
-	if !eth69Enabled {
-		return false
-	}
-
 	next := st.next.Load()
 	return next.LatestBlock < st.prev.LatestBlock ||
 		next.LatestBlock-st.prev.LatestBlock >= 32

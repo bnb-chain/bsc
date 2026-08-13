@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.8.0-alpha
+v1.8.0-alpha is a preview release for upstream code sync, it catches up with [go-ethereum release [v1.17.3]](https://github.com/ethereum/go-ethereum/releases/tag/v1.17.3) and also removes several BSC features and fixes bugs.
+
+### Feature Removal
+- [core/vm: revert opcode-level optimization and fold EVMInterpreter into EVM](https://github.com/bnb-chain/bsc/pull/3759)
+The EVM opcode-level optimization (superinstruction) feature added in [#3395](https://github.com/bnb-chain/bsc/pull/3395) is removed entirely: the superinstruction interpreter, the fused opcodes and their jump-table entries are gone, and `EVMInterpreter` is folded back into `EVM`.
+- [core, triedb, ethdb: remove incremental snapshot (incr db) feature](https://github.com/bnb-chain/bsc/pull/3768)
+The incr downloader and merger, the incr freezers and the pathdb incr manager are all deleted.
+- [core/txpool, eth: remove local transaction reannounce mechanism](https://github.com/bnb-chain/bsc/pull/3756)
+Local pending transactions are no longer periodically re-announced.
+- [p2p: remove BSC table-layer ENR node filtering and dead bootnode bucket-size code](https://github.com/bnb-chain/bsc/pull/3735)
+The discovery table no longer filters nodes by ENR.
+
+### Code Sync
+- [upstream: merge geth-v1.16.9 ~ geth-v1.17.3](https://github.com/bnb-chain/bsc/pull/3760)
+Key changes from the code sync include:
+- Wire protocol: eth/70 becomes the primary protocol. BSC keeps eth/68 for peer compatibility, retains TD in `StatusPacket`, and sends no `UpgradeStatusMsg` on eth/70. snap/2 groundwork landed, but only snap/1 is advertised.
+- State: Verkle is replaced by the unified binary trie (UBT), with state readers split into MPT/UBT databases.
+- PathDB: path-based archive with proofs, history index pruner, trienode history on existing nodes.
+- EIP-7928 block access list scaffolding replaces BEP-592.
+- The Amsterdam EIP set landed but stays dormant on BSC: EIP-7778, EIP-7843, EIP-8024, EIP-7708, EIP-7954, EIP-7976/7981, EIP-8037, EIP-7610.
+
+### RPC Changes
+- **Breaking** `debug_trace*` structLog output follows the client-wide spec: `memory` words are `0x`-prefixed and padded to 32 bytes, `storage` keys and values are `0x`-prefixed, and `error` is omitted when empty.
+- **Breaking** `reexec` is no longer accepted in the tracing config.
+- `eth_getLogs` / `eth_getFilterLogs`: `--rpc.rangelimit` (default 5000) replaces the fixed cap toggled by `--rangelimit`, and exceeding it returns `-32602 invalid params`.
+- `eth_simulateV1`: every call result gains a `maxUsedGas` field.
+- New method `eth_getStorageValues`, which reads up to 1024 storage slots in one call.
+
+### Config Changes
+- Default `--cache` is raised from 1024 to 4096 MB, so nodes that do not set it explicitly will use about 3GB more memory.
+- Renamed: `--rangelimit` to `--rpc.rangelimit`, `--override.verkle` to `--override.ubt`.
+- New: `--history.trienode` (serve historical state proofs, disabled by default), `--miner.maxblobs`, `--debug.logslowblock`, and the opt-in `--rpc.telemetry` family.
+- Removed: the seven `--incr.*` flags plus the `inspect-incr-snapshot` and `merge-incr-snapshot` subcommands, `--txpool.reannouncetime`, and bootnode `-network`.
+- Accepted but inert, warning only: `--enable-bal`, `--rangelimit`, `--vm.opcode.optimize`.
+- `config.toml`: `[Eth] EnableOpcodeOptimizing`, `[Eth.TxPool] ReannounceTime` and `[Node.P2P] EnableENRFilter` are no longer supported.
+
+### BUGFIX
+- [core, eth, consensus, miner, tests: stabilize the v1.17.3 merge](https://github.com/bnb-chain/bsc/pull/3757)
+- [internal/ethapi, eth/filters: fix eth_simulateV1 multi-block and getLogs latest range-limit regressions](https://github.com/bnb-chain/bsc/pull/3783)
+- [miner, core/vm: fix MEV bid gas accounting and EVM stack-arena double-release](https://github.com/bnb-chain/bsc/pull/3761)
+- [core/txpool: fall back to an empty state when head state is unavailable](https://github.com/bnb-chain/bsc/pull/3765)
+- [eth/downloader: fix legacy snap sync regressions from the v1.17.3 merge](https://github.com/bnb-chain/bsc/pull/3766)
+- [miner, core: fix mining prefetch rate-limiting broken by shadowing](https://github.com/bnb-chain/bsc/pull/3755)
+- [miner: make MEV bid per-builder quota admission atomic](https://github.com/bnb-chain/bsc/pull/3733)
+- [consensus/parlia: only blind-sign legacy system txs](https://github.com/bnb-chain/bsc/pull/3773)
+
+### Others
+- [core/filtermaps: update BSC mainnet and chapel log index checkpoints](https://github.com/bnb-chain/bsc/pull/3784)
+- [cmd/faucet: add United Stables ($U) testnet token](https://github.com/bnb-chain/bsc/pull/3738)
+
+## MetaInfo
+Mandatory Update Required: No
+Target Audience: developers and testnet operators, this is a preview release and is not intended for production
+Procedure: simply binary replacement should be good
+Schedule(Timeline): no scheduled upgrade timeline
+
 ## v1.7.8
 v1.7.8 is a maintenance release.
 

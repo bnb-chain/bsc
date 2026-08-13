@@ -94,8 +94,8 @@ func (s *StructLog) ErrorString() string {
 	return ""
 }
 
-// WriteTo writes the human-readable log data into the supplied writer.
-func (s *StructLog) WriteTo(writer io.Writer) {
+// Write writes the human-readable log data into the supplied writer.
+func (s *StructLog) Write(writer io.Writer) {
 	fmt.Fprintf(writer, "%-16spc=%08d gas=%v cost=%v", s.Op, s.Pc, s.Gas, s.GasCost)
 	if s.Err != nil {
 		fmt.Fprintf(writer, " ERROR: %v", s.Err)
@@ -148,12 +148,21 @@ type structLogLegacy struct {
 	Gas           uint64             `json:"gas"`
 	GasCost       uint64             `json:"gasCost"`
 	Depth         int                `json:"depth"`
-	Error         string             `json:"error,omitempty"`
+	Error         string             `json:"error,omitempty,omitzero"`
 	Stack         *[]string          `json:"stack,omitempty"`
 	ReturnData    string             `json:"returnData,omitempty"`
 	Memory        *[]string          `json:"memory,omitempty"`
 	Storage       *map[string]string `json:"storage,omitempty"`
 	RefundCounter uint64             `json:"refund,omitempty"`
+}
+
+func formatMemoryWord(chunk []byte) string {
+	if len(chunk) == 32 {
+		return hexutil.Encode(chunk)
+	}
+	var word [32]byte
+	copy(word[:], chunk)
+	return hexutil.Encode(word[:])
 }
 
 // toLegacyJSON converts the structLog to legacy json-encoded legacy form.
@@ -175,7 +184,7 @@ func (s *StructLog) toLegacyJSON() json.RawMessage {
 		msg.Stack = &stack
 	}
 	if len(s.ReturnData) > 0 {
-		msg.ReturnData = hexutil.Bytes(s.ReturnData).String()
+		msg.ReturnData = hexutil.Encode(s.ReturnData)
 	}
 	if len(s.Memory) > 0 {
 		memory := make([]string, 0, (len(s.Memory)+31)/32)
@@ -184,14 +193,14 @@ func (s *StructLog) toLegacyJSON() json.RawMessage {
 			if end > len(s.Memory) {
 				end = len(s.Memory)
 			}
-			memory = append(memory, fmt.Sprintf("%x", s.Memory[i:end]))
+			memory = append(memory, formatMemoryWord(s.Memory[i:end]))
 		}
 		msg.Memory = &memory
 	}
 	if len(s.Storage) > 0 {
 		storage := make(map[string]string)
 		for i, storageValue := range s.Storage {
-			storage[fmt.Sprintf("%x", i)] = fmt.Sprintf("%x", storageValue)
+			storage[i.Hex()] = storageValue.Hex()
 		}
 		msg.Storage = &storage
 	}
@@ -325,7 +334,7 @@ func (l *StructLogger) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope 
 		l.logs = append(l.logs, entry)
 		return
 	}
-	log.WriteTo(l.writer)
+	log.Write(l.writer)
 }
 
 // OnExit is called a call frame finishes processing.
@@ -410,7 +419,7 @@ func (l *StructLogger) Output() []byte { return l.output }
 // @deprecated
 func WriteTrace(writer io.Writer, logs []StructLog) {
 	for _, log := range logs {
-		log.WriteTo(writer)
+		log.Write(writer)
 	}
 }
 

@@ -152,6 +152,12 @@ func (tree *layerTree) add(root common.Hash, parentRoot common.Hash, block uint6
 	if root == parentRoot {
 		return errors.New("layer cycle")
 	}
+	// If a layer with this root already exists, skip the insertion. Fork blocks
+	// can produce the same state root as the canonical block (same parent, same
+	// coinbase, zero txs); overwriting tree.layers[root] would corrupt the parent
+	// chain for any child layers already built on top of the existing one, and
+	// appending a duplicate root to the lookup indices causes accountTip/storageTip
+	// to resolve the wrong layer.
 	if tree.get(root) != nil {
 		log.Info("Skip add repeated difflayer", "root", root.String(), "block_id", block)
 		return nil
@@ -385,29 +391,4 @@ func (tree *layerTree) front() common.Hash {
 		}
 		parent = children[0]
 	}
-}
-
-// bottomDiffLayer returns the bottom-most diff layer in this tree.
-// It returns the first diffLayer that is directly built on top of a diskLayer.
-func (tree *layerTree) bottomDiffLayer() *diffLayer {
-	tree.lock.RLock()
-	defer tree.lock.RUnlock()
-
-	bottomDisk := tree.bottom()
-	if bottomDisk == nil {
-		return nil
-	}
-
-	// Find diffLayer that has bottomDisk as parent
-	for _, l := range tree.layers {
-		if dl, ok := l.(*diffLayer); ok {
-			if parent := dl.parentLayer(); parent != nil {
-				if parentDisk, ok := parent.(*diskLayer); ok && parentDisk.rootHash() == bottomDisk.rootHash() {
-					return dl
-				}
-			}
-		}
-	}
-
-	return nil
 }

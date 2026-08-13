@@ -35,8 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
+	"github.com/ethereum/go-ethereum/internal/tablewriter"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/olekukonko/tablewriter"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -156,10 +156,6 @@ func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) er
 	return errNotSupported
 }
 
-func (db *nofreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	return errNotSupported
-}
-
 // SyncAncient returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
@@ -187,9 +183,6 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 }
 
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
-	return nil
-}
-func (db *nofreezedb) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	return nil
 }
 
@@ -257,10 +250,6 @@ func (db *emptyfreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool)
 	return nil
 }
 
-func (db *emptyfreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	return nil
-}
-
 // SyncAncient returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) SyncAncient() error {
 	return nil
@@ -275,9 +264,6 @@ func (db *emptyfreezedb) AncientDatadir() (string, error) {
 	return "", nil
 }
 func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
-	return nil
-}
-func (db *emptyfreezedb) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	return nil
 }
 
@@ -368,16 +354,8 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 
 	// Create the idle freezer instance
 	frdb, err := newChainFreezer(chainFreezerDir, opts.Era, opts.MetricsNamespace, opts.ReadOnly)
-
-	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
-	// that need a database type. Therefore, we are pre-creating it for subsequent use.
-	freezerDb := &freezerdb{
-		ancientRoot:   opts.Ancient,
-		KeyValueStore: db,
-		chainFreezer:  frdb,
-	}
 	if err != nil {
-		printChainMetadata(freezerDb)
+		printChainMetadata(db)
 		return nil, err
 	}
 
@@ -416,10 +394,10 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// the freezer and the key-value store.
 			frgenesis, err := frdb.Ancient(ChainFreezerHashTable, 0)
 			if err != nil {
-				printChainMetadata(freezerDb)
+				printChainMetadata(db)
 				return nil, fmt.Errorf("failed to retrieve genesis from ancient %v", err)
 			} else if !bytes.Equal(kvgenesis, frgenesis) {
-				printChainMetadata(freezerDb)
+				printChainMetadata(db)
 				return nil, fmt.Errorf("genesis mismatch: %#x (leveldb) != %#x (ancients)", kvgenesis, frgenesis)
 			}
 			// Key-value store and freezer belong to the same network. Ensure that they
@@ -427,10 +405,10 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
 				// Subsequent header after the freezer limit is missing from the database.
 				// Reject startup if the database has a more recent head.
-				head, ok := ReadHeaderNumber(freezerDb, ReadHeadHeaderHash(freezerDb))
+				head, ok := ReadHeaderNumber(db, ReadHeadHeaderHash(db))
 				if !ok {
 					printChainMetadata(db)
-					return nil, fmt.Errorf("could not read header number, hash %v", ReadHeadHeaderHash(freezerDb))
+					return nil, fmt.Errorf("could not read header number, hash %v", ReadHeadHeaderHash(db))
 				}
 				if head > frozen-1 {
 					// Find the smallest block stored in the key-value store
@@ -442,7 +420,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 						}
 					}
 					// We are about to exit on error. Print database metadata before exiting
-					printChainMetadata(freezerDb)
+					printChainMetadata(db)
 					return nil, fmt.Errorf("gap in the chain between ancients [0 - #%d] and leveldb [#%d - #%d] ",
 						frozen-1, number, head)
 				}
@@ -457,11 +435,11 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// store, otherwise we'll end up missing data. We check block #1 to decide
 			// if we froze anything previously or not, but do take care of databases with
 			// only the genesis block.
-			if ReadHeadHeaderHash(freezerDb) != common.BytesToHash(kvgenesis) {
+			if ReadHeadHeaderHash(db) != common.BytesToHash(kvgenesis) {
 				// Key-value store contains more data than the genesis block, make sure we
 				// didn't freeze anything yet.
 				if kvblob, _ := db.Get(headerHashKey(1)); len(kvblob) == 0 {
-					printChainMetadata(freezerDb)
+					printChainMetadata(db)
 					return nil, errors.New("ancient chain segments already extracted, please set --datadir.ancient to the correct path")
 				}
 				// Block #1 is still in the database, we're allowed to init a new freezer
@@ -478,7 +456,12 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			frdb.wg.Done()
 		}()
 	}
-	return freezerDb, nil
+	return &freezerdb{
+		readOnly:      opts.ReadOnly,
+		ancientRoot:   opts.Ancient,
+		KeyValueStore: db,
+		chainFreezer:  frdb,
+	}, nil
 }
 
 // NewMemoryDatabase creates an ephemeral in-memory key-value database without a
@@ -555,7 +538,7 @@ func AncientInspect(db ethdb.Database) error {
 		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", counter(ancientHead - ancientTail).String()},
 		{"The last BlockNumber within ancientDB", "The last BlockNumber", counter(ancientHead - 1).String()},
 	}
-	table := newTableWriter(os.Stdout)
+	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Items"})
 	table.SetFooter([]string{"", "AncientStore information", ""})
 	table.AppendBulk(stats)
@@ -580,6 +563,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		numHashPairings    stat
 		blobSidecars       stat
 		hashNumPairings    stat
+		blockAccessList    stat
 		legacyTries        stat
 		stateLookups       stat
 		accountTries       stat
@@ -597,7 +581,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		filterMapBlockLV   stat
 
 		// Path-mode archive data
-		stateIndex stat
+		stateIndex    stat
+		trienodeIndex stat
 
 		// Verkle statistics
 		verkleTries        stat
@@ -644,12 +629,15 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				bodies.add(size)
 			case bytes.HasPrefix(key, blockReceiptsPrefix) && len(key) == (len(blockReceiptsPrefix)+8+common.HashLength):
 				receipts.add(size)
-			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
+			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix) && len(key) == (len(headerPrefix)+8+common.HashLength+len(headerTDSuffix)):
 				tds.add(size)
-			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
+			case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix) && len(key) == (len(headerPrefix)+8+len(headerHashSuffix)):
 				numHashPairings.add(size)
 			case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
 				hashNumPairings.add(size)
+			case bytes.HasPrefix(key, accessListPrefix) && len(key) == len(accessListPrefix)+8+common.HashLength:
+				blockAccessList.add(size)
+
 			case IsLegacyTrieNode(key, it.Value()):
 				legacyTries.add(size)
 			case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
@@ -690,8 +678,19 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				bloomBits.add(size)
 
 			// Path-based historic state indexes
-			case bytes.HasPrefix(key, StateHistoryIndexPrefix) && len(key) >= len(StateHistoryIndexPrefix)+common.HashLength:
+			case bytes.HasPrefix(key, StateHistoryAccountMetadataPrefix) && len(key) == len(StateHistoryAccountMetadataPrefix)+common.HashLength:
 				stateIndex.add(size)
+			case bytes.HasPrefix(key, StateHistoryStorageMetadataPrefix) && len(key) == len(StateHistoryStorageMetadataPrefix)+2*common.HashLength:
+				stateIndex.add(size)
+			case bytes.HasPrefix(key, StateHistoryAccountBlockPrefix) && len(key) == len(StateHistoryAccountBlockPrefix)+common.HashLength+4:
+				stateIndex.add(size)
+			case bytes.HasPrefix(key, StateHistoryStorageBlockPrefix) && len(key) == len(StateHistoryStorageBlockPrefix)+2*common.HashLength+4:
+				stateIndex.add(size)
+
+			case bytes.HasPrefix(key, TrienodeHistoryMetadataPrefix) && len(key) >= len(TrienodeHistoryMetadataPrefix)+common.HashLength:
+				trienodeIndex.add(size)
+			case bytes.HasPrefix(key, TrienodeHistoryBlockPrefix) && len(key) >= len(TrienodeHistoryBlockPrefix)+common.HashLength+4:
+				trienodeIndex.add(size)
 
 			// Verkle trie data is detected, determine the sub-category
 			case bytes.HasPrefix(key, VerklePrefix):
@@ -784,6 +783,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Difficulties (deprecated)", tds.sizeString(), tds.countString()},
 		{"Key-Value store", "Block number->hash", numHashPairings.sizeString(), numHashPairings.countString()},
 		{"Key-Value store", "Block hash->number", hashNumPairings.sizeString(), hashNumPairings.countString()},
+		{"Key-Value store", "Block accessList", blockAccessList.sizeString(), blockAccessList.countString()},
 		{"Key-Value store", "Transaction index", txLookups.sizeString(), txLookups.countString()},
 		{"Key-Value store", "Log index filter-map rows", filterMapRows.sizeString(), filterMapRows.countString()},
 		{"Key-Value store", "Log index last-block-of-map", filterMapLastBlock.sizeString(), filterMapLastBlock.countString()},
@@ -794,12 +794,13 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Path trie state lookups", stateLookups.sizeString(), stateLookups.countString()},
 		{"Key-Value store", "Path trie account nodes", accountTries.sizeString(), accountTries.countString()},
 		{"Key-Value store", "Path trie storage nodes", storageTries.sizeString(), storageTries.countString()},
-		{"Key-Value store", "Path state history indexes", stateIndex.sizeString(), stateIndex.countString()},
 		{"Key-Value store", "Verkle trie nodes", verkleTries.sizeString(), verkleTries.countString()},
 		{"Key-Value store", "Verkle trie state lookups", verkleStateLookups.sizeString(), verkleStateLookups.countString()},
 		{"Key-Value store", "Trie preimages", preimages.sizeString(), preimages.countString()},
 		{"Key-Value store", "Account snapshot", accountSnaps.sizeString(), accountSnaps.countString()},
 		{"Key-Value store", "Storage snapshot", storageSnaps.sizeString(), storageSnaps.countString()},
+		{"Key-Value store", "Historical state index", stateIndex.sizeString(), stateIndex.countString()},
+		{"Key-Value store", "Historical trie index", trienodeIndex.sizeString(), trienodeIndex.countString()},
 		{"Key-Value store", "Clique snapshots", cliqueSnaps.sizeString(), cliqueSnaps.countString()},
 		{"Key-Value store", "Singleton metadata", metadata.sizeString(), metadata.countString()},
 		// bsc special
@@ -818,13 +819,13 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
 				strings.Title(table.name),
 				table.size.String(),
-				fmt.Sprintf("%d", ancient.count()),
+				fmt.Sprintf("%d", ancient.count),
 			})
 		}
 		total.Add(uint64(ancient.size()))
 	}
 
-	table := newTableWriter(os.Stdout)
+	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", common.StorageSize(total.Load()).String(), fmt.Sprintf("%d", count.Load())})
 	table.AppendBulk(stats)
@@ -835,128 +836,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		for _, e := range slices.SortedFunc(maps.Values(unaccountedKeys), bytes.Compare) {
 			log.Error(fmt.Sprintf("   example key: %x", e))
 		}
-	}
-	return nil
-}
-
-// InspectAncients
-func InspectAncients(db ethdb.Database) error {
-	// Totals
-	var (
-		total common.StorageSize
-		stats [][]string
-	)
-	ancients, err := inspectFreezers(db)
-	if err != nil {
-		return err
-	}
-	for _, ancient := range ancients {
-		for _, t := range ancient.sizes {
-			stats = append(stats, []string{
-				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
-				strings.Title(t.name),
-				t.size.String(),
-				fmt.Sprintf("%d", ancient.count()),
-			})
-		}
-		total += ancient.size()
-	}
-	t := tablewriter.NewWriter(os.Stdout)
-	t.SetHeader([]string{"Database", "Category", "Size", "Items"})
-	t.SetFooter([]string{"", "Total", total.String(), " "})
-	t.AppendBulk(stats)
-	t.Render()
-
-	return nil
-}
-
-// InspectIncrStore traverses the entire incr db and checks the size
-// of all different categories of data.
-func InspectIncrStore(baseDir string) error {
-	dirs, err := GetAllIncrDirs(baseDir)
-	if err != nil {
-		return err
-	}
-	fmt.Println(dirs)
-
-	var (
-		total       common.StorageSize
-		stats       [][]string
-		unaccounted stat
-		info        = incrSnapDBInfo{
-			readonly:      true,
-			namespace:     "eth/db/incremental/",
-			offset:        0,
-			maxTableSize:  stateHistoryTableSize,
-			chainTables:   incrChainFreezerTableConfigs,
-			stateTables:   incrStateFreezerTableConfigs,
-			blockInterval: 0,
-		}
-	)
-
-	complete, err := CheckIncrSnapshotComplete(dirs[len(dirs)-1].Path)
-	if err != nil {
-		return err
-	}
-	if !complete {
-		log.Info("Skip last incremental directory", "dir", dirs[len(dirs)-1].Path)
-		dirs = dirs[:len(dirs)-1]
-	}
-
-	for _, dir := range dirs {
-		db, err := newSnapDBWrapper(dir.Path, &info)
-		if err != nil {
-			return err
-		}
-		var (
-			codes, parliaSnaps stat
-		)
-		it := db.kvDB.NewIterator(nil, nil)
-		for it.Next() {
-			var (
-				key  = it.Key()
-				size = common.StorageSize(len(key) + len(it.Value()))
-			)
-			switch {
-			case bytes.HasPrefix(key, ParliaSnapshotPrefix) && len(key) == 7+common.HashLength:
-				parliaSnaps.add(size)
-			case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
-				codes.add(size)
-			default:
-				unaccounted.add(size)
-			}
-		}
-		title := fmt.Sprintf("%s/KV store", dir.Name)
-		stats = append(stats, [][]string{
-			{title, "Contract codes", codes.sizeString(), codes.countString()},
-			{title, "Parlia snapshots", parliaSnaps.sizeString(), parliaSnaps.countString()},
-		}...)
-
-		ancients, err := inspectIncrFreezers(db)
-		if err != nil {
-			return err
-		}
-		for _, ancient := range ancients {
-			for _, table := range ancient.sizes {
-				stats = append(stats, []string{
-					fmt.Sprintf("%s/%s", dir.Name, strings.Title(ancient.name)),
-					strings.Title(table.name),
-					table.size.String(),
-					fmt.Sprintf("%d", ancient.count()),
-				})
-			}
-			total += ancient.size()
-		}
-	}
-
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
-	table.SetFooter([]string{"", "Total", total.String(), " "})
-	table.AppendBulk(stats)
-	table.Render()
-
-	if unaccounted.size > 0 {
-		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
 	}
 	return nil
 }
@@ -1024,7 +903,7 @@ var knownMetadataKeys = [][]byte{
 	snapshotGeneratorKey, snapshotRecoveryKey, txIndexTailKey, fastTxLookupLimitKey,
 	uncleanShutdownKey, badBlockKey, transitionStatusKey, skeletonSyncStatusKey,
 	persistentStateIDKey, trieJournalKey, snapshotSyncStatusKey, snapSyncStatusFlagKey,
-	filterMapsRangeKey, headStateHistoryIndexKey, VerkleTransitionStatePrefix,
+	filterMapsRangeKey, headStateHistoryIndexKey, headTrienodeHistoryIndexKey, VerkleTransitionStatePrefix,
 }
 
 // printChainMetadata prints out chain metadata to stderr.

@@ -132,7 +132,7 @@ func (b *buffer) size() uint64 {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte, nodesCache, statesCache *fastcache.Cache, id uint64, postFlush func()) {
+func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezers []ethdb.AncientWriter, progress []byte, nodesCache, statesCache *fastcache.Cache, id uint64, postFlush func()) {
 	if b.done != nil {
 		panic("duplicated flush operation")
 	}
@@ -165,11 +165,9 @@ func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.A
 		//
 		// This step is crucial to guarantee that the corresponding state history remains
 		// available for state rollback.
-		if freezer != nil {
-			if err := freezer.SyncAncient(); err != nil {
-				b.flushErr = err
-				return
-			}
+		if err := syncHistory(freezers...); err != nil {
+			b.flushErr = err
+			return
 		}
 		nodes := b.nodes.write(batch, nodesCache)
 		accounts, slots := b.states.write(batch, progress, statesCache)
@@ -182,6 +180,8 @@ func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.A
 			b.flushErr = err
 			return
 		}
+		batch.Close()
+
 		commitBytesMeter.Mark(int64(size))
 		commitNodesMeter.Mark(int64(nodes))
 		commitAccountsMeter.Mark(int64(accounts))
@@ -206,38 +206,4 @@ func (b *buffer) waitFlush() error {
 	}
 	<-b.done
 	return b.flushErr
-}
-
-// flushIncrSnapshot persists incr trie nodes and states to disk.
-func (b *buffer) flushIncrSnapshot(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte,
-	id uint64) error {
-	var (
-		start = time.Now()
-		batch = db.NewBatchWithSize((b.nodes.dbsize() + b.states.dbsize()) * 11 / 10) // extra 10% for potential pebble internal stuff
-	)
-	if freezer != nil {
-		if err := freezer.SyncAncient(); err != nil {
-			return err
-		}
-	}
-	var nodes, accs, slots int
-	if b.nodes != nil {
-		nodes = b.nodes.write(batch, nil)
-		rawdb.WritePersistentStateID(batch, id)
-	}
-	if b.states != nil {
-		accs, slots = b.states.write(batch, progress, nil)
-		rawdb.WriteSnapshotRoot(batch, root)
-	}
-
-	// Flush all mutations in a single batch
-	size := batch.ValueSize()
-	if err := batch.Write(); err != nil {
-		return err
-	}
-
-	b.reset()
-	log.Info("Persisted buffer content", "nodes", nodes, "accounts", accs, "slots", slots,
-		"bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
-	return nil
 }

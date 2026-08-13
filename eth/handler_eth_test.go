@@ -41,9 +41,9 @@ import (
 // testEthHandler is a mock event handler to listen for inbound network requests
 // on the `eth` protocol and convert them into a more easily testable form.
 type testEthHandler struct {
-	blockBroadcasts event.Feed
 	txAnnounces     event.Feed
 	txBroadcasts    event.Feed
+	blockBroadcasts event.Feed
 }
 
 func (h *testEthHandler) Chain() *core.BlockChain              { panic("no backing chain") }
@@ -54,10 +54,6 @@ func (h *testEthHandler) PeerInfo(enode.ID) interface{}        { panic("not used
 
 func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	switch packet := packet.(type) {
-	case *eth.NewBlockPacket:
-		h.blockBroadcasts.Send(packet.Block)
-		return nil
-
 	case *eth.NewPooledTransactionHashesPacket:
 		h.txAnnounces.Send(packet.Hashes)
 		return nil
@@ -76,6 +72,10 @@ func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 			return err
 		}
 		h.txBroadcasts.Send(txs)
+		return nil
+
+	case *eth.NewBlockPacket:
+		h.blockBroadcasts.Send(packet.Block)
 		return nil
 
 	default:
@@ -162,8 +162,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 	defer p2pNoFork.Close()
 	defer p2pProFork.Close()
 
-	peerNoFork := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pNoFork), p2pNoFork, nil)
-	peerProFork := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pProFork), p2pProFork, nil)
+	peerNoFork := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pNoFork), p2pNoFork, nil, nil)
+	peerProFork := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pProFork), p2pProFork, nil, nil)
 	defer peerNoFork.Close()
 	defer peerProFork.Close()
 
@@ -193,8 +193,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 	defer p2pNoFork.Close()
 	defer p2pProFork.Close()
 
-	peerNoFork = eth.NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "", nil), p2pNoFork, nil)
-	peerProFork = eth.NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "", nil), p2pProFork, nil)
+	peerNoFork = eth.NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "", nil), p2pNoFork, nil, nil)
+	peerProFork = eth.NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "", nil), p2pProFork, nil, nil)
 	defer peerNoFork.Close()
 	defer peerProFork.Close()
 
@@ -224,8 +224,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 	defer p2pNoFork.Close()
 	defer p2pProFork.Close()
 
-	peerNoFork = eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pNoFork), p2pNoFork, nil)
-	peerProFork = eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pProFork), p2pProFork, nil)
+	peerNoFork = eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pNoFork), p2pNoFork, nil, nil)
+	peerProFork = eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pProFork), p2pProFork, nil, nil)
 	defer peerNoFork.Close()
 	defer peerProFork.Close()
 
@@ -260,7 +260,7 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	// Create a message handler, configure it to accept transactions and watch them
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 
 	handler.handler.acceptTxs.Store(true) // mark synced to accept transactions
@@ -274,8 +274,8 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	defer p2pSrc.Close()
 	defer p2pSink.Close()
 
-	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, handler.txpool)
-	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, handler.txpool)
+	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, handler.txpool, nil)
+	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, handler.txpool, nil)
 	defer src.Close()
 	defer sink.Close()
 
@@ -287,7 +287,7 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 		head = handler.chain.CurrentBlock()
 		td   = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 	)
-	if err := src.Handshake(1, handler.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
+	if err := src.Handshake(1, handler.chain, eth.BlockRangeUpdatePacket{EarliestBlock: 0, LatestBlock: head.Number.Uint64(), LatestBlockHash: head.Hash()}, td, nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// Send the transaction to the sink and verify that it's added to the tx pool
@@ -315,7 +315,7 @@ func testWaitSnapExtensionTimout(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	// Create a message handler, configure it to accept transactions and watch them
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 
 	// Create a source peer to send messages through and a sink handler to receive them
@@ -334,7 +334,7 @@ func testWaitSnapExtensionTimout(t *testing.T, protocol uint) {
 			Name:    "snap",
 			Version: 1,
 		},
-	}), p2pSink, nil)
+	}), p2pSink, nil, handler.chain.Config())
 	defer sink.Close()
 
 	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
@@ -352,7 +352,7 @@ func testWaitBscExtensionTimout(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	// Create a message handler, configure it to accept transactions and watch them
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 
 	// Create a source peer to send messages through and a sink handler to receive them
@@ -371,7 +371,7 @@ func testWaitBscExtensionTimout(t *testing.T, protocol uint) {
 			Name:    "bsc",
 			Version: bsc.Bsc1,
 		},
-	}), p2pSink, nil)
+	}), p2pSink, nil, handler.chain.Config())
 	defer sink.Close()
 
 	err := handler.handler.runEthPeer(sink, func(peer *eth.Peer) error {
@@ -390,7 +390,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	// Create a message handler and fill the pool with big transactions
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 
 	insert := make([]*types.Transaction, 100)
@@ -407,8 +407,8 @@ func testSendTransactions(t *testing.T, protocol uint) {
 	defer p2pSrc.Close()
 	defer p2pSink.Close()
 
-	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, handler.txpool)
-	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, handler.txpool)
+	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, handler.txpool, nil)
+	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, handler.txpool, nil)
 	defer src.Close()
 	defer sink.Close()
 
@@ -420,7 +420,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 		head = handler.chain.CurrentBlock()
 		td   = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 	)
-	if err := sink.Handshake(1, handler.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
+	if err := sink.Handshake(1, handler.chain, eth.BlockRangeUpdatePacket{EarliestBlock: 0, LatestBlock: head.Number.Uint64(), LatestBlockHash: head.Hash()}, td, nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// After the handshake completes, the source handler should stream the sink
@@ -440,22 +440,16 @@ func testSendTransactions(t *testing.T, protocol uint) {
 	// Make sure we get all the transactions on the correct channels
 	seen := make(map[common.Hash]struct{})
 	for len(seen) < len(insert) {
-		switch protocol {
-		case 68:
-			select {
-			case hashes := <-anns:
-				for _, hash := range hashes {
-					if _, ok := seen[hash]; ok {
-						t.Errorf("duplicate transaction announced: %x", hash)
-					}
-					seen[hash] = struct{}{}
+		select {
+		case hashes := <-anns:
+			for _, hash := range hashes {
+				if _, ok := seen[hash]; ok {
+					t.Errorf("duplicate transaction announced: %x", hash)
 				}
-			case <-bcasts:
-				t.Errorf("initial tx broadcast received on post eth/66")
+				seen[hash] = struct{}{}
 			}
-
-		default:
-			panic("unsupported protocol, please extend test")
+		case <-bcasts:
+			t.Errorf("initial tx broadcast received on post eth/66")
 		}
 	}
 	for _, tx := range insert {
@@ -475,13 +469,12 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 	// Create a source handler to send transactions from and a number of sinks
 	// to receive them. We need multiple sinks since a one-to-one peering would
 	// broadcast all transactions without announcement.
-	source := newTestHandler()
-	source.handler.snapSync.Store(false) // Avoid requiring snap, otherwise some will be dropped below
+	source := newTestHandler(ethconfig.FullSync)
 	defer source.close()
 
 	sinks := make([]*testHandler, 10)
 	for i := 0; i < len(sinks); i++ {
-		sinks[i] = newTestHandler()
+		sinks[i] = newTestHandler(ethconfig.FullSync)
 		defer sinks[i].close()
 
 		sinks[i].handler.acceptTxs.Store(true) // mark synced to accept transactions
@@ -492,8 +485,8 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 		defer sourcePipe.Close()
 		defer sinkPipe.Close()
 
-		sourcePeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{byte(i + 1)}, "", nil, sourcePipe), sourcePipe, source.txpool)
-		sinkPeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, sink.txpool)
+		sourcePeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{byte(i + 1)}, "", nil, sourcePipe), sourcePipe, source.txpool, nil)
+		sinkPeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, sink.txpool, nil)
 		defer sourcePeer.Close()
 		defer sinkPeer.Close()
 
@@ -535,59 +528,6 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 	}
 }
 
-// Tests that local pending transactions get propagated to peers.
-func TestTransactionPendingReannounce(t *testing.T) {
-	t.Parallel()
-
-	// Create a source handler to announce transactions from and a sink handler
-	// to receive them.
-	source := newTestHandler()
-	defer source.close()
-
-	sink := newTestHandler()
-	defer sink.close()
-	sink.handler.acceptTxs.Store(true) // mark synced to accept transactions
-
-	sourcePipe, sinkPipe := p2p.MsgPipe()
-	defer sourcePipe.Close()
-	defer sinkPipe.Close()
-
-	sourcePeer := eth.NewPeer(eth.ETH68, p2p.NewPeer(enode.ID{0}, "", nil), sourcePipe, source.txpool)
-	sinkPeer := eth.NewPeer(eth.ETH68, p2p.NewPeer(enode.ID{0}, "", nil), sinkPipe, sink.txpool)
-	defer sourcePeer.Close()
-	defer sinkPeer.Close()
-
-	go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(source.handler), peer)
-	})
-	go sink.handler.runEthPeer(sinkPeer, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(sink.handler), peer)
-	})
-
-	// Subscribe transaction pools
-	txCh := make(chan core.NewTxsEvent, 1024)
-	sub := sink.txpool.SubscribeTransactions(txCh, false)
-	defer sub.Unsubscribe()
-
-	txs := make([]*types.Transaction, 64)
-	for nonce := range txs {
-		tx := types.NewTransaction(uint64(nonce), common.Address{}, big.NewInt(0), 100000, big.NewInt(0), nil)
-		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
-
-		txs[nonce] = tx
-	}
-	source.txpool.ReannouceTransactions(txs)
-
-	for arrived := 0; arrived < len(txs); {
-		select {
-		case event := <-txCh:
-			arrived += len(event.Txs)
-		case <-time.NewTimer(time.Second).C:
-			t.Errorf("sink: transaction propagation timed out: have %d, want %d", arrived, len(txs))
-		}
-	}
-}
-
 // Tests that blocks are broadcast to a sqrt number of peers only.
 func TestBroadcastBlock1Peer(t *testing.T)    { testBroadcastBlock(t, 1, 1) }
 func TestBroadcastBlock2Peers(t *testing.T)   { testBroadcastBlock(t, 2, 1) }
@@ -605,7 +545,7 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 
 	// Create a source handler to broadcast blocks from and a number of sinks
 	// to receive them.
-	source := newTestHandlerWithBlocks(1)
+	source := newTestHandlerWithBlocks(1, ethconfig.FullSync)
 	defer source.close()
 
 	sinks := make([]*testEthHandler, peers)
@@ -622,8 +562,8 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		defer sourcePipe.Close()
 		defer sinkPipe.Close()
 
-		sourcePeer := eth.NewPeer(eth.ETH68, p2p.NewPeerPipe(enode.ID{byte(i)}, "", nil, sourcePipe), sourcePipe, nil)
-		sinkPeer := eth.NewPeer(eth.ETH68, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, nil)
+		sourcePeer := eth.NewPeer(eth.ETH68, p2p.NewPeerPipe(enode.ID{byte(i)}, "", nil, sourcePipe), sourcePipe, nil, nil)
+		sinkPeer := eth.NewPeer(eth.ETH68, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, nil, nil)
 		defer sourcePeer.Close()
 		defer sinkPeer.Close()
 
@@ -684,7 +624,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 
 	// Create a source handler to broadcast blocks from and a number of sinks
 	// to receive them.
-	source := newTestHandlerWithBlocks(1)
+	source := newTestHandlerWithBlocks(1, ethconfig.FullSync)
 	defer source.close()
 
 	// Create a source handler to send messages through and a sink peer to receive them
@@ -692,8 +632,8 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 	defer p2pSrc.Close()
 	defer p2pSink.Close()
 
-	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, source.txpool)
-	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, source.txpool)
+	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, source.txpool, source.chain.Config())
+	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, source.txpool, source.chain.Config())
 	defer src.Close()
 	defer sink.Close()
 
@@ -747,7 +687,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 func TestOptionMaxPeersPerIP(t *testing.T) {
 	t.Parallel()
 
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 	var (
 		head          = handler.chain.CurrentBlock()
@@ -772,8 +712,8 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 		}
 		uniPort++
 
-		src := eth.NewPeer(eth.ETH68, peer1, p2pSrc, handler.txpool)
-		sink := eth.NewPeer(eth.ETH68, peer2, p2pSink, handler.txpool)
+		src := eth.NewPeer(eth.ETH68, peer1, p2pSrc, handler.txpool, handler.chain.Config())
+		sink := eth.NewPeer(eth.ETH68, peer2, p2pSink, handler.txpool, handler.chain.Config())
 		defer src.Close()
 		defer sink.Close()
 

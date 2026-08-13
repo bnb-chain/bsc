@@ -76,6 +76,8 @@ var DefaultConfig = Config{
 		MaxPeers:      50,
 		MaxPeersPerIP: 0, // by default, it will be same as MaxPeers
 		NAT:           nat.Any(),
+		DiscoveryV4:   true,
+		DiscoveryV5:   true,
 	},
 	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
 	Instance: 1,

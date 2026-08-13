@@ -25,6 +25,7 @@ package discover
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"slices"
 	"sync"
@@ -37,14 +38,14 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
 
 const (
-	alpha              = 3   // Kademlia concurrency factor
-	bucketSize         = 16  // Kademlia bucket size
-	bootNodeBucketSize = 256 // Bigger bucket size for boot nodes
-	maxReplacements    = 10  // Size of per-bucket replacement list
+	alpha           = 3  // Kademlia concurrency factor
+	bucketSize      = 16 // Kademlia bucket size
+	maxReplacements = 10 // Size of per-bucket replacement list
 
 	// We keep buckets for the upper 1/15 of distances because
 	// it's very unlikely we'll ever encounter a node that's closer.
@@ -66,7 +67,6 @@ const (
 type Table struct {
 	mutex        sync.Mutex        // protects buckets, bucket content, nursery, rand
 	buckets      [nBuckets]*bucket // index of known nodes by distance
-	bucketSize   int               // size of bucket
 	nursery      []*enode.Node     // bootstrap nodes
 	rand         reseedingRandom   // source of randomness, periodically reseeded
 	ips          netutil.DistinctNetSet
@@ -86,8 +86,6 @@ type Table struct {
 	initDone        chan struct{}
 	closeReq        chan struct{}
 	closed          chan struct{}
-
-	enrFilter NodeFilterFunc
 
 	nodeFeed        event.FeedOf[*enode.Node]
 	nodeAddedHook   func(*bucket, *tableNode)
@@ -113,10 +111,9 @@ type bucket struct {
 }
 
 type addNodeOp struct {
-	node          *enode.Node
-	isInbound     bool
-	forceSetLive  bool // for tests
-	syncExecution bool // for tests
+	node         *enode.Node
+	isInbound    bool
+	forceSetLive bool // for tests
 }
 
 type trackRequestOp struct {
@@ -141,11 +138,6 @@ func newTable(t transport, db *enode.DB, cfg Config) (*Table, error) {
 		closeReq:        make(chan struct{}),
 		closed:          make(chan struct{}),
 		ips:             netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
-		enrFilter:       cfg.FilterFunction,
-		bucketSize:      bucketSize,
-	}
-	if cfg.IsBootnode {
-		tab.bucketSize = bootNodeBucketSize
 	}
 	for i := range tab.buckets {
 		tab.buckets[i] = &bucket{
@@ -216,6 +208,13 @@ func (tab *Table) close() {
 func (tab *Table) setFallbackNodes(nodes []*enode.Node) error {
 	nursery := make([]*enode.Node, 0, len(nodes))
 	for _, n := range nodes {
+		if n.Hostname() != "" && !n.IPAddr().IsValid() {
+			resolved, err := resolveBootnodeHostname(n, tab.log)
+			if err != nil {
+				return fmt.Errorf("bad bootstrap node %q: %v", n, err)
+			}
+			n = resolved
+		}
 		if err := n.ValidateComplete(); err != nil {
 			return fmt.Errorf("bad bootstrap node %q: %v", n, err)
 		}
@@ -227,6 +226,42 @@ func (tab *Table) setFallbackNodes(nodes []*enode.Node) error {
 	}
 	tab.nursery = nursery
 	return nil
+}
+
+// resolveBootnodeHostname resolves the DNS hostname of a bootstrap node to an IP address.
+func resolveBootnodeHostname(n *enode.Node, logger log.Logger) (*enode.Node, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", n.Hostname())
+	if err != nil {
+		return nil, fmt.Errorf("DNS lookup failed for %q: %v", n.Hostname(), err)
+	}
+
+	var ip4, ip6 netip.Addr
+	for _, ip := range ips {
+		if ip.Is4() && !ip4.IsValid() {
+			ip4 = ip
+		}
+		if ip.Is6() && !ip6.IsValid() {
+			ip6 = ip
+		}
+	}
+	if !ip4.IsValid() && !ip6.IsValid() {
+		return nil, fmt.Errorf("no IP addresses found for hostname %q", n.Hostname())
+	}
+
+	rec := n.Record()
+	if ip4.IsValid() {
+		rec.Set(enr.IPv4Addr(ip4))
+	}
+	if ip6.IsValid() {
+		rec.Set(enr.IPv6Addr(ip6))
+	}
+	rec.SetSeq(n.Seq())
+	resolved := enode.SignNull(rec, n.ID()).WithHostname(n.Hostname())
+	logger.Debug("Resolved bootstrap node hostname", "name", n.Hostname(), "ip", resolved.IP())
+	return resolved, nil
 }
 
 // isInitDone returns whether the table's initial seeding procedure has completed.
@@ -322,7 +357,7 @@ func (tab *Table) len() (n int) {
 //
 // The caller must not hold tab.mutex.
 func (tab *Table) addFoundNode(n *enode.Node, forceSetLive bool) bool {
-	op := addNodeOp{node: n, isInbound: false, forceSetLive: forceSetLive, syncExecution: true}
+	op := addNodeOp{node: n, isInbound: false, forceSetLive: forceSetLive}
 	select {
 	case tab.addNodeCh <- op:
 		return <-tab.addNodeHandled
@@ -339,19 +374,8 @@ func (tab *Table) addFoundNode(n *enode.Node, forceSetLive bool) bool {
 // repeatedly.
 //
 // The caller must not hold tab.mutex.
-func (tab *Table) addInboundNode(n *enode.Node) {
+func (tab *Table) addInboundNode(n *enode.Node) bool {
 	op := addNodeOp{node: n, isInbound: true}
-	select {
-	case tab.addNodeCh <- op:
-		return
-	case <-tab.closeReq:
-		return
-	}
-}
-
-// Only for testing purposes
-func (tab *Table) addInboundNodeSync(n *enode.Node) bool {
-	op := addNodeOp{node: n, isInbound: true, syncExecution: true}
 	select {
 	case tab.addNodeCh <- op:
 		return <-tab.addNodeHandled
@@ -400,16 +424,10 @@ loop:
 			tab.revalidation.handleResponse(tab, r)
 
 		case op := <-tab.addNodeCh:
-			// only happens in tests
-			if op.syncExecution {
-				ok := tab.handleAddNode(op)
-				tab.addNodeHandled <- ok
-			} else {
-				// async execution as handleAddNode is blocking
-				go func() {
-					tab.handleAddNode(op)
-				}()
-			}
+			tab.mutex.Lock()
+			ok := tab.handleAddNode(op)
+			tab.mutex.Unlock()
+			tab.addNodeHandled <- ok
 
 		case op := <-tab.trackRequestCh:
 			tab.handleTrackRequest(op)
@@ -487,7 +505,9 @@ func (tab *Table) loadSeedNodes() {
 			addr, _ := seed.UDPEndpoint()
 			tab.log.Trace("Found seed node in database", "id", seed.ID(), "addr", addr, "age", age)
 		}
-		go tab.handleAddNode(addNodeOp{node: seed, isInbound: false})
+		tab.mutex.Lock()
+		tab.handleAddNode(addNodeOp{node: seed, isInbound: false})
+		tab.mutex.Unlock()
 	}
 }
 
@@ -507,21 +527,6 @@ func (tab *Table) bucketAtDistance(d int) *bucket {
 		return tab.buckets[0]
 	}
 	return tab.buckets[d-bucketMinDistance-1]
-}
-
-func (tab *Table) filterNode(n *enode.Node) bool {
-	if tab.enrFilter == nil {
-		return false
-	}
-	if node, err := tab.net.RequestENR(n); err != nil {
-		// If the ENR request fails, we assume the node is not valid, and try to add it to the table next time.
-		tab.log.Trace("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
-		return true
-	} else if !tab.enrFilter(node.Record()) {
-		tab.log.Trace("ENR record filter out", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP())
-		return true
-	}
-	return false
 }
 
 func (tab *Table) addIP(b *bucket, ip netip.Addr) bool {
@@ -557,15 +562,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	if req.node.ID() == tab.self().ID() {
 		return false
 	}
-
-	if tab.filterNode(req.node) {
-		return false
-	}
-
-	tab.log.Trace("ENR record filter passed", "id", req.node.ID(), "ipAddr", req.node.IPAddr(), "updPort", req.node.UDP())
-	tab.mutex.Lock()
-	defer tab.mutex.Unlock()
-
 	// For nodes from inbound contact, there is an additional safety measure: if the table
 	// is still initializing the node is not added.
 	if req.isInbound && !tab.isInitDone() {
@@ -594,7 +590,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		wn.livenessChecks = 1
 		wn.isValidatedLive = true
 	}
-
 	b.entries = append(b.entries, wn)
 	b.replacements = deleteNode(b.replacements, wn.ID())
 	tab.nodeAdded(b, wn)
@@ -727,6 +722,8 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 	}
 
 	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
 	b := tab.bucket(op.node.ID())
 	// Remove the node from the local table if it fails to return anything useful too
 	// many times, but only if there are enough other nodes in the bucket. This latter
@@ -735,11 +732,10 @@ func (tab *Table) handleTrackRequest(op trackRequestOp) {
 	if fails >= maxFindnodeFailures && len(b.entries) >= bucketSize/4 {
 		tab.deleteInBucket(b, op.node.ID())
 	}
-	tab.mutex.Unlock()
 
 	// Add found nodes.
 	for _, n := range op.foundNodes {
-		go tab.handleAddNode(addNodeOp{n, false, false, false})
+		tab.handleAddNode(addNodeOp{n, false, false})
 	}
 }
 

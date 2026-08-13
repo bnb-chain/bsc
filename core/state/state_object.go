@@ -24,12 +24,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/bintrie"
+	"github.com/ethereum/go-ethereum/trie/transitiontrie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/holiman/uint256"
 )
@@ -47,11 +47,11 @@ func (s Storage) Copy() Storage {
 // - Account values as well as storages can be accessed and modified through the object.
 // - Finally, call commit to return the changes of storage trie and update account data.
 type stateObject struct {
-	db       *StateDB
-	address  common.Address      // address of ethereum account
-	addrHash common.Hash         // hash of ethereum address of the account
-	origin   *types.StateAccount // Account original data without any change applied, nil means it was not existent
-	data     types.StateAccount  // Account data with all mutations applied in the scope of block
+	db          *StateDB
+	address     common.Address      // address of ethereum account
+	addressHash *common.Hash        // hash of ethereum address of the account
+	origin      *types.StateAccount // Account original data without any change applied, nil means it was not existent
+	data        types.StateAccount  // Account data with all mutations applied in the scope of block
 
 	// Write caches.
 	trie Trie   // storage trie, which becomes non-nil on first access
@@ -101,7 +101,6 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	return &stateObject{
 		db:                 db,
 		address:            address,
-		addrHash:           crypto.Keccak256Hash(address[:]),
 		origin:             origin,
 		data:               *acct,
 		originStorage:      make(Storage),
@@ -109,6 +108,14 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		pendingStorage:     make(Storage),
 		uncommittedStorage: make(Storage),
 	}
+}
+
+func (s *stateObject) addrHash() common.Hash {
+	if s.addressHash == nil {
+		h := crypto.Keccak256Hash(s.address[:])
+		s.addressHash = &h
+	}
+	return *s.addressHash
 }
 
 func (s *stateObject) markSelfdestructed() {
@@ -146,18 +153,21 @@ func (s *stateObject) getTrie() (Trie, error) {
 func (s *stateObject) getPrefetchedTrie() Trie {
 	// If there's nothing to meaningfully return, let the user figure it out by
 	// pulling the trie from disk.
-	if (s.data.Root == types.EmptyRootHash && !s.db.db.TrieDB().IsVerkle()) || s.db.prefetcher == nil {
+	if (s.data.Root == types.EmptyRootHash && s.db.db.Type().Is(TypeMPT)) || s.db.prefetcher == nil {
 		return nil
 	}
 	// Attempt to retrieve the trie from the prefetcher
-	return s.db.prefetcher.trie(s.addrHash, s.data.Root)
+	return s.db.prefetcher.trie(s.addrHash(), s.data.Root)
 }
 
 // GetState retrieves a value from the committed account storage trie.
 // GetState retrieves a value associated with the given storage key.
 func (s *stateObject) GetState(key common.Hash) common.Hash {
-	value, _ := s.getState(key)
-	return value
+	value, dirty := s.dirtyStorage[key]
+	if dirty {
+		return value
+	}
+	return s.GetCommittedState(key)
 }
 
 // getState retrieves a value associated with the given storage key, along with
@@ -174,6 +184,9 @@ func (s *stateObject) getState(key common.Hash) (common.Hash, common.Hash) {
 // GetCommittedState retrieves the value associated with the specific key
 // without any mutations caused in the current execution.
 func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
+	// Record slot access regardless of whether the storage slot exists.
+	s.db.stateReadList.AddState(s.address, key)
+
 	// If we have a pending write or clean cached, return that
 	if value, pending := s.pendingStorage[key]; pending {
 		return value
@@ -185,10 +198,12 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 
 	if s.db.needBadSharedStorage {
 		// keep compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
-		if readerWithCacheStats, ok := s.db.reader.(*readerWithCacheStats); ok {
-			if value, cached, err := readerWithCacheStats.readerWithCache.storage(s.address, key); err == nil && cached {
-				s.originStorage[key] = value
-				return value
+		if r, ok := s.db.reader.(*reader); ok {
+			if srs, ok := r.StateReader.(*stateReaderWithStats); ok {
+				if value, cached, err := srs.stateReaderWithCache.storage(s.address, key); err == nil && cached {
+					s.originStorage[key] = value
+					return value
+				}
 			}
 		}
 	}
@@ -215,7 +230,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 
 	// Schedule the resolved storage slots for prefetching if it's enabled.
 	if s.db.prefetcher != nil && s.data.Root != types.EmptyRootHash {
-		if err = s.db.prefetcher.prefetch(s.addrHash, s.origin.Root, s.address, nil, []common.Hash{key}, true); err != nil {
+		if err = s.db.prefetcher.prefetch(s.addrHash(), s.origin.Root, s.address, nil, []common.Hash{key}, true); err != nil {
 			log.Error("Failed to prefetch storage slot", "addr", s.address, "key", key, "err", err)
 		}
 	}
@@ -276,7 +291,7 @@ func (s *stateObject) finalise() {
 		s.pendingStorage[key] = value
 	}
 	if s.db.prefetcher != nil && len(slotsToPrefetch) > 0 && s.data.Root != types.EmptyRootHash {
-		if err := s.db.prefetcher.prefetch(s.addrHash, s.data.Root, s.address, nil, slotsToPrefetch, false); err != nil {
+		if err := s.db.prefetcher.prefetch(s.addrHash(), s.data.Root, s.address, nil, slotsToPrefetch, false); err != nil {
 			log.Error("Failed to prefetch slots", "addr", s.address, "slots", len(slotsToPrefetch), "err", err)
 		}
 	}
@@ -371,7 +386,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		s.db.StorageDeleted.Add(1)
 	}
 	if s.db.prefetcher != nil {
-		s.db.prefetcher.used(s.addrHash, s.data.Root, nil, used)
+		s.db.prefetcher.used(s.addrHash(), s.data.Root, nil, used)
 	}
 	s.uncommittedStorage = make(Storage) // empties the commit markers
 	return tr, nil
@@ -397,17 +412,8 @@ func (s *stateObject) updateRoot() {
 }
 
 // commitStorage overwrites the clean storage with the storage changes and
-// fulfills the storage diffs into the given accountUpdate struct.
-func (s *stateObject) commitStorage(op *accountUpdate) {
-	var (
-		encode = func(val common.Hash) []byte {
-			if val == (common.Hash{}) {
-				return nil
-			}
-			blob, _ := rlp.EncodeToBytes(common.TrimLeftZeroes(val[:]))
-			return blob
-		}
-	)
+// fulfills the storage diffs into the given AccountUpdate struct.
+func (s *stateObject) commitStorage(op *AccountUpdate) {
 	for key, val := range s.pendingStorage {
 		// Skip the noop storage changes, it might be possible the value
 		// of tracked slot is same in originStorage and pendingStorage
@@ -417,20 +423,20 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 			continue
 		}
 		hash := crypto.Keccak256Hash(key[:])
-		if op.storages == nil {
-			op.storages = make(map[common.Hash][]byte)
+		if op.Storages == nil {
+			op.Storages = make(map[common.Hash]common.Hash)
 		}
-		op.storages[hash] = encode(val)
+		op.Storages[hash] = val
 
-		if op.storagesOriginByKey == nil {
-			op.storagesOriginByKey = make(map[common.Hash][]byte)
+		if op.StoragesOriginByKey == nil {
+			op.StoragesOriginByKey = make(map[common.Hash]common.Hash)
 		}
-		if op.storagesOriginByHash == nil {
-			op.storagesOriginByHash = make(map[common.Hash][]byte)
+		if op.StoragesOriginByHash == nil {
+			op.StoragesOriginByHash = make(map[common.Hash]common.Hash)
 		}
-		origin := encode(s.originStorage[key])
-		op.storagesOriginByKey[key] = origin
-		op.storagesOriginByHash[hash] = origin
+		origin := s.originStorage[key]
+		op.StoragesOriginByKey[key] = origin
+		op.StoragesOriginByHash[hash] = origin
 
 		// Overwrite the clean value of storage slots
 		s.originStorage[key] = val
@@ -443,32 +449,47 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 //
 // Note, commit may run concurrently across all the state objects. Do not assume
 // thread-safe access to the statedb.
-func (s *stateObject) commit() (*accountUpdate, *trienode.NodeSet, error) {
-	// commit the account metadata changes
-	op := &accountUpdate{
-		address: s.address,
-		data:    types.SlimAccountRLP(s.data),
-	}
-	if s.origin != nil {
-		op.origin = types.SlimAccountRLP(*s.origin)
+func (s *stateObject) commit() (*AccountUpdate, *trienode.NodeSet, error) {
+	// commit the account metadata changes, the data must be deep-copied
+	// to prevent accidental mutations later on (in practice the stateDB
+	// won't be modified after commit). The origin is safe to use directly.
+	op := &AccountUpdate{
+		Address: s.address,
+		Data:    s.data.Copy(),
+		Origin:  s.origin,
 	}
 	// commit the contract code if it's modified
 	if s.dirtyCode {
-		op.code = &contractCode{
-			hash: common.BytesToHash(s.CodeHash()),
-			blob: s.code,
+		op.Code = &ContractCode{
+			Hash: common.BytesToHash(s.CodeHash()),
+			Blob: s.code,
 		}
 		s.dirtyCode = false // reset the dirty flag
+
+		if s.origin == nil {
+			op.Code.OriginHash = types.EmptyCodeHash
+		} else {
+			op.Code.OriginHash = common.BytesToHash(s.origin.CodeHash)
+		}
 	}
 	// Commit storage changes and the associated storage trie
 	s.commitStorage(op)
-	if len(op.storages) == 0 {
+	if len(op.Storages) == 0 {
 		// nothing changed, don't bother to commit the trie
 		s.origin = s.data.Copy()
 		return op, nil, nil
 	}
-	root, nodes := s.trie.Commit(false)
-	s.data.Root = root
+	// In Verkle/binary trie mode, all state objects share one unified trie.
+	// The main account trie commit in stateDB.commit() already calls
+	// CollectNodes on this trie, so calling Commit here again would
+	// redundantly traverse and serialize the entire tree per dirty account.
+	if s.db.GetTrie().IsUBT() {
+		s.origin = s.data.Copy()
+		return op, nil, nil
+	}
+	// The storage trie root is omitted, as it has already been updated in the
+	// previous updateRoot step.
+	_, nodes := s.trie.Commit(false)
 	s.origin = s.data.Copy()
 	return op, nodes, nil
 }
@@ -504,7 +525,7 @@ func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 	obj := &stateObject{
 		db:                 db,
 		address:            s.address,
-		addrHash:           s.addrHash,
+		addressHash:        nil,
 		origin:             s.origin,
 		data:               s.data,
 		code:               s.code,
@@ -518,11 +539,11 @@ func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 	}
 
 	switch s.trie.(type) {
-	case *trie.VerkleTrie:
-		// Verkle uses only one tree, and the copy has already been
+	case *bintrie.BinaryTrie:
+		// UBT uses only one tree, and the copy has already been
 		// made in mustCopyTrie.
 		obj.trie = db.trie
-	case *trie.TransitionTrie:
+	case *transitiontrie.TransitionTrie:
 		// Same thing for the transition tree, since the MPT is
 		// read-only.
 		obj.trie = db.trie
@@ -551,10 +572,13 @@ func (s *stateObject) Code() []byte {
 	if bytes.Equal(s.CodeHash(), types.EmptyCodeHash.Bytes()) {
 		return nil
 	}
-	code, err := s.db.reader.Code(s.address, common.BytesToHash(s.CodeHash()))
-	if err != nil {
-		s.db.setError(fmt.Errorf("can't load code hash %x: %v", s.CodeHash(), err))
-	}
+	defer func(start time.Time) {
+		s.db.CodeLoaded += 1
+		s.db.CodeReads += time.Since(start)
+		s.db.CodeLoadBytes += len(s.code)
+	}(time.Now())
+
+	code := s.db.reader.Code(s.address, common.BytesToHash(s.CodeHash()))
 	if len(code) == 0 {
 		s.db.setError(fmt.Errorf("code is not found %x", s.CodeHash()))
 	}
@@ -572,10 +596,12 @@ func (s *stateObject) CodeSize() int {
 	if bytes.Equal(s.CodeHash(), types.EmptyCodeHash.Bytes()) {
 		return 0
 	}
-	size, err := s.db.reader.CodeSize(s.address, common.BytesToHash(s.CodeHash()))
-	if err != nil {
-		s.db.setError(fmt.Errorf("can't load code size %x: %v", s.CodeHash(), err))
-	}
+	defer func(start time.Time) {
+		s.db.CodeLoaded += 1
+		s.db.CodeReads += time.Since(start)
+	}(time.Now())
+
+	size := s.db.reader.CodeSize(s.address, common.BytesToHash(s.CodeHash()))
 	if size == 0 {
 		s.db.setError(fmt.Errorf("code is not found %x", s.CodeHash()))
 	}
@@ -593,7 +619,6 @@ func (s *stateObject) setCode(codeHash common.Hash, code []byte) {
 	s.code = code
 	s.data.CodeHash = codeHash[:]
 	s.dirtyCode = true
-	compiler.GenOrLoadOptimizedCode(codeHash, s.code)
 }
 
 func (s *stateObject) SetNonce(nonce uint64) {

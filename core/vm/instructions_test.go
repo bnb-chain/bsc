@@ -19,11 +19,13 @@ package vm
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -32,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
-	"github.com/stretchr/testify/require"
 )
 
 type TwoOperandTestcase struct {
@@ -98,7 +99,7 @@ func init() {
 func testTwoOperandOp(t *testing.T, tests []TwoOperandTestcase, opFn executionFunc, name string) {
 	var (
 		evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-		stack = newstack()
+		stack = newStackForTesting()
 		pc    = uint64(0)
 	)
 
@@ -108,9 +109,9 @@ func testTwoOperandOp(t *testing.T, tests []TwoOperandTestcase, opFn executionFu
 		expected := new(uint256.Int).SetBytes(common.Hex2Bytes(test.Expected))
 		stack.push(x)
 		stack.push(y)
-		opFn(&pc, evm.interpreter, &ScopeContext{nil, stack, nil})
-		if len(stack.data) != 1 {
-			t.Errorf("Expected one item on stack after %v, got %d: ", name, len(stack.data))
+		opFn(&pc, evm, &ScopeContext{nil, stack, nil})
+		if stack.len() != 1 {
+			t.Errorf("Expected one item on stack after %v, got %d: ", name, stack.len())
 		}
 		actual := stack.pop()
 
@@ -196,7 +197,7 @@ func TestSAR(t *testing.T) {
 func TestAddMod(t *testing.T) {
 	var (
 		evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-		stack = newstack()
+		stack = newStackForTesting()
 		pc    = uint64(0)
 	)
 	tests := []struct {
@@ -222,7 +223,7 @@ func TestAddMod(t *testing.T) {
 		stack.push(z)
 		stack.push(y)
 		stack.push(x)
-		opAddmod(&pc, evm.interpreter, &ScopeContext{nil, stack, nil})
+		opAddmod(&pc, evm, &ScopeContext{nil, stack, nil})
 		actual := stack.pop()
 		if actual.Cmp(expected) != 0 {
 			t.Errorf("Testcase %d, expected  %x, got %x", i, expected, actual)
@@ -239,7 +240,7 @@ func TestWriteExpectedValues(t *testing.T) {
 	getResult := func(args []*twoOperandParams, opFn executionFunc) []TwoOperandTestcase {
 		var (
 			evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-			stack = newstack()
+			stack = newStackForTesting()
 			pc    = uint64(0)
 		)
 		result := make([]TwoOperandTestcase, len(args))
@@ -248,7 +249,7 @@ func TestWriteExpectedValues(t *testing.T) {
 			y := new(uint256.Int).SetBytes(common.Hex2Bytes(param.y))
 			stack.push(x)
 			stack.push(y)
-			opFn(&pc, evm.interpreter, &ScopeContext{nil, stack, nil})
+			opFn(&pc, evm, &ScopeContext{nil, stack, nil})
 			actual := stack.pop()
 			result[i] = TwoOperandTestcase{param.x, param.y, fmt.Sprintf("%064x", actual)}
 		}
@@ -282,23 +283,40 @@ func TestJsonTestcases(t *testing.T) {
 
 func opBenchmark(bench *testing.B, op executionFunc, args ...string) {
 	var (
-		evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-		stack = newstack()
-		scope = &ScopeContext{nil, stack, nil}
+		evm      = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
+		stack    = newStackForTesting()
+		code     = []byte{}
+		opPush32 = makePush(32, 32)
 	)
 	// convert args
 	intArgs := make([]*uint256.Int, len(args))
 	for i, arg := range args {
+		code = append(code, common.LeftPadBytes(common.Hex2Bytes(arg), 32)...)
 		intArgs[i] = new(uint256.Int).SetBytes(common.Hex2Bytes(arg))
 	}
 	pc := uint64(0)
-	for bench.Loop() {
-		for _, arg := range intArgs {
-			stack.push(arg)
+	scope := &ScopeContext{nil, stack, &Contract{Code: code}}
+	start := time.Now()
+	bench.ResetTimer()
+	for i := 0; i < bench.N; i++ {
+		for range len(args) {
+			opPush32(&pc, evm, scope)
+			pc += 32
 		}
-		op(&pc, evm.interpreter, scope)
-		stack.pop()
+		op(&pc, evm, scope)
+		opPop(&pc, evm, scope)
 	}
+	bench.StopTimer()
+	elapsed := uint64(time.Since(start))
+	if elapsed < 1 {
+		elapsed = 1
+	}
+	reqGas := uint64(len(args))*GasFastestStep + GasFastestStep + GasQuickStep
+	gasUsed := reqGas * uint64(bench.N)
+	bench.ReportMetric(float64(reqGas), "gas/op")
+	// Keep it as uint64, multiply 100 to get two digit float later
+	mgasps := (100 * 1000 * gasUsed) / elapsed
+	bench.ReportMetric(float64(mgasps)/100, "mgas/s")
 
 	for i, arg := range args {
 		want := new(uint256.Int).SetBytes(common.Hex2Bytes(arg))
@@ -519,7 +537,7 @@ func BenchmarkOpIsZero(b *testing.B) {
 func TestOpMstore(t *testing.T) {
 	var (
 		evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-		stack = newstack()
+		stack = newStackForTesting()
 		mem   = NewMemory()
 	)
 	mem.Resize(64)
@@ -527,13 +545,13 @@ func TestOpMstore(t *testing.T) {
 	v := "abcdef00000000000000abba000000000deaf000000c0de00100000000133700"
 	stack.push(new(uint256.Int).SetBytes(common.Hex2Bytes(v)))
 	stack.push(new(uint256.Int))
-	opMstore(&pc, evm.interpreter, &ScopeContext{mem, stack, nil})
+	opMstore(&pc, evm, &ScopeContext{mem, stack, nil})
 	if got := common.Bytes2Hex(mem.GetCopy(0, 32)); got != v {
 		t.Fatalf("Mstore fail, got %v, expected %v", got, v)
 	}
 	stack.push(new(uint256.Int).SetUint64(0x1))
 	stack.push(new(uint256.Int))
-	opMstore(&pc, evm.interpreter, &ScopeContext{mem, stack, nil})
+	opMstore(&pc, evm, &ScopeContext{mem, stack, nil})
 	if common.Bytes2Hex(mem.GetCopy(0, 32)) != "0000000000000000000000000000000000000000000000000000000000000001" {
 		t.Fatalf("Mstore failed to overwrite previous value")
 	}
@@ -542,7 +560,7 @@ func TestOpMstore(t *testing.T) {
 func BenchmarkOpMstore(bench *testing.B) {
 	var (
 		evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-		stack = newstack()
+		stack = newStackForTesting()
 		mem   = NewMemory()
 	)
 	mem.Resize(64)
@@ -553,7 +571,7 @@ func BenchmarkOpMstore(bench *testing.B) {
 	for bench.Loop() {
 		stack.push(value)
 		stack.push(memStart)
-		opMstore(&pc, evm.interpreter, &ScopeContext{mem, stack, nil})
+		opMstore(&pc, evm, &ScopeContext{mem, stack, nil})
 	}
 }
 
@@ -561,11 +579,11 @@ func TestOpTstore(t *testing.T) {
 	var (
 		statedb, _   = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 		evm          = NewEVM(BlockContext{}, statedb, params.TestChainConfig, Config{})
-		stack        = newstack()
+		stack        = newStackForTesting()
 		mem          = NewMemory()
 		caller       = common.Address{}
 		to           = common.Address{1}
-		contract     = GetContract(caller, to, new(uint256.Int), 0, nil)
+		contract     = NewContract(caller, to, new(uint256.Int), GasBudget{}, nil)
 		scopeContext = ScopeContext{mem, stack, contract}
 		value        = common.Hex2Bytes("abcdef00000000000000abba000000000deaf000000c0de00100000000133700")
 	)
@@ -581,14 +599,14 @@ func TestOpTstore(t *testing.T) {
 	stack.push(new(uint256.Int).SetBytes(value))
 	// push the location to the stack
 	stack.push(new(uint256.Int))
-	opTstore(&pc, evm.interpreter, &scopeContext)
+	opTstore(&pc, evm, &scopeContext)
 	// there should be no elements on the stack after TSTORE
 	if stack.len() != 0 {
 		t.Fatal("stack wrong size")
 	}
 	// push the location to the stack
 	stack.push(new(uint256.Int))
-	opTload(&pc, evm.interpreter, &scopeContext)
+	opTload(&pc, evm, &scopeContext)
 	// there should be one element on the stack after TLOAD
 	if stack.len() != 1 {
 		t.Fatal("stack wrong size")
@@ -602,7 +620,7 @@ func TestOpTstore(t *testing.T) {
 func BenchmarkOpKeccak256(bench *testing.B) {
 	var (
 		evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-		stack = newstack()
+		stack = newStackForTesting()
 		mem   = NewMemory()
 	)
 	mem.Resize(32)
@@ -612,7 +630,7 @@ func BenchmarkOpKeccak256(bench *testing.B) {
 	for bench.Loop() {
 		stack.push(uint256.NewInt(32))
 		stack.push(start)
-		opKeccak256(&pc, evm.interpreter, &ScopeContext{mem, stack, nil})
+		opKeccak256(&pc, evm, &ScopeContext{mem, stack, nil})
 	}
 }
 
@@ -674,7 +692,7 @@ func TestCreate2Addresses(t *testing.T) {
 		codeHash := crypto.Keccak256(code)
 		address := crypto.CreateAddress2(origin, salt, codeHash)
 		/*
-			stack          := newstack()
+			stack          := newStackForTesting()
 			// salt, but we don't need that for this test
 			stack.push(big.NewInt(int64(len(code)))) //size
 			stack.push(big.NewInt(0)) // memstart
@@ -703,12 +721,12 @@ func TestRandom(t *testing.T) {
 	} {
 		var (
 			evm   = NewEVM(BlockContext{Random: &tt.random}, nil, params.TestChainConfig, Config{})
-			stack = newstack()
+			stack = newStackForTesting()
 			pc    = uint64(0)
 		)
-		opRandom(&pc, evm.interpreter, &ScopeContext{nil, stack, nil})
-		if len(stack.data) != 1 {
-			t.Errorf("Expected one item on stack after %v, got %d: ", tt.name, len(stack.data))
+		opRandom(&pc, evm, &ScopeContext{nil, stack, nil})
+		if have, want := stack.len(), 1; have != want {
+			t.Errorf("test '%v': want %d item(s) on stack, have %d: ", tt.name, have, want)
 		}
 		actual := stack.pop()
 		expected, overflow := uint256.FromBig(new(big.Int).SetBytes(tt.random.Bytes()))
@@ -743,14 +761,14 @@ func TestBlobHash(t *testing.T) {
 	} {
 		var (
 			evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-			stack = newstack()
+			stack = newStackForTesting()
 			pc    = uint64(0)
 		)
 		evm.SetTxContext(TxContext{BlobHashes: tt.hashes})
 		stack.push(uint256.NewInt(tt.idx))
-		opBlobHash(&pc, evm.interpreter, &ScopeContext{nil, stack, nil})
-		if len(stack.data) != 1 {
-			t.Errorf("Expected one item on stack after %v, got %d: ", tt.name, len(stack.data))
+		opBlobHash(&pc, evm, &ScopeContext{nil, stack, nil})
+		if have, want := stack.len(), 1; have != want {
+			t.Errorf("test '%v': want %d item(s) on stack, have %d: ", tt.name, have, want)
 		}
 		actual := stack.pop()
 		expected, overflow := uint256.FromBig(new(big.Int).SetBytes(tt.expect.Bytes()))
@@ -846,7 +864,7 @@ func TestOpMCopy(t *testing.T) {
 	} {
 		var (
 			evm   = NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
-			stack = newstack()
+			stack = newStackForTesting()
 			pc    = uint64(0)
 		)
 		data := common.FromHex(strings.ReplaceAll(tc.pre, " ", ""))
@@ -881,14 +899,14 @@ func TestOpMCopy(t *testing.T) {
 		if dynamicCost, err := gasMcopy(evm, nil, stack, mem, memorySize); err != nil {
 			t.Error(err)
 		} else {
-			haveGas = GasFastestStep + dynamicCost
+			haveGas = GasFastestStep + dynamicCost.RegularGas
 		}
 		// Expand mem
 		if memorySize > 0 {
 			mem.Resize(memorySize)
 		}
 		// Do the copy
-		opMcopy(&pc, evm.interpreter, &ScopeContext{mem, stack, nil})
+		opMcopy(&pc, evm, &ScopeContext{mem, stack, nil})
 		want := common.FromHex(strings.ReplaceAll(tc.want, " ", ""))
 		if have := mem.store; !bytes.Equal(want, have) {
 			t.Errorf("case %d: \nwant: %#x\nhave: %#x\n", i, want, have)
@@ -909,7 +927,7 @@ func TestPush(t *testing.T) {
 
 	scope := &ScopeContext{
 		Memory: nil,
-		Stack:  newstack(),
+		Stack:  newStackForTesting(),
 		Contract: &Contract{
 			Code: code,
 		},
@@ -990,7 +1008,7 @@ func TestOpCLZ(t *testing.T) {
 	}
 	for _, tc := range tests {
 		// prepare a fresh stack and PC
-		stack := newstack()
+		stack := newStackForTesting()
 		pc := uint64(0)
 
 		// parse input
@@ -1000,7 +1018,7 @@ func TestOpCLZ(t *testing.T) {
 		}
 
 		stack.push(val)
-		opCLZ(&pc, evm.interpreter, &ScopeContext{Stack: stack})
+		opCLZ(&pc, evm, &ScopeContext{Stack: stack})
 
 		if gotLen := stack.len(); gotLen != 1 {
 			t.Fatalf("stack length = %d; want 1", gotLen)
@@ -1012,954 +1030,203 @@ func TestOpCLZ(t *testing.T) {
 	}
 }
 
-func TestOpPush1Push1(t *testing.T) {
-	code := []byte{0x60, 0x0a, 0x60, 0x0b}
-
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-	}
-	interpreter1 := &EVMInterpreter{}
-
-	_, err := opPush1Push1(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	stack1Top := stack1.pop()
-	stack1Second := stack1.pop()
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-	}
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	stack2Top := stack2.pop()
-	stack2Second := stack2.pop()
-
-	require.True(t, stack1Top.Eq(&stack2Top))
-	require.True(t, stack1Second.Eq(&stack2Second))
-	require.Equal(t, pc1, pc2)
-}
-
-func TestOpIsZeroPush2(t *testing.T) {
-	code := []byte{0x15, 0x61, 0x0a, 0x0b}
-
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-	}
-	interpreter1 := &EVMInterpreter{}
-
-	_, err := opIsZeroPush2(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-	}
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opIszero(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-}
-
-func TestOpPop2(t *testing.T) {
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{optimized: true},
-		Stack:    stack1,
-	}
-	interpreter1 := &EVMInterpreter{}
-
-	_, err := opPop2(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{},
-		Stack:    stack2,
-	}
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opPop(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPop(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-}
-
-func TestOpDup2MStorePush1Add(t *testing.T) {
-	var err error
-	code := []byte{0x81, 0x52, 0x60, 0x0a, 0x1}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opDup2MStorePush1Add(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opMstore(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpDup1Push4EqPush2(t *testing.T) {
-	var err error
-	code := []byte{0x80, 0x63, 0x04, 0x05, 0x06, 0x07, 0x14, 0x61, 0x08, 0x09}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opDup1Push4EqPush2(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makePush(4, 4)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opEq(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpPush1Push1Push1SHLSub(t *testing.T) {
-	var err error
-	code := []byte{0x60, 0x01, 0x60, 0x05, 0x60, 0x07, 0x1b, 0x3}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opPush1Push1Push1SHLSub(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSHL(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSub(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpAndDup2AddSwap1Dup2LT(t *testing.T) {
-	var err error
-	code := []byte{0x16, 0x81, 0x1, 0x90, 0x81, 0x10}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opAndDup2AddSwap1Dup2LT(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opAnd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opLt(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
-	var err error
-	code := []byte{0x90, 0x60, 0x1, 0x80, 0x19, 0x91, 0x1, 0x16, 0x81, 0x1, 0x90, 0x81, 0x10}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opNot(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAnd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opLt(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LTOverflow(t *testing.T) {
-	var err error
-	code := []byte{0x90, 0x60, 0x0, 0x80, 0x19, 0x91, 0x1, 0x16, 0x81, 0x1, 0x90, 0x81, 0x10}
-	maxMinus10 := new(uint256.Int).SetAllOne()
-	maxMinus10.Sub(maxMinus10, uint256.NewInt(10))
-
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(maxMinus10.Clone())
-	stack1.push(uint256.NewInt(100))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(maxMinus10.Clone())
-	stack2.push(uint256.NewInt(100))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opNot(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAnd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opLt(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpPush1CalldataloadPush1ShrDup1Push4GtPush2(t *testing.T) {
-	var err error
-	code := []byte{0x60, 0x10, 0x35, 0x60, 0x11, 0x1c, 0x80, 0x63, 0x12, 0x13, 0x14, 0x15, 0x11, 0x61, 0x16, 0x17}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opPush1CalldataloadPush1ShrDup1Push4GtPush2(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opCallDataLoad(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSHR(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makePush(4, 4)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opGt(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makePush(2, 2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpDup11MulDup3SubMulDup1(t *testing.T) {
-	var err error
-	code := []byte{0x8a, 0x2, 0x82, 0x3, 0x2, 0x80}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opDup11MulDup3SubMulDup1(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = makeDup(11)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opMul(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(3)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSub(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opMul(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpSubSLTIsZeroPush2(t *testing.T) {
-	var err error
-	code := []byte{0x3, 0x12, 0x15, 0x61, 0x2, 0x80}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opSubSLTIsZeroPush2(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opSub(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSlt(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opIszero(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpSHRSHRDup1MulDup1(t *testing.T) {
-	var err error
-	code := []byte{0x1c, 0x1c, 0x80, 0x2, 0x80}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opSHRSHRDup1MulDup1(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opSHR(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSHR(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opMul(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(1)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-func TestOpSwap2Swap1Dup3SubSwap2Dup3GtPush2(t *testing.T) {
-	var err error
-	code := []byte{0x91, 0x90, 0x82, 0x3, 0x91, 0x82, 0x11, 0x61, 0x1, 0x2}
-	pc1 := uint64(0)
-	stack1 := new(Stack)
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(1))
-	stack1.push(new(uint256.Int).SetUint64(2))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	stack1.push(new(uint256.Int).SetUint64(3))
-	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, optimized: true, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack1,
-		Memory:   NewMemory(),
-	}
-	scope1.Memory.Resize(34)
-	interpreter1 := &EVMInterpreter{}
-
-	_, err = opSwap2Swap1Dup3SubSwap2Dup3GtPush2(&pc1, interpreter1, scope1)
-	require.NoError(t, err)
-
-	pc2 := uint64(0)
-	stack2 := new(Stack)
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(1))
-	stack2.push(new(uint256.Int).SetUint64(2))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	stack2.push(new(uint256.Int).SetUint64(3))
-	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
-		Stack:    stack2,
-		Memory:   NewMemory(),
-	}
-	scope2.Memory.Resize(34)
-	interpreter2 := &EVMInterpreter{}
-
-	_, err = opSwap2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(3)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSub(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(3)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opGt(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opPush2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-
-	require.Equal(t, stack1.len(), stack2.len())
-	for stack1.len() != 0 {
-		require.Equal(t, stack1.pop(), stack2.pop())
-	}
-	require.Equal(t, pc1, pc2)
-	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
-}
-
-// TestSuperInstructionStackBoundary verifies that every super-instruction in
-// createOptimizedOpcodeTable has the same minStack and maxStack as the tightest
-// intermediate constraint across its raw opcode sequence. A super-instruction
-// skips per-step stack checks, so its bounds must reflect the strictest
-// individual requirement; otherwise execution can diverge from the raw sequence
-// at stack boundaries (underflow or overflow), which is a consensus bug.
-//
-// For each raw op at cumulative stack delta d, the constraint on the initial
-// stack depth s is:
-//
-//	minStack[op] - d <= s <= maxStack[op] - d
-//
-// The tightest bounds are the max of all lower constraints and the min of all
-// upper constraints across the sequence.
-func TestSuperInstructionStackBoundary(t *testing.T) {
-	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
-	baseTbl := newCancunInstructionSet()
-	optTbl := createOptimizedOpcodeTable(copyJumpTable(&baseTbl))
-
-	type seqEntry struct {
-		name    string
-		superOp OpCode
-		rawOps  []OpCode
+func TestEIP8024_Execution(t *testing.T) {
+	evm := NewEVM(BlockContext{}, nil, params.TestChainConfig, Config{})
+
+	tests := []struct {
+		name        string
+		codeHex     string
+		wantErr     error
+		wantOpcode  OpCode
+		wantOperand *byte
+		wantVals    []uint64
+	}{
+		{
+			name:    "DUPN",
+			codeHex: "60016000808080808080808080808080808080e680",
+			wantVals: []uint64{
+				1,
+				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				1,
+			},
+		},
+		{
+			name:    "SWAPN",
+			codeHex: "600160008080808080808080808080808080806002e780",
+			wantVals: []uint64{
+				1,
+				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				2,
+			},
+		},
+		{
+			name:    "EXCHANGE_MISSING_IMMEDIATE",
+			codeHex: "600260008080808080600160008080808080808080e8",
+			wantVals: []uint64{
+				0, 0, 0, 0, 0, 0, 0, 0, 0,
+				2, // 10th from top
+				0, 0, 0, 0, 0, 0,
+				1, // bottom
+			},
+		},
+		{
+			name:     "EXCHANGE",
+			codeHex:  "600060016002e88e",
+			wantVals: []uint64{2, 0, 1},
+		},
+		{
+			name:    "EXCHANGE",
+			codeHex: "600080808080808080808080808080808080808080808080808080808060016002e88f",
+			wantVals: []uint64{
+				2,
+				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				1,
+			},
+		},
+		{
+			name:        "INVALID_DUPN_LOW",
+			codeHex:     "e65b",
+			wantErr:     &ErrInvalidOpCode{},
+			wantOpcode:  DUPN,
+			wantOperand: ptrToByte(0x5b),
+		},
+		{
+			name:        "INVALID_SWAPN_LOW",
+			codeHex:     "e75b",
+			wantErr:     &ErrInvalidOpCode{},
+			wantOpcode:  SWAPN,
+			wantOperand: ptrToByte(0x5b),
+		},
+		{
+			name:    "JUMP_OVER_INVALID_DUPN",
+			codeHex: "600456e65b",
+			wantErr: nil,
+		},
+		{
+			name:     "EXCHANGE",
+			codeHex:  "60008080e88e15",
+			wantVals: []uint64{1, 0, 0},
+		},
+		{
+			name:        "INVALID_EXCHANGE",
+			codeHex:     "e852",
+			wantErr:     &ErrInvalidOpCode{},
+			wantOpcode:  EXCHANGE,
+			wantOperand: ptrToByte(0x52),
+		},
+		{
+			name:       "UNDERFLOW_DUPN",
+			codeHex:    "6000808080808080808080808080808080e680",
+			wantErr:    &ErrStackUnderflow{},
+			wantOpcode: DUPN,
+		},
+		// Additional test cases
+		{
+			name:     "PC_INCREMENT",
+			codeHex:  "600060006000e88e15",
+			wantVals: []uint64{1, 0, 0},
+		},
 	}
 
-	// Ordered as they appear in createOptimizedOpcodeTable, excluding Nop.
-	cases := []seqEntry{
-		{"AndSwap1PopSwap2Swap1", AndSwap1PopSwap2Swap1, []OpCode{AND, SWAP1, POP, SWAP2, SWAP1}},
-		{"Swap2Swap1PopJump", Swap2Swap1PopJump, []OpCode{SWAP2, SWAP1, POP, JUMP}},
-		{"Swap1PopSwap2Swap1", Swap1PopSwap2Swap1, []OpCode{SWAP1, POP, SWAP2, SWAP1}},
-		{"PopSwap2Swap1Pop", PopSwap2Swap1Pop, []OpCode{POP, SWAP2, SWAP1, POP}},
-		{"Push2Jump", Push2Jump, []OpCode{PUSH2, JUMP}},
-		{"Push2JumpI", Push2JumpI, []OpCode{PUSH2, JUMPI}},
-		{"Push1Push1", Push1Push1, []OpCode{PUSH1, PUSH1}},
-		{"Push1Add", Push1Add, []OpCode{PUSH1, ADD}},
-		{"Push1Shl", Push1Shl, []OpCode{PUSH1, SHL}},
-		{"Push1Dup1", Push1Dup1, []OpCode{PUSH1, DUP1}},
-		{"Swap1Pop", Swap1Pop, []OpCode{SWAP1, POP}},
-		{"PopJump", PopJump, []OpCode{POP, JUMP}},
-		{"Pop2", Pop2, []OpCode{POP, POP}},
-		{"Swap2Swap1", Swap2Swap1, []OpCode{SWAP2, SWAP1}},
-		{"Swap2Pop", Swap2Pop, []OpCode{SWAP2, POP}},
-		{"Dup2LT", Dup2LT, []OpCode{DUP2, LT}},
-		{"JumpIfZero", JumpIfZero, []OpCode{ISZERO, PUSH2, JUMPI}},
-		{"IsZeroPush2", IsZeroPush2, []OpCode{ISZERO, PUSH2}},
-		{"Dup2MStorePush1Add", Dup2MStorePush1Add, []OpCode{DUP2, MSTORE, PUSH1, ADD}},
-		{"Dup1Push4EqPush2", Dup1Push4EqPush2, []OpCode{DUP1, PUSH4, EQ, PUSH2}},
-		{"Push1CalldataloadPush1ShrDup1Push4GtPush2", Push1CalldataloadPush1ShrDup1Push4GtPush2,
-			[]OpCode{PUSH1, CALLDATALOAD, PUSH1, SHR, DUP1, PUSH4, GT, PUSH2}},
-		{"Push1Push1Push1SHLSub", Push1Push1Push1SHLSub, []OpCode{PUSH1, PUSH1, PUSH1, SHL, SUB}},
-		{"AndDup2AddSwap1Dup2LT", AndDup2AddSwap1Dup2LT, []OpCode{AND, DUP2, ADD, SWAP1, DUP2, LT}},
-		{"Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT", Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
-			[]OpCode{SWAP1, PUSH1, DUP1, NOT, SWAP2, ADD, AND, DUP2, ADD, SWAP1, DUP2, LT}},
-		{"Dup3And", Dup3And, []OpCode{DUP3, AND}},
-		{"Swap2Swap1Dup3SubSwap2Dup3GtPush2", Swap2Swap1Dup3SubSwap2Dup3GtPush2,
-			[]OpCode{SWAP2, SWAP1, DUP3, SUB, SWAP2, DUP3, GT, PUSH2}},
-		{"Swap1Dup2", Swap1Dup2, []OpCode{SWAP1, DUP2}},
-		{"SHRSHRDup1MulDup1", SHRSHRDup1MulDup1, []OpCode{SHR, SHR, DUP1, MUL, DUP1}},
-		{"Swap3PopPopPop", Swap3PopPopPop, []OpCode{SWAP3, POP, POP, POP}},
-		{"SubSLTIsZeroPush2", SubSLTIsZeroPush2, []OpCode{SUB, SLT, ISZERO, PUSH2}},
-		{"Dup11MulDup3SubMulDup1", Dup11MulDup3SubMulDup1, []OpCode{DUP11, MUL, DUP3, SUB, MUL, DUP1}},
-	}
-
-	for _, tc := range cases {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Simulate the raw sequence to find the tightest stack bounds.
-			// delta tracks the cumulative stack depth change from the initial depth.
-			// For each op, translate its per-step constraint to the initial depth:
-			//   lower: initial >= baseOp.minStack - delta  (take maximum across steps)
-			//   upper: initial <= baseOp.maxStack - delta  (take minimum across steps)
-			tightestMinStack := 0                             // sentinel: smaller than any real constraint
-			tightestMaxStack := int(params.StackLimit) + 1024 // sentinel: larger than any real constraint
-			delta := 0
-			for _, op := range tc.rawOps {
-				baseOp := baseTbl[op]
-				require.NotNilf(t, baseOp, "base op %s not found", op)
-
-				if c := baseOp.minStack - delta; c > tightestMinStack {
-					tightestMinStack = c
+			code := common.FromHex(tc.codeHex)
+			stack := newStackForTesting()
+			pc := uint64(0)
+			scope := &ScopeContext{Stack: stack, Contract: &Contract{Code: code}}
+			var err error
+			var errOp OpCode
+			for pc < uint64(len(code)) && err == nil {
+				op := code[pc]
+				switch OpCode(op) {
+				case STOP:
+					return
+				case PUSH1:
+					_, err = opPush1(&pc, evm, scope)
+				case DUP1:
+					dup1 := makeDup(1)
+					_, err = dup1(&pc, evm, scope)
+				case JUMP:
+					_, err = opJump(&pc, evm, scope)
+				case JUMPDEST:
+					_, err = opJumpdest(&pc, evm, scope)
+				case ISZERO:
+					_, err = opIszero(&pc, evm, scope)
+				case PUSH0:
+					_, err = opPush0(&pc, evm, scope)
+				case DUPN:
+					_, err = opDupN(&pc, evm, scope)
+				case SWAPN:
+					_, err = opSwapN(&pc, evm, scope)
+				case EXCHANGE:
+					_, err = opExchange(&pc, evm, scope)
+				default:
+					t.Fatalf("unexpected opcode %s at pc=%d", OpCode(op), pc)
 				}
-				if c := baseOp.maxStack - delta; c < tightestMaxStack {
-					tightestMaxStack = c
+				if err != nil {
+					errOp = OpCode(op)
 				}
-
-				// Advance delta by net stack effect (pushes - pops).
-				// Derive pushes from: maxStack = StackLimit + pops - pushes
-				pops := baseOp.minStack
-				pushes := int(params.StackLimit) + pops - baseOp.maxStack
-				delta += pushes - pops
+				pc++
 			}
-
-			optOp := optTbl[tc.superOp]
-			require.NotNilf(t, optOp, "optimized op %s not found", tc.superOp)
-
-			if optOp.minStack != tightestMinStack {
-				t.Errorf("minStack %d != tightest raw constraint %d; super-instruction is more permissive than raw sequence at stack lower boundary",
-					optOp.minStack, tightestMinStack)
+			if tc.wantErr != nil {
+				// Fail because we wanted an error, but didn't get one.
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				// Fail if the wrong opcode threw an error.
+				if errOp != tc.wantOpcode {
+					t.Fatalf("expected error from opcode %s, got %s", tc.wantOpcode, errOp)
+				}
+				// Fail if we don't get the error we expect.
+				switch tc.wantErr.(type) {
+				case *ErrInvalidOpCode:
+					var got *ErrInvalidOpCode
+					if !errors.As(err, &got) {
+						t.Fatalf("expected ErrInvalidOpCode, got %v", err)
+					}
+					if got.opcode != tc.wantOpcode {
+						t.Fatalf("ErrInvalidOpCode.opcode=%s; want %s", got.opcode, tc.wantOpcode)
+					}
+					if tc.wantOperand != nil {
+						if got.operand == nil {
+							t.Fatalf("ErrInvalidOpCode.operand=nil; want 0x%02x", *tc.wantOperand)
+						}
+						if *got.operand != *tc.wantOperand {
+							t.Fatalf("ErrInvalidOpCode.operand=0x%02x; want 0x%02x", *got.operand, *tc.wantOperand)
+						}
+					}
+				case *ErrStackUnderflow:
+					var want *ErrStackUnderflow
+					if !errors.As(err, &want) {
+						t.Fatalf("expected ErrStackUnderflow, got %v", err)
+					}
+				default:
+					t.Fatalf("unsupported wantErr type %T", tc.wantErr)
+				}
+				return
 			}
-			if optOp.maxStack != tightestMaxStack {
-				t.Errorf("maxStack %d != tightest raw constraint %d; super-instruction is more permissive than raw sequence at stack upper boundary",
-					optOp.maxStack, tightestMaxStack)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-
-			// log.Debug(tc.name, "minStack", tightestMinStack, "maxStack", tightestMaxStack)
+			got := make([]uint64, 0, stack.len())
+			data := stack.Data()
+			for i := len(data) - 1; i >= 0; i-- {
+				got = append(got, data[i].Uint64())
+			}
+			if len(got) != len(tc.wantVals) {
+				t.Fatalf("stack len=%d; want %d", len(got), len(tc.wantVals))
+			}
+			for i := range got {
+				if got[i] != tc.wantVals[i] {
+					t.Fatalf("[%s] stack[%d]=%d; want %d\nstack=%v",
+						tc.name, i, got[i], tc.wantVals[i], got)
+				}
+			}
 		})
 	}
+}
+
+func ptrToByte(v byte) *byte {
+	b := v
+	return &b
 }

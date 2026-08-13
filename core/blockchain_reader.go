@@ -65,7 +65,7 @@ func (bc *BlockChain) CurrentFinalBlock() *types.Header {
 		return p.GetFinalizedHeader(bc, currentHeader)
 	}
 
-	return nil
+	return bc.currentFinalBlock.Load()
 }
 
 // HighestNotifiedFinal retrieves the highest finalized block that has been notified.
@@ -350,6 +350,14 @@ func (bc *BlockChain) GetReceiptsRLP(hash common.Hash) rlp.RawValue {
 	return rawdb.ReadReceiptsRLP(bc.db, hash, number)
 }
 
+func (bc *BlockChain) GetAccessListRLP(hash common.Hash) rlp.RawValue {
+	number, ok := rawdb.ReadHeaderNumber(bc.db, hash)
+	if !ok {
+		return nil
+	}
+	return rawdb.ReadAccessListRLP(bc.db, hash, number)
+}
+
 // GetUnclesInChain retrieves all the uncles from a given block backwards until
 // a specific distance is reached.
 func (bc *BlockChain) GetUnclesInChain(block *types.Block, length int) []*types.Header {
@@ -443,7 +451,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 		}
 		return found
 	}
-	_, err := bc.statedb.OpenTrie(hash)
+	_, err := bc.triedb.NodeReader(hash)
 	return err == nil
 }
 
@@ -475,59 +483,86 @@ func (bc *BlockChain) stateRecoverable(root common.Hash) bool {
 func (bc *BlockChain) ContractCodeWithPrefix(hash common.Hash) []byte {
 	// TODO(rjl493456442) The associated account address is also required
 	// in Verkle scheme. Fix it once snap-sync is supported for Verkle.
-	return bc.statedb.ContractCodeWithPrefix(common.Address{}, hash)
+	return bc.codedb.Reader().CodeWithPrefix(common.Address{}, hash)
 }
 
 // State returns a new mutable state based on the current HEAD block.
 func (bc *BlockChain) State() (*state.StateDB, error) {
-	return bc.StateAt(bc.CurrentBlock().Root)
-}
-
-// StateAt returns a new mutable state based on a particular point in time.
-func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
-	stateDb, err := state.New(root, bc.statedb)
-	if err != nil {
-		return nil, err
-	}
-
-	// If there's no trie and the specified snapshot is not available, getting
-	// any state will by default return nil.
-	// Instead of that, it will be more useful to return an error to indicate
-	// the state is not available.
-	if stateDb.NoTries() && stateDb.GetSnap() == nil {
-		return nil, errors.New("state is not available")
-	}
-
-	return stateDb, nil
+	return bc.StateAt(bc.CurrentBlock())
 }
 
 // StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
 func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error) {
-	_, process, err := bc.statedb.ReadersWithCacheStats(root)
-	if err != nil {
-		return nil, err
-	}
-	stateDb, err := state.NewWithReader(root, bc.statedb, process)
-	if err != nil {
-		return nil, err
-	}
-
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.
 	// Instead of that, it will be more useful to return an error to indicate
 	// the state is not available.
-	if stateDb.NoTries() && stateDb.GetSnap() == nil {
+	if bc.NoTries() && bc.snaps == nil {
 		return nil, errors.New("state is not available")
+	}
+
+	mptDbImpl := state.NewMPTDatabase(bc.triedb, bc.codedb)
+	mptDb := mptDbImpl.WithSnapshot(bc.snaps)
+	_, process, err := mptDbImpl.ReadersWithCacheStats(root)
+	if err != nil {
+		return nil, err
+	}
+	stateDb, err := state.NewWithReader(root, mptDb, process)
+	if err != nil {
+		return nil, err
 	}
 
 	return stateDb, nil
 }
 
-// HistoricState returns a historic state specified by the given root.
+func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
+	// If there's no trie and the specified snapshot is not available, getting
+	// any state will by default return nil.
+	// Instead of that, it will be more useful to return an error to indicate
+	// the state is not available.
+	if bc.NoTries() && bc.snaps == nil {
+		return nil, errors.New("state is not available")
+	}
+
+	if bc.chainConfig.IsUBT(header.Number, header.Time) {
+		return state.New(header.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
+	}
+	return state.New(header.Root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
+}
+
+// StateAtForkBoundary returns a new mutable state based on the parent state
+// and the given header, handling the transition across the UBT fork.
+func (bc *BlockChain) StateAtForkBoundary(parent *types.Header, header *types.Header) (*state.StateDB, error) {
+	// If there's no trie and the specified snapshot is not available, getting
+	// any state will by default return nil.
+	// Instead of that, it will be more useful to return an error to indicate
+	// the state is not available.
+	if bc.NoTries() && bc.snaps == nil {
+		return nil, errors.New("state is not available")
+	}
+
+	// The parent is already in the UBT fork.
+	if bc.chainConfig.IsUBT(parent.Number, parent.Time) {
+		return state.New(parent.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
+	}
+	// The current block is the first block in the UBT fork
+	// (i.e., the parent is the last MPT block).
+	if bc.chainConfig.IsUBT(header.Number, header.Time) {
+		// TODO(gballet): register chain context if needed
+		return state.New(parent.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
+	}
+	// Both the parent and current block are in the MPT fork.
+	return state.New(parent.Root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
+}
+
+// HistoricState returns a historic state specified by the given header.
 // Live states are not available and won't be served, please use `State`
 // or `StateAt` instead.
-func (bc *BlockChain) HistoricState(root common.Hash) (*state.StateDB, error) {
-	return state.New(root, state.NewHistoricDatabase(bc.db, bc.triedb))
+func (bc *BlockChain) HistoricState(header *types.Header) (*state.StateDB, error) {
+	if bc.chainConfig.IsUBT(header.Number, header.Time) {
+		return nil, errors.New("historical state over ubt is not yet supported")
+	}
+	return state.New(header.Root, state.NewHistoricDatabase(bc.triedb, bc.codedb))
 }
 
 // Config retrieves the chain's fork configuration.
@@ -549,11 +584,6 @@ func (bc *BlockChain) Validator() Validator {
 // Processor returns the current processor.
 func (bc *BlockChain) Processor() Processor {
 	return bc.processor
-}
-
-// StateCache returns the caching database underpinning the blockchain instance.
-func (bc *BlockChain) StateCache() state.Database {
-	return bc.statedb
 }
 
 // GasLimit returns the gas limit of the current HEAD block.
@@ -585,7 +615,7 @@ func (bc *BlockChain) TxIndexProgress() (TxIndexProgress, error) {
 }
 
 // StateIndexProgress returns the historical state indexing progress.
-func (bc *BlockChain) StateIndexProgress() (uint64, error) {
+func (bc *BlockChain) StateIndexProgress() (uint64, uint64, error) {
 	return bc.triedb.IndexProgress()
 }
 
@@ -602,6 +632,11 @@ func (bc *BlockChain) HistoryPruningCutoff() (uint64, common.Hash) {
 // TrieDB retrieves the low level trie database used for data storage.
 func (bc *BlockChain) TrieDB() *triedb.Database {
 	return bc.triedb
+}
+
+// CodeDB retrieves the low level contract code database used for data storage.
+func (bc *BlockChain) CodeDB() *state.CodeDB {
+	return bc.codedb
 }
 
 // HeaderChain returns the underlying header chain.
@@ -657,4 +692,14 @@ func (bc *BlockChain) AncientTail() (uint64, error) {
 		return 0, err
 	}
 	return tail, nil
+}
+
+// SubscribeNewPayloadEvent registers a subscription for NewPayloadEvent.
+func (bc *BlockChain) SubscribeNewPayloadEvent(ch chan<- NewPayloadEvent) event.Subscription {
+	return bc.scope.Track(bc.newPayloadFeed.Subscribe(ch))
+}
+
+// SendNewPayloadEvent sends a NewPayloadEvent to subscribers.
+func (bc *BlockChain) SendNewPayloadEvent(ev NewPayloadEvent) {
+	bc.newPayloadFeed.Send(ev)
 }

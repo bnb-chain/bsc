@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -43,7 +42,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -105,7 +103,6 @@ type Server struct {
 	discmix   *enode.FairMix
 	dialsched *dialScheduler
 
-	forkFilter     forkid.Filter
 	peerNameFilter []*regexp.Regexp
 
 	// This is read by the NAT port mapping loop.
@@ -496,24 +493,6 @@ func (srv *Server) setupDiscovery() error {
 		return err
 	}
 
-	// ENR filter function
-	var f discover.NodeFilterFunc
-	if srv.Config.EnableENRFilter {
-		f = func(r *enr.Record) bool {
-			if srv.forkFilter == nil {
-				return true
-			}
-			var eth struct {
-				ForkID forkid.ID
-				Tail   []rlp.RawValue `rlp:"tail"`
-			}
-			if r.Load(enr.WithEntry("eth", &eth)) != nil {
-				return false
-			}
-			return srv.forkFilter(eth.ForkID) == nil
-		}
-	}
-
 	var (
 		sconn     discover.UDPConn = conn
 		unhandled chan discover.ReadPacket
@@ -528,12 +507,11 @@ func (srv *Server) setupDiscovery() error {
 	// Start discovery services.
 	if srv.Config.DiscoveryV4 {
 		cfg := discover.Config{
-			PrivateKey:     srv.PrivateKey,
-			NetRestrict:    srv.NetRestrict,
-			Bootnodes:      srv.BootstrapNodes,
-			Unhandled:      unhandled,
-			Log:            srv.log,
-			FilterFunction: f,
+			PrivateKey:  srv.PrivateKey,
+			NetRestrict: srv.NetRestrict,
+			Bootnodes:   srv.BootstrapNodes,
+			Unhandled:   unhandled,
+			Log:         srv.log,
 		}
 		ntab, err := discover.ListenV4(conn, srv.localnode, cfg)
 		if err != nil {
@@ -543,11 +521,10 @@ func (srv *Server) setupDiscovery() error {
 	}
 	if srv.Config.DiscoveryV5 {
 		cfg := discover.Config{
-			PrivateKey:     srv.PrivateKey,
-			NetRestrict:    srv.NetRestrict,
-			Bootnodes:      srv.BootstrapNodesV5,
-			Log:            srv.log,
-			FilterFunction: f,
+			PrivateKey:  srv.PrivateKey,
+			NetRestrict: srv.NetRestrict,
+			Bootnodes:   srv.BootstrapNodesV5,
+			Log:         srv.log,
 		}
 		srv.discv5, err = discover.ListenV5(sconn, srv.localnode, cfg)
 		if err != nil {
@@ -608,10 +585,6 @@ func (srv *Server) setupDialScheduler() {
 
 func (srv *Server) MaxInboundConns() int {
 	return srv.MaxPeers - srv.MaxDialedConns()
-}
-
-func (srv *Server) SetFilter(f forkid.Filter) {
-	srv.forkFilter = f
 }
 
 func (srv *Server) MaxDialedConns() (limit int) {
@@ -754,8 +727,11 @@ running:
 				// Ensure that the trusted flag is set before checking against MaxPeers.
 				c.flags |= trustedConn
 			}
-			// TODO: track in-progress inbound node IDs (pre-Peer) to avoid dialing them.
-			c.cont <- srv.postHandshakeChecks(peers, inboundCount, c)
+			err := srv.postHandshakeChecks(peers, inboundCount, c)
+			if err == nil && c.flags&inboundConn != 0 {
+				srv.dialsched.inboundPending(c.node.ID())
+			}
+			c.cont <- err
 
 		case c := <-srv.checkpointAddPeer:
 			// At this point the connection is past the protocol handshake.
@@ -955,6 +931,11 @@ func (srv *Server) checkInboundConn(remoteIP netip.Addr) error {
 // or the handshakes have failed.
 func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) error {
 	c := &conn{fd: fd, flags: flags, cont: make(chan error)}
+	defer func() {
+		if c.is(inboundConn) && c.node != nil {
+			srv.dialsched.inboundCompleted(c.node.ID())
+		}
+	}()
 	if dialDest == nil {
 		c.transport = srv.newTransport(fd, nil)
 	} else {

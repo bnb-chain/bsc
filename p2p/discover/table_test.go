@@ -29,16 +29,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func TestTable_pingReplace(t *testing.T) {
@@ -297,7 +293,7 @@ func TestTable_addInboundNode(t *testing.T) {
 	newrec := n2.Record()
 	newrec.Set(enr.IP{99, 99, 99, 99})
 	n2v2 := enode.SignNull(newrec, n2.ID())
-	tab.addInboundNodeSync(n2v2)
+	tab.addInboundNode(n2v2)
 	checkBucketContent(t, tab, []*enode.Node{n1, n2v2})
 
 	// Try updating n2 without sequence number change. The update is accepted
@@ -306,7 +302,7 @@ func TestTable_addInboundNode(t *testing.T) {
 	newrec.Set(enr.IP{100, 100, 100, 100})
 	newrec.SetSeq(n2.Seq())
 	n2v3 := enode.SignNull(newrec, n2.ID())
-	tab.addInboundNodeSync(n2v3)
+	tab.addInboundNode(n2v3)
 	checkBucketContent(t, tab, []*enode.Node{n1, n2v3})
 }
 
@@ -350,13 +346,13 @@ func TestTable_addInboundNodeUpdateV4Accept(t *testing.T) {
 	// Add a v4 node.
 	key, _ := crypto.HexToECDSA("dd3757a8075e88d0f2b1431e7d3c5b1562e1c0aab9643707e8cbfcc8dae5cfe3")
 	n1 := enode.NewV4(&key.PublicKey, net.IP{88, 77, 66, 1}, 9000, 9000)
-	tab.addInboundNodeSync(n1)
+	tab.addInboundNode(n1)
 	checkBucketContent(t, tab, []*enode.Node{n1})
 
 	// Add an updated version with changed IP.
 	// The update will be accepted because it is inbound.
 	n1v2 := enode.NewV4(&key.PublicKey, net.IP{99, 99, 99, 99}, 9000, 9000)
-	tab.addInboundNodeSync(n1v2)
+	tab.addInboundNode(n1v2)
 	checkBucketContent(t, tab, []*enode.Node{n1v2})
 }
 
@@ -437,41 +433,6 @@ func TestTable_revalidateSyncRecord(t *testing.T) {
 	}
 }
 
-// This test checks that ENR filtering is working properly
-func TestTable_filterNode(t *testing.T) {
-	// Create ENR filter
-	type eth struct {
-		ForkID forkid.ID
-		Tail   []rlp.RawValue `rlp:"tail"`
-	}
-
-	enrFilter, _ := ParseEthFilter("bsc")
-
-	// Check test ENR record
-	var r1 enr.Record
-	r1.Set(enr.WithEntry("foo", "bar"))
-	if enrFilter(&r1) {
-		t.Fatalf("filterNode doesn't work correctly for entry")
-	}
-	t.Logf("Check test ENR record - passed")
-
-	// Check wrong genesis ENR record
-	var r2 enr.Record
-	r2.Set(enr.WithEntry("eth", eth{ForkID: forkid.NewID(params.BSCChainConfig, core.DefaultChapelGenesisBlock().ToBlock(), uint64(0), uint64(0))}))
-	if enrFilter(&r2) {
-		t.Fatalf("filterNode doesn't work correctly for wrong genesis entry")
-	}
-	t.Logf("Check wrong genesis ENR record - passed")
-
-	// Check correct genesis ENR record
-	var r3 enr.Record
-	r3.Set(enr.WithEntry("eth", eth{ForkID: forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))}))
-	if !enrFilter(&r3) {
-		t.Fatalf("filterNode doesn't work correctly for correct genesis entry")
-	}
-	t.Logf("Check correct genesis ENR record - passed")
-}
-
 func TestNodesPush(t *testing.T) {
 	var target enode.ID
 	n1 := nodeAtDistance(target, 255, intIP(1))
@@ -528,6 +489,66 @@ func quickcfg() *quick.Config {
 		MaxCount: 5000,
 		Rand:     rand.New(rand.NewSource(time.Now().Unix())),
 	}
+}
+
+func TestSetFallbackNodes_DNSHostname(t *testing.T) {
+	// Create a node with a DNS hostname but no IP, simulating an enode URL
+	// like enode://<key>@localhost:30303.
+	key := newkey()
+	node := enode.NewV4(&key.PublicKey, nil, 30303, 30303).WithHostname("localhost")
+
+	// Verify the node has a hostname but no valid IP.
+	if node.Hostname() != "localhost" {
+		t.Fatal("expected hostname to be set")
+	}
+	if node.IPAddr().IsValid() {
+		t.Fatal("expected no IP address")
+	}
+
+	// Create a table and set the hostname node as a bootnode.
+	// This should resolve the hostname to an IP address.
+	db, _ := enode.OpenDB(t.TempDir() + "/node.db")
+	defer db.Close()
+
+	cfg := Config{Log: testlog.Logger(t, log.LvlTrace)}
+	cfg = cfg.withDefaults()
+	tab := &Table{
+		cfg:             cfg,
+		log:             cfg.Log,
+		refreshReq:      make(chan chan struct{}),
+		revalResponseCh: make(chan revalidationResponse),
+		addNodeCh:       make(chan addNodeOp),
+		addNodeHandled:  make(chan bool),
+		trackRequestCh:  make(chan trackRequestOp),
+		initDone:        make(chan struct{}),
+		closeReq:        make(chan struct{}),
+		closed:          make(chan struct{}),
+		ips:             netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
+	}
+	for i := range tab.buckets {
+		tab.buckets[i] = &bucket{
+			index: i,
+			ips:   netutil.DistinctNetSet{Subnet: bucketSubnet, Limit: bucketIPLimit},
+		}
+	}
+
+	err := tab.setFallbackNodes([]*enode.Node{node})
+	if err != nil {
+		t.Fatalf("setFallbackNodes failed: %v", err)
+	}
+	if len(tab.nursery) != 1 {
+		t.Fatalf("expected 1 nursery node, got %d", len(tab.nursery))
+	}
+
+	// The resolved node should have a valid IP and retain the hostname.
+	resolved := tab.nursery[0]
+	if !resolved.IPAddr().IsValid() {
+		t.Fatal("expected resolved node to have a valid IP")
+	}
+	if resolved.Hostname() != "localhost" {
+		t.Errorf("expected hostname to be preserved, got %q", resolved.Hostname())
+	}
+	t.Logf("resolved localhost to %v", resolved.IPAddr())
 }
 
 // This test checks that waitForNodes does not block addFoundNode.

@@ -24,7 +24,10 @@ type Label struct {
 // GetOrRegisterLabel returns an existing Label or constructs and registers a
 // new Label.
 func GetOrRegisterLabel(name string, r Registry) *Label {
-	return getOrRegister(name, NewLabel, r)
+	if r == nil {
+		r = DefaultRegistry
+	}
+	return r.GetOrRegister(name, func() any { return NewLabel() }).(*Label)
 }
 
 // NewLabel constructs a new Label.

@@ -21,3 +21,10 @@ We will review the request, and once it is approved, the faucet tool will start 
 - icon: ./DIN.png
 - addr: https://testnet.bscscan.com/address/0xb8b40FcC5B4519Dba0E07Ac8821884CE90BdE677
 - fundTx: [0x17fc4c1db133830c7c146a0d41ca1df31cb446989ec11b382d58bb6176d6fde3](https://testnet.bscscan.com/tx/0x17fc4c1db133830c7c146a0d41ca1df31cb446989ec11b382d58bb6176d6fde3)
+
+## 2.3.United Stables
+- symbol: U
+- amount: 10000000000000000000
+- icon: ./U.png
+- addr: https://testnet.bscscan.com/address/0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565
+- fundTx: [0x6f2ca2610ef4e4d71eca4d6214fe2c978e954c2647152fb9c46518c86f68b2e0](https://testnet.bscscan.com/tx/0x6f2ca2610ef4e4d71eca4d6214fe2c978e954c2647152fb9c46518c86f68b2e0)

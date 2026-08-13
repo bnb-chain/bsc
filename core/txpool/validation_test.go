@@ -22,6 +22,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -180,5 +181,39 @@ func TestValidateBlobTx_InvalidProof(t *testing.T) {
 
 	if err := ValidateBlobTx(tx, nil, nil); err == nil {
 		t.Fatal("ValidateBlobTx should fail with tampered proof")
+	}
+}
+
+// TestValidateBlobTx_BSCOnlyV0PostOsaka pins the BSC txpool admission policy:
+// on BSC chains (Parlia configured) only version-0 blob sidecars are accepted
+// after Osaka is active, since cell proofs (version 1) are not supported.
+func TestValidateBlobTx_BSCOnlyV0PostOsaka(t *testing.T) {
+	key, _ := crypto.GenerateKey()
+	v0 := validBlobSidecar(1)
+
+	for _, config := range []*params.ChainConfig{params.BSCChainConfig, params.ChapelChainConfig} {
+		if config.Parlia == nil || config.OsakaTime == nil {
+			t.Fatal("config must have Parlia and OsakaTime set")
+		}
+		head := &types.Header{
+			Number: big.NewInt(60_000_000),
+			Time:   *config.OsakaTime + 1, // Osaka active
+		}
+		if !config.IsOsaka(head.Number, head.Time) {
+			t.Fatal("head must be post-Osaka")
+		}
+		opts := &ValidationOptions{Config: config}
+
+		// A valid version-0 sidecar must still be accepted after Osaka.
+		if err := ValidateBlobTx(signedBlobTx(key, 0, v0, 1), head, opts); err != nil {
+			t.Fatalf("chain %v: version-0 sidecar should be accepted post-Osaka, got: %v", config.ChainID, err)
+		}
+		// The same sidecar marked as version 1 (cell proofs) must be rejected.
+		v1 := *v0
+		v1.Version = types.BlobSidecarVersion1
+		err := ValidateBlobTx(signedBlobTx(key, 1, &v1, 1), head, opts)
+		if err == nil || !strings.Contains(err.Error(), "unexpected sidecar version") {
+			t.Fatalf("chain %v: version-1 sidecar should be rejected post-Osaka, got: %v", config.ChainID, err)
+		}
 	}
 }
