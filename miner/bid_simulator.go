@@ -823,7 +823,6 @@ func (b *bidSimulator) sendBidBlock(_ context.Context, block *buildertypes.Decod
 
 	select {
 	case b.newBidBlockCh <- newBidBlockPackage{bidBlock: block, feedback: replyCh}:
-		b.AddPending(block.BlockNumber(), block.Builder, block.Hash())
 	case <-timer.C:
 		return buildertypes.ErrMevBusy
 	}
@@ -910,7 +909,6 @@ func (b *bidSimulator) sendBid(ctx context.Context, bid *buildertypes.Bid) error
 
 	select {
 	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh, receiveTime: receiveTime}:
-		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
 	case <-timer.C:
 		return buildertypes.ErrMevBusy
 	}
@@ -923,7 +921,10 @@ func (b *bidSimulator) sendBid(ctx context.Context, bid *buildertypes.Bid) error
 	}
 }
 
-func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, bidHash common.Hash) error {
+// ReservePending atomically checks the quota/duplicate state and records the
+// bid hash under one lock, so concurrent bids can't all pass before any is
+// recorded.
+func (b *bidSimulator) ReservePending(blockNumber uint64, builder common.Address, bidHash common.Hash) error {
 	b.pendingMu.Lock()
 	defer b.pendingMu.Unlock()
 
@@ -944,14 +945,8 @@ func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, 
 		return fmt.Errorf("too many bids: exceeded limit of %d bids per builder per block", b.maxBidsPerBuilder)
 	}
 
-	return nil
-}
-
-func (b *bidSimulator) AddPending(blockNumber uint64, builder common.Address, bidHash common.Hash) {
-	b.pendingMu.Lock()
-	defer b.pendingMu.Unlock()
-
 	b.pending[blockNumber][builder][bidHash] = struct{}{}
+	return nil
 }
 
 // simBid simulates a newBid with txs.

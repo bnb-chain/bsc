@@ -363,13 +363,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			HistoryPolicy:           histPolicy,
 			TxLookupLimit:           int64(min(config.TransactionHistory, math.MaxInt64)),
 			PathSyncFlush:           config.PathSyncFlush,
-			EnableIncr:              config.EnableIncrSnapshots,
-			IncrHistoryPath:         config.IncrSnapshotPath,
-			IncrHistory:             config.IncrSnapshotBlockInterval,
-			IncrStateBuffer:         config.IncrSnapshotStateBuffer,
-			IncrKeptBlocks:          config.IncrSnapshotKeptBlocks,
-			UseRemoteIncrSnapshot:   config.UseRemoteIncrSnapshot,
-			RemoteIncrURL:           config.RemoteIncrSnapshotURL,
 
 			VmConfig: vm.Config{
 				EnablePreimageRecording: config.EnablePreimageRecording,
@@ -871,8 +864,6 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 // Start implements node.Lifecycle, starting all internal goroutines needed by the
 // Ethereum protocol implementation.
 func (s *Ethereum) Start() error {
-	eth.StartENRFilter(s.blockchain, s.p2pServer)
-
 	if err := s.setupDiscovery(); err != nil {
 		return err
 	}

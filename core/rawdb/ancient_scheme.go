@@ -17,7 +17,6 @@
 package rawdb
 
 import (
-	"errors"
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -42,12 +41,6 @@ const (
 
 	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
 	ChainFreezerBlobSidecarTable = "blobs"
-
-	// IncrBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs.
-	IncrBlockStateIDMappingTable = "mapping"
-
-	// IncrEmptyBlockTable indicates the block has a state transition.
-	IncrEmptyBlockTable = "empty"
 )
 
 // chainFreezerTableConfigs configures the settings for tables in the chain freezer.
@@ -61,19 +54,6 @@ var chainFreezerTableConfigs = map[string]freezerTableConfig{
 	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true},
 }
 var additionTables = []string{ChainFreezerBlobSidecarTable}
-
-// incrChainFreezerTableConfigs configures the settings for tables in the incr chain freezer.
-// Hashes and difficulties don't compress well.
-var incrChainFreezerTableConfigs = map[string]freezerTableConfig{
-	ChainFreezerHeaderTable:      {noSnappy: false, prunable: true},
-	ChainFreezerHashTable:        {noSnappy: true, prunable: true},
-	ChainFreezerBodiesTable:      {noSnappy: false, prunable: true},
-	ChainFreezerReceiptTable:     {noSnappy: false, prunable: true},
-	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: true},
-	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true},
-	IncrBlockStateIDMappingTable: {noSnappy: false, prunable: true}, // block number -> state id
-	IncrEmptyBlockTable:          {noSnappy: false, prunable: true},
-}
 
 // freezerTableConfig contains the settings for a freezer table.
 type freezerTableConfig struct {
@@ -91,11 +71,6 @@ const (
 	stateHistoryStorageIndex = "storage.index"
 	stateHistoryAccountData  = "account.data"
 	stateHistoryStorageData  = "storage.data"
-
-	// indicates the name of the freezer incremental state history table.
-	incrStateHistoryMeta          = "incrhistory.meta"
-	incrStateHistoryTrieNodesData = "trienodes.data"
-	incrStateHistoryStatesData    = "states.data"
 )
 
 // stateFreezerTableConfigs configures the settings for tables in the state freezer.
@@ -105,16 +80,6 @@ var stateFreezerTableConfigs = map[string]freezerTableConfig{
 	stateHistoryStorageIndex: {noSnappy: false, prunable: true},
 	stateHistoryAccountData:  {noSnappy: false, prunable: true},
 	stateHistoryStorageData:  {noSnappy: false, prunable: true},
-}
-
-var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
-	ChainFreezerDifficultyTable, IncrBlockStateIDMappingTable, IncrEmptyBlockTable}
-
-// incrStateFreezerTableConfigs configures the settings for tables in the incr state freezer.
-var incrStateFreezerTableConfigs = map[string]freezerTableConfig{
-	incrStateHistoryMeta:          {noSnappy: true, prunable: true},
-	incrStateHistoryTrieNodesData: {noSnappy: false, prunable: true},
-	incrStateHistoryStatesData:    {noSnappy: false, prunable: true},
 }
 
 const (
@@ -141,8 +106,6 @@ var (
 	VerkleStateFreezerName    = "state_verkle"    // the folder name of state history ancient store.
 	MerkleTrienodeFreezerName = "trienode"        // the folder name of trienode history ancient store.
 	VerkleTrienodeFreezerName = "trienode_verkle" // the folder name of trienode history ancient store.
-
-	IncrementalPath = "incremental" // the folder name of incremental ancient store
 )
 
 // freezers the collections of all builtin freezers.
@@ -168,27 +131,7 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool) (ethdb.Reset
 	} else {
 		name = filepath.Join(ancientDir, MerkleStateFreezerName)
 	}
-	return newResettableFreezer(name, "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerTableConfigs, false)
-}
-
-// OpenIncrStateFreezer opens the incremental state freezer.
-func OpenIncrStateFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
-	if incrStateDir == "" {
-		return nil, errors.New("empty incr state directory")
-	}
-
-	name := filepath.Join(incrStateDir, MerkleStateFreezerName)
-	return newResettableFreezer(name, "eth/db/incr/state", readOnly, stateHistoryTableSize, incrStateFreezerTableConfigs, true)
-}
-
-// OpenIncrChainFreezer opens the incremental chain freezer.
-func OpenIncrChainFreezer(incrChainDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
-	if incrChainDir == "" {
-		return nil, errors.New("empty incr chain directory")
-	}
-
-	name := filepath.Join(incrChainDir, ChainFreezerName)
-	return newResettableFreezer(name, "eth/db/incr/chain", readOnly, stateHistoryTableSize, incrChainFreezerTableConfigs, true)
+	return newResettableFreezer(name, "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerTableConfigs)
 }
 
 // NewTrienodeFreezer initializes the ancient store for trienode history.
@@ -207,5 +150,5 @@ func NewTrienodeFreezer(ancientDir string, verkle bool, readOnly bool) (ethdb.Re
 	} else {
 		name = filepath.Join(ancientDir, MerkleTrienodeFreezerName)
 	}
-	return newResettableFreezer(name, "eth/db/trienode", readOnly, stateHistoryTableSize, trienodeFreezerTableConfigs, true)
+	return newResettableFreezer(name, "eth/db/trienode", readOnly, stateHistoryTableSize, trienodeFreezerTableConfigs)
 }

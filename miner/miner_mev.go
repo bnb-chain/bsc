@@ -99,7 +99,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 	}
 	miner.bidSimulator.recordBidBlockBuilder(builder)
 
-	// Check permission before CheckPending so rejected BidBlocks do not use quota.
+	// Check permission before ReservePending so rejected BidBlocks do not use quota.
 	if !miner.worker.permMgr.IsAllowed(builder) {
 		return common.Hash{}, buildertypes.NewBidBlockPermissionRevokedError("builder BidBlock permission revoked, fallback to SendBid")
 	}
@@ -119,7 +119,8 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
 			"BidBlock disabled on hard-fork activation block %d, fallback to SendBid", blockNumber))
 	}
-	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bidHash); err != nil {
+	// Reserve the quota slot atomically (check + insert under one lock).
+	if err := miner.bidSimulator.ReservePending(blockNumber, builder, bidHash); err != nil {
 		return common.Hash{}, err
 	}
 
@@ -180,8 +181,8 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *buildertypes.BidArgs) 
 		return common.Hash{}, buildertypes.NewInvalidBidError("builder is not registered")
 	}
 
-	err = miner.bidSimulator.CheckPending(bidArgs.RawBid.BlockNumber, builder, bidArgs.RawBid.Hash())
-	if err != nil {
+	// Reserve the quota slot atomically (check + insert under one lock).
+	if err = miner.bidSimulator.ReservePending(bidArgs.RawBid.BlockNumber, builder, bidArgs.RawBid.Hash()); err != nil {
 		return common.Hash{}, err
 	}
 
@@ -200,7 +201,6 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *buildertypes.BidArgs) 
 	}
 
 	err = miner.bidSimulator.sendBid(ctx, bid)
-
 	if err != nil {
 		return common.Hash{}, err
 	}

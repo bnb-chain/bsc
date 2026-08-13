@@ -90,13 +90,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TxSyncMaxTimeout           time.Duration   `toml:",omitempty"`
 		RangeLimit                 uint64          `toml:",omitempty"`
 		BlobExtraReserve           uint64
-		EnableIncrSnapshots        bool
-		IncrSnapshotPath           string
-		IncrSnapshotBlockInterval  uint64
-		IncrSnapshotStateBuffer    uint64
-		IncrSnapshotKeptBlocks     uint64
-		UseRemoteIncrSnapshot      bool
-		RemoteIncrSnapshotURL      string
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -171,13 +164,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TxSyncMaxTimeout = c.TxSyncMaxTimeout
 	enc.RangeLimit = c.RangeLimit
 	enc.BlobExtraReserve = c.BlobExtraReserve
-	enc.EnableIncrSnapshots = c.EnableIncrSnapshots
-	enc.IncrSnapshotPath = c.IncrSnapshotPath
-	enc.IncrSnapshotBlockInterval = c.IncrSnapshotBlockInterval
-	enc.IncrSnapshotStateBuffer = c.IncrSnapshotStateBuffer
-	enc.IncrSnapshotKeptBlocks = c.IncrSnapshotKeptBlocks
-	enc.UseRemoteIncrSnapshot = c.UseRemoteIncrSnapshot
-	enc.RemoteIncrSnapshotURL = c.RemoteIncrSnapshotURL
 	return &enc, nil
 }
 
@@ -256,13 +242,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TxSyncMaxTimeout           *time.Duration  `toml:",omitempty"`
 		RangeLimit                 *uint64         `toml:",omitempty"`
 		BlobExtraReserve           *uint64
-		EnableIncrSnapshots        *bool
-		IncrSnapshotPath           *string
-		IncrSnapshotBlockInterval  *uint64
-		IncrSnapshotStateBuffer    *uint64
-		IncrSnapshotKeptBlocks     *uint64
-		UseRemoteIncrSnapshot      *bool
-		RemoteIncrSnapshotURL      *string
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -483,27 +462,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve
-	}
-	if dec.EnableIncrSnapshots != nil {
-		c.EnableIncrSnapshots = *dec.EnableIncrSnapshots
-	}
-	if dec.IncrSnapshotPath != nil {
-		c.IncrSnapshotPath = *dec.IncrSnapshotPath
-	}
-	if dec.IncrSnapshotBlockInterval != nil {
-		c.IncrSnapshotBlockInterval = *dec.IncrSnapshotBlockInterval
-	}
-	if dec.IncrSnapshotStateBuffer != nil {
-		c.IncrSnapshotStateBuffer = *dec.IncrSnapshotStateBuffer
-	}
-	if dec.IncrSnapshotKeptBlocks != nil {
-		c.IncrSnapshotKeptBlocks = *dec.IncrSnapshotKeptBlocks
-	}
-	if dec.UseRemoteIncrSnapshot != nil {
-		c.UseRemoteIncrSnapshot = *dec.UseRemoteIncrSnapshot
-	}
-	if dec.RemoteIncrSnapshotURL != nil {
-		c.RemoteIncrSnapshotURL = *dec.RemoteIncrSnapshotURL
 	}
 	return nil
 }

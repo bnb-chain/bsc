@@ -49,12 +49,12 @@ type resettableFreezer struct {
 //
 // The reset function will delete directory atomically and re-create the
 // freezer from scratch.
-func newResettableFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]freezerTableConfig, isIncr bool) (*resettableFreezer, error) {
+func newResettableFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]freezerTableConfig) (*resettableFreezer, error) {
 	if err := cleanup(datadir); err != nil {
 		return nil, err
 	}
 	opener := func() (*Freezer, error) {
-		return NewFreezer(datadir, namespace, readonly, maxTableSize, tables, isIncr)
+		return NewFreezer(datadir, namespace, readonly, maxTableSize, tables)
 	}
 	freezer, err := opener()
 	if err != nil {
@@ -208,13 +208,6 @@ func (f *resettableFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bo
 	defer f.lock.RUnlock()
 
 	return f.freezer.ResetTable(kind, startAt, onlyEmpty)
-}
-
-func (f *resettableFreezer) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.ResetTableForIncr(kind, startAt, onlyEmpty)
 }
 
 // SyncAncient flushes all data tables to disk.
