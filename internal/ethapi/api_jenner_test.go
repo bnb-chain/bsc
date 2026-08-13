@@ -109,8 +109,8 @@ func TestJennerBlockOverrides_Call(t *testing.T) {
 	api := NewBlockChainAPI(backend)
 	head := backend.CurrentHeader()
 	headMilli := head.MilliTimestamp()
-	headRandao := common.Hash{} // Random is nil on BSC headers: 0x44 falls back to difficulty
-	headRandao = common.BigToHash(head.Difficulty)
+	// Random is nil on BSC headers: 0x44 falls back to difficulty.
+	headRandao := common.BigToHash(head.Difficulty)
 
 	// No overrides: block's own values.
 	randao, milli := callJennerProbe(t, api, nil)
@@ -160,7 +160,6 @@ func TestJennerBlockOverrides_Call(t *testing.T) {
 		common.BigToHash(big.NewInt(1000)),
 		common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234"),
 	} {
-		bad := bad
 		_, err := api.Call(context.Background(), TransactionArgs{To: &jennerProbeAddr}, &latest, nil, &override.BlockOverrides{PrevRandao: &bad})
 		if err == nil {
 			t.Fatalf("prevRandao %x (>= 1000) must be rejected", bad)
