@@ -38,9 +38,10 @@ var (
 	ErrPaymentExceedsPool = errors.New("payment lane payment gas exceeds the block's user-transaction gas")
 	ErrBadCommitment      = errors.New("payment lane commitment is malformed")
 	ErrUntruthy           = errors.New("payment lane commitment is not truthful")
-	ErrCorruptConfig      = errors.New("payment lane config storage layout mismatch")
+	ErrCorruptConfig      = errors.New("payment lane config mismatch")
 	ErrQuotaMismatch      = errors.New("payment lane quota does not match the parent derivation")
-	ErrStateUnavailable   = errors.New("payment lane state unavailable")
+	// Local fault, not the peer's: this node could not read the required lane state.
+	ErrStateUnavailable = errors.New("payment lane state unavailable")
 )
 
 // Commitment is the two values BEP-703 section 3.5.2 commits. Do not add generalGasUsed: it is

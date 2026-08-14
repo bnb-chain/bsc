@@ -16,10 +16,10 @@ import (
 // defaultParams is the shipped tuple before governance writes anything.
 func defaultParams() Params {
 	return Params{
-		MinRatio: defaultMinRatio, MaxRatio: defaultMaxRatio,
-		ExpandTrigger: defaultExpandTrigger, ShrinkTrigger: defaultShrinkTrigger,
-		ExpandStep: defaultExpandStep, ShrinkStep: defaultShrinkStep,
-		MinGas: defaultMinGas, MaxGas: defaultMaxGas,
+		MinRatio: 200, MaxRatio: 800,
+		ExpandTrigger: 8_000, ShrinkTrigger: 7_000,
+		ExpandStep: 200, ShrinkStep: 50,
+		MinGas: 2_000_000, MaxGas: 8_000_000,
 	}
 }
 
@@ -233,10 +233,10 @@ func TestTriggerComparisonBoundaries(t *testing.T) {
 		want uint64
 		why  string
 	}{
-		{defaultExpandTrigger, base + step, "at the expand trigger: expands, because the test is >="},
-		{defaultExpandTrigger - 1, base, "one bp below: hysteresis band, holds"},
-		{defaultShrinkTrigger, base, "at the shrink trigger: band, because the test is <"},
-		{defaultShrinkTrigger - 1, shrunk, "one bp below: shrinks"},
+		{p.ExpandTrigger, base + step, "at the expand trigger: expands, because the test is >="},
+		{p.ExpandTrigger - 1, base, "one bp below: hysteresis band, holds"},
+		{p.ShrinkTrigger, base, "at the shrink trigger: band, because the test is <"},
+		{p.ShrinkTrigger - 1, shrunk, "one bp below: shrinks"},
 		{0, shrunk, "an empty parent block shrinks"},
 	} {
 		s := Signal{parentLaneSize: base, parentSignalGasUsed: tc.bps, parentGasLimit: RatioDenom}

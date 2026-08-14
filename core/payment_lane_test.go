@@ -198,6 +198,62 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	}
 }
 
+func TestPaymentLaneFastNodeSkipsImportClassificationReplay(t *testing.T) {
+	config, gspec, key := laneGenesis(t)
+	signer := types.LatestSigner(config)
+
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
+		if i+1 == 3 {
+			b.AddTx(key.sign(t, signer, 0, common.Address{0xbb}, big.NewInt(1), params.TxGas, nil))
+		}
+	})
+	honest := blocks[2]
+	sound, err := paymentlane.Decode(honest.UncleHash())
+	require.NoError(t, err)
+	require.EqualValues(t, params.TxGas, sound.PaymentGasUsed)
+
+	fastCfg := DefaultConfig()
+	fastCfg.NoTries = true
+
+	for _, tc := range []struct {
+		name    string
+		mutate  func(paymentlane.Commitment) common.Hash
+		wantErr error
+	}{
+		{
+			name: "understated payment gas",
+			mutate: func(c paymentlane.Commitment) common.Hash {
+				c.PaymentGasUsed--
+				return paymentlane.Encode(c)
+			},
+		},
+		{
+			name: "quota above derivation",
+			mutate: func(c paymentlane.Commitment) common.Hash {
+				c.LaneSize += 150_000
+				return paymentlane.Encode(c)
+			},
+			wantErr: paymentlane.ErrQuotaMismatch,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			forged := types.NewBlockWithHeader(honest.Header()).WithBody(*honest.Body())
+			forged.SetUncleHash(tc.mutate(sound))
+
+			chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), fastCfg)
+			require.NoError(t, err)
+			defer chain.Stop()
+
+			_, err = chain.InsertChain(append(append(types.Blocks{}, blocks[:2]...), forged))
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, tc.wantErr)
+		})
+	}
+}
+
 // TestPaymentLaneClassifiesAgainstTheLiveState is the attack the live-state gate closes, run
 // through the real EVM and a real import. burnerInitCode deploys `5b600056` - JUMPDEST, PUSH1
 // 0, JUMP - which loops until its gas is gone; the transfer behind it, one nonce later so that

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/core/paymentlane"
+	"github.com/ethereum/go-ethereum/core/paymentlanemeta"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -63,19 +64,14 @@ type laneStateDB interface {
 // the producer on purpose: every input is a choice the two must make identically.
 //
 // statedb must be the block's own state, opened on the parent root and not yet advanced.
-// Taking the whole StateDB rather than two readers is what stops the two views being wired up
-// the wrong way round: parameters and the payment-contract list come from Reader(), pinned to
-// the parent post-state; classification reads the live database as it advances.
+// Taking the whole StateDB rather than a raw reader is what keeps the parent-pinned config read
+// on the witness-visible state path while classification still reads the live database as it
+// advances.
 func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (*LaneState, error) {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil
 	}
-	parentState := statedb.Reader()
-	cfg, err := paymentlane.LoadParams(parentState)
-	if err != nil {
-		return nil, err
-	}
-	listed, err := paymentlane.LoadPaymentContracts(parentState)
+	meta, err := paymentlanemeta.LoadMeta(config, header, statedb)
 	if err != nil {
 		return nil, err
 	}
@@ -84,17 +80,18 @@ func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, 
 		return nil, err
 	}
 	return &LaneState{
-		cfg:      cfg,
+		cfg:      meta.Params(),
 		signal:   signal,
-		class:    paymentlane.NewClassifier(statedb, listed),
+		class:    meta.NewClassifier(statedb),
 		state:    statedb,
 		gasLimit: header.GasLimit,
 	}, nil
 }
 
-// checkState reports a failed state read as the local fault it is. StateDB answers such a read
-// with the zero code hash, which classifies as payment, and holds the error until Commit - after
-// every verdict below. Unchecked, the lane calls a good block untruthful and costs us the peer.
+// checkState reports a failed state read as the local fault it is, not the peer's. StateDB
+// answers such a read with the zero code hash, which classifies as payment, and holds the error
+// until Commit - after every verdict below. Unchecked, the lane would misattribute a local read
+// failure to the block itself.
 func (ls *LaneState) checkState() error {
 	if err := ls.state.Error(); err != nil {
 		return fmt.Errorf("%w: %w", paymentlane.ErrStateUnavailable, err)
@@ -105,9 +102,9 @@ func (ls *LaneState) checkState() error {
 // VerifyHeaderQuota adjudicates the quota a header commits to against the derivation from its
 // parent - the whole of the lane that is settled before any transaction runs. It exists for the
 // caller that must not hold a LaneState: BEP-675's blind-seal path has no execution state for
-// the block it is about to sign, so it cannot classify, and parentState is the only reader it
-// can soundly supply.
-func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header, parentState paymentlane.StorageReader) error {
+// the block it is about to sign, so it cannot classify, and statedb is only used here to
+// reconstruct a parent-root-bound read-only StateDB for the params-only check.
+func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) error {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return nil
 	}
@@ -115,7 +112,7 @@ func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header,
 	if err != nil {
 		return err
 	}
-	cfg, err := paymentlane.LoadParams(parentState)
+	cfg, err := paymentlanemeta.LoadParamsForQuota(config, parent, header, statedb)
 	if err != nil {
 		return err
 	}

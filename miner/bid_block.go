@@ -55,9 +55,10 @@ func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, 
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-	// Reader(), never local.state: the local environment is packed with this validator's own
-	// transactions, so as a live state it belongs to a different block.
-	return core.VerifyHeaderQuota(w.chainConfig, parent, header, local.state.Reader())
+	// local.state is opened on the parent root already; VerifyHeaderQuota rebuilds its own
+	// parent-root-bound read-only StateDB from it, rather than reading against the live
+	// environment this validator packed with local transactions.
+	return core.VerifyHeaderQuota(w.chainConfig, parent, header, local.state)
 }
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info

@@ -48,7 +48,7 @@ func TestAllCodesHash(t *testing.T) {
 
 // Pin the Gauss payment-lane address and bytecode on all three networks.
 func TestGaussPaymentLaneCode(t *testing.T) {
-	const wantCodeHash = "c4589f51dc8be028cee0512617008a34a97abb535c3e463a6ba5a5d382ee917c"
+	const wantCodeHash = "e13b961ddf4c7c2eb0988bc01b4ec5206584a7b4455d7f214061a4b12f96d7cd"
 
 	for _, network := range []string{mainNet, chapelNet, rialtoNet} {
 		upgrade := gaussUpgrade[network]

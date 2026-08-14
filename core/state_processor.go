@@ -79,6 +79,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		allLogs     []*types.Log
 		gp          = NewGasPool(block.GasLimit())
 	)
+	replayLaneClassification := !statedb.NoTries()
 	var tracingStateDB = vm.StateDB(statedb)
 	if hooks := cfg.Tracer; hooks != nil {
 		tracingStateDB = state.NewHookedState(statedb, hooks)
@@ -171,7 +172,10 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		}
 		// System transactions never reach here. Classified after every earlier transaction has
 		// run and before this one does - the point the producer classified at too.
-		class := lane.Classify(tx)
+		class := paymentlane.ClassGeneral
+		if replayLaneClassification {
+			class = lane.Classify(tx)
+		}
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
 			telemetry.StringAttribute("tx.hash", tx.Hash().Hex()),
@@ -184,7 +188,9 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			spanEnd(&err)
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		lane.RecordUsedFrom(class, gp, usedBefore)
+		if replayLaneClassification {
+			lane.RecordUsedFrom(class, gp, usedBefore)
+		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 		spanEnd(nil)
@@ -213,8 +219,10 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	}
 
 	// verify the payment used is correct
-	if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
-		return nil, laneReject(err)
+	if replayLaneClassification {
+		if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
+			return nil, laneReject(err)
+		}
 	}
 	if lane.On() {
 		recordLaneImported(laneCommitted)
