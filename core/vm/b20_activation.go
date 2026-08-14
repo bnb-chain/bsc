@@ -21,13 +21,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// ActivationRegistry: the per-feature governance switch (BEP-702 section 3.15).
-//
-// Shipping the code and permitting its use are separate decisions. The fork
-// makes every B20 precompile present on the node; this registry decides when a
-// network lets issuers start creating state with it. It gates creation only —
-// createB20 and the PolicyRegistry's write methods — and never an existing
-// token, so a deactivation can never freeze balances.
+// ActivationRegistry: the per-feature governance switch (BEP-702 3.15). It gates
+// token creation and PolicyRegistry writes only — deactivation never reaches an
+// existing token, so it cannot freeze balances.
 
 const b20ActivationNamespace = "bsc.activation_registry"
 
@@ -159,10 +155,9 @@ func runB20Activation(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	return nil, ErrExecutionReverted
 }
 
-// setFeature flips a feature flag. A no-op governance action is surfaced
-// rather than silently accepted: activating an active feature fails with
-// AlreadyActivated, and deactivating an inactive one reuses
-// FeatureNotActivated — there is no separate already-deactivated error.
+// setFeature flips a feature flag. A no-op is surfaced rather than accepted:
+// activating an active feature fails, and deactivating an inactive one reuses
+// FeatureNotActivated.
 func setFeature(ctx *PrecompileContext, reg activationReg, args []byte, on bool) error {
 	if ctx.ReadOnly {
 		return ErrWriteProtection

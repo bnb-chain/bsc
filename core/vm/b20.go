@@ -121,17 +121,8 @@ func hadNoCode(state StateDB, addr common.Address) bool {
 	return ch == (common.Hash{}) || ch == types.EmptyCodeHash
 }
 
-// ensureSentinel plants the account sentinel on this precompile's own address
-// if it is not already there.
-//
-// Tokens get theirs from createB20, but the registries have no factory: they
-// come into existence through their first governance or issuer write. Storage
-// alone does not make an account non-empty, so without this a clearing pass
-// would reap the registry and every policy or flag it holds (BEP-702 3.16).
-// Idempotent, and charged as a code write the first time only. It plants only
-// on an account with no code at all: BEP-702 3.16 forbids planting over
-// existing code, and an account that already carries any code is already
-// non-empty, so the reaping hazard the sentinel exists for does not apply.
+// ensureSentinel keeps a registry's storage out of reach of EIP-161 clearing. It
+// plants the marker only on an account with no code at all (BEP-702 3.16).
 func (ctx *PrecompileContext) ensureSentinel() {
 	ctx.chargeAccountAccess(ctx.Self)
 	if !hadNoCode(ctx.StateDB, ctx.Self) {
@@ -157,17 +148,9 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	return nil
 }
 
-// resolveB20Token synthesizes the variant precompile bound to a token address.
-// Same variant code serves every token of that variant; the bound address is
-// the storage root.
-//
-// Routing keys on the address alone. Existence is deliberately not part of the
-// decision: a recognized-variant address that holds no token still reaches the
-// handler, which refuses a non-zero value with NonPayable and then reverts with
-// empty returndata (BEP-702 section 3.3). Were it left unrouted, an ordinary
-// value-bearing transfer would instead be accepted and stranded there. An
-// unrecognized variant byte is not routed at all, so a token of a future
-// variant is inert rather than misrouted.
+// resolveB20Token routes a recognized variant without checking existence, so a
+// value-bearing call to an empty B20 address is refused rather than stranded. An
+// unrecognized variant is not routed at all (BEP-702 3.3).
 func resolveB20Token(addr common.Address) (PrecompiledContract, bool) {
 	switch addr[10] {
 	case b20VariantAsset:
@@ -197,9 +180,6 @@ func resolveB20(addr common.Address) (PrecompiledContract, bool) {
 	return nil, false
 }
 
-// The five precompiles hold no per-address state — every handler takes its
-// target from ctx.Self — so resolution hands back shared values rather than
-// allocating one per call, exactly as the stateless precompile map does.
 var (
 	b20Factory    = &b20FactoryPrecompile{}
 	b20Policy     = &b20PolicyPrecompile{}
@@ -221,9 +201,6 @@ var (
 // — so all metering happens inside RunStateful as the work is performed
 // (BEP-702 section 3.14, see b20_gas.go).
 
-// b20StatefulBase provides the defensive Run backstop shared by every B20
-// precompile so they satisfy PrecompiledContract; real execution always goes
-// through RunStateful.
 type b20StatefulBase struct{}
 
 func (b20StatefulBase) Run([]byte) ([]byte, error) { return nil, ErrB20StatelessDispatch }

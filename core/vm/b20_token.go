@@ -22,14 +22,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// b20Token is the shared IB20 logic both variants delegate to. It wraps a
-// gas-metered core-storage view and the call context. Variant-specific
-// selectors (Asset's multiplier/announce/…, Stablecoin's currency) are
-// layered on top by the variant precompiles.
-//
-// Scope of this layer: the ERC-20 core (name/symbol/decimals/totalSupply/
-// balanceOf/allowance/approve/transfer/transferFrom) plus the TRANSFER pause
-// gate. Roles, mint/burn, compliance policies and permit are follow-ups.
 type b20Token struct {
 	ctx      *PrecompileContext
 	s        b20Storage
@@ -240,9 +232,6 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 	return encBool(true), nil
 }
 
-// policyAllows reads the PolicyRegistry directly (no cross-contract CALL) to
-// decide whether account may be operated under the given policy id. Id 0
-// (ALWAYS_ALLOW) short-circuits to true.
 func (t b20Token) policyAllows(id uint64, account common.Address) bool {
 	if id == 0 {
 		return true

@@ -23,12 +23,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// B20Factory: the singleton createB20 entry point plus the address-prediction
-// and identity views. Token creation writes the initial core storage and an
-// initialization marker, then runs initCalls in a privileged bootstrap window
-// (role and transfer-side policy gates skipped) so a token can be fully
-// configured — roles granted, initial supply minted — in one transaction.
-
 // b20ParamsVersion is the encoding version every create-params struct carries
 // as its leading field. A struct that does not match is rejected before any
 // field is looked at, so a version error always takes precedence.
@@ -62,15 +56,9 @@ func b20VariantRecognized(variant byte) bool {
 	return false
 }
 
-// b20MarkerCode is the account sentinel written to a token address on creation
-// (BEP-702 §3.16). It is never executed — the precompile takes precedence in
-// Call — and serves two purposes: it marks the account as an initialized B20
-// token, and it keeps the account non-empty so EIP-161 end-of-block state
-// clearing cannot reap it together with every balance it holds.
-//
-// 0xEF is the EIP-3541 reserved prefix, which no CREATE/CREATE2 deployment can
-// produce, so the marker stays unforgeable even if the reserved-space guard
-// were weakened.
+// b20MarkerCode marks an initialized token, keeps the account clear of EIP-161
+// reaping, and uses EIP-3541's reserved 0xEF prefix so no deployment can forge
+// it (BEP-702 3.16). It is never executed.
 var b20MarkerCode = []byte{0xEF}
 
 // b20NoSupplyCap is the "unlimited" sentinel: type(uint128).max.
@@ -255,9 +243,6 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	return addrKey(addr).Bytes(), nil
 }
 
-// b20CreateParams is the decoded, validated content of a createB20 params blob.
-// decimals is resolved for both variants: Stablecoin's is fixed at 6 rather
-// than carried on the wire.
 type b20CreateParams struct {
 	variant      byte
 	name         string

@@ -18,12 +18,8 @@ package vm
 
 import "github.com/ethereum/go-ethereum/common"
 
-// B20 Stablecoin variant extension (BEP-702 section 3.13).
-//
-// The variant adds exactly one method to the shared surface: an immutable
-// currency code supplied at creation. Everything else a payment token could
-// use to restate a unit — the multiplier, announcements, batch issuance — is
-// deliberately absent, and decimals are fixed at 6.
+// B20 Stablecoin variant: adds an immutable currency() and fixes decimals at 6
+// (BEP-702 3.13).
 
 const b20StablecoinNamespace = "bsc.b20.stablecoin"
 
@@ -67,9 +63,6 @@ func stablecoinDispatch(tok b20Token, ext stablecoinExt, input []byte) ([]byte, 
 	return tok.dispatch(input)
 }
 
-// validCurrency reports whether code is a well-formed currency code: non-empty
-// and uppercase A-Z only. The standard validates the shape, never the claim —
-// the code is a self-declaration of denomination, not evidence of reserves.
 func validCurrency(code string) bool {
 	for i := 0; i < len(code); i++ {
 		if code[i] < 'A' || code[i] > 'Z' {

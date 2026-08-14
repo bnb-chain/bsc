@@ -22,13 +22,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// B20 Asset (RWA) variant extensions: the net-asset-value multiplier (rebase),
-// decimals held in extension storage, batch minting and the OPERATOR role.
-// announce/extraMetadata are follow-ups.
-//
-// TODO: verify the extension namespace and decimals param against base-std;
-// decimals defaults to 18 until createB20 carries the param.
-
 const b20AssetNamespace = "bsc.b20.asset"
 
 const (
@@ -133,9 +126,7 @@ func removeMultiplier(scaled, mul *uint256.Int) (*uint256.Int, error) {
 	return p.Div(p, mul), nil
 }
 
-// assetDispatch routes an Asset call: extension selectors first, then the
-// shared IB20 dispatch. Used by the precompile and by announce's internal
-// calls (so a disclosure can bundle multiplier/batchMint updates).
+// assetDispatch tries the extension selectors first, then the shared surface.
 func assetDispatch(tok b20Token, ext assetExt, input []byte) ([]byte, error) {
 	if ret, err, ok := dispatchAsset(tok, ext, input); ok {
 		return ret, err

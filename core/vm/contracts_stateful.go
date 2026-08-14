@@ -87,23 +87,13 @@ type PrecompileContext struct {
 	frame *frameAccounting
 }
 
-// frameAccounting is the per-frame gas accounting shared by a context and every
-// context spawned from it.
-//
-// Holding these in one shared cell, rather than per-context copies kept in step,
-// removes the failure mode that a copy can silently fall behind: a stale
-// out-of-gas flag would let a spawner report success over writes its child could
-// not pay for, and a per-context tally would drop a bootstrap's charges from the
-// frame's total. Neither field is assignable through the context, so there is no
-// propagation step left to forget.
+// frameAccounting is shared by every context in one EVM frame, so a child's gas
+// exhaustion and state-gas charges cannot be lost on the way back.
 type frameAccounting struct {
 	// outOfGas is set sticky once a charge cannot be covered; the dispatcher
 	// checks it and returns ErrOutOfGas.
 	outOfGas bool
 
-	// stateGasUsed accumulates the cost attributed to state operations. Today it
-	// is booked within RegularGas (the only enforced dimension); the tally keeps
-	// the accounting ready for when the StateGas reservoir is activated.
 	stateGasUsed uint64
 }
 
@@ -123,20 +113,8 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 }
 
 // spawnBootstrap derives a context bound to a different self address, sharing
-// this frame's state, gas budget, rules and frame accounting. Used by the B20
-// factory to run a new token's initCalls inside the creating frame.
-//
-// ReadOnly is carried across. Nothing reaches here from a read-only frame today
-// — createB20 refuses one before it spawns — but that made the refusal the only
-// barrier, and deleting it left the whole test suite green.
-//
-// Measured, with that refusal removed and a bundle holding one grantRole:
-// carrying the flag fails the call with write protection and rolls back, while
-// dropping it grants the role and writes the sentinel from inside a STATICCALL.
-// So this is real protection, and its reach is exactly the initCalls — the
-// factory's own writes go through StateDB and b20Storage, neither of which
-// consults ReadOnly, so with an empty bundle they still land. createB20's guard
-// therefore stays load-bearing; this only stops it being the sole barrier.
+// this frame's state, gas budget, rules and accounting. ReadOnly is carried
+// across: dropping it would let initCalls write during a STATICCALL.
 func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *PrecompileContext {
 	return &PrecompileContext{
 		evm:        ctx.evm,
@@ -164,10 +142,6 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 // one it was spawned from — observes it, because they hold the same accounting.
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
-// chargeStateGas charges a state-operation cost against the (enforced)
-// RegularGas budget and accumulates it into the StateGas tally. On
-// insufficient gas it exhausts the budget and marks the context out of gas;
-// callers surface this via OutOfGas.
 func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 	if !ctx.UseGas(GasCosts{RegularGas: cost}) {
 		ctx.markOutOfGas()
@@ -222,9 +196,6 @@ func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) {
 	})
 }
 
-// runStatefulPrecompiledContract charges the flat RequiredGas, builds the
-// PrecompileContext and dispatches into the stateful precompile. It is the
-// stateful counterpart of RunPrecompiledContract.
 func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool, value *uint256.Int) (ret []byte, remaining GasBudget, err error) {
 	gasCost := p.RequiredGas(input)
 	prior, ok := gas.Charge(GasCosts{RegularGas: gasCost})

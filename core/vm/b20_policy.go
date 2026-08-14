@@ -58,15 +58,9 @@ const (
 	// later logic version. Nothing may reuse it.
 )
 
-// A policy's existence and its admin share one storage word:
-//
-//	bit 255      exists
-//	bits 254:160 reserved, zero
-//	bits 159:0   admin
-//
-// The exists bit is set on every write, which is what lets one word carry both:
-// the zero word is an unambiguous "never written" even for a policy whose admin
-// has been renounced to the zero address.
+// A policy's existence and admin share one word: bit 255 exists, bits 159:0 the
+// admin. That keeps a policy whose admin was renounced to zero distinct from an
+// unwritten slot.
 var polExistsBit = new(uint256.Int).Lsh(uint256.NewInt(1), 255)
 
 func packPolicy(admin common.Address) common.Hash {
@@ -109,20 +103,16 @@ var (
 	b20TopicBlocklistUpdated   = eventTopic("BlocklistUpdated(uint64,address,bool,address[])")
 )
 
-// emitPolicyAdminUpdated logs an admin transition. Creation, handover and
-// renunciation all report through this one event, so a policy's whole admin
-// history is one filter: creation is (0 -> initial admin) and renunciation is
-// (admin -> 0).
+// emitPolicyAdminUpdated reports creation, handover and renunciation through one
+// event, so a policy's whole admin history is a single filter.
 func emitPolicyAdminUpdated(ctx *PrecompileContext, id uint64, previous, next common.Address) {
 	ctx.AddLog([]common.Hash{
 		b20TopicPolicyAdminUpdated, idKey(id), addrKey(previous), addrKey(next),
 	}, nil)
 }
 
-// emitMembersUpdated logs a membership change under the event belonging to the
-// policy's own type. base-std reports allowlists and blocklists separately
-// rather than through one merged event, so a consumer can subscribe to just the
-// list it cares about.
+// emitMembersUpdated reports under the event belonging to the policy's own type,
+// so a consumer can subscribe to just the list it cares about.
 func emitMembersUpdated(ctx *PrecompileContext, ptype byte, id uint64, updater common.Address, included bool, accounts []common.Hash) {
 	topic := b20TopicBlocklistUpdated
 	if ptype == b20PolicyAllowlist {
@@ -205,15 +195,9 @@ func (p policyReg) setMember(id uint64, account common.Address, in bool) {
 	p.s.setWord(p.s.mapSlot(inner, addrKey(account)), v)
 }
 
-// isAuthorized answers whether account may be operated under policy id. It
-// never reverts: a malformed or never-created id collapses to empty-set
-// semantics (blocklist → allow all, allowlist → block all).
-//
-// The two sentinels answer from their id alone rather than from membership.
-// Their emptiness would give the same answer, but ALWAYS_ALLOW is the value
-// every unset policy field holds, so it has to be right before initialization
-// has run — and answering constantly also means no membership write can ever
-// change what a sentinel means.
+// isAuthorized never reverts: it sits on every transfer's path. A malformed or
+// absent policy takes empty-set semantics, and the sentinel ids answer before the
+// registry is initialized.
 func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 	if !polIDWellFormed(id) {
 		return false
@@ -339,20 +323,8 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 
 	}
 
-	// Writes. Recognize the selector first, so an unknown one still reverts as
-	// an unknown selector rather than as an inactive feature, then apply the
-	// activation gate: every non-view method sits behind it, so a deactivation
-	// freezes membership and admin changes on policies that already exist
-	// (BEP-702 section 3.15).
-	//
-	// Two orderings here differ from base-std, both deliberately. Write
-	// protection is checked before anything else, where base-std leaves it to the
-	// storage layer: a caller in a static frame is refused for that reason alone,
-	// rather than being told its feature is closed or its arguments are bad. And
-	// the activation gate precedes argument decoding, so a closed feature reports
-	// itself whatever the payload — base-std validates the encoding first, which
-	// on a closed feature surfaces a decode failure instead. Ours reports the
-	// condition the caller can act on, and reverts on the same set of inputs.
+	// Writes: unknown selector, then static frame, then inactive feature, before
+	// decoding arguments. The order is consensus-visible (BEP-702 3.15).
 	switch sel {
 	case selCreatePolicy, selCreatePolicyWithAccounts, selUpdateAllowlist,
 		selUpdateBlocklist, selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin:

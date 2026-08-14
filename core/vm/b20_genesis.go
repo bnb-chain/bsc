@@ -21,40 +21,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 )
 
-// B20 activation state, installed once at the fork that ships the precompiles
-// (BEP-702 sections 3.15 and 3.16).
-//
-// Shipping the code and permitting its use are separate decisions: the fork
-// makes every B20 precompile present, and this seeding only installs the switch
-// that lets a network open features later. Every feature stays deactivated, so
-// the fork opens nothing on its own.
-//
-// Two things have to exist from the fork onward, and neither can be created
-// afterwards by any call:
-//
-// The activation admin. It is the only account that can ever activate anything,
-// and the registry treats the zero address as "no admin, nothing activatable".
-// A network that ships without it has a permanently inert B20 (BEP-702 3.15
-// requires the initial value to come from chain configuration).
-//
-// The sentinel on both registries. Their state is storage-only, which leaves
-// their accounts EIP-161-empty; a state-clearing pass would reap them and take
-// the activation flags and every policy with them. The sentinel keeps the
-// accounts non-empty.
-//
-// It is written first only for readability. Emptiness is evaluated at Finalise
-// over the end state, not per write, so writing the code after the storage
-// produces the same root — measured, both orders agree. What is load-bearing is
-// that the code is written at all: storage alone on a code-less account is reaped
-// by the clearing pass, which the seeding tests do cover.
+// At the B20 fork, seed the activation admin and the registry sentinels; the
+// registries are storage-only and so otherwise EIP-161-empty. Every feature stays
+// disabled (BEP-702 3.15, 3.16).
 
-// SeedB20Activation installs the B20 activation state at a fork boundary. It is
-// idempotent: an already-seeded registry is left untouched, so replaying the
-// fork block cannot overwrite an admin that governance has since rotated.
-//
-// A zero admin seeds nothing but the sentinels. That is a valid, deliberate
-// configuration — it ships the code with the switch welded shut — so it is not
-// treated as an error here.
+// SeedB20Activation installs the B20 activation state at a fork boundary. An
+// existing admin is preserved, so replaying the fork block cannot undo a rotation.
+// A zero configured admin seeds only the sentinels, shipping the switch shut.
 func SeedB20Activation(state StateDB, admin common.Address) {
 	seedB20Sentinel(state, B20ActivationRegistryAddress)
 	seedB20Sentinel(state, B20PolicyRegistryAddress)

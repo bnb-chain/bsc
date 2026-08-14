@@ -116,9 +116,6 @@ func mappingSlot(base, key common.Hash) common.Hash {
 // addrKey left-pads an address to a 32-byte mapping key.
 func addrKey(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
 
-// b20Storage is a typed view over one token's core storage, bound to the token
-// address and reading/writing through the StateDB. When ctx is set, every slot
-// access is gas-metered; when nil (views/tests) access is free.
 type b20Storage struct {
 	state StateDB
 	token common.Address

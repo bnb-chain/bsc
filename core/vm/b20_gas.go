@@ -21,55 +21,18 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// B20 gas metering (BEP-702 section 3.14).
-//
-// This standard publishes no gas schedule of its own. Every charge below is
-// produced by an existing EVM cost function applied to the work actually
-// performed, and is metered as the work happens — RequiredGas returns zero
-// because a stateful precompile's cost depends on state it has not read when
-// the call begins.
-//
-// The rule the numbers must satisfy: a B20 operation is never cheaper than the
-// same state accesses performed through bytecode. Each helper therefore mirrors
-// the interpreter's own gas function rather than approximating it; where the
-// interpreter's logic is non-trivial (net-metered SSTORE), the mirror is
-// line-for-line against makeGasSStoreFunc in operations_acl.go.
-//
-// Not charged, deliberately: per-opcode execution, memory expansion and call
-// machinery have no counterpart here, and their absence is the whole of this
-// standard's efficiency claim. No synthetic overhead is added to approximate
-// them.
+// B20 gas metering (BEP-702 3.14): mirror existing EVM cost functions so B20
+// state access is never cheaper than the same work through bytecode. Opcode,
+// memory and call overhead have no counterpart here and are not synthesized.
 
 // b20CalldataWordGas is the per-word part of bringing calldata into memory:
 // CALLDATACOPY's copy cost plus the linear part of the memory expansion that
 // receives it (3 + 3).
 const b20CalldataWordGas = params.CopyGas + params.MemoryGas
 
-// chargeCalldata meters the input of one call frame, at its entry point.
-//
-// It mirrors what bytecode pays to copy its own calldata into empty memory
-// before decoding, which is not only the per-word part:
-//
-//	GasFastestStep            CALLDATACOPY's own cost
-//	+ CopyGas   × words       the copy
-//	+ MemoryGas × words       memory expansion, linear
-//	+ words² / QuadCoeffDiv   memory expansion, quadratic
-//
-// The base and the quadratic term were missing, so every non-empty input was
-// charged less than the operation it claims to mirror — 3 gas short at one word,
-// and 1,956 short at a thousand, where the quadratic term dominates. BEP-702
-// section 3.14 makes "never cheaper than the same work through bytecode" a MUST,
-// so the gap was a violation and not a rounding choice. See memoryGasCost in
-// gas_table.go, which is where the quadratic coefficient comes from.
-//
-// Zero words are free: bytecode with no arguments emits no copy at all.
-//
-// Internal calls dispatched inside a frame — an announce bundle's entries, the
-// factory's initCalls — are not charged again. They perform no calldata read:
-// the bytes are already in hand, and re-dispatch is a direct Go call, not an
-// EVM frame. Their storage work is metered normally; only the call-frame
-// overhead is absent, which is the same overhead BEP-702 section 3.14 lists as
-// deliberately not charged.
+// chargeCalldata charges CALLDATACOPY's base, copy, linear-memory and
+// quadratic-memory costs. Internal Go redispatches read no calldata and are not
+// charged again (BEP-702 3.14).
 func (ctx *PrecompileContext) chargeCalldata(input []byte) {
 	words := (uint64(len(input)) + 31) / 32
 	if words == 0 {

@@ -25,24 +25,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// Typed revert data for the B20 precompiles (BEP-702). Business-rule failures
-// revert with an ABI-encoded error — selector ++ arguments — exactly as a
-// Solidity `revert CustomError(...)` would, so integrators decode one error
-// surface whether a token is native or a contract.
-//
-// Inside the B20 code a failure is a *b20RevertError carrying the encoded
-// payload; finishB20 converts it at the precompile boundary into the
-// (returndata, ErrExecutionReverted) pair the EVM call path already knows how
-// to propagate.
-//
-// Calldata that cannot be decoded at all, an unknown selector included, reverts
-// with empty returndata (BEP-702 3.2). This is a deliberate divergence from
-// base-std, which returns the caller's own four selector bytes for an unknown
-// selector and a selector followed by a UTF-8 diagnostic for a decode failure.
-// Neither is ABI-encoded, so neither is decodable by the caller; reproducing
-// them would make one implementation's error strings consensus data that every
-// other client had to match byte for byte. Four bytes would also be worse than
-// none, being indistinguishable in shape from an argument-less custom error.
+// Typed revert data for the B20 precompiles. Business-rule failures use ABI
+// custom errors; malformed calldata and unknown selectors revert with empty
+// returndata (BEP-702 3.2).
 
 // b20SigRegistry accumulates every function / event / error signature the B20
 // implementation registers, for the ABI-baseline conformance test.

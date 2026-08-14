@@ -21,17 +21,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// B20 mutable metadata and the remaining IB20 views (BEP-702 section 3.6).
-//
-// Name, symbol and contractURI are rewritable under METADATA_ROLE. None of them
-// is pause-gated: the pause bits cover value movement, and freezing an issuer's
-// ability to correct a display string would not protect a holder.
-//
-// Renaming rewrites the EIP-712 domain, because the domain is derived from the
-// live name rather than cached at creation. updateName therefore emits
-// EIP712DomainChanged alongside NameUpdated — outstanding permit signatures
-// stop verifying at that block, and an ERC-5267 consumer needs the signal to
-// re-read the domain. updateSymbol does not: the symbol is not a domain field.
+// B20 mutable metadata and the remaining IB20 views. Metadata writes are not
+// pause-gated, and a rename changes the live EIP-712 domain — it emits
+// EIP712DomainChanged and invalidates outstanding permits (BEP-702 3.6).
 
 var (
 	selContractURI       = selector("contractURI()")
@@ -112,9 +104,6 @@ func (t b20Token) updateSymbol(v string) error {
 	return nil
 }
 
-// updateContractURI emits an argument-less event: the URI is a pointer to
-// off-chain metadata that a consumer has to fetch anyway, so the log carries
-// the invalidation signal rather than a copy of the string.
 func (t b20Token) updateContractURI(v string) error {
 	if err := t.ensureMetadataWrite(); err != nil {
 		return err

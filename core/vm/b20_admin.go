@@ -22,10 +22,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// B20 RBAC roles, granular pausing, and mint/burn. Mirrors the shared IB20
-// RoleManaged/Pausable/Mintable/Burnable traits. Compliance policies
-// (MINT_RECEIVER etc.) and memos are layered on later.
-
 // Built-in role ids. DEFAULT_ADMIN is bytes32(0); the rest are keccak of their
 // canonical names. An unset role admin (zero) therefore means DEFAULT_ADMIN.
 var (
@@ -300,14 +296,8 @@ func readRoleAccount(args []byte) (common.Hash, common.Address, error) {
 
 // --- RoleManaged ------------------------------------------------------------
 
-// roleMutable reports whether admin mutations are still possible. Once the last
-// DEFAULT_ADMIN is renounced (adminCount == 0) the token is permanently
-// ungovernable.
-//
-// TODO: an ownerless token created with initialAdmin == 0 also starts at
-// adminCount == 0 yet must accept role grants during the factory's privileged
-// bootstrap window; reconcile with a dedicated "renounced" marker when the
-// factory lands (verify against base-std roles.rs).
+// roleMutable reports whether role mutations are still possible: adminCount == 0
+// freezes them, except inside the factory's privileged bootstrap.
 func (t b20Token) roleMutable() bool { return !t.s.adminCount().IsZero() }
 
 // ensureAdminOf checks the caller holds the admin role governing role (skipped
@@ -409,11 +399,6 @@ func (t b20Token) ensureRole(role common.Hash) error {
 		addrKey(t.ctx.Caller), role)
 }
 
-// ensureRoleMutable applies the shared role-mutation gates: a write is refused
-// in a read-only frame, mutations are impossible once the last admin is gone,
-// and otherwise the caller must hold role's admin role. Holding the read-only
-// check here rather than at each call site means a role-mutation entry point
-// added later is guarded by default.
 func (t b20Token) ensureRoleMutable(role common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -541,14 +526,9 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 	return nil
 }
 
-// seizeWithMemo reassigns a frozen account's balance to to. It moves value
-// rather than destroying it, so totalSupply is unchanged, and it skips the
-// allowance and the transfer policies: the seize scopes gate it instead.
-//
-// SEIZE_HOLDER is checked inverted — from is seizable only while the policy
-// does not authorize it — which is what makes freezing structurally prior to
-// seizure. An unset scope reads as ALWAYS_ALLOW, so on an unconfigured token no
-// account is seizable at all.
+// seizeWithMemo reassigns a frozen account's balance. SEIZE_HOLDER is inverted:
+// only a disallowed holder is seizable, so an ALWAYS_ALLOW scope makes every
+// account non-seizable.
 func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, memo common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
