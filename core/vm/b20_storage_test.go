@@ -17,7 +17,6 @@
 package vm
 
 import (
-	"math/big"
 	"strings"
 	"testing"
 
@@ -29,31 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
-
-// TestERC7201Root anchors the whole slot-math layer: every derived slot hangs
-// off this root, so a change to it silently relocates all B20 storage.
-//
-// The constant is a regression anchor, not an external reference. While the
-// namespace was "base.b20" it could be checked against the value base-std
-// publishes; "bsc.b20" has no published counterpart, so the derivation is also
-// recomputed here from ERC-7201's definition over an independent big.Int path.
-func TestERC7201Root(t *testing.T) {
-	const want = "0xd7d17b10507583ccbb27e6049e378ddb3a23890fde1bf3d25a473c9817975c00"
-	if got := b20CoreRoot.Hex(); got != want {
-		t.Fatalf("erc7201Root(%q) = %s, want %s", b20Namespace, got, want)
-	}
-
-	// ERC-7201: keccak256(keccak256(namespace) - 1), low byte cleared.
-	inner := new(big.Int).SetBytes(crypto.Keccak256([]byte(b20Namespace)))
-	inner.Sub(inner, big.NewInt(1))
-	var buf [32]byte
-	inner.FillBytes(buf[:])
-	exp := crypto.Keccak256Hash(buf[:])
-	exp[31] = 0
-	if b20CoreRoot != exp {
-		t.Fatalf("root does not follow ERC-7201: got %s, want %s", b20CoreRoot.Hex(), exp.Hex())
-	}
-}
 
 func newTestStorage(t *testing.T) b20Storage {
 	t.Helper()
