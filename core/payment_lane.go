@@ -203,7 +203,8 @@ func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 	return nil
 }
 
-// VerifyImported is the importer's verdict, and the only authoritative one.
+// VerifyImported is the importer's replay verdict on nodes that classify against trie-backed
+// state; modes that skip that replay can still settle the committed quota exactly.
 func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane.Commitment) error {
 	if !ls.On() {
 		return nil

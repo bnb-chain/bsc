@@ -61,16 +61,13 @@ Transaction selection and EVM execution are entirely builder-driven; this specif
 From the block after the Gauss activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. (The activation block itself carries no commitment, but a builder never builds one: `mev_sendBidBlock` refuses it with `-38001` and the builder falls back to `mev_sendBid`.)
 
 ```go
-lane, err := core.ResolveLaneState(chainConfig, chain, parent, header, state.Reader())  // once per block
+lane, err := core.ResolveLaneState(chainConfig, parent, header, state)  // once per block
 if err != nil {
     return err  // never ignore: a nil lane no-ops silently and the block ships unstamped
 }
 lane.SetQuota()                                    // derives the quota this block must commit
 
-class, err := lane.Classify(tx)                    // before each apply
-if err != nil {
-    return err  // swallowing it only defers the refusal to WriteCommitmentAndVerify
-}
+class := lane.Classify(tx)                         // before each apply
 if !lane.Admits(gasPool.Gas(), class, tx.Gas()) {  // general must leave the quota intact
     continue
 }
@@ -79,7 +76,9 @@ usedBefore := gasPool.Used()
 lane.RecordUsedFrom(class, gasPool, usedBefore)
 ```
 
-`state.Reader()` and not `state`: the reader is pinned to the parent root, and `Classify` must give the validator's replay the same answer it gave here. The parent root is the only state both sides share.
+`state` and not a detached reader: `ResolveLaneState` reads the parent-pinned params from the
+still-unadvanced block `StateDB`, while `Classify` reads the live code view from that same state
+as execution advances.
 
 A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so; `WriteCommitmentAndVerify` in step 3b will, and so will the validator at admission, since the committed values alone decide it.
 
@@ -141,8 +140,8 @@ No wrong commitment is ever accepted, but where it is caught — and whether the
 | what is wrong | where it is caught | what the builder sees |
 |---|---|---|
 | no commitment, malformed, or the block rule fails on the committed values | admission, before the validator signs | `mev_sendBidBlock` → `-38007` |
-| `laneSize` is not the derived quota, or the payment total exceeds the sum of the block's payment-class transactions' declared gas limits | after admission has already returned success, when the validator picks the block | **nothing** — no RPC error, no revoke; the bid is dropped and the slot goes to another bid or to the validator's own block |
-| the payment total is wrong but within that bound (understated, most likely by never calling `RecordUsedFrom`) | the importer, after the validator has signed and broadcast | the builder's permission is revoked |
+| `laneSize` is not the derived quota | after admission has already returned success, when the validator picks the block | **nothing** — no RPC error, no revoke; the bid is dropped and the slot goes to another bid or to the validator's own block |
+| the payment total is wrong | the importer, after the validator has signed and broadcast | the builder's permission is revoked |
 
 ## 4. Assemble the BidBlock Payload
 
@@ -176,10 +175,10 @@ A bare keccak digest, with no EIP-191/712 prefix, consistent with the existing `
 
 Builders poll `mev_getBidBlockPermission` to determine whether the BidBlock path is currently open for them on a given validator, and fall back to legacy `mev_sendBid` when it is not.
 
-The RPC does not surface permission denial through a JSON-RPC error; state is carried in the `allowed` field of the result. When `allowed` is false, `reason` identifies why. Current values:
+The RPC does not surface permission denial through a JSON-RPC error; state is carried in the `allowed` field of the result. When `allowed` is false, `reason` identifies why. Current values are the same strings the validator records:
 
-- `insertchain_failed` — the last sealed BidBlock from this builder failed validator-side `InsertChain` (e.g. invalid state root, mismatched receipt hash, KZG proof failure).
-- `gasprice_too_low` — the sealed BidBlock imported successfully, but its average gas price (excluding system transactions) was below the validator's configured minimum.
+- `InsertChain err: <detail>` — the last sealed BidBlock from this builder failed validator-side `InsertChain` (e.g. invalid state root, mismatched receipt hash, KZG proof failure).
+- `BidBlock average gas price too low, avg:<avg>, min:<min>` — the sealed BidBlock imported successfully, but its average gas price (excluding system transactions) was below the validator's configured minimum.
 - `manual` — admin revoke via `admin_setBidBlockPermission`.
 
 `mev_getBidBlockPermission` response:
@@ -187,7 +186,7 @@ The RPC does not surface permission denial through a JSON-RPC error; state is ca
 ```jsonc
 {
   "allowed": false,
-  "reason": "insertchain_failed",
+  "reason": "InsertChain err: invalid state root",
   "blockHash": "0x...",
   "blockNumber": "0x123",
   "revokedAt": "2026-05-22T...",       // when the revoke happened

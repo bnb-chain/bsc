@@ -816,9 +816,9 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	// The authoritative classification, where the importer also takes it. commitTransactions
-	// asks earlier to size its budget; the straight line between the two touches no state, so
-	// the answers agree - keep it that way.
+	// The classification producer and replaying importers take at the same point. commitTransactions
+	// asks earlier to size its budget; the straight line between the two touches no state, so the
+	// answers agree - keep it that way.
 	class := env.lane.Classify(tx)
 	var (
 		snap       = env.state.Snapshot()

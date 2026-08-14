@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
+	"github.com/ethereum/go-ethereum/core/paymentlanemeta"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -78,6 +79,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockNumber = block.Number()
 		allLogs     []*types.Log
 		gp          = NewGasPool(block.GasLimit())
+		err         error
 	)
 	replayLaneClassification := !statedb.NoTries()
 	var tracingStateDB = vm.StateDB(statedb)
@@ -95,21 +97,43 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		return nil, errors.New("could not get parent block")
 	}
 
-	lane, err := ResolveLaneState(config, lastBlock, header, statedb)
-	if err != nil {
-		return nil, laneReject(err)
-	}
 	var laneCommitted paymentlane.Commitment
-	if lane.On() { // verify the commitment
+	laneOn := config.IsGauss(lastBlock.Number, lastBlock.Time)
+	lane := &LaneState{}
+	if laneOn {
 		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
 			return nil, laneReject(err)
 		}
-		if err = lane.CheckQuota(laneCommitted.LaneSize); err != nil {
-			return nil, laneReject(err)
+		if replayLaneClassification {
+			lane, err = ResolveLaneState(config, lastBlock, header, statedb)
+			if err != nil {
+				return nil, laneReject(err)
+			}
+			if err = lane.CheckQuota(laneCommitted.LaneSize); err != nil {
+				return nil, laneReject(err)
+			}
+		} else {
+			// Import still checks the committed quota exactly, but in NoTries mode it does not
+			// replay classification, so there is no reason to pay the cost of loading the full
+			// listed set.
+			laneParams, err := paymentlanemeta.LoadParamsForQuota(config, lastBlock, header, statedb)
+			if err != nil {
+				return nil, laneReject(err)
+			}
+			signal, err := paymentlane.NewSignalFromParent(lastBlock)
+			if err != nil {
+				return nil, laneReject(err)
+			}
+			if err := signal.CheckNextLaneSize(laneCommitted.LaneSize, laneParams, header.GasLimit); err != nil {
+				return nil, laneReject(err)
+			}
+			if lastBlock.UncleHash == types.EmptyUncleHash {
+				floor, ceiling, safetyCap := paymentlane.Bounds(laneParams, header.GasLimit)
+				log.Info("Payment lane activated", "number", header.Number, "quota", laneCommitted.LaneSize,
+					"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", laneParams)
+			}
 		}
-		// activation+1, the only block whose parent carries no commitment, and the only place the
-		// parameters this node read are put on record.
-		if lastBlock.UncleHash == types.EmptyUncleHash {
+		if replayLaneClassification && lastBlock.UncleHash == types.EmptyUncleHash {
 			floor, ceiling, safetyCap := lane.Bounds()
 			log.Info("Payment lane activated", "number", header.Number, "quota", laneCommitted.LaneSize,
 				"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", lane.Params())
@@ -224,7 +248,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			return nil, laneReject(err)
 		}
 	}
-	if lane.On() {
+	if laneOn {
 		recordLaneImported(laneCommitted)
 	}
 
