@@ -82,7 +82,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideOsaka           *uint64       `toml:",omitempty"`
 		OverrideMendel          *uint64       `toml:",omitempty"`
 		OverridePasteur         *uint64       `toml:",omitempty"`
-		OverrideGauss           *uint64       `toml:",omitempty"`
+		OverrideJenner          *uint64       `toml:",omitempty"`
 		OverrideBPO1            *uint64       `toml:",omitempty"`
 		OverrideBPO2            *uint64       `toml:",omitempty"`
 		OverrideUBT             *uint64       `toml:",omitempty"`
@@ -156,7 +156,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideOsaka = c.OverrideOsaka
 	enc.OverrideMendel = c.OverrideMendel
 	enc.OverridePasteur = c.OverridePasteur
-	enc.OverrideGauss = c.OverrideGauss
+	enc.OverrideJenner = c.OverrideJenner
 	enc.OverrideBPO1 = c.OverrideBPO1
 	enc.OverrideBPO2 = c.OverrideBPO2
 	enc.OverrideUBT = c.OverrideUBT
@@ -234,7 +234,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideOsaka           *uint64        `toml:",omitempty"`
 		OverrideMendel          *uint64        `toml:",omitempty"`
 		OverridePasteur         *uint64        `toml:",omitempty"`
-		OverrideGauss           *uint64        `toml:",omitempty"`
+		OverrideJenner          *uint64        `toml:",omitempty"`
 		OverrideBPO1            *uint64        `toml:",omitempty"`
 		OverrideBPO2            *uint64        `toml:",omitempty"`
 		OverrideUBT             *uint64        `toml:",omitempty"`
@@ -439,8 +439,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.OverridePasteur != nil {
 		c.OverridePasteur = dec.OverridePasteur
 	}
-	if dec.OverrideGauss != nil {
-		c.OverrideGauss = dec.OverrideGauss
+	if dec.OverrideJenner != nil {
+		c.OverrideJenner = dec.OverrideJenner
 	}
 	if dec.OverrideBPO1 != nil {
 		c.OverrideBPO1 = dec.OverrideBPO1

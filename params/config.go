@@ -253,7 +253,7 @@ var (
 		OsakaTime:           newUint64(1777343400), // 2026-04-28 02:30:00 AM UTC
 		MendelTime:          newUint64(1777343400), // 2026-04-28 02:30:00 AM UTC
 		PasteurTime:         nil,
-		GaussTime:           nil,
+		JennerTime:          nil,
 		BPO1Time:            nil, // will be skipped in BSC
 		BPO2Time:            nil, // will be skipped in BSC
 		AmsterdamTime:       nil,
@@ -308,7 +308,7 @@ var (
 		OsakaTime:           newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
 		MendelTime:          newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
 		PasteurTime:         newUint64(1784601000), // 2026-07-21 02:30:00 AM UTC
-		GaussTime:           nil,
+		JennerTime:          nil,
 		BPO1Time:            nil, // will be skipped in BSC
 		BPO2Time:            nil, // will be skipped in BSC
 		AmsterdamTime:       nil,
@@ -365,7 +365,7 @@ var (
 		OsakaTime:     nil,
 		MendelTime:    nil,
 		PasteurTime:   nil,
-		GaussTime:     nil,
+		JennerTime:    nil,
 		BPO1Time:      nil, // will be skipped in BSC
 		BPO2Time:      nil, // will be skipped in BSC
 		AmsterdamTime: nil,
@@ -726,7 +726,7 @@ type ChainConfig struct {
 	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
 	MendelTime     *uint64 `json:"mendelTime,omitempty"`     // Mendel switch time (nil = no fork, 0 = already on mendel)
 	PasteurTime    *uint64 `json:"pasteurTime,omitempty"`    // Pasteur switch time (nil = no fork, 0 = already on pasteur)
-	GaussTime      *uint64 `json:"gaussTime,omitempty"`      // Gauss switch time (nil = no fork, 0 = already on gauss)
+	JennerTime     *uint64 `json:"jennerTime,omitempty"`     // Jenner switch time (nil = no fork, 0 = already on jenner)
 	BPO1Time       *uint64 `json:"bpo1Time,omitempty"`       // BPO1 switch time (nil = no fork, 0 = already on bpo1)
 	BPO2Time       *uint64 `json:"bpo2Time,omitempty"`       // BPO2 switch time (nil = no fork, 0 = already on bpo2)
 	BPO3Time       *uint64 `json:"bpo3Time,omitempty"`       // BPO3 switch time (nil = no fork, 0 = already on bpo3)
@@ -924,9 +924,9 @@ func (c *ChainConfig) String() string {
 		PasteurTime = big.NewInt(0).SetUint64(*c.PasteurTime)
 	}
 
-	var GaussTime *big.Int
-	if c.GaussTime != nil {
-		GaussTime = big.NewInt(0).SetUint64(*c.GaussTime)
+	var JennerTime *big.Int
+	if c.JennerTime != nil {
+		JennerTime = big.NewInt(0).SetUint64(*c.JennerTime)
 	}
 
 	var BPO1Time *big.Int
@@ -942,7 +942,7 @@ func (c *ChainConfig) String() string {
 	return fmt.Sprintf("{ChainID: %v, Engine: %v, Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, "+
 		"MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, "+
 		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v, "+
-		"OsakaTime: %v, MendelTime: %v, PasteurTime: %v, GaussTime: %v, BPO1Time: %v, BPO2Time: %v}",
+		"OsakaTime: %v, MendelTime: %v, PasteurTime: %v, JennerTime: %v, BPO1Time: %v, BPO2Time: %v}",
 		c.ChainID,
 		engine,
 		c.HomesteadBlock,
@@ -991,7 +991,7 @@ func (c *ChainConfig) String() string {
 		OsakaTime,
 		MendelTime,
 		PasteurTime,
-		GaussTime,
+		JennerTime,
 		BPO1Time,
 		BPO2Time,
 	)
@@ -1468,18 +1468,18 @@ func (c *ChainConfig) IsOnPasteur(currentBlockNumber *big.Int, lastBlockTime uin
 	return !c.IsPasteur(lastBlockNumber, lastBlockTime) && c.IsPasteur(currentBlockNumber, currentBlockTime)
 }
 
-// IsGauss returns whether time is either equal to the Gauss fork time or greater.
-func (c *ChainConfig) IsGauss(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.GaussTime, time)
+// IsJenner returns whether time is either equal to the Jenner fork time or greater.
+func (c *ChainConfig) IsJenner(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.JennerTime, time)
 }
 
-// IsOnGauss returns whether currentBlockTime is either equal to the Gauss fork time or greater firstly.
-func (c *ChainConfig) IsOnGauss(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+// IsOnJenner returns whether currentBlockTime is either equal to the Jenner fork time or greater firstly.
+func (c *ChainConfig) IsOnJenner(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
 	lastBlockNumber := new(big.Int)
 	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
 		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
 	}
-	return !c.IsGauss(lastBlockNumber, lastBlockTime) && c.IsGauss(currentBlockNumber, currentBlockTime)
+	return !c.IsJenner(lastBlockNumber, lastBlockTime) && c.IsJenner(currentBlockNumber, currentBlockTime)
 }
 
 // IsBPO1 returns whether time is either equal to the BPO1 fork time or greater.
@@ -1600,7 +1600,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "osakaTime", timestamp: c.OsakaTime},
 		{name: "mendelTime", timestamp: c.MendelTime},
 		{name: "pasteurTime", timestamp: c.PasteurTime},
-		{name: "gaussTime", timestamp: c.GaussTime},
+		{name: "jennerTime", timestamp: c.JennerTime},
 		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
 		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
 		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
@@ -1832,8 +1832,8 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.PasteurTime, newcfg.PasteurTime, headTimestamp) {
 		return newTimestampCompatError("Pasteur fork timestamp", c.PasteurTime, newcfg.PasteurTime)
 	}
-	if isForkTimestampIncompatible(c.GaussTime, newcfg.GaussTime, headTimestamp) {
-		return newTimestampCompatError("Gauss fork timestamp", c.GaussTime, newcfg.GaussTime)
+	if isForkTimestampIncompatible(c.JennerTime, newcfg.JennerTime, headTimestamp) {
+		return newTimestampCompatError("Jenner fork timestamp", c.JennerTime, newcfg.JennerTime)
 	}
 	if isForkTimestampIncompatible(c.UBTTime, newcfg.UBTTime, headTimestamp) {
 		return newTimestampCompatError("UBT fork timestamp", c.UBTTime, newcfg.UBTTime)
@@ -1888,8 +1888,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.BPO2
 	case c.IsBPO1(london, time):
 		return forks.BPO1
-	case c.IsGauss(london, time):
-		return forks.Gauss
+	case c.IsJenner(london, time):
+		return forks.Jenner
 	case c.IsPasteur(london, time):
 		return forks.Pasteur
 	case c.IsMendel(london, time):
@@ -1979,8 +1979,8 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 		return c.BPO2Time
 	case fork == forks.BPO1:
 		return c.BPO1Time
-	case fork == forks.Gauss:
-		return c.GaussTime
+	case fork == forks.Jenner:
+		return c.JennerTime
 	case fork == forks.Pasteur:
 		return c.PasteurTime
 	case fork == forks.Mendel:
@@ -2154,7 +2154,7 @@ type Rules struct {
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
-	IsPasteur, IsGauss, IsAmsterdam, IsUBT                  bool
+	IsPasteur, IsJenner, IsAmsterdam, IsUBT                 bool
 	// IsInBSC is true when Parlia is configured (BSC chains). core/vm uses it to
 	// select the BSC precompile set (…ForBSC); non-BSC chains (e.g. the standard
 	// state / execution-spec tests) get the standard upstream set.
@@ -2200,7 +2200,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsOsaka:          (isMerge || c.IsInBSC()) && c.IsOsaka(num, timestamp),
 		IsMendel:         c.IsMendel(num, timestamp),
 		IsPasteur:        c.IsPasteur(num, timestamp),
-		IsGauss:          c.IsGauss(num, timestamp),
+		IsJenner:         c.IsJenner(num, timestamp),
 		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
 		IsUBT:            isUBT,
 		IsEIP4762:        isUBT,

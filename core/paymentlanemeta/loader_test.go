@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -22,7 +22,7 @@ const paymentContractsLenSlot = 8
 
 func deployedContractState(t *testing.T) *state.StateDB {
 	t.Helper()
-	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	require.NoError(t, err)
 
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -124,7 +124,7 @@ func TestLoadParamsForQuotaStaysOnParentRoot(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, db)
 	require.NoError(t, err)
 
-	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	require.NoError(t, err)
 	statedb.SetCode(paymentlane.ContractAddress, code, tracing.CodeChangeSystemContractUpgrade)
 	statedb.SetState(paymentlane.ContractAddress, paramSlot(6), word(3_000_000))

@@ -700,8 +700,8 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return err
 	}
 
-	// From Gauss+1, UncleHash carries the BEP-703 commitment (3.5.2) instead of EmptyUncleHash.
-	if !chain.Config().IsGauss(parent.Number, parent.Time) {
+	// From Jenner+1, UncleHash carries the BEP-703 commitment (3.5.2) instead of EmptyUncleHash.
+	if !chain.Config().IsJenner(parent.Number, parent.Time) {
 		if header.UncleHash != types.EmptyUncleHash {
 			return errInvalidUncleHash
 		}

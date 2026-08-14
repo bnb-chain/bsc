@@ -76,7 +76,7 @@ var (
 			utils.OverrideOsaka,
 			utils.OverrideMendel,
 			utils.OverridePasteur,
-			utils.OverrideGauss,
+			utils.OverrideJenner,
 			utils.OverrideBPO1,
 			utils.OverrideBPO2,
 			utils.OverrideUBT,
@@ -374,9 +374,9 @@ func initGenesis(ctx *cli.Context) error {
 		v := ctx.Uint64(utils.OverridePasteur.Name)
 		overrides.OverridePasteur = &v
 	}
-	if ctx.IsSet(utils.OverrideGauss.Name) {
-		v := ctx.Uint64(utils.OverrideGauss.Name)
-		overrides.OverrideGauss = &v
+	if ctx.IsSet(utils.OverrideJenner.Name) {
+		v := ctx.Uint64(utils.OverrideJenner.Name)
+		overrides.OverrideJenner = &v
 	}
 	if ctx.IsSet(utils.OverrideBPO1.Name) {
 		v := ctx.Uint64(utils.OverrideBPO1.Name)

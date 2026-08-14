@@ -2,11 +2,13 @@ package paymentlanemeta
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -29,6 +31,8 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 }
 
 func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
+	start := time.Now()
+
 	params, err := loadParamsFromStateDB(config, header, statedb)
 	if err != nil {
 		return nil, err
@@ -37,6 +41,7 @@ func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, state
 	if err != nil {
 		return nil, err
 	}
+	log.Info("Loaded payment lane metadata", "elapsed", time.Since(start), "listed", len(listed))
 	return &Meta{params: params, listed: listed}, nil
 }
 

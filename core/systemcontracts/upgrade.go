@@ -14,9 +14,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/fermi"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
 	feynmanFix "github.com/ethereum/go-ethereum/core/systemcontracts/feynman_fix"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
 	haberFix "github.com/ethereum/go-ethereum/core/systemcontracts/haber_fix"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/lorentz"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/luban"
@@ -100,7 +100,7 @@ var (
 
 	pasteurUpgrade = make(map[string]*Upgrade)
 
-	gaussUpgrade = make(map[string]*Upgrade)
+	jennerUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -1111,36 +1111,36 @@ func init() {
 	}
 
 	// PaymentLane (BEP-703) needs no initialize(): every unwritten slot reads as its default in
-	// the contract itself, so Gauss ships bytecode only.
-	gaussUpgrade[mainNet] = &Upgrade{
-		UpgradeName: "gauss",
+	// the contract itself, so Jenner ships bytecode only.
+	jennerUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "jenner",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/a38bef91c1fa752e9af5f8f3b8053838434294e7",
-				Code:         gauss.MainnetPaymentLaneContract,
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/df4615d95427a91ed00ae3df008c97b6bf06a3e8",
+				Code:         jenner.MainnetPaymentLaneContract,
 			},
 		},
 	}
 
-	gaussUpgrade[chapelNet] = &Upgrade{
-		UpgradeName: "gauss",
+	jennerUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "jenner",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/a38bef91c1fa752e9af5f8f3b8053838434294e7",
-				Code:         gauss.ChapelPaymentLaneContract,
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/df4615d95427a91ed00ae3df008c97b6bf06a3e8",
+				Code:         jenner.ChapelPaymentLaneContract,
 			},
 		},
 	}
 
-	gaussUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "gauss",
+	jennerUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "jenner",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/a38bef91c1fa752e9af5f8f3b8053838434294e7",
-				Code:         gauss.RialtoPaymentLaneContract,
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/df4615d95427a91ed00ae3df008c97b6bf06a3e8",
+				Code:         jenner.RialtoPaymentLaneContract,
 			},
 		},
 	}
@@ -1267,8 +1267,8 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 		applySystemContractUpgrade(pasteurUpgrade[network], blockNumber, statedb, logger)
 	}
 
-	if config.IsOnGauss(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(gaussUpgrade[network], blockNumber, statedb, logger)
+	if config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(jennerUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

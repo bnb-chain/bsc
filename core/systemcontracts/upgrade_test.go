@@ -46,12 +46,12 @@ func TestAllCodesHash(t *testing.T) {
 	require.Equal(t, allCodeHash[:], common.Hex2Bytes("833cc0fc87c46ad8a223e44ccfdc16a51a7e7383525136441bd0c730f06023df"))
 }
 
-// Pin the Gauss payment-lane address and bytecode on all three networks.
-func TestGaussPaymentLaneCode(t *testing.T) {
+// Pin the Jenner payment-lane address and bytecode on all three networks.
+func TestJennerPaymentLaneCode(t *testing.T) {
 	const wantCodeHash = "cda38b7a304e849f251f930fcc86a71f7b9090c701497ab052aaa97025007083"
 
 	for _, network := range []string{mainNet, chapelNet, rialtoNet} {
-		upgrade := gaussUpgrade[network]
+		upgrade := jennerUpgrade[network]
 		require.NotNil(t, upgrade, network)
 		require.Len(t, upgrade.Configs, 1, network)
 
@@ -67,19 +67,19 @@ func TestGaussPaymentLaneCode(t *testing.T) {
 	}
 }
 
-// Drive the real dispatcher so a missing IsOnGauss branch is caught.
-func TestGaussUpgradeApplies(t *testing.T) {
+// Drive the real dispatcher so a missing IsOnJenner branch is caught.
+func TestJennerUpgradeApplies(t *testing.T) {
 	const (
-		gaussTime     uint64 = 1_800_000_000
-		blockTime            = gaussTime + 3 // first block at or after the fork time
-		lastBlockTime        = gaussTime - 3
+		jennerTime    uint64 = 1_800_000_000
+		blockTime            = jennerTime + 3 // first block at or after the fork time
+		lastBlockTime        = jennerTime - 3
 	)
 	addr := common.HexToAddress(PaymentLaneContract)
 	blockNumber := big.NewInt(60_000_000)
 
-	forkTime := gaussTime
+	forkTime := jennerTime
 	config := *params.BSCChainConfig // copy: never mutate the shared mainnet config
-	config.GaussTime = &forkTime
+	config.JennerTime = &forkTime
 	GenesisHash = params.BSCGenesisHash
 
 	// The transition block installs the code.

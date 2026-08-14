@@ -346,7 +346,7 @@ func TestNoHaltIsReachable(t *testing.T) {
 func TestTheRulesSkipTheActivationBlock(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig // copy: never mutate the shared mainnet config
-	config.GaussTime = &forkTime
+	config.JennerTime = &forkTime
 
 	require.NotNil(t, config.LondonBlock)
 	base := config.LondonBlock.Uint64() + 1_000_000
@@ -363,15 +363,15 @@ func TestTheRulesSkipTheActivationBlock(t *testing.T) {
 		{"long after", base + 500, forkTime + 1000, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, config.IsGauss(num(tc.parentNum), tc.parentTime))
+			require.Equal(t, tc.want, config.IsJenner(num(tc.parentNum), tc.parentTime))
 		})
 	}
 
-	noGauss := *params.BSCChainConfig
-	noGauss.GaussTime = nil
-	require.False(t, noGauss.IsGauss(num(base), forkTime-3))
+	noJenner := *params.BSCChainConfig
+	noJenner.JennerTime = nil
+	require.False(t, noJenner.IsJenner(num(base), forkTime-3))
 
-	require.False(t, config.IsGauss(common.Big0, forkTime),
+	require.False(t, config.IsJenner(common.Big0, forkTime),
 		"below LondonBlock the lane must not apply")
 }
 

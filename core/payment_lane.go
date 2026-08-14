@@ -68,7 +68,7 @@ type laneStateDB interface {
 // config read has to land on the witness-visible path, and classification then follows the same
 // StateDB as it advances.
 func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (*LaneState, error) {
-	if !config.IsGauss(parent.Number, parent.Time) {
+	if !config.IsJenner(parent.Number, parent.Time) {
 		return &LaneState{}, nil
 	}
 	meta, err := paymentlanemeta.LoadMeta(config, header, statedb)
@@ -103,7 +103,7 @@ func (ls *LaneState) checkState() error {
 // which has no execution state for the block it is about to sign and so cannot classify. statedb
 // is used only to rebuild a parent-root-bound read-only StateDB for the params read.
 func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) error {
-	if !config.IsGauss(parent.Number, parent.Time) {
+	if !config.IsJenner(parent.Number, parent.Time) {
 		return nil
 	}
 	c, err := paymentlane.Decode(header.UncleHash)

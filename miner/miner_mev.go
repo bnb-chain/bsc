@@ -116,7 +116,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 
 	// Security: validators must self-produce hard-fork activation blocks.
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
-		miner.worker.chainConfig.IsOnGauss(bb.Header.Number, parent.Time, bb.Header.Time) {
+		miner.worker.chainConfig.IsOnJenner(bb.Header.Number, parent.Time, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
 			"BidBlock disabled at block %d (hard-fork activation block), fallback to SendBid", blockNumber))
 	}

@@ -1,4 +1,4 @@
-package gauss
+package jenner
 
 import _ "embed"
 

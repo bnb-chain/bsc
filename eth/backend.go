@@ -266,9 +266,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.PasteurTime = config.OverridePasteur
 		overrides.OverridePasteur = config.OverridePasteur
 	}
-	if config.OverrideGauss != nil {
-		chainConfig.GaussTime = config.OverrideGauss
-		overrides.OverrideGauss = config.OverrideGauss
+	if config.OverrideJenner != nil {
+		chainConfig.JennerTime = config.OverrideJenner
+		overrides.OverrideJenner = config.OverrideJenner
 	}
 	if config.OverrideBPO1 != nil {
 		chainConfig.BPO1Time = config.OverrideBPO1

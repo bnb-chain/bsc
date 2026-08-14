@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -37,20 +37,20 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 	trieDB := triedb.NewDatabase(db, nil)
 	t.Cleanup(func() { trieDB.Close() })
 
-	laneCode, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	laneCode, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	if err != nil {
 		t.Fatalf("failed to decode the PaymentLane blob: %v", err)
 	}
 
-	// Parlia configs must enable the earlier timestamp forks before Gauss.
+	// Parlia configs must enable the earlier timestamp forks before Jenner.
 	at0 := func() *uint64 { v := uint64(0); return &v }
 	config := *params.ParliaTestChainConfig
 	config.HaberTime, config.HaberFixTime = at0(), at0()
 	config.BohrTime, config.PascalTime, config.PragueTime = at0(), at0(), at0()
 	config.LorentzTime, config.MaxwellTime, config.FermiTime = at0(), at0(), at0()
 	config.OsakaTime, config.MendelTime, config.PasteurTime = at0(), at0(), at0()
-	gaussTime := uint64(5)
-	config.GaussTime = &gaussTime
+	jennerTime := uint64(5)
+	config.JennerTime = &jennerTime
 	config.BlobScheduleConfig = &params.BlobScheduleConfig{
 		Cancun: params.DefaultCancunBlobConfig,
 		Prague: params.DefaultPragueBlobConfig,
@@ -225,11 +225,11 @@ func laneVerifiableHeader(base, parent *types.Header) *types.Header {
 func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 	engine, chain, config, laneParent, newHeader, _ := newParliaLaneHarness(t)
 	base := newHeader()
-	postGauss, preGauss := laneParent.Header(), chain.GetHeaderByNumber(0)
-	authorizeLaneValidator(engine, postGauss, base.Coinbase)
-	authorizeLaneValidator(engine, preGauss, base.Coinbase)
-	require.False(t, config.IsGauss(preGauss.Number, preGauss.Time),
-		"the genesis must be pre-Gauss, or the boundary cases below test one regime twice")
+	postJenner, preJenner := laneParent.Header(), chain.GetHeaderByNumber(0)
+	authorizeLaneValidator(engine, postJenner, base.Coinbase)
+	authorizeLaneValidator(engine, preJenner, base.Coinbase)
+	require.False(t, config.IsJenner(preJenner.Number, preJenner.Time),
+		"the genesis must be pre-Jenner, or the boundary cases below test one regime twice")
 
 	for _, tc := range []struct {
 		name      string
@@ -240,19 +240,19 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 	}{
 		{
 			name:      "a truthful commitment passes",
-			parent:    postGauss,
+			parent:    postJenner,
 			gasUsed:   1_000_000,
 			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: 500_000}),
 		},
 		{
 			name:      "an unstamped uncle slot is refused",
-			parent:    postGauss,
+			parent:    postJenner,
 			uncleHash: types.EmptyUncleHash,
 			wantErr:   paymentlane.ErrBadCommitment,
 		},
 		{
 			name:      "a commitment that breaks the block rule is refused",
-			parent:    postGauss,
+			parent:    postJenner,
 			gasUsed:   1_000_000,
 			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneGasLimit + 1}),
 			wantErr:   paymentlane.ErrViolated,
@@ -260,12 +260,12 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 		{
 			// The activation block is the only parent/header boundary case.
 			name:      "the activation block still carries an empty uncle hash",
-			parent:    preGauss,
+			parent:    preJenner,
 			uncleHash: types.EmptyUncleHash,
 		},
 		{
 			name:      "a commitment before activation is refused",
-			parent:    preGauss,
+			parent:    preJenner,
 			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: 2_000_000}),
 			wantErr:   errInvalidUncleHash,
 		},
@@ -273,7 +273,7 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			header := laneVerifiableHeader(base, tc.parent)
 			header.GasUsed, header.UncleHash = tc.gasUsed, tc.uncleHash
-			require.True(t, config.IsGauss(header.Number, header.Time), "every header here is at or past activation")
+			require.True(t, config.IsJenner(header.Number, header.Time), "every header here is at or past activation")
 
 			err := engine.verifyCascadingFields(chain, header, nil)
 			if tc.wantErr == nil {

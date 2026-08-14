@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -23,14 +23,14 @@ import (
 func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainConfig, *types.Header, *types.Header, *ecdsa.PrivateKey) {
 	t.Helper()
 
-	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	require.NoError(t, err)
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 	config := *params.AllEthashProtocolChanges
-	gaussTime := uint64(15)
-	config.GaussTime = &gaussTime
+	jennerTime := uint64(15)
+	config.JennerTime = &jennerTime
 
 	lane := types.Account{Code: code, Balance: common.Big0}
 	if corruptParams {
@@ -52,7 +52,7 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 	require.NoError(t, err)
 
 	parent := blocks[len(blocks)-1].Header()
-	require.True(t, config.IsGauss(parent.Number, parent.Time),
+	require.True(t, config.IsJenner(parent.Number, parent.Time),
 		"the candidate must be a lane block, or every assertion built on it is vacuous")
 
 	return &worker{chain: chain, chainConfig: &config}, &config, parent, &types.Header{

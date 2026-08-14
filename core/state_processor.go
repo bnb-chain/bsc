@@ -98,7 +98,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	}
 
 	var laneCommitted paymentlane.Commitment
-	laneOn := config.IsGauss(lastBlock.Number, lastBlock.Time)
+	laneOn := config.IsJenner(lastBlock.Number, lastBlock.Time)
 	lane := &LaneState{}
 	if laneOn {
 		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {

@@ -20,7 +20,7 @@ parent header / state
         executes and appends unsigned system tx
         returns the complete block
 
-  → core.LaneState.WriteCommitmentAndVerify(block, gasPool.Used())    [Gauss+1 onward]
+  → core.LaneState.WriteCommitmentAndVerify(block, gasPool.Used())    [Jenner+1 onward]
         stamps the BEP-703 commitment onto that block
         MUST happen before anything reads block.Hash()
 
@@ -58,7 +58,7 @@ err := parliaEngine.PrepareForBidBlock(chain, header)
 
 Transaction selection and EVM execution are entirely builder-driven; this specification does not constrain them. The builder runs selected user transactions against the parent state and maintains `state` / `receipts` / `body.Transactions` / `sidecars`.
 
-From the block after the Gauss activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. The activation block itself carries no commitment, and a builder never builds one — see the `-38001` rows in [Send and Fallback](#6-send-and-fallback).
+From the block after the Jenner activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. The activation block itself carries no commitment, and a builder never builds one — see the `-38001` rows in [Send and Fallback](#6-send-and-fallback).
 
 ```go
 lane, err := core.ResolveLaneState(chainConfig, parent, header, state)  // once per block
@@ -121,7 +121,7 @@ Signing does not affect EVM state transitions, so the execution results are iden
 
 ## 3b. Stamp the Commitment
 
-`FinalizeAndAssembleBidBlock` writes `EmptyUncleHash` and `types.NewBlock` re-derives it from the body, so from Gauss+1 the commitment has to be stamped onto the block it returns:
+`FinalizeAndAssembleBidBlock` writes `EmptyUncleHash` and `types.NewBlock` re-derives it from the body, so from Jenner+1 the commitment has to be stamped onto the block it returns:
 
 ```go
 // block is the one step 3 returned
@@ -236,4 +236,4 @@ The transmission latency on the wire is not constant: the number of transactions
 5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". When `mev_params.BidBlockEnabled == false`, treat it the same as permission denied.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
-8. From Gauss+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then stamp the commitment before anything hashes the block — see [Stamp the Commitment](#3b-stamp-the-commitment), including where a wrong one is caught.
+8. From Jenner+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then stamp the commitment before anything hashes the block — see [Stamp the Commitment](#3b-stamp-the-commitment), including where a wrong one is caught.

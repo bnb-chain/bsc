@@ -46,7 +46,7 @@ const (
 	Osaka
 	Mendel
 	Pasteur
-	Gauss
+	Jenner
 	BPO1
 	BPO2
 	BPO3
@@ -90,7 +90,7 @@ var forkToString = map[Fork]string{
 	Osaka:            "Osaka",
 	Mendel:           "Mendel",
 	Pasteur:          "Pasteur",
-	Gauss:            "Gauss",
+	Jenner:           "Jenner",
 	BPO1:             "BPO1",
 	BPO2:             "BPO2",
 	BPO3:             "BPO3",

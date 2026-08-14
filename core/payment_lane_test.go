@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -34,12 +34,12 @@ const (
 // laneGenesis builds the ethash-backed lane harness and preallocates 0x2007.
 func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
 	t.Helper()
-	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	require.NoError(t, err)
 
 	config := *params.AllEthashProtocolChanges
-	gaussTime := uint64(15)
-	config.GaussTime = &gaussTime
+	jennerTime := uint64(15)
+	config.JennerTime = &jennerTime
 
 	key := newKey(t)
 	gspec := &Genesis{
@@ -470,8 +470,8 @@ func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 	zero := uint64(0)
-	config.GaussTime = &zero
-	require.True(t, config.IsGauss(common.Big0, gspec.Timestamp),
+	config.JennerTime = &zero
+	require.True(t, config.IsJenner(common.Big0, gspec.Timestamp),
 		"the lane must bind from block 1, or the grandparent is never the genesis block")
 
 	signer := types.LatestSigner(config)
@@ -493,4 +493,37 @@ func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
 	defer chain.Stop()
 	_, err = chain.InsertChain(blocks)
 	require.NoError(t, err, "a chain whose lane binds from block 1 must import")
+}
+
+// TestPaymentLaneReadsReachTheWitness keeps the lane config read on the witness-visible StateDB
+// path. The governed MinGas proves the witness had real 0x2007 storage to serve.
+func TestPaymentLaneReadsReachTheWitness(t *testing.T) {
+	config, gspec, key := laneGenesis(t)
+
+	lane := gspec.Alloc[paymentlane.ContractAddress]
+	lane.Storage = map[common.Hash]common.Hash{
+		{31: 6}: common.BigToHash(big.NewInt(3_000_000)), // slot 6 is MinGas
+	}
+	gspec.Alloc[paymentlane.ContractAddress] = lane
+
+	signer := types.LatestSigner(config)
+	var nonce uint64
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, func(i int, b *BlockGen) {
+		b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), params.TxGas, nil))
+		nonce++
+	})
+
+	c, err := paymentlane.Decode(blocks[3].UncleHash())
+	require.NoError(t, err)
+	require.EqualValues(t, 3_000_000, c.LaneSize,
+		"the lane floor must reflect the governed storage under test")
+
+	cfg := DefaultConfig()
+	cfg.StatelessSelfValidation = true
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), cfg)
+	require.NoError(t, err)
+	defer chain.Stop()
+
+	n, err := chain.InsertChain(blocks)
+	require.NoError(t, err, "witness replay must serve the lane's 0x2007 reads; failed after %d blocks", n)
 }

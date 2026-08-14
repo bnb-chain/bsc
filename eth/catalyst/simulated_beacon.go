@@ -105,7 +105,7 @@ func payloadVersion(config *params.ChainConfig, time uint64) engine.PayloadVersi
 	switch config.LatestFork(time) {
 	case forks.Amsterdam:
 		return engine.PayloadV4
-	case forks.BPO5, forks.BPO4, forks.BPO3, forks.BPO2, forks.BPO1, forks.Gauss, forks.Pasteur, forks.Mendel,
+	case forks.BPO5, forks.BPO4, forks.BPO3, forks.BPO2, forks.BPO1, forks.Jenner, forks.Pasteur, forks.Mendel,
 		forks.Osaka, forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague, forks.Cancun:
 		return engine.PayloadV3
 	case forks.Paris, forks.Shanghai:

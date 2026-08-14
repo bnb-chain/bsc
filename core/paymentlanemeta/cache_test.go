@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -140,7 +140,7 @@ func TestLoadMetaCacheHitStillFailsOnStickyStateError(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, db)
 	require.NoError(t, err)
 
-	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	require.NoError(t, err)
 	statedb.SetCode(paymentlane.ContractAddress, code, tracing.CodeChangeSystemContractUpgrade)
 
