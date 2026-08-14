@@ -307,12 +307,23 @@ func readAddress(args []byte, i int) (common.Address, error) {
 	if err != nil {
 		return common.Address{}, err
 	}
-	for _, b := range w[:12] { // strict ABI: an address word carries no dirty high bits
+	a, ok := addressFromWord(w)
+	if !ok {
+		return common.Address{}, ErrExecutionReverted
+	}
+	return a, nil
+}
+
+// addressFromWord is the strict ABI reading of an address word: the twelve high
+// bytes must be zero. Truncating them instead would accept encodings another
+// client rejects, and address[] elements need the same rule as scalar arguments.
+func addressFromWord(w common.Hash) (common.Address, bool) {
+	for _, b := range w[:12] {
 		if b != 0 {
-			return common.Address{}, ErrExecutionReverted
+			return common.Address{}, false
 		}
 	}
-	return common.BytesToAddress(w.Bytes()), nil
+	return common.BytesToAddress(w.Bytes()), true
 }
 
 // readU64 strictly decodes a uint64 argument (upper 24 bytes must be zero).

@@ -338,7 +338,10 @@ func batchMint(tok b20Token, args []byte) error {
 		return revB20("EmptyBatch()", errSelEmptyBatch)
 	}
 	for i := range recipients {
-		to := common.BytesToAddress(recipients[i].Bytes())
+		to, ok := addressFromWord(recipients[i])
+		if !ok {
+			return ErrExecutionReverted
+		}
 		amount := new(uint256.Int).SetBytes(amounts[i].Bytes())
 		if err := tok.mintCore(to, amount); err != nil {
 			return err
