@@ -21,6 +21,19 @@ n'ont pas de « deuxième essai » :
 | **Aucune clé privée dans le dépôt** | `.gitignore` couvre `node*/`, `keystore/`, `UTC--*`, `*.key`, `pw.txt`, `.env*`. | à ne pas contourner |
 | **Clé du gouverneur irremplaçable** | `GOVERNOR` est `constant` et aucune fonction ne le change. Sa perte fige l'ensemble des validateurs à vie ; sa compromission donne le consensus. | impossible à corriger — voir `docs/GENESIS-PRODUCTION.md` |
 | **Empreinte du bloc 0 figée** | `stateRoot` engage tout l'état initial : c'est ce qui rend vérifiable l'absence d'allocation cachée. | `genesis-reference.json` + `check-genesis-hash.js` |
+| **Le *code* de `CoinbosaValidatorSet.sol` est figé** | Ce contrat est embarqué dans le bloc 0. Toute modification de sa **logique** change son bytecode, donc le `stateRoot`, donc l'identité de la chaîne : le réseau en production devient inatteignable. Les **commentaires** sont sans effet (`bytecodeHash: 'none'` dans `build-genesis.js`), la logique ne l'est pas. | `check-genesis-hash.js` échoue |
+
+## Ce qui manque, et qu'il ne faut pas prétendre corriger ici
+
+- **Il n'existe aucun mécanisme de sanction.** `CoinbosaValidatorSet.sol` ne contient ni
+  `slash`, ni `jail`, ni mise en quarantaine : un validateur qui cesse de produire ou qui
+  double-signe n'est **pas** pénalisé. C'est sans conséquence tant qu'un seul validateur
+  opère la chaîne, et cela devient bloquant dès le deuxième.
+  **Ne pas ajouter ces fonctions au contrat système** : il est figé dans le bloc 0 (voir
+  ci-dessus). La couche d'enjeu se construira dans un contrat séparé, avec migration du set
+  de validateurs — c'est le chantier décrit dans `coinbosa/ROADMAP.md`.
+  L'absence est déjà divulguée dans `coinbosa/README.md`, `coinbosa/ROADMAP.md` et
+  `coinbosa/WHITEPAPER.md`. Ne pas écrire ailleurs que les sanctions existent.
 
 ## Contraintes de projet
 

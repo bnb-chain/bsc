@@ -26,6 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --- cohérence du site vitrine ---
+      # Placé avant toute compilation : ne dépend ni de Go ni de Node, coûte deux
+      # secondes, et échoue vite. Le site est fait de cinq fichiers HTML qui
+      # recopient le même en-tête et le même pied ; sans ce contrôle, une entrée de
+      # menu ajoutée sur quatre pages sur cinq passe inaperçue jusqu'en production.
+      # Le contrôle couvre aussi ce qu'un relecteur ne voit pas : un canonical
+      # dupliqué, un gestionnaire d'événement inline que la CSP tuerait
+      # silencieusement, un saut de niveau de titre, et une ressource modifiée dont
+      # l'empreinte de cache n'a pas été recalculée — auquel cas les visiteurs déjà
+      # venus garderaient l'ancienne version pendant un an.
+      - name: Cohérence des pages du site
+        run: python3 coinbosa/site/coque.py --verifier
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
