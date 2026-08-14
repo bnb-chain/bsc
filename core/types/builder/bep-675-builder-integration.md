@@ -58,7 +58,7 @@ err := parliaEngine.PrepareForBidBlock(chain, header)
 
 Transaction selection and EVM execution are entirely builder-driven; this specification does not constrain them. The builder runs selected user transactions against the parent state and maintains `state` / `receipts` / `body.Transactions` / `sidecars`.
 
-From the block after the Gauss activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. (The activation block itself carries no commitment, but a builder never builds one: `mev_sendBidBlock` refuses it with `-38001` and the builder falls back to `mev_sendBid`.)
+From the block after the Gauss activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. The activation block itself carries no commitment, and a builder never builds one — see the `-38001` rows in [Send and Fallback](#6-send-and-fallback).
 
 ```go
 lane, err := core.ResolveLaneState(chainConfig, parent, header, state)  // once per block
@@ -132,10 +132,10 @@ if err := lane.WriteCommitmentAndVerify(block, gasPool.Used()); err != nil {
 
 Two things this is strict about:
 
-- **Before anything hashes the block.** `Block.Hash()` is cached on first read and never invalidated, so a stray log line, a sidecar loop or a metric that reads it first leaves the block disagreeing with its own header. `WriteCommitmentAndVerify` detects that and refuses rather than emitting it.
+- **Before anything reads `block.Hash()`.** It is cached on first read and never invalidated, so anything that hashes the block first leaves it disagreeing with its own header. `WriteCommitmentAndVerify` detects that and refuses rather than emitting it.
 - **`poolUsed` is `gasPool.Used()`** — not `header.GasUsed`, and not a sum of receipts.
 
-No wrong commitment is ever accepted, but where it is caught — and whether the builder is told at all — varies:
+A wrong commitment is never accepted, but where it is caught — and whether the builder hears about it — varies:
 
 | what is wrong | where it is caught | what the builder sees |
 |---|---|---|
@@ -236,4 +236,4 @@ The transmission latency on the wire is not constant: the number of transactions
 5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". When `mev_params.BidBlockEnabled == false`, treat it the same as permission denied.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
-8. From Gauss+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then `WriteCommitmentAndVerify` before anything hashes the block. A wrong commitment is always refused, sometimes with no RPC error at all (see [Stamp the Commitment](#3b-stamp-the-commitment)).
+8. From Gauss+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then stamp the commitment before anything hashes the block — see [Stamp the Commitment](#3b-stamp-the-commitment), including where a wrong one is caught.

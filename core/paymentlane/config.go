@@ -6,8 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// ContractAddress is the PaymentLane system contract, installed by the Gauss fork. Spelled out
-// rather than taken from systemcontracts, which would stop this package being a leaf.
+// ContractAddress is the PaymentLane system contract, installed by the Gauss fork.
 var ContractAddress = common.HexToAddress("0x0000000000000000000000000000000000002007")
 
 // Params is the eight governable values of BEP-703 section 3.6 as one decoded tuple.

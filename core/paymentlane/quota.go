@@ -20,15 +20,12 @@ type Signal struct {
 	parentGasLimit      uint64
 }
 
-// NewSignalFromParent reads the parent's congestion off its own header, as the Signal
-// NextLaneSize turns into the next block's quota: the quota and payment gas the parent
-// committed, its gas used, and its own gas limit as the denominator.
+// NewSignalFromParent reads the parent's congestion off its own header.
 //
-// Whether the parent carries a commitment at all is a fork-boundary fact, and must NOT be
-// inferred from whether decoding succeeded - reading a failure as bootstrap would silently
-// reset the quota to the floor. The test is positive about the boundary instead: a block
-// outside the mechanism carries EmptyUncleHash (BEP 3.4.5), which no commitment can equal,
-// its reserved bytes being non-zero. That covers a genesis parent too.
+// Whether the parent carries a commitment must NOT be inferred from whether decoding failed:
+// reading a failure as bootstrap would silently reset the quota to the floor (BEP 3.5.5). The
+// test is positive instead - a block outside the mechanism carries EmptyUncleHash, which no
+// commitment can equal, its reserved bytes being non-zero. Genesis is covered by the same test.
 func NewSignalFromParent(parent *types.Header) (Signal, error) {
 	if parent == nil {
 		return Signal{}, fmt.Errorf("%w: nil parent header", ErrBadCommitment)
@@ -40,16 +37,11 @@ func NewSignalFromParent(parent *types.Header) (Signal, error) {
 	if err != nil {
 		return Signal{}, err
 	}
-	return newSignal(&c, parent.GasUsed, parent.GasLimit), nil
+	return newSignal(c, parent.GasUsed, parent.GasLimit), nil
 }
 
-// newSignal is the low-level constructor, unexported so nothing outside can pair a commitment
-// with the wrong gas limit. A nil parentCommitment is the bootstrap seed, which NextLaneSize maps
-// to the floor as a consequence of the general formula rather than a special case.
-func newSignal(parentCommitment *Commitment, parentGasUsed, parentGasLimit uint64) Signal {
-	if parentCommitment == nil {
-		return Signal{}
-	}
+// newSignal is unexported so nothing outside can pair a commitment with the wrong gas limit.
+func newSignal(parentCommitment Commitment, parentGasUsed, parentGasLimit uint64) Signal {
 	// Cannot carry: the terms sum to at most max(parentGasUsed, PaymentGasUsed).
 	return Signal{
 		parentLaneSize: parentCommitment.LaneSize,
@@ -83,11 +75,10 @@ func (s Signal) NextLaneSize(p Params, gasLimit uint64) uint64 {
 	return min(size, reserveCap(gasLimit))
 }
 
-// reserveCap is the safety clamp, outside the BEP and LAST, deliberately able to push the quota
-// below its own floor. Below 25M of GasLimit the quota can exceed what a breathe block holds, and
-// that halt would be unrecoverable: isBreatheBlock is sticky while the head stays in the previous
-// UTC day, so every candidate block is again a breathe block and fails identically. Uses the
-// protocol constant, never the miner-local gasReserved, so both sides agree.
+// reserveCap is BEP 3.4.4's laneCap, applied LAST and deliberately able to push the quota below
+// its own floor: at a low enough GasLimit the quota would exceed what a breathe block holds, and
+// that halt does not clear on its own. Uses the protocol constant, never the miner-local
+// gasReserved, so both sides agree.
 func reserveCap(gasLimit uint64) uint64 {
 	return satSub(gasLimit, params.SystemTxsGasHardLimit)
 }
@@ -96,9 +87,9 @@ func (s Signal) congestionAtLeast(triggerRatio uint64) bool {
 	return gte128(s.parentSignalGasUsed, RatioDenom, triggerRatio, s.parentGasLimit)
 }
 
-// CheckNextLaneSize adjudicates a committed quota EXACTLY, because it is a pure function of the
-// headers and the parent post-state - settled before any transaction executes, on import and on
-// the MEV pre-seal path. The payment total is the half that needs replay instead; that is
+// CheckNextLaneSize adjudicates a committed quota exactly: it is a pure function of the headers
+// and the parent post-state, so it settles before any transaction executes - on import and on
+// the MEV pre-seal path alike. The payment total is the half needing replay; that is
 // Budget.VerifyCommitment's job.
 func (s Signal) CheckNextLaneSize(committed uint64, p Params, gasLimit uint64) error {
 	if want := s.NextLaneSize(p, gasLimit); committed != want {
@@ -107,13 +98,11 @@ func (s Signal) CheckNextLaneSize(committed uint64, p Params, gasLimit uint64) e
 	return nil
 }
 
-// laneCeiling and laneFloor are the clamp bounds, from the parameters and the gas limit of the
-// block being computed. laneFloor is NOT a lower bound on NextLaneSize's result - the safety
-// clamp may push below it.
 func laneCeiling(p Params, gasLimit uint64) uint64 {
 	return min(mulDivFloor(p.MaxRatio, gasLimit, RatioDenom), p.MaxGas)
 }
 
+// laneFloor is NOT a lower bound on NextLaneSize's result - reserveCap may push below it.
 func laneFloor(p Params, gasLimit uint64) uint64 {
 	return min(max(mulDivFloor(p.MinRatio, gasLimit, RatioDenom), p.MinGas), laneCeiling(p, gasLimit))
 }
@@ -123,9 +112,8 @@ func Bounds(p Params, gasLimit uint64) (floor, ceiling, safetyCap uint64) {
 	return laneFloor(p, gasLimit), laneCeiling(p, gasLimit), reserveCap(gasLimit)
 }
 
-// mulDivFloor returns floor(a*b/d) over 128 bits, saturating instead of panicking when the
-// quotient does not fit. The guard covers bits.Div64's panic at hi >= d, so the caller has no
-// precondition at all.
+// mulDivFloor returns floor(a*b/d) over 128 bits. The guard saturates exactly where bits.Div64
+// would panic, at hi >= d, so the caller needs no precondition.
 func mulDivFloor(a, b, d uint64) uint64 {
 	hi, lo := bits.Mul64(a, b)
 	if hi >= d {

@@ -104,6 +104,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
 			return nil, laneReject(err)
 		}
+		var laneParams paymentlane.Params
 		if replayLaneClassification {
 			lane, err = ResolveLaneState(config, lastBlock, header, statedb)
 			if err != nil {
@@ -112,12 +113,11 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			if err = lane.CheckQuota(laneCommitted.LaneSize); err != nil {
 				return nil, laneReject(err)
 			}
+			laneParams = lane.Params()
 		} else {
-			// Import still checks the committed quota exactly, but in NoTries mode it does not
-			// replay classification, so there is no reason to pay the cost of loading the full
-			// listed set.
-			laneParams, err := paymentlanemeta.LoadParamsForQuota(config, lastBlock, header, statedb)
-			if err != nil {
+			// The committed quota is still checked exactly; only classification is skipped, so
+			// the listed set is never needed and is not loaded.
+			if laneParams, err = paymentlanemeta.LoadParamsForQuota(config, lastBlock, header, statedb); err != nil {
 				return nil, laneReject(err)
 			}
 			signal, err := paymentlane.NewSignalFromParent(lastBlock)
@@ -127,16 +127,13 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			if err := signal.CheckNextLaneSize(laneCommitted.LaneSize, laneParams, header.GasLimit); err != nil {
 				return nil, laneReject(err)
 			}
-			if lastBlock.UncleHash == types.EmptyUncleHash {
-				floor, ceiling, safetyCap := paymentlane.Bounds(laneParams, header.GasLimit)
-				log.Info("Payment lane activated", "number", header.Number, "quota", laneCommitted.LaneSize,
-					"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", laneParams)
-			}
 		}
-		if replayLaneClassification && lastBlock.UncleHash == types.EmptyUncleHash {
-			floor, ceiling, safetyCap := lane.Bounds()
+		// activation+1, the only block whose parent carries no commitment, and the only place the
+		// parameters this node read are put on record.
+		if lastBlock.UncleHash == types.EmptyUncleHash {
+			floor, ceiling, safetyCap := paymentlane.Bounds(laneParams, header.GasLimit)
 			log.Info("Payment lane activated", "number", header.Number, "quota", laneCommitted.LaneSize,
-				"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", lane.Params())
+				"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", laneParams)
 		}
 	}
 
@@ -242,7 +239,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	// verify the payment used is correct
 	if replayLaneClassification {
 		if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
 			return nil, laneReject(err)

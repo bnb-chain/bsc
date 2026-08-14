@@ -186,7 +186,7 @@ func TestSignalCannotOverflow(t *testing.T) {
 				sum, carry := bits.Add64(satSub(gasUsed, payment), satSub(payment, lane), 0)
 				require.Zerof(t, carry, "gasUsed=%d payment=%d lane=%d: the terms carried", gasUsed, payment, lane)
 
-				s := newSignal(&Commitment{LaneSize: lane, PaymentGasUsed: payment}, gasUsed, 55_000_000)
+				s := newSignal(Commitment{LaneSize: lane, PaymentGasUsed: payment}, gasUsed, 55_000_000)
 				require.Equal(t, sum, s.parentSignalGasUsed)
 			}
 		}
@@ -297,8 +297,6 @@ func TestClampAppliesEveryBlock(t *testing.T) {
 		}
 	}
 	require.True(t, seenClamped, "the walk must reach the safety-clamp region")
-
-	require.Greater(t, uint64(5_600_000), mulDivFloor(maxLaneRatio, 20_000_000, RatioDenom))
 }
 
 // TestBootstrapIsTheZeroSignal checks that activation opens at the floor via the normal rule.

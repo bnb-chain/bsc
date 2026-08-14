@@ -8,37 +8,28 @@ import (
 // CodeReader must be the LIVE state of the block being classified, not the parent's: against
 // the parent, a transfer to an address this same block gave code to - by deployment or by an
 // EIP-7702 authorisation - counted as a payment and ran that code inside the quota.
-//
-// No new failure mode: this is the account the EVM is about to read anyway, so a read that
-// breaks here breaks execution too and surfaces through the state root.
 type CodeReader interface {
 	GetCodeHash(addr common.Address) common.Hash
 }
 
 // Classifier answers "payment or general" for one block's transactions, over two state views.
-// The listed gate reads the PARENT post-state and only ever decides ClassPayment, stopping
-// there; everything past it is decided by the code gate against the LIVE state - so no
-// transaction's class rests on both. Membership must be settled before the block runs, or
-// whoever orders it decides who is on the list.
+// listed is derived from the PARENT post-state and only ever decides ClassPayment, stopping
+// there; everything past it is decided by code against the LIVE state - so no transaction's
+// class rests on both. Membership must be settled before the block runs, or whoever orders it
+// decides who is on the list.
 type Classifier struct {
 	code   CodeReader
 	listed map[common.Address]struct{}
 }
 
-// NewClassifier binds a classifier to one block's live state and one parent-derived list.
 func NewClassifier(code CodeReader, listed map[common.Address]struct{}) *Classifier {
 	return &Classifier{code: code, listed: listed}
 }
 
 // Classify returns the lane class of a user transaction (never a Parlia system one): the
-// BEP-703 section 3.2 gates, ordered to touch state last. Nothing is executed to decide it.
-//
-// Other files cite these gates by number, so renumbering means fixing them too:
-//
-//	1 to == nil        2 type allowlist    3 empty access list   4 listed destination
-//	5 empty calldata   6 non-zero value    7 no code in the live state
-//
-// Nothing is memoised: gate 7's answer changes within the block, which is the point.
+// BEP-703 section 3.2 gates in order, arranged to touch state last. Nothing is executed to
+// decide it, and nothing is memoised - the code gate's answer changes within the block, which
+// is the point.
 func (c *Classifier) Classify(tx *types.Transaction) Class {
 	to := tx.To()
 	if to == nil {

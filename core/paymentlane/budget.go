@@ -4,10 +4,9 @@ import (
 	"fmt"
 )
 
-// Budget states the block validity rule as an admission predicate. Payment is the only
-// tracked figure - general gas is the residual, header.GasUsed less PaymentUsed - and
-// capacity is not stored here: admission takes the shared remainder (gasPool.Gas()) per call
-// and the checks take the gas limit per call, so no stale capacity can be held.
+// Budget states the block validity rule as an admission predicate. Payment is the only tracked
+// figure, general gas being the header residual. Capacity is passed in per call rather than
+// stored, so no stale capacity can be held.
 type Budget struct {
 	LaneSize    uint64 // this block's quota, straight from NextLaneSize
 	PaymentUsed uint64
@@ -39,9 +38,9 @@ func (b *Budget) RecordUsed(class Class, delta uint64) {
 }
 
 // Verify checks a finished block: poolUsed <= gasUsed, PaymentUsed <= poolUsed, then the rule
-// inequality. gasUsed is the block's real total after Finalize.
+// inequality.
 func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
-	// Unreachable in order, so it catches a swapped call; no sentinel - it indicts our own wiring.
+	// Unreachable with the arguments in order; it catches them swapped.
 	if poolUsed > gasUsed {
 		return fmt.Errorf("payment lane pool used %d exceeds block total %d", poolUsed, gasUsed)
 	}
@@ -51,10 +50,9 @@ func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
 	return CheckInequality(gasLimit, gasUsed, b.PaymentUsed, b.LaneSize)
 }
 
-// VerifyCommitment is the only authoritative check on the committed payment figure: it
-// compares it against local replay, which no self-check can do. poolUsed is gp.Used() over
-// user transactions and must be read the same way on both sides, or honest blocks get
-// rejected. LaneSize is CheckNextLaneSize's job, not this one.
+// VerifyCommitment is the only authoritative check on the committed payment figure: it compares
+// it against local replay, which no self-check can do. poolUsed is gp.Used() over user
+// transactions. LaneSize is CheckNextLaneSize's job, not this one.
 func (b Budget) VerifyCommitment(gasLimit, gasUsed, poolUsed uint64, c Commitment) error {
 	if b.PaymentUsed != c.PaymentGasUsed {
 		return fmt.Errorf("%w: committed payment %d, replayed %d",

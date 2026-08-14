@@ -383,9 +383,8 @@ func (k *ecdsaKey) sign(t *testing.T, signer types.Signer, nonce uint64, to comm
 func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 	_, gspec, _ := laneGenesis(t)
 
-	var caught any
-	func() {
-		defer func() { caught = recover() }()
+	caught := func() (v any) {
+		defer func() { v = recover() }()
 		GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
 			if i+1 == 3 {
 				b.AddUncle(&types.Header{
@@ -394,18 +393,14 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 				})
 			}
 		})
+		return nil
 	}()
-	if caught == nil {
-		t.Fatal("assembling a lane block with an uncle must fail, not silently drop one of the two")
-	}
-	if msg := fmt.Sprint(caught); !strings.Contains(msg, "uncle hash slot") {
-		t.Fatalf("unexpected failure: %v", msg)
-	}
+	require.NotNil(t, caught, "assembling a lane block with an uncle must fail, not silently drop one of the two")
+	require.Contains(t, fmt.Sprint(caught), "uncle hash slot")
 
 	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, nil)
-	if _, err := paymentlane.Decode(blocks[2].UncleHash()); err != nil {
-		t.Fatalf("the uncle-free chain must still carry a commitment: %v", err)
-	}
+	_, err := paymentlane.Decode(blocks[2].UncleHash())
+	require.NoError(t, err, "the uncle-free chain must still carry a commitment")
 }
 
 // systemGasFaker injects fixed system gas into the shared Finalize path.

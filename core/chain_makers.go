@@ -468,8 +468,8 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
 
-		// Same commitment write and self-check the miner runs. A zero poolUsed is exact, not
-		// merely safe: PaymentUsed only ever moves in addTx, which allocates the pool.
+		// The same stamp and self-check the miner runs. A nil pool means addTx never ran, so
+		// PaymentUsed is zero too and a zero poolUsed is exact rather than merely safe.
 		var poolUsed uint64
 		if b.gasPool != nil {
 			poolUsed = b.gasPool.Used()

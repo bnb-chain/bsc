@@ -88,15 +88,14 @@ var (
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
-	// paymentlane metrics, the producing side's view; core reports the processed one under
-	// paymentlane/imported/*, and the two disagreeing means the block was not packed here.
+	// Producing-side lane metrics; core/payment_lane.go reports the imported side. The two
+	// disagreeing means the block was not packed here.
 	laneSizeGauge              = metrics.NewRegisteredGauge("paymentlane/laneSize", nil)         // gas, at seal
 	laneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/idleLane", nil)         // gas wasted, at seal
 	laneYieldCounter           = metrics.NewRegisteredCounter("paymentlane/generalYielded", nil) // txs dropped for the quota
 	laneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 	laneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
-	// A quota that is not moving rests on the floor, is pinned at the ceiling, sits in a frozen
-	// range where the two meet, or is held by the safety cap. laneSize alone cannot say which.
+	// The clamp bounds, so a flat laneSize can be attributed to one of them.
 	laneFloorGauge   = metrics.NewRegisteredGauge("paymentlane/laneMin", nil)
 	laneCeilingGauge = metrics.NewRegisteredGauge("paymentlane/laneMax", nil)
 	laneCapGauge     = metrics.NewRegisteredGauge("paymentlane/laneCap", nil)
@@ -816,9 +815,8 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	// The classification producer and replaying importers take at the same point. commitTransactions
-	// asks earlier to size its budget; the straight line between the two touches no state, so the
-	// answers agree - keep it that way.
+	// The authoritative classification, at the point replaying importers take it. Nothing between
+	// commitTransactions' advisory call and this one touches state - keep it that way.
 	class := env.lane.Classify(tx)
 	var (
 		snap       = env.state.Snapshot()
@@ -956,7 +954,7 @@ LOOP:
 		}
 		prefetchCurr.Store(tx)
 
-		// Advisory: sizes the budget below. applyTransaction re-asks at the point that counts.
+		// Advisory, to size the budget below; applyTransaction re-asks authoritatively.
 		class := env.lane.Classify(tx)
 		if !env.lane.Admits(env.gasPool.Gas(), class, tx.Gas()) {
 			laneYieldCounter.Inc(1)

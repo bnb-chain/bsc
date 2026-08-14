@@ -14,7 +14,7 @@ import (
 // codeFn lets each test define its own live-state code lookup.
 type codeFn struct {
 	fn    func(common.Address) common.Hash
-	reads []common.Address // every address actually read, in order
+	reads []common.Address // every address actually read
 }
 
 func (r *codeFn) GetCodeHash(addr common.Address) common.Hash {
@@ -145,7 +145,7 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 						case withData, !withValue:
 							wantClass = ClassGeneral
 						default:
-							wantClass = ClassPayment // reaches gate 7; the account is absent below
+							wantClass = ClassPayment // reaches the code gate; the account is absent below
 						}
 
 						reader := absentAccounts()
@@ -183,7 +183,7 @@ func TestCodeGateFollowsTheLiveState(t *testing.T) {
 	delegated = true
 	require.Equal(t, ClassGeneral, c.Classify(tx),
 		"the destination now holds code, so the transfer would execute it - not a payment")
-	require.Len(t, r.reads, 2, "gate 7 must be re-read every time; a memo here caches a stale answer")
+	require.Len(t, r.reads, 2, "the code gate must be re-read every time; a memo here caches a stale answer")
 }
 
 // Cover every code-hash encoding the live state can return.

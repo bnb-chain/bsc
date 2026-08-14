@@ -509,8 +509,8 @@ func (b *Block) Size() uint64 {
 
 func (b *Block) SetRoot(root common.Hash) { b.header.Root = root }
 
-// SetUncleHash overwrites the uncle slot, which from BEP-703's activation carries the
-// payment lane commitment instead of an uncle list hash.
+// SetUncleHash overwrites the uncle slot, which from the block after BEP-703's activation
+// carries the payment lane commitment instead of an uncle list hash.
 func (b *Block) SetUncleHash(hash common.Hash) { b.header.UncleHash = hash }
 
 // SanityCheck can be used to prevent that unbounded fields are
@@ -542,7 +542,8 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 }
 
 // isLaneCommitment reports whether h has the shape of a BEP-703 commitment - a zero reserved
-// tail. A shape test only: the all-zero hash passes, and validity is core/paymentlane's job.
+// tail, which the all-zero hash also has. Shape only; validity is core/paymentlane's job, and
+// this must stay in step with its Decode, which the import cycle keeps out of reach from here.
 func isLaneCommitment(h common.Hash) bool {
 	for _, b := range h[16:] {
 		if b != 0 {

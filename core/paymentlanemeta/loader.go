@@ -12,10 +12,9 @@ import (
 
 var loadMetaCache metaCache
 
-// LoadMeta returns parent-pinned lane metadata. Cache hits reuse the shared Meta directly;
-// misses repopulate it through the PaymentLane getters on the StateDB witness-visible path.
-// The cache key comes from 0x2007's account in the supplied StateDB, so callers must pass a
-// block state that is still opened on the parent root and not yet advanced by execution.
+// LoadMeta returns parent-pinned lane metadata, reading it through the PaymentLane getters on a
+// miss. The cache key is 0x2007's account in the supplied StateDB, so callers MUST pass a block
+// state still opened on the parent root and not yet advanced by execution.
 func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
 	if err := statedb.Error(); err != nil {
 		return nil, fmt.Errorf("%w: payment lane state read: %w", paymentlane.ErrStateUnavailable, err)

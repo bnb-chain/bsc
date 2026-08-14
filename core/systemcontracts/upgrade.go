@@ -1110,14 +1110,14 @@ func init() {
 		},
 	}
 
-	// PaymentLane (BEP-703) needs no initialize(): it is a brand-new address whose unwritten
-	// slots each read as their DEFAULT_* constant, so Gauss ships bytecode only.
+	// PaymentLane (BEP-703) needs no initialize(): every unwritten slot reads as its default in
+	// the contract itself, so Gauss ships bytecode only.
 	gaussUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "gauss",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/c967906ebbb419b4a9f328834c69f1797541e83b",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/a38bef91c1fa752e9af5f8f3b8053838434294e7",
 				Code:         gauss.MainnetPaymentLaneContract,
 			},
 		},
@@ -1128,7 +1128,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/c967906ebbb419b4a9f328834c69f1797541e83b",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/a38bef91c1fa752e9af5f8f3b8053838434294e7",
 				Code:         gauss.ChapelPaymentLaneContract,
 			},
 		},
@@ -1139,7 +1139,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/c967906ebbb419b4a9f328834c69f1797541e83b",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/a38bef91c1fa752e9af5f8f3b8053838434294e7",
 				Code:         gauss.RialtoPaymentLaneContract,
 			},
 		},

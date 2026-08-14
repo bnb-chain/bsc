@@ -73,7 +73,7 @@ func TestLoadMetaReadsDefaults(t *testing.T) {
 	require.Nil(t, got.listed)
 }
 
-func TestLoadMetaPagesLongLists(t *testing.T) {
+func TestLoadMetaPagesLongListsAndReadsGovernedParams(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
 	wantParams := paymentlane.Params{

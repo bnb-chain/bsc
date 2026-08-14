@@ -2,10 +2,8 @@
 //
 //	header.GasUsed + max(0, laneSize - paymentGasUsed) <= GasLimit
 //
-// That is section 3.3's rule with generalGasUsed replaced by header.GasUsed less
-// paymentGasUsed, so Parlia's system transactions count as general gas. The subtrahend is the
-// idle quota (Budget.IdleLane), which is never reclaimed for general traffic - reclaiming it
-// would make excluding payment transactions free for the producer.
+// Section 3.3's rule with generalGasUsed as the header residual, so Parlia's system
+// transactions count as general gas. The subtrahend is the idle quota (Budget.IdleLane).
 
 package paymentlane
 
@@ -44,9 +42,9 @@ var (
 	ErrStateUnavailable = errors.New("payment lane state unavailable")
 )
 
-// Commitment is the two values BEP-703 section 3.5.2 commits. Do not add generalGasUsed: it is
-// header.GasUsed less PaymentGasUsed, which consensus already checks. LaneSize cannot be
-// derived from headers at all - rebuilding it needs each parent's CLASSIFIED payment total.
+// Commitment is the two values BEP-703 section 3.5.2 commits. generalGasUsed needs no field of
+// its own, being the header residual. LaneSize does: rebuilding it needs each parent's
+// classified payment total, which no header carries.
 type Commitment struct {
 	LaneSize       uint64
 	PaymentGasUsed uint64
@@ -90,8 +88,8 @@ func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
 	return CheckInequality(gasLimit, gasUsed, c.PaymentGasUsed, c.LaneSize)
 }
 
-// CheckInequality is the block validity rule, called by the producer, header verification and
-// the importer alike. gasUsed must be the block's REAL total, system gas included.
+// CheckInequality is the block validity rule. gasUsed must be the block's real total, system
+// gas included.
 func CheckInequality(gasLimit, gasUsed, paymentGasUsed, laneSize uint64) error {
 	sum, carry := bits.Add64(gasUsed, satSub(laneSize, paymentGasUsed), 0)
 	if carry != 0 || sum > gasLimit {
@@ -101,7 +99,7 @@ func CheckInequality(gasLimit, gasUsed, paymentGasUsed, laneSize uint64) error {
 	return nil
 }
 
-// satSub is saturating subtraction; all lane arithmetic is unsigned.
+// satSub is saturating subtraction.
 func satSub(a, b uint64) uint64 {
 	if a < b {
 		return 0

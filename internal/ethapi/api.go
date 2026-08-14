@@ -1633,8 +1633,8 @@ func (api *BlockChainAPI) rpcMarshalHeader(ctx context.Context, header *types.He
 }
 
 func addPaymentLaneFields(fields map[string]interface{}, header *types.Header) {
-	// The era test, and the only sound one: an active lane with a zero quota commits the all-zero
-	// hash, so the absence of these fields is what says pre-Gauss.
+	// Pre-Gauss headers carry EmptyUncleHash, and an active lane with a zero quota commits the
+	// all-zero hash, so this is the one test that separates the two eras.
 	if header.UncleHash == types.EmptyUncleHash {
 		return
 	}

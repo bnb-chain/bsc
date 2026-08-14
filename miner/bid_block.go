@@ -34,17 +34,15 @@ type bidBlockTaskInfo struct {
 
 var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
 
-// verifyBidBlockLaneQuota is the lane's verdict on a builder-authored header, and must run
-// before this validator signs: the header is adopted verbatim and broadcast before InsertChain.
+// verifyBidBlockLaneQuota checks a builder-authored header before this validator signs it: the
+// header is adopted verbatim and broadcast before InsertChain, so nothing later can catch it.
 // verifyCascadingFields has already settled that the commitment decodes and that the block rule
 // holds over its values.
 //
-// Only laneSize is checked, and exactly: a pure function of the parent and 0x2007's parameters
-// over the validator's own gas limit (preSealVerifyBidBlock pins it to CalcGasLimit), so a
-// mismatch is never a false positive. paymentGasUsed is not - classification needs the live
-// state of the builder's block, which this node does not have, and bounding it against the
-// local one would reject honest bids. Import settles it via Budget.VerifyCommitment, which is
-// where BEP-675 already puts what sealing cannot verify.
+// laneSize only, and exactly - it is a pure function of the parent and 0x2007's parameters over
+// a gas limit preSealVerifyBidBlock has already pinned, so a mismatch is never a false positive.
+// paymentGasUsed needs the live state of the builder's block, which this node does not have;
+// import settles it via Budget.VerifyCommitment.
 func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, local *environment) error {
 	header := decoded.Header
 	if header.ParentHash != local.header.ParentHash {
@@ -55,9 +53,8 @@ func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, 
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-	// local.state is opened on the parent root already; VerifyHeaderQuota rebuilds its own
-	// parent-root-bound read-only StateDB from it, rather than reading against the live
-	// environment this validator packed with local transactions.
+	// VerifyHeaderQuota rebuilds its own parent-root-bound StateDB, so passing the live
+	// environment this validator packed with local transactions is safe.
 	return core.VerifyHeaderQuota(w.chainConfig, parent, header, local.state)
 }
 

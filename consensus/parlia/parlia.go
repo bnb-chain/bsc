@@ -700,8 +700,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return err
 	}
 
-	// From Gauss+1 - the block whose PARENT is already Gauss - UncleHash carries the
-	// BEP-703 commitment instead of EmptyUncleHash, and it must be well formed.
+	// From Gauss+1, UncleHash carries the BEP-703 commitment (3.5.2) instead of EmptyUncleHash.
 	if !chain.Config().IsGauss(parent.Number, parent.Time) {
 		if header.UncleHash != types.EmptyUncleHash {
 			return errInvalidUncleHash

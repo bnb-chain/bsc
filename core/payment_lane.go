@@ -12,8 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// Reported from the import path, the only one every node type shares - a non-mining node and a
-// validator whose block came from a builder included.
+// Reported from the import path, the only one every node type shares.
 var (
 	laneImportedSizeGauge    = metrics.NewRegisteredGauge("paymentlane/imported/laneSize", nil)
 	laneImportedPaymentGauge = metrics.NewRegisteredGauge("paymentlane/imported/paymentGasUsed", nil)
@@ -43,8 +42,10 @@ func laneReject(err error) error {
 
 // LaneState is one block's lane state: the recursion inputs read from the parent, plus the
 // payment total accumulated as the block executes.
-// The zero value - and a nil pointer - mean the lane is off, and every method is safe in that
-// state, so the only lane branch a call site needs is around the parent's commitment.
+//
+// The zero value and a nil pointer both mean the lane is off, and every method is safe in that
+// state, so no call site needs a fork branch. Reading the Budget field is not: do that only
+// where the caller constructed the lane itself.
 type LaneState struct {
 	Budget   paymentlane.Budget
 	cfg      paymentlane.Params
@@ -63,10 +64,9 @@ type laneStateDB interface {
 // ResolveLaneState derives one block's lane. One implementation for the importer and
 // the producer on purpose: every input is a choice the two must make identically.
 //
-// statedb must be the block's own state, opened on the parent root and not yet advanced.
-// Taking the whole StateDB rather than a raw reader is what keeps the parent-pinned config read
-// on the witness-visible state path while classification still reads the live database as it
-// advances.
+// statedb must be the block's own state, opened on the parent root and not yet advanced: the
+// config read has to land on the witness-visible path, and classification then follows the same
+// StateDB as it advances.
 func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (*LaneState, error) {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil
@@ -88,10 +88,9 @@ func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, 
 	}, nil
 }
 
-// checkState reports a failed state read as the local fault it is, not the peer's. StateDB
-// answers such a read with the zero code hash, which classifies as payment, and holds the error
-// until Commit - after every verdict below. Unchecked, the lane would misattribute a local read
-// failure to the block itself.
+// checkState reports a failed state read as the local fault it is, not the peer's: StateDB
+// answers such a read with the zero code hash - which classifies as payment - and holds the
+// error until Commit, after every verdict below.
 func (ls *LaneState) checkState() error {
 	if err := ls.state.Error(); err != nil {
 		return fmt.Errorf("%w: %w", paymentlane.ErrStateUnavailable, err)
@@ -99,11 +98,10 @@ func (ls *LaneState) checkState() error {
 	return nil
 }
 
-// VerifyHeaderQuota adjudicates the quota a header commits to against the derivation from its
-// parent - the whole of the lane that is settled before any transaction runs. It exists for the
-// caller that must not hold a LaneState: BEP-675's blind-seal path has no execution state for
-// the block it is about to sign, so it cannot classify, and statedb is only used here to
-// reconstruct a parent-root-bound read-only StateDB for the params-only check.
+// VerifyHeaderQuota adjudicates a committed quota against its parent derivation - the whole of
+// the lane that is settled before any transaction runs. It exists for BEP-675's blind-seal path,
+// which has no execution state for the block it is about to sign and so cannot classify. statedb
+// is used only to rebuild a parent-root-bound read-only StateDB for the params read.
 func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) error {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return nil
@@ -163,7 +161,7 @@ func (ls *LaneState) Params() paymentlane.Params {
 }
 
 // Classify returns tx's lane class, or ClassGeneral when the lane is off. Call it where the
-// transaction is about to run: gate 7 reads the live state, so producer and importer agree
+// transaction is about to run: the code gate reads the live state, so producer and importer agree
 // only if both ask at the same point in the sequence.
 func (ls *LaneState) Classify(tx *types.Transaction) paymentlane.Class {
 	if !ls.On() {
@@ -215,7 +213,9 @@ func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane
 	return ls.Budget.VerifyCommitment(ls.gasLimit, totalGasUsed, poolUsed, c)
 }
 
-// WriteCommitmentAndVerify stamps the commitment onto an assembled block and verify it.
+// WriteCommitmentAndVerify stamps the commitment onto an assembled block, then checks the block
+// rule over it. It refuses a block that carries uncles, or whose hash was cached before the
+// stamp - the hash is memoised on first read and never invalidated.
 func (ls *LaneState) WriteCommitmentAndVerify(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil

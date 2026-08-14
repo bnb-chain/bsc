@@ -81,17 +81,14 @@ func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, ui
 	return w, header, local, wantLaneSize
 }
 
-// bidBlockWith wraps a header and transactions as admission would leave them.
-func bidBlockWith(header *types.Header, txs ...*types.Transaction) *buildertypes.DecodedBidBlock {
-	return &buildertypes.DecodedBidBlock{
-		Header:        header,
-		Txs:           txs,
-		SystemTxStart: len(txs), // no trailing unsigned system txs
-	}
+// bidBlockWith wraps a bare header as admission would leave it: no transactions, so no trailing
+// unsigned system txs either.
+func bidBlockWith(header *types.Header) *buildertypes.DecodedBidBlock {
+	return &buildertypes.DecodedBidBlock{Header: header}
 }
 
-// The quota gate is exact, and the only lane verdict reachable before blind-signing. Only the
-// header is read: the transactions are not classified here, so nothing about them is asserted.
+// verifyBidBlockLaneQuota reads only the header, so every case here is a header the validator
+// either accepts or refuses before blind-signing.
 func TestVerifyBidBlockLaneQuota(t *testing.T) {
 	w, header, local, laneSize := laneBidBlockHarness(t)
 
@@ -115,8 +112,6 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 			wantErr:    paymentlane.ErrQuotaMismatch,
 		},
 		{
-			// Classification needs the live state of the builder's block, which this node does
-			// not have. Budget.VerifyCommitment settles the total against replay on import.
 			name:       "paymentGasUsed is not examined here, however wrong it is",
 			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: laneSize}),
 		},
