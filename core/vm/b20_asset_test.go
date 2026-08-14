@@ -145,6 +145,10 @@ func TestB20AssetExtension(t *testing.T) {
 // encodeAnnounce ABI-encodes announce(bytes[],bytes32,string,string) with the
 // bytes[] placed right after the head and empty description/uri strings.
 func encodeAnnounce(calls [][]byte, id common.Hash) []byte {
+	return encodeAnnounceWith(calls, id, "", "")
+}
+
+func encodeAnnounceWith(calls [][]byte, id common.Hash, description, uri string) []byte {
 	elems := make([][]byte, len(calls))
 	for i, c := range calls {
 		elems[i] = append(u256hash(uint64(len(c))).Bytes(), rightPad32(c)...)
@@ -159,14 +163,16 @@ func encodeAnnounce(calls [][]byte, id common.Hash) []byte {
 		arr = append(arr, e...)
 	}
 	descOff := uint64(0x80 + len(arr))
+	desc := append(u256hash(uint64(len(description))).Bytes(), rightPad32([]byte(description))...)
 	out := append([]byte{}, selAnnounce[:]...)
-	out = append(out, u256hash(0x80).Bytes()...)       // w0 offset -> bytes[]
-	out = append(out, id.Bytes()...)                   // w1 id
-	out = append(out, u256hash(descOff).Bytes()...)    // w2 offset -> description
-	out = append(out, u256hash(descOff+32).Bytes()...) // w3 offset -> uri
+	out = append(out, u256hash(0x80).Bytes()...)                      // w0 offset -> bytes[]
+	out = append(out, id.Bytes()...)                                  // w1 id
+	out = append(out, u256hash(descOff).Bytes()...)                   // w2 offset -> description
+	out = append(out, u256hash(descOff+uint64(len(desc))).Bytes()...) // w3 offset -> uri
 	out = append(out, arr...)
-	out = append(out, u256hash(0).Bytes()...) // empty description
-	out = append(out, u256hash(0).Bytes()...) // empty uri
+	out = append(out, desc...)
+	out = append(out, u256hash(uint64(len(uri))).Bytes()...)
+	out = append(out, rightPad32([]byte(uri))...)
 	return out
 }
 

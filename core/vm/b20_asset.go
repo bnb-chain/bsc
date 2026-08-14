@@ -230,8 +230,8 @@ func updateExtraMetadata(tok b20Token, ext assetExt, key, value string) error {
 		return revB20("InvalidMetadataKey()", errSelInvalidMetadataKey)
 	}
 	ext.setExtraMetadata(key, value)
-	// TODO: carry key/value in ExtraMetadataUpdated event data (base-std align).
-	tok.ctx.AddLog([]common.Hash{b20TopicExtraMetadataUpdated}, nil)
+	tok.ctx.AddLog([]common.Hash{b20TopicExtraMetadataUpdated},
+		encodeTuple(abiString(key), abiString(value)))
 	return nil
 }
 
@@ -274,13 +274,22 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	if err != nil {
 		return err
 	}
-	// args 2,3 (description, uri strings) are carried only by the event.
+	// Decoded here rather than at the point of use so a malformed payload reverts
+	// before the id is consumed: markAnnouncement is one-way.
+	description, err := readStringArg(args, 2)
+	if err != nil {
+		return err
+	}
+	uri, err := readStringArg(args, 3)
+	if err != nil {
+		return err
+	}
 	if ext.announcementUsed(id) {
 		return revB20("AnnouncementIdAlreadyUsed(uint256)", errSelAnnounceIdUsed, id)
 	}
 	ext.markAnnouncement(id) // marked before execution
-	// TODO: carry description/uri in the Announcement event data (base-std align).
-	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller), id}, nil)
+	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller), id},
+		encodeTuple(abiString(description), abiString(uri)))
 
 	tok.inAnnounce = true // threaded into the internal calls below by value
 	for _, c := range calls {
