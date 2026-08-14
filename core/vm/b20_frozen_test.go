@@ -8,16 +8,10 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TestB20RolesFreezeAtZeroAdmins covers the guard that makes renounceLastAdmin
-// permanent.
-//
-// The discriminating case needs a caller the role check would otherwise admit.
-// After the last DEFAULT_ADMIN renounces, nobody holds it, so an ordinary
-// grantRole is refused by the role check whatever the freeze guard does — a test
-// that stops there passes with the guard removed. So MINT_ROLE's admin is first
-// moved to OPERATOR_ROLE and handed to an account that keeps it across the
-// renunciation: that caller passes the role check, and only adminCount == 0
-// stands between it and a grant.
+// TestB20RolesFreezeAtZeroAdmins gives a surviving OPERATOR_ROLE holder authority
+// over MINT_ROLE, isolating adminCount == 0 as the only thing left to refuse a
+// grant. Without that the role check refuses it anyway and the test passes with
+// the guard removed.
 func TestB20RolesFreezeAtZeroAdmins(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	operator := common.HexToAddress("0x09e4")
@@ -61,9 +55,8 @@ func TestB20RolesFreezeAtZeroAdmins(t *testing.T) {
 	}
 }
 
-// TestB20RequiredGasIsZero pins that no B20 precompile charges a flat up-front
-// cost. RequiredGas is consensus-visible gas, and nothing failed when it was
-// made non-zero: the suite drives these through EVM.Call, which pays it silently.
+// TestB20RequiredGasIsZero catches a consensus-visible charge that EVM.Call would
+// otherwise pay silently.
 func TestB20RequiredGasIsZero(t *testing.T) {
 	for _, tc := range []struct {
 		name string

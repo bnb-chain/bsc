@@ -188,8 +188,6 @@ var (
 	b20Stablecoin = &b20StablecoinPrecompile{}
 )
 
-// --- skeleton precompiles ---------------------------------------------------
-
 // Every B20 precompile reports RequiredGas zero. A stateful precompile cannot
 // be priced up front — the cost depends on state it has not read when the call
 // begins, such as whether a slot is cold or whether a write creates or rewrites
@@ -205,7 +203,6 @@ func (b20StatefulBase) Run([]byte) ([]byte, error) { return nil, ErrB20Stateless
 // RunStateful (BEP-702 3.14).
 func (b20StatefulBase) RequiredGas([]byte) uint64 { return 0 }
 
-// b20FactoryPrecompile is the singleton createB20 entry point.
 type b20FactoryPrecompile struct{ b20StatefulBase }
 
 func (p *b20FactoryPrecompile) Name() string { return "B20Factory" }

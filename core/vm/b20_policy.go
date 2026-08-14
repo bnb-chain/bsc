@@ -160,7 +160,6 @@ func (p policyReg) setCounter(v uint64) {
 	p.s.setWord(polSlot(polSlotCounter), common.Hash(uint256.NewInt(v).Bytes32()))
 }
 
-// policyWord reads a policy's packed existence-and-admin word.
 func (p policyReg) policyWord(id uint64) common.Hash {
 	return p.s.getWord(p.s.mapSlot(polSlot(polSlotPolicies), idKey(id)))
 }

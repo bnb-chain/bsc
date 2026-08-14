@@ -44,7 +44,6 @@ var (
 // configuration rather than balances. ok is false when sel is none of them.
 func (t b20Token) dispatchMetadata(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
-	// views
 	case selContractURI:
 		return encString(t.s.contractURI()), nil, true
 	case selSupplyCap:

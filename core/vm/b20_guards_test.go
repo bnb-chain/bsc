@@ -10,13 +10,10 @@ import (
 
 // Guards that were correct and that nothing failed on when removed.
 
-// TestB20CreateRejectsStaticCall covers createB20's ReadOnly rejection, which
-// stands between a static frame and a state write.
-//
-// The bundle is not empty on purpose: with no initCalls the factory's own writes
-// land regardless, since StateDB and b20Storage do not consult ReadOnly. One
-// grantRole reaches a path that does, covering both the guard and the flag
-// spawnBootstrap now carries.
+// TestB20CreateRejectsStaticCall uses grantRole in a non-empty bootstrap bundle so
+// it covers both createB20's ReadOnly rejection and the flag spawnBootstrap
+// carries; with no initCalls the factory's own writes land regardless, since
+// StateDB and b20Storage do not consult ReadOnly.
 func TestB20CreateRejectsStaticCall(t *testing.T) {
 	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xc4ea70")

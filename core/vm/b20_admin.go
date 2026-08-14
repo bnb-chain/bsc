@@ -93,7 +93,6 @@ var (
 // when sel is none of them, so the caller can continue matching.
 func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
-	// role constants
 	case selDefaultAdminRole:
 		return roleDefaultAdmin.Bytes(), nil, true
 	case selMintRole:
@@ -109,7 +108,6 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 	case selMetadataRole:
 		return roleMetadata.Bytes(), nil, true
 
-	// role views
 	case selHasRole:
 		role, err := readWord(args, 0)
 		if err != nil {
@@ -128,7 +126,6 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 		admin := t.s.roleAdmin(role)
 		return admin.Bytes(), nil, true
 
-	// role mutations
 	case selGrantRole:
 		role, acct, err := readRoleAccount(args)
 		if err != nil {
@@ -160,7 +157,6 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 	case selRenounceLastAdmin:
 		return nil, t.renounceLastAdmin(), true
 
-	// pause
 	case selIsPaused:
 		// Decoded exactly as pause()/unpause() decode their elements: a word with
 		// dirty high bytes is a malformed encoding, and a well-formed value
@@ -181,7 +177,6 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 	case selUnpause:
 		return nil, t.setPause(args, false), true
 
-	// mint / burn
 	case selMint:
 		to, err := readAddress(args, 0)
 		if err != nil {
@@ -220,7 +215,6 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 		}
 		return encBool(true), nil, true
 
-	// configurable
 	case selUpdateSupplyCap:
 		cap, err := readU256(args, 0)
 		if err != nil {
@@ -263,7 +257,6 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 	return nil, nil, false
 }
 
-// policyIdByScope reads the policy bound to one of the six scopes.
 func (t b20Token) policyIdByScope(scope common.Hash) (uint64, bool) {
 	switch scope {
 	case scopeTransferSender:
