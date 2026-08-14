@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package mev.v1;
 
-option go_package = "github.com/ethereum/go-ethereum/internal/ethapi/mevpb;mevpb";
+option go_package = "github.com/ethereum/go-ethereum/core/types/builder/mevpb;mevpb";
 
 // BidBlockService accepts BEP-675 BidBlock submissions over gRPC.
 // Other MEV APIs remain on JSON-RPC.
@@ -17,7 +17,7 @@ message BidBlockRequest {
   // Builder ECDSA signature over BidBlock.Hash().
   bytes signature = 2;
 
-  // Used by the builder-to-sentry hop. Validators intentionally ignore it.
+  // Used by sentry routing. Validators intentionally ignore it.
   string validator_host_name = 3;
 
   reserved 4 to 10;

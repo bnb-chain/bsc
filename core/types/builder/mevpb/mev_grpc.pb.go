@@ -2,12 +2,13 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.35.1
-// source: internal/ethapi/mevpb/mev.proto
+// source: core/types/builder/mevpb/mev.proto
 
 package mevpb
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -123,5 +124,5 @@ var BidBlockService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "internal/ethapi/mevpb/mev.proto",
+	Metadata: "core/types/builder/mevpb/mev.proto",
 }

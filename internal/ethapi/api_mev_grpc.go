@@ -28,7 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
-	"github.com/ethereum/go-ethereum/internal/ethapi/mevpb"
+	"github.com/ethereum/go-ethereum/core/types/builder/mevpb"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"

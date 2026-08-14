@@ -33,7 +33,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/tap"
 
-	"github.com/ethereum/go-ethereum/internal/ethapi/mevpb"
+	"github.com/ethereum/go-ethereum/core/types/builder/mevpb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )

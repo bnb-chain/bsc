@@ -2,16 +2,17 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.35.1
-// source: internal/ethapi/mevpb/mev.proto
+// source: core/types/builder/mevpb/mev.proto
 
 package mevpb
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -27,7 +28,7 @@ type BidBlockRequest struct {
 	BidBlockRlp []byte `protobuf:"bytes,1,opt,name=bid_block_rlp,json=bidBlockRlp,proto3" json:"bid_block_rlp,omitempty"`
 	// Builder ECDSA signature over BidBlock.Hash().
 	Signature []byte `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
-	// Used by the builder-to-sentry hop. Validators intentionally ignore it.
+	// Used by sentry routing. Validators intentionally ignore it.
 	ValidatorHostName string `protobuf:"bytes,3,opt,name=validator_host_name,json=validatorHostName,proto3" json:"validator_host_name,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -35,7 +36,7 @@ type BidBlockRequest struct {
 
 func (x *BidBlockRequest) Reset() {
 	*x = BidBlockRequest{}
-	mi := &file_internal_ethapi_mevpb_mev_proto_msgTypes[0]
+	mi := &file_core_types_builder_mevpb_mev_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +48,7 @@ func (x *BidBlockRequest) String() string {
 func (*BidBlockRequest) ProtoMessage() {}
 
 func (x *BidBlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_ethapi_mevpb_mev_proto_msgTypes[0]
+	mi := &file_core_types_builder_mevpb_mev_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +61,7 @@ func (x *BidBlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BidBlockRequest.ProtoReflect.Descriptor instead.
 func (*BidBlockRequest) Descriptor() ([]byte, []int) {
-	return file_internal_ethapi_mevpb_mev_proto_rawDescGZIP(), []int{0}
+	return file_core_types_builder_mevpb_mev_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *BidBlockRequest) GetBidBlockRlp() []byte {
@@ -93,7 +94,7 @@ type BidBlockResponse struct {
 
 func (x *BidBlockResponse) Reset() {
 	*x = BidBlockResponse{}
-	mi := &file_internal_ethapi_mevpb_mev_proto_msgTypes[1]
+	mi := &file_core_types_builder_mevpb_mev_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -105,7 +106,7 @@ func (x *BidBlockResponse) String() string {
 func (*BidBlockResponse) ProtoMessage() {}
 
 func (x *BidBlockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_ethapi_mevpb_mev_proto_msgTypes[1]
+	mi := &file_core_types_builder_mevpb_mev_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -118,7 +119,7 @@ func (x *BidBlockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BidBlockResponse.ProtoReflect.Descriptor instead.
 func (*BidBlockResponse) Descriptor() ([]byte, []int) {
-	return file_internal_ethapi_mevpb_mev_proto_rawDescGZIP(), []int{1}
+	return file_core_types_builder_mevpb_mev_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *BidBlockResponse) GetBidHash() []byte {
@@ -128,11 +129,11 @@ func (x *BidBlockResponse) GetBidHash() []byte {
 	return nil
 }
 
-var File_internal_ethapi_mevpb_mev_proto protoreflect.FileDescriptor
+var File_core_types_builder_mevpb_mev_proto protoreflect.FileDescriptor
 
-const file_internal_ethapi_mevpb_mev_proto_rawDesc = "" +
+const file_core_types_builder_mevpb_mev_proto_rawDesc = "" +
 	"\n" +
-	"\x1finternal/ethapi/mevpb/mev.proto\x12\x06mev.v1\"\x89\x01\n" +
+	"\"core/types/builder/mevpb/mev.proto\x12\x06mev.v1\"\x89\x01\n" +
 	"\x0fBidBlockRequest\x12\"\n" +
 	"\rbid_block_rlp\x18\x01 \x01(\fR\vbidBlockRlp\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12.\n" +
@@ -140,26 +141,26 @@ const file_internal_ethapi_mevpb_mev_proto_rawDesc = "" +
 	"\x10BidBlockResponse\x12\x19\n" +
 	"\bbid_hash\x18\x01 \x01(\fR\abidHash2T\n" +
 	"\x0fBidBlockService\x12A\n" +
-	"\fSendBidBlock\x12\x17.mev.v1.BidBlockRequest\x1a\x18.mev.v1.BidBlockResponseB=Z;github.com/ethereum/go-ethereum/internal/ethapi/mevpb;mevpbb\x06proto3"
+	"\fSendBidBlock\x12\x17.mev.v1.BidBlockRequest\x1a\x18.mev.v1.BidBlockResponseB@Z>github.com/ethereum/go-ethereum/core/types/builder/mevpb;mevpbb\x06proto3"
 
 var (
-	file_internal_ethapi_mevpb_mev_proto_rawDescOnce sync.Once
-	file_internal_ethapi_mevpb_mev_proto_rawDescData []byte
+	file_core_types_builder_mevpb_mev_proto_rawDescOnce sync.Once
+	file_core_types_builder_mevpb_mev_proto_rawDescData []byte
 )
 
-func file_internal_ethapi_mevpb_mev_proto_rawDescGZIP() []byte {
-	file_internal_ethapi_mevpb_mev_proto_rawDescOnce.Do(func() {
-		file_internal_ethapi_mevpb_mev_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_ethapi_mevpb_mev_proto_rawDesc), len(file_internal_ethapi_mevpb_mev_proto_rawDesc)))
+func file_core_types_builder_mevpb_mev_proto_rawDescGZIP() []byte {
+	file_core_types_builder_mevpb_mev_proto_rawDescOnce.Do(func() {
+		file_core_types_builder_mevpb_mev_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_core_types_builder_mevpb_mev_proto_rawDesc), len(file_core_types_builder_mevpb_mev_proto_rawDesc)))
 	})
-	return file_internal_ethapi_mevpb_mev_proto_rawDescData
+	return file_core_types_builder_mevpb_mev_proto_rawDescData
 }
 
-var file_internal_ethapi_mevpb_mev_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_internal_ethapi_mevpb_mev_proto_goTypes = []any{
+var file_core_types_builder_mevpb_mev_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_core_types_builder_mevpb_mev_proto_goTypes = []any{
 	(*BidBlockRequest)(nil),  // 0: mev.v1.BidBlockRequest
 	(*BidBlockResponse)(nil), // 1: mev.v1.BidBlockResponse
 }
-var file_internal_ethapi_mevpb_mev_proto_depIdxs = []int32{
+var file_core_types_builder_mevpb_mev_proto_depIdxs = []int32{
 	0, // 0: mev.v1.BidBlockService.SendBidBlock:input_type -> mev.v1.BidBlockRequest
 	1, // 1: mev.v1.BidBlockService.SendBidBlock:output_type -> mev.v1.BidBlockResponse
 	1, // [1:2] is the sub-list for method output_type
@@ -169,26 +170,26 @@ var file_internal_ethapi_mevpb_mev_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_internal_ethapi_mevpb_mev_proto_init() }
-func file_internal_ethapi_mevpb_mev_proto_init() {
-	if File_internal_ethapi_mevpb_mev_proto != nil {
+func init() { file_core_types_builder_mevpb_mev_proto_init() }
+func file_core_types_builder_mevpb_mev_proto_init() {
+	if File_core_types_builder_mevpb_mev_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_ethapi_mevpb_mev_proto_rawDesc), len(file_internal_ethapi_mevpb_mev_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_core_types_builder_mevpb_mev_proto_rawDesc), len(file_core_types_builder_mevpb_mev_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_internal_ethapi_mevpb_mev_proto_goTypes,
-		DependencyIndexes: file_internal_ethapi_mevpb_mev_proto_depIdxs,
-		MessageInfos:      file_internal_ethapi_mevpb_mev_proto_msgTypes,
+		GoTypes:           file_core_types_builder_mevpb_mev_proto_goTypes,
+		DependencyIndexes: file_core_types_builder_mevpb_mev_proto_depIdxs,
+		MessageInfos:      file_core_types_builder_mevpb_mev_proto_msgTypes,
 	}.Build()
-	File_internal_ethapi_mevpb_mev_proto = out.File
-	file_internal_ethapi_mevpb_mev_proto_goTypes = nil
-	file_internal_ethapi_mevpb_mev_proto_depIdxs = nil
+	File_core_types_builder_mevpb_mev_proto = out.File
+	file_core_types_builder_mevpb_mev_proto_goTypes = nil
+	file_core_types_builder_mevpb_mev_proto_depIdxs = nil
 }

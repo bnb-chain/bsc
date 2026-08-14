@@ -36,7 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
-	"github.com/ethereum/go-ethereum/internal/ethapi/mevpb"
+	"github.com/ethereum/go-ethereum/core/types/builder/mevpb"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
