@@ -27,7 +27,10 @@ import (
 
 // SeedB20Activation installs the B20 activation state at a fork boundary. An
 // existing admin is preserved, so replaying the fork block cannot undo a rotation.
-// A zero configured admin seeds only the sentinels, shipping the switch shut.
+//
+// A zero configured admin seeds only the sentinels, and that is permanent:
+// requireAdmin refuses a zero admin, so setAdmin can never be reached, and this
+// runs only on the boundary block. Only a further hard fork can install one.
 func SeedB20Activation(state StateDB, admin common.Address) {
 	seedB20Sentinel(state, B20ActivationRegistryAddress)
 	seedB20Sentinel(state, B20PolicyRegistryAddress)

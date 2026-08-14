@@ -735,14 +735,14 @@ type ChainConfig struct {
 
 	// B20ActivationAdmin is the account the B20 ActivationRegistry is seeded with
 	// at the fork that ships the precompiles (BEP-702 3.15). It is the only
-	// account that can ever open a B20 feature, and it is rotatable through
-	// setAdmin from activation onward, so a compromised key needs no hard fork to
-	// replace.
+	// account that can ever open a B20 feature.
 	//
-	// nil, or the zero address, ships the code with the switch welded shut: the
-	// registries are still given their sentinels, but nothing on that network can
-	// be activated. That is a valid configuration, not an error — a network can
-	// adopt the fork and decide later.
+	// The choice is one-shot. Seeding runs on the fork boundary block and writes
+	// the admin only into an empty slot; setAdmin then requires the caller to be
+	// the current admin. So an admin that cannot originate a call — the zero
+	// address, or a contract with no path to the registry — can never be replaced
+	// by any transaction, and only a further hard fork can install one. Verify the
+	// configured account can actually reach the registry before the fork ships.
 	B20ActivationAdmin *common.Address `json:"b20ActivationAdmin,omitempty"`
 	UBTTime            *uint64         `json:"ubtTime,omitempty"` // UBT switch time (nil = no fork, 0 = already on UBT)
 
