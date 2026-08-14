@@ -8,20 +8,14 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// TestB20DeriveAddressMatchesBaseStd pins the address fingerprint against a
-// vector taken from the reference implementation rather than from our own code.
+// TestB20DeriveAddressMatchesBaseStd pins the fingerprint against a vector from
+// the reference implementation rather than from our own code. Every other
+// derivation test calls b20DeriveAddress for its expectation and so stays green
+// under any preimage, including a wrong one.
 //
-// This is the whole point of the test. Every other test that touches derivation
-// calls b20DeriveAddress to compute its own expectation, so all of them stay
-// green under any change to the preimage — including a wrong one. The preimage
-// was in fact wrong: it hashed packed bytes (20+32), while base-std hashes
-// abi.encode (32+32).
-//
-// The vector below is the value getB20Address(ASSET, creator, salt) returns on
-// Base mainnet (chain 8453) and Base Sepolia (84532), which agree. Only the
-// nine fingerprint bytes are portable: Base's reserved prefix is 0xB200… and its
-// variant byte numbering is its own, so the surrounding bytes are deliberately
-// not compared.
+// The vector is what getB20Address(ASSET, creator, salt) returns on Base mainnet
+// and Sepolia. Only the nine fingerprint bytes are portable — Base's prefix is
+// 0xB200… — so the surrounding bytes are not compared.
 func TestB20DeriveAddressMatchesBaseStd(t *testing.T) {
 	var (
 		creator = common.HexToAddress("0x04d63aBCd2b9b1baa327f2Dda0f873F197ccd186")

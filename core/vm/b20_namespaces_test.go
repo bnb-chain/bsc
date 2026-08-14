@@ -8,23 +8,14 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// TestB20NamespaceRoots pins every ERC-7201 storage root as a literal.
-//
-// TestERC7201Root already does this for the core namespace. The other four had
-// nothing: changing "bsc.b20.asset", "bsc.b20.stablecoin" or
-// "bsc.activation_registry" by a single character relocates every slot in that
-// namespace, and the whole B20 suite stayed green under exactly that mutation.
-// Only "bsc.policy_registry" was caught, and only incidentally — a policy test
-// happens to recompute the root and compare raw slots.
-//
-// These strings have no published counterpart to check against: base-std uses
-// its own "base."-prefixed namespaces, and the addresses and state are per-chain
-// anyway. So the value here is purely as a regression anchor — a namespace may
-// only change when someone edits this list, which is the point.
-//
-// The expectations are literals rather than calls to erc7201Root. Deriving them
-// with the function under test is what left the gap: such a test passes whatever
+// TestB20NamespaceRoots pins every ERC-7201 storage root as a literal. A
+// one-character change to a namespace relocates every slot under it, and the
+// expectations must be literals: deriving them with erc7201Root passes whatever
 // the namespace says.
+//
+// There is no published counterpart to check against — base-std uses its own
+// "base."-prefixed namespaces — so these are regression anchors, changeable only
+// by editing this list.
 func TestB20NamespaceRoots(t *testing.T) {
 	for _, tc := range []struct {
 		namespace string
@@ -59,19 +50,15 @@ func TestB20NamespaceRoots(t *testing.T) {
 	}
 }
 
-// TestB20FeatureIDs pins the three activation feature ids as literals.
+// TestB20FeatureIDs pins the three activation feature ids as literals. A feature
+// id is what governance names in an activate() proposal, so a typo opens an id no
+// gate ever reads: the feature stays shut and the vote looks like it succeeded.
+// BEP-702 3.15 publishes them, making this list the contract with the spec.
 //
-// Nothing pinned them, and changing any of the three canonical names left the
-// whole B20 suite green. That matters more than an ordinary constant: a feature
-// id is what governance names in an activate() proposal, so a typo means the
-// proposal opens an id no gate ever reads. The feature the network meant to open
-// stays shut, and the vote looks like it succeeded.
-//
-// BEP-702 3.15 publishes these ids, so this list is the contract with the spec.
-// NOTE: the spec has been renamed to N20 ahead of the code, so it currently says
-// keccak256("bsc.n20_asset") and keccak256("bsc.n20_stablecoin") — different
-// values from the two below. The code rename has to carry these with it.
-// "bsc.policy_registry" contains no b20 and is unaffected.
+// The spec was renamed to N20 ahead of the code and now publishes
+// keccak256("bsc.n20_asset") and keccak256("bsc.n20_stablecoin"), different
+// values from the two below; the code rename has to carry them.
+// "bsc.policy_registry" is unaffected.
 func TestB20FeatureIDs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -115,12 +102,8 @@ func TestB20FeatureIDs(t *testing.T) {
 }
 
 // TestB20ERC7201Formula checks erc7201Root against the vector published with
-// ERC-7201 itself, rather than against a second copy of our own arithmetic.
-//
-// TestERC7201Root re-derives the core root through big.Int, which catches a
-// coding slip in erc7201Root but not a misreading of the standard: both paths
-// would be wrong together. "example.main" is the standard's own example, so it
-// pins the interpretation.
+// ERC-7201 itself. Re-deriving the formula a second way catches a coding slip but
+// not a misreading of the standard, since both copies would be wrong together.
 func TestB20ERC7201Formula(t *testing.T) {
 	const (
 		example = "example.main"

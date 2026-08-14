@@ -6,17 +6,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// TestB20SingletonAddresses pins the three fixed addresses as literals.
+// TestB20SingletonAddresses pins the three fixed addresses as literals. Every
+// other test reaches them through these variables, so a change stays green
+// everywhere. They are consensus constants published in BEP-702 3.1.
 //
-// Every other test refers to them through these variables, so a change to any of
-// them stays green everywhere — the same blind spot the address fingerprint had.
-// They are consensus constants and appear in BEP-702 3.1, so changing one has to
-// mean editing this list too.
-//
-// The registry slots follow base-std's order — activation first, then policy —
-// which is the only reason the order is what it is. The prefix differs from Base
-// by design (0x7020 for BSC, 0x8453 for Base, each naming its own network), so
-// only the ordering is shared, not the addresses.
+// The registries follow base-std's order, activation first; the prefix differs by
+// design, so only the ordering is shared.
 func TestB20SingletonAddresses(t *testing.T) {
 	for _, tc := range []struct {
 		name string

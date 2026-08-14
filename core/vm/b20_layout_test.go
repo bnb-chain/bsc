@@ -8,22 +8,10 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// Layout pins for the slots nothing covered. A review pass established by
-// mutation that each of the cases below could be changed — consistently in both
-// the reader and the writer, so nothing observable broke — with the whole B20
-// suite still green. Every one is a silent state-layout change.
-//
-// The expectations here are spelled out from Solidity's own rules rather than
-// obtained from the accessor under test. That is the point: a test that asks
-// mapSlot where a slot lives agrees with mapSlot whatever mapSlot does.
-//
-// What was already covered and is therefore not repeated: mapSlot's preimage
-// order and the allowance and role mappings (TestB20StorageMappings), the
-// transfer-policy lanes in slot 9 (TestB20StoragePackedPolicies), packPolicy's
-// existence bit and the policy slot numbers (TestB20PolicyStorageLayout), the
-// long-string data root and tail-slot release (TestB20StorageStringShrink,
-// TestB20StringBoundaryMatrix), and the namespace roots
-// (TestB20NamespaceRoots).
+// Storage-layout pins. Expectations are spelled out from Solidity's rules, not
+// obtained from the accessor under test: a test that asks mapSlot where a slot
+// lives agrees with mapSlot whatever mapSlot does, which is why each case below
+// could be changed in reader and writer together without failing anything.
 
 // solMap is Solidity's mapping slot: keccak256(h(key) . slot), with the key
 // left-padded to a word for value types.
@@ -38,13 +26,9 @@ func solSlot(base common.Hash, offset uint64) common.Hash {
 	return common.Hash(s.Bytes32())
 }
 
-// TestB20PolicyMemberSlot pins the PolicyRegistry's nested mapping.
-//
-// members is mapping(uint64 => mapping(address => bool)), so Solidity puts
-// members[id][account] at keccak256(account . keccak256(id . slot)) — id first,
-// account second. Swapping the two in both the reader and the writer left the
-// suite green, even though the token's own nested mappings (allowances, roles)
-// are covered against exactly this mistake.
+// TestB20PolicyMemberSlot pins members[id][account] at
+// keccak256(account . keccak256(id . slot)) — id first. The token's own nested
+// mappings are covered against this; the registry's was not.
 func TestB20PolicyMemberSlot(t *testing.T) {
 	s := newTestStorage(t)
 	reg := policyReg{s: s}
@@ -68,10 +52,8 @@ func TestB20PolicyMemberSlot(t *testing.T) {
 	}
 }
 
-// TestB20ExtraMetadataSlot pins the asset variant's mapping(string => string).
-//
-// A dynamic key is hashed unpadded: keccak256(bytes(key) . slot). Reversing the
-// concatenation left the suite green.
+// TestB20ExtraMetadataSlot pins mapping(string => string): a dynamic key is
+// hashed unpadded, keccak256(bytes(key) . slot).
 func TestB20ExtraMetadataSlot(t *testing.T) {
 	const key = "category"
 	want := crypto.Keccak256Hash([]byte(key), solSlot(b20AssetRoot, b20AssetSlotExtraMeta).Bytes())
@@ -86,11 +68,9 @@ func TestB20ExtraMetadataSlot(t *testing.T) {
 	}
 }
 
-// TestB20ComplianceLanes pins the three lanes packed into core slot 10.
-//
-// Slot 9's transfer lanes are covered; slot 10's are not. Swapping the holder and
-// receiver offsets left the suite green, which would silently apply the wrong
-// policy to a seizure.
+// TestB20ComplianceLanes pins the three lanes packed into core slot 10. Slot 9's
+// transfer lanes are covered elsewhere; swapping slot 10's holder and receiver
+// offsets would apply the wrong policy to a seizure.
 func TestB20ComplianceLanes(t *testing.T) {
 	s := newTestStorage(t)
 	const (
@@ -131,12 +111,9 @@ func TestB20ComplianceLanes(t *testing.T) {
 	}
 }
 
-// TestB20SlotNumbers pins every field's slot number as a literal.
-//
-// Renumbering core supplyCap 12->14, activation admin 1->2 and asset multiplier
-// 1->4 simultaneously left the suite green: the accessors agree with themselves
-// whatever the numbers say. These are consensus constants and must be
-// append-only, so a change has to mean editing this list.
+// TestB20SlotNumbers pins every field's slot number as a literal. The accessors
+// agree with themselves whatever the numbers say, so without this a renumbering
+// is invisible. Slots are consensus constants and append-only.
 func TestB20SlotNumbers(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -196,13 +173,8 @@ func TestB20SlotNumbers(t *testing.T) {
 	}
 }
 
-// TestB20PolicyWordReservedBits pins that nothing but bit 255 is set in the
-// policy word's high range.
-//
-// TestB20PolicyStorageLayout checks bit 255 and bytes 1 through 11, which leaves
-// bits 254:248 — the rest of byte 0 — unchecked. Setting bit 254 alongside 255
-// left the suite green, and those bits are where a later revision would put
-// another flag.
+// TestB20PolicyWordReservedBits pins that byte 0 is exactly 0x80. Bits 254:248
+// were unchecked, and they are where a later revision would add a flag.
 func TestB20PolicyWordReservedBits(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	w := packPolicy(admin)

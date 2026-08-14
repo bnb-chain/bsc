@@ -8,20 +8,13 @@ import (
 )
 
 // TestB20CreateIsAtomic pins that a createB20 whose bootstrap fails leaves
-// nothing behind — not the sentinel, not the storage the earlier init calls
-// already wrote, not the logs, and not the address's occupancy.
+// nothing behind. createB20 takes no snapshot of its own and relies on the one
+// EVM.Call holds; the failure lands partway through, so a rollback that missed
+// any of it would leave a half-built token at a deterministic address that
+// b20AddressOccupied would then refuse to create properly.
 //
-// createB20 takes no snapshot of its own; it relies on the one EVM.Call already
-// holds. That is correct, but it was untested: every factory test used bundles
-// that succeed. The gap matters because the failure is partway through — roles
-// granted, supply minted, logs emitted — so a rollback that missed any of it
-// would leave a half-built token at a deterministic address, and
-// b20AddressOccupied would then refuse to ever create the real one.
-//
-// The assertion is on the state root rather than on hand-picked slots. A test
-// here that watched specific slots would be the same mistake made earlier in
-// this package: a read-only role test watched slots and missed the one a mutation
-// actually wrote.
+// Asserts on the state root, not hand-picked slots, which would miss whichever
+// slot a regression happened to write.
 func TestB20CreateIsAtomic(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")

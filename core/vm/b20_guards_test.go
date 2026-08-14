@@ -8,23 +8,15 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// Guards that are present and correct, and that nothing failed on when removed.
-// A review pass identified each from the call graph; the mutations below confirm
-// the coverage gap it could only infer, since its sandbox could not run tests.
+// Guards that were correct and that nothing failed on when removed.
 
-// TestB20CreateRejectsStaticCall covers the guard that is currently the only
-// thing standing between a read-only frame and a state write.
+// TestB20CreateRejectsStaticCall covers createB20's ReadOnly rejection, which
+// stands between a static frame and a state write.
 //
-// spawnBootstrap did not copy ReadOnly into the bootstrap context. That was
-// unreachable because createB20 rejects ReadOnly before it ever spawns — but
-// deleting that one line left the whole suite green, so the sole barrier was
-// itself unguarded.
-//
-// The bundle is not empty on purpose. With no initCalls, removing the outer guard
-// lets the factory's own writes through regardless of the propagation, because
-// StateDB and b20Storage do not consult ReadOnly. One grantRole reaches a path
-// that does, so this covers both halves: the guard, and the flag now reaching the
-// bootstrap.
+// The bundle is not empty on purpose: with no initCalls the factory's own writes
+// land regardless, since StateDB and b20Storage do not consult ReadOnly. One
+// grantRole reaches a path that does, covering both the guard and the flag
+// spawnBootstrap now carries.
 func TestB20CreateRejectsStaticCall(t *testing.T) {
 	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xc4ea70")
@@ -65,16 +57,11 @@ func TestB20CreateRejectsStaticCall(t *testing.T) {
 	}
 }
 
-// TestB20AdminCountGuards covers the two conditions that keep adminCount honest.
-//
-// grantRole increments only when the role was absent and removeRole decrements
-// only when it was present. Removing either left the suite green, and either
-// would be serious: an inflated count makes the sole-admin protection believe
-// there are two admins when there is one, so the last one becomes revocable and
-// the token is stranded with no administrator at all.
-//
-// The existing tests walk 1 -> 2 -> 1 -> 0, which never repeats a grant or
-// removes an absent holder — the two cases the guards exist for.
+// TestB20AdminCountGuards covers the two conditions that keep adminCount honest:
+// grant counts only a role that was absent, revoke only one that was present. An
+// inflated count makes the sole-admin protection see two admins where there is
+// one, so the last becomes revocable. The other tests walk 1 -> 2 -> 1 -> 0 and
+// never repeat a grant or remove an absent holder.
 func TestB20AdminCountGuards(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	second := common.HexToAddress("0x5ec0nd")
@@ -112,20 +99,13 @@ func TestB20AdminCountGuards(t *testing.T) {
 }
 
 // TestB20AnnounceKeepsInnerRoleChecks covers that an announcement does not lend
-// its bundle the announcer's absent roles.
+// its bundle the announcer's absent roles. The other announce test grants its
+// operator MINT_ROLE too and bundles only updateMultiplier, which needs the same
+// role the outer check already required, so nothing there distinguished "roles
+// still apply" from "roles are skipped".
 //
-// announce requires OPERATOR_ROLE and then runs each entry against the same
-// non-privileged token, so an inner call still needs its own role. Marking the
-// bundle privileged left the suite green: the existing announce test grants its
-// operator MINT_ROLE as well and its bundle only calls updateMultiplier, which
-// needs the same OPERATOR_ROLE the outer check already required. Nothing
-// distinguished "roles still apply" from "roles are skipped".
-//
-// The positive control matters as much as the negative one. A first draft seeded
-// storage directly instead of creating the token, so the announcement reverted
-// because the token was never initialized — the assertion held for a reason that
-// had nothing to do with roles, and it passed with the privileged mutation in
-// place too.
+// The positive control is load-bearing: without it the negative assertion holds
+// whenever the announcement fails for any reason at all.
 func TestB20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")

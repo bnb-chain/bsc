@@ -9,24 +9,14 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TestB20GetAddressDecodesVariantStrictly pins that the predictor and the
-// creator agree on what their shared first argument means.
+// TestB20GetAddressDecodesVariantStrictly pins that the predictor and the creator
+// read their shared first argument the same way. getB20Address answers, before
+// creation, what address createB20 will use (BEP-702 3.3), which only means
+// something if both accept the same encodings.
 //
-// getB20Address exists to answer, before creation, what address createB20 will
-// use (BEP-702 3.3). That only holds if both read the argument the same way.
-// createB20 validates it with isEnumWord and rejects anything above the known
-// variants; getB20Address took variant[31] raw, so two encodings diverged:
-//
-//   - a word with dirty high bytes (0x…0100) truncated to variant 0 and returned
-//     an address, where createB20 reverts. The predictor answered a question
-//     creation refuses.
-//   - an unknown-but-clean variant (0x02) returned an address in a space
-//     resolveB20Token does not route, so the prediction named an address where no
-//     token can ever exist.
-//
-// base-std reverts on both — verified against Base mainnet, where
-// getB20Address(2, …) reverts while variants 0 and 1 return addresses differing
-// only in byte 10.
+// base-std reverts on an unknown variant and on a word with dirty high bytes;
+// verified against Base mainnet, where getB20Address(2, …) reverts while variants
+// 0 and 1 differ only in byte 10.
 func TestB20GetAddressDecodesVariantStrictly(t *testing.T) {
 	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xc4ea70")

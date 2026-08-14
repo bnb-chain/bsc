@@ -7,20 +7,13 @@ import (
 )
 
 // TestB20CalldataGasMirrorsCalldatacopy pins chargeCalldata against the
-// interpreter's own cost for the operation it claims to mirror.
+// interpreter's cost for the operation it mirrors, computed here from the
+// interpreter's own pieces so no step passes back through the function under
+// test.
 //
-// The existing gas coverage could not catch an error here, which is how the base
-// and quadratic terms went missing. TestB20GasNeverCheaperThanBytecode compares
-// B20 against B20 — its exact assertions hold between transfer shapes that all
-// carry 68 bytes of calldata, so scaling chargeCalldata by any factor keeps them
-// equal — and its one lower bound is a storage-only floor that says nothing about
-// calldata at all.
-//
-// So the expectation here is computed from the interpreter's pieces: CALLDATACOPY
-// costs GasFastestStep, the copy costs CopyGas per word, and the memory that
-// receives it costs MemoryGas per word plus words²/QuadCoeffDiv (memoryGasCost in
-// gas_table.go). Nothing in the chain of reasoning passes back through
-// chargeCalldata.
+// TestB20GasNeverCheaperThanBytecode cannot catch an error here: it compares B20
+// against B20, and its exact assertions hold between transfer shapes that all
+// carry 68 bytes of calldata, so any scaling of chargeCalldata keeps them equal.
 func TestB20CalldataGasMirrorsCalldatacopy(t *testing.T) {
 	// interpreterCost is what bytecode pays to copy n bytes of its own calldata
 	// into empty memory.
