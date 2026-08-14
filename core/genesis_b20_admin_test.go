@@ -51,8 +51,8 @@ func TestB20ActivationAdminNeedsTheOverride(t *testing.T) {
 	if cfg.B20ActivationAdmin != nil && *cfg.B20ActivationAdmin == qaAdmin {
 		t.Fatal("the genesis admin survived; --override.b20activationadmin would be redundant")
 	}
-	if cfg.B20ActivationAdmin == nil || *cfg.B20ActivationAdmin != params.BSCTimelockAddress {
-		t.Fatalf("built-in admin = %v, want the timelock", cfg.B20ActivationAdmin)
+	if cfg.B20ActivationAdmin == nil || *cfg.B20ActivationAdmin != params.B20ActivationAdminPlaceholder {
+		t.Fatalf("built-in admin = %v, want the configured placeholder", cfg.B20ActivationAdmin)
 	}
 
 	// And the override is what puts the QA value back.

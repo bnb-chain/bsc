@@ -241,11 +241,24 @@ var (
 	// EIP-2935 - Serve historical block hashes from state
 	HistoryStorageAddress = common.HexToAddress("0x0000F90827F1C53a10cb7A02335B175320002935")
 
-	// BSCTimelockAddress is BSC's governance timelock. It is the intended holder of
-	// the B20 activation switch (BEP-702 3.15); the address is duplicated from
-	// core/systemcontracts because that package imports this one.
-	BSCTimelockAddress = common.HexToAddress("0x0000000000000000000000000000000000002006")
-	HistoryStorageCode = common.FromHex("3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500")
+	// B20ActivationAdminPlaceholder is a stand-in holder of the B20 activation
+	// switch (BEP-702 3.15). It is NOT a real account and MUST be replaced with
+	// the multisig that will hold the switch before this fork is scheduled on any
+	// public network.
+	//
+	// The choice is one-shot and unrecoverable: seeding writes the admin only into
+	// an empty slot on the fork boundary block, and setAdmin requires the caller
+	// to be the current admin. Shipping this value would leave the network unable
+	// to activate anything and unable to correct it.
+	//
+	// It is deliberately not the governance timelock, which reads as the right
+	// answer and is not: BSCGovernor whitelists only GovHub as a call target and
+	// has no setter for that list, and the timelock's sole executor is the
+	// governor, so the timelock cannot reach the ActivationRegistry at all — nor
+	// call setAdmin to hand the switch on. A multisig can do both, which is what
+	// keeps the path to governance open.
+	B20ActivationAdminPlaceholder = common.HexToAddress("0x00000000000000000000000000000000000B20AD")
+	HistoryStorageCode            = common.FromHex("3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500")
 
 	// EIP-7002 - Execution layer triggerable withdrawals
 	WithdrawalQueueAddress = common.HexToAddress("0x00000961Ef480Eb55e80D19ad83579A64c007002")

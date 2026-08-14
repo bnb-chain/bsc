@@ -263,7 +263,7 @@ var (
 			Prague: DefaultPragueBlobConfigBSC,
 			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
-		B20ActivationAdmin: &BSCTimelockAddress,
+		B20ActivationAdmin: &B20ActivationAdminPlaceholder,
 	}
 
 	ChapelChainConfig = &ChainConfig{
@@ -318,7 +318,7 @@ var (
 			Prague: DefaultPragueBlobConfigBSC,
 			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
-		B20ActivationAdmin: &BSCTimelockAddress,
+		B20ActivationAdmin: &B20ActivationAdminPlaceholder,
 	}
 
 	// used to test hard fork upgrade, following https://github.com/bnb-chain/bsc-genesis-contract/blob/master/genesis.json
@@ -375,7 +375,7 @@ var (
 			Prague: DefaultPragueBlobConfigBSC,
 			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
-		B20ActivationAdmin: &BSCTimelockAddress,
+		B20ActivationAdmin: &B20ActivationAdminPlaceholder,
 	}
 
 	ParliaTestChainConfig = &ChainConfig{

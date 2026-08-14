@@ -100,8 +100,8 @@ func TestB20ActivationAdminIsConfigured(t *testing.T) {
 	if params.BSCChainConfig.B20ActivationAdmin == nil {
 		t.Error("BSCChainConfig names no activation admin — B20 would ship inert on mainnet")
 	}
-	if got := seedWith(params.BSCChainConfig.B20ActivationAdmin); got != params.BSCTimelockAddress {
-		t.Errorf("seeded admin = %s, want the timelock %s", got.Hex(), params.BSCTimelockAddress.Hex())
+	if got := seedWith(params.BSCChainConfig.B20ActivationAdmin); got != params.B20ActivationAdminPlaceholder {
+		t.Errorf("seeded admin = %s, want the configured placeholder %s", got.Hex(), params.B20ActivationAdminPlaceholder.Hex())
 	}
 
 	// A QA network can hold the switch with an ordinary account.
@@ -141,14 +141,14 @@ func TestB20ActivationSeededAtFork(t *testing.T) {
 		cfg.PasteurTime = &ft
 		return &cfg
 	}
-	timelock := common.HexToAddress(TimelockContract)
+	wantAdmin := params.B20ActivationAdminPlaceholder
 
 	// The block that crosses the fork time seeds; the one after it does not have
 	// to, and must not disturb what is already there.
 	statedb := newState()
 	TryUpdateBuildInSystemContract(bscConfig(), postLondon, forkTime-1, forkTime, statedb, true)
-	if got := vm.B20ActivationAdmin(statedb); got != timelock {
-		t.Errorf("admin after the fork block = %s, want the timelock %s", got.Hex(), timelock.Hex())
+	if got := vm.B20ActivationAdmin(statedb); got != wantAdmin {
+		t.Errorf("admin after the fork block = %s, want the configured admin %s", got.Hex(), wantAdmin.Hex())
 	}
 	if len(statedb.GetCode(vm.B20ActivationRegistryAddress)) == 0 {
 		t.Error("activation registry carries no sentinel after the fork block")
