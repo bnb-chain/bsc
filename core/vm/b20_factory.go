@@ -314,8 +314,10 @@ func validateCurrency(code string) error {
 	if code == "" {
 		return revB20Bytes("MissingRequiredField(string)", errSelMissingField, []byte("currency"))
 	}
-	if !validCurrency(code) {
-		return revB20Bytes("InvalidCurrency(string)", errSelInvalidCurrency, []byte(code))
+	for i := 0; i < len(code); i++ {
+		if code[i] < 'A' || code[i] > 'Z' {
+			return revB20Bytes("InvalidCurrency(string)", errSelInvalidCurrency, []byte(code))
+		}
 	}
 	return nil
 }
@@ -327,10 +329,8 @@ func readStrictUint8(args []byte, i int) (byte, error) {
 	if err != nil {
 		return 0, err
 	}
-	for _, b := range w[:31] {
-		if b != 0 {
-			return 0, ErrExecutionReverted // malformed encoding
-		}
+	if !isEnumWord(w, 0xff) {
+		return 0, ErrExecutionReverted // malformed encoding
 	}
 	return w[31], nil
 }

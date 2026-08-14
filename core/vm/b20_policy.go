@@ -268,8 +268,7 @@ func (p policyReg) ensureInitialized() uint64 {
 // b20PolicyPrecompile is the singleton registry precompile.
 type b20PolicyPrecompile struct{ b20StatefulBase }
 
-func (p *b20PolicyPrecompile) Name() string                    { return "B20PolicyRegistry" }
-func (p *b20PolicyPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
+func (p *b20PolicyPrecompile) Name() string { return "B20PolicyRegistry" }
 
 func (p *b20PolicyPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {

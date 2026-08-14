@@ -189,11 +189,6 @@ var (
 )
 
 // --- skeleton precompiles ---------------------------------------------------
-//
-// These implement the StatefulPrecompiledContract host contract and the shared
-// guards (direct-call, read-only). The ABI dispatch and the IB20 trait logic
-// (transfer/approve/mint/burn/roles/pause/permit/memo, plus variant
-// extensions) are ported on top of these in the P1 business layer.
 
 // Every B20 precompile reports RequiredGas zero. A stateful precompile cannot
 // be priced up front — the cost depends on state it has not read when the call
@@ -205,11 +200,15 @@ type b20StatefulBase struct{}
 
 func (b20StatefulBase) Run([]byte) ([]byte, error) { return nil, ErrB20StatelessDispatch }
 
+// RequiredGas is zero for every B20 precompile: a stateful precompile's cost
+// depends on state it has not read when the call begins, so it is metered inside
+// RunStateful (BEP-702 3.14).
+func (b20StatefulBase) RequiredGas([]byte) uint64 { return 0 }
+
 // b20FactoryPrecompile is the singleton createB20 entry point.
 type b20FactoryPrecompile struct{ b20StatefulBase }
 
-func (p *b20FactoryPrecompile) Name() string                    { return "B20Factory" }
-func (p *b20FactoryPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
+func (p *b20FactoryPrecompile) Name() string { return "B20Factory" }
 
 func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {
@@ -223,8 +222,7 @@ func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte)
 // acts on comes from ctx.Self, so one value serves every Asset address.
 type b20AssetPrecompile struct{ b20StatefulBase }
 
-func (p *b20AssetPrecompile) Name() string                    { return "B20Asset" }
-func (p *b20AssetPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
+func (p *b20AssetPrecompile) Name() string { return "B20Asset" }
 
 func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {
@@ -246,8 +244,7 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 // reason as the Asset one.
 type b20StablecoinPrecompile struct{ b20StatefulBase }
 
-func (p *b20StablecoinPrecompile) Name() string                    { return "B20Stablecoin" }
-func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
+func (p *b20StablecoinPrecompile) Name() string { return "B20Stablecoin" }
 
 func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {

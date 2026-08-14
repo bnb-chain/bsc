@@ -356,10 +356,6 @@ func encBool(b bool) []byte {
 func encString(s string) []byte { return encodeTuple(abiString(s)) }
 
 // --- ABI encoding primitives ------------------------------------------------
-//
-// Enough of the encoder to build event payloads and nested structs: a head/tail
-// tuple over static words and dynamic byte strings. Types beyond these are not
-// needed by any B20 surface.
 
 // abiPart is one encoded tuple member: a static head word, or a dynamic value
 // whose head is an offset and whose tail carries length-prefixed data.

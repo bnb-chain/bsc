@@ -102,8 +102,7 @@ func (r activationReg) requireAdmin(ctx *PrecompileContext) error {
 // b20ActivationPrecompile is the singleton activation registry.
 type b20ActivationPrecompile struct{ b20StatefulBase }
 
-func (p *b20ActivationPrecompile) Name() string                    { return "B20ActivationRegistry" }
-func (p *b20ActivationPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
+func (p *b20ActivationPrecompile) Name() string { return "B20ActivationRegistry" }
 
 func (p *b20ActivationPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {

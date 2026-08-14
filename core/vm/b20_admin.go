@@ -298,17 +298,6 @@ func readRoleAccount(args []byte) (common.Hash, common.Address, error) {
 
 // roleMutable reports whether role mutations are still possible: adminCount == 0
 // freezes them, except inside the factory's privileged bootstrap.
-func (t b20Token) roleMutable() bool { return !t.s.adminCount().IsZero() }
-
-// ensureAdminOf checks the caller holds the admin role governing role (skipped
-// on the privileged bootstrap path).
-func (t b20Token) ensureAdminOf(role common.Hash) bool {
-	if t.privileged {
-		return true
-	}
-	return t.s.hasRole(t.s.roleAdmin(role), t.ctx.Caller)
-}
-
 func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
@@ -403,11 +392,11 @@ func (t b20Token) ensureRoleMutable(role common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.privileged && !t.roleMutable() {
+	if !t.privileged && t.s.adminCount().IsZero() {
 		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), t.s.roleAdmin(role))
 	}
-	if !t.ensureAdminOf(role) {
+	if !t.privileged && !t.s.hasRole(t.s.roleAdmin(role), t.ctx.Caller) {
 		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), t.s.roleAdmin(role))
 	}

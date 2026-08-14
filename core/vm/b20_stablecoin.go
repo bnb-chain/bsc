@@ -62,12 +62,3 @@ func stablecoinDispatch(tok b20Token, ext stablecoinExt, input []byte) ([]byte, 
 	}
 	return tok.dispatch(input)
 }
-
-func validCurrency(code string) bool {
-	for i := 0; i < len(code); i++ {
-		if code[i] < 'A' || code[i] > 'Z' {
-			return false
-		}
-	}
-	return true
-}
