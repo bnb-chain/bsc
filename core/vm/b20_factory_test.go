@@ -33,7 +33,6 @@ func rightPad32(b []byte) []byte {
 	return out
 }
 
-// b20AssetParams encodes B20AssetCreateParams{version,name,symbol,initialAdmin,decimals}.
 func b20AssetParams(name, symbol string, admin common.Address, decimals byte) []byte {
 	return abiEncodeStruct(
 		abiWord(wU8(b20ParamsVersion)),
@@ -44,7 +43,6 @@ func b20AssetParams(name, symbol string, admin common.Address, decimals byte) []
 	)
 }
 
-// b20StablecoinParams encodes B20StablecoinCreateParams{version,name,symbol,initialAdmin,currency}.
 func b20StablecoinParams(name, symbol string, admin common.Address, currency string) []byte {
 	return abiEncodeStruct(
 		abiWord(wU8(b20ParamsVersion)),

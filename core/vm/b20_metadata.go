@@ -77,7 +77,6 @@ func (t b20Token) dispatchMetadata(sel [4]byte, args []byte) (ret []byte, err er
 	return nil, nil, false
 }
 
-// ensureMetadataWrite applies the gates every metadata writer shares.
 func (t b20Token) ensureMetadataWrite() error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection

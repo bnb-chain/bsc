@@ -287,7 +287,6 @@ func (t b20Token) isPaused(bit uint) bool {
 	return new(uint256.Int).Rsh(t.s.paused(), bit).Uint64()&1 == 1
 }
 
-// emit logs an indexed (from/owner, to/spender, value) event.
 func (t b20Token) emit(topic0 common.Hash, a, b common.Address, value *uint256.Int) {
 	v := value.Bytes32()
 	t.ctx.AddLog([]common.Hash{topic0, addrKey(a), addrKey(b)}, v[:])
@@ -418,7 +417,6 @@ func abiEncodeStruct(members ...abiPart) []byte {
 	return encodeTuple(abiPart{dynamic: true, tail: encodeTuple(members...)})
 }
 
-// readBytesArg decodes a dynamic `bytes` argument at head word argIndex.
 func readBytesArg(args []byte, argIndex int) ([]byte, error) {
 	s, err := readStringArg(args, argIndex)
 	if err != nil {

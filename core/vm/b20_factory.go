@@ -355,7 +355,6 @@ func encodeB20CreatedData(c b20CreateParams) []byte {
 	)
 }
 
-// readBytesArray decodes an ABI `bytes[]` argument at head word argIndex.
 func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	L := uint64(len(args))
 	base, ok := wordU64(args, uint64(argIndex)*32)

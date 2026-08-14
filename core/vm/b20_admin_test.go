@@ -27,7 +27,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// b20CallU8Array builds calldata for a fn(uint8[]) call.
 func b20CallU8Array(sel [4]byte, vals ...byte) []byte {
 	out := append([]byte{}, sel[:]...)
 	out = append(out, u256hash(0x20).Bytes()...)              // head offset

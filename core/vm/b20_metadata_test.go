@@ -29,7 +29,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// b20CallString builds calldata for a fn(string) call.
 func b20CallString(sel [4]byte, s string) []byte {
 	return append(append([]byte{}, sel[:]...), encString(s)...)
 }

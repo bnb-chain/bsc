@@ -27,7 +27,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// encodeBatchMint ABI-encodes batchMint(address[],uint256[]).
 func encodeBatchMint(recips []common.Address, amounts []uint64) []byte {
 	out := append([]byte{}, selBatchMint[:]...)
 	out = append(out, u256hash(0x40).Bytes()...)                            // offset arr1
@@ -246,7 +245,6 @@ func TestB20Announce(t *testing.T) {
 	}
 }
 
-// encodeStringCall ABI-encodes a call whose args are all strings.
 func encodeStringCall(sel [4]byte, strs ...string) []byte {
 	out := append([]byte{}, sel[:]...)
 	bodies := make([][]byte, len(strs))

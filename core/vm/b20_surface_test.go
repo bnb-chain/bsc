@@ -333,10 +333,9 @@ func TestB20MiscViews(t *testing.T) {
 	}
 }
 
-// TestB20StrictScalarDecoding covers the two scalar uint8 arguments that used to
-// be truncated instead of validated. Both now match how uint8[] elements,
-// addresses and uint64s are already decoded: a word carrying anything above its
-// own width is a malformed encoding, not a value.
+// TestB20StrictScalarDecoding covers the two scalar uint8 arguments. A word
+// carrying anything above its own width is a malformed encoding, not a value —
+// the same rule uint8[] elements, addresses and uint64s already follow.
 func TestB20StrictScalarDecoding(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	statedb, token, run := newTokenWithEVM(t, 1, func(s b20Storage) {

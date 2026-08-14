@@ -71,7 +71,6 @@ func packPolicy(admin common.Address) common.Hash {
 func polWordExists(w common.Hash) bool          { return w[0]&0x80 != 0 }
 func polWordAdmin(w common.Hash) common.Address { return common.BytesToAddress(w[12:]) }
 
-// polIDType returns the type byte a policy id encodes.
 func polIDType(id uint64) byte { return byte(id >> 56) }
 
 // polIDWellFormed reports whether an id's type byte names a real policy type.

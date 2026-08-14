@@ -224,7 +224,6 @@ func ensureFeatureActivated(ctx *PrecompileContext, feature common.Hash) error {
 	return nil
 }
 
-// variantFeature maps a token variant to the feature that gates its creation.
 func variantFeature(variant byte) (common.Hash, bool) {
 	switch variant {
 	case b20VariantAsset:

@@ -30,7 +30,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// encodeUpdateList ABI-encodes updateAllowlist/updateBlocklist(uint256,bool,address[]).
 func encodeUpdateList(sel [4]byte, id uint64, flag bool, addrs []common.Address) []byte {
 	out := append([]byte{}, sel[:]...)
 	out = append(out, u256hash(id).Bytes()...)   // id
@@ -71,15 +70,9 @@ func newB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 var b20ActivationAdmin = common.HexToAddress("0x60feed")
 
 // seedActivation puts the harness in the state a live network reaches once the
-// fork has run and governance has opened everything.
-//
-// The fork part delegates to SeedB20Activation rather than reimplementing it, so
-// the harness cannot drift from production: an earlier version wrote the
-// activation registry's sentinel by hand and silently left the policy registry
-// without one, which is a state no live chain is ever in.
-//
-// Opening the features is the part that stays local — the fork deliberately opens
-// nothing (BEP-702 3.15), and every test that exercises a token needs them open.
+// fork has run and governance has opened everything. The fork part delegates to
+// SeedB20Activation so the harness cannot drift from it; opening the features
+// stays local, since the fork deliberately opens nothing (BEP-702 3.15).
 func seedActivation(statedb *state.StateDB, admin common.Address) {
 	SeedB20Activation(statedb, admin)
 	reg := b20Storage{state: statedb, token: B20ActivationRegistryAddress}
@@ -253,7 +246,6 @@ func TestB20PolicyIntegration(t *testing.T) {
 	}
 }
 
-// TestB20SeizeWithMemo exercises the freeze-then-seize compliance flow.
 func TestB20SeizeWithMemo(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -714,7 +706,6 @@ func TestB20PolicyEvents(t *testing.T) {
 		b20TopicPolicyAdminUpdated, idKey(block), addrKey(heir), addrKey(common.Address{}))
 }
 
-// encodeCreatePolicyWithAccounts ABI-encodes createPolicyWithAccounts(address,uint8,address[]).
 func encodeCreatePolicyWithAccounts(admin common.Address, ptype byte, accounts []common.Address) []byte {
 	out := append([]byte{}, selCreatePolicyWithAccounts[:]...)
 	out = append(out, addrKey(admin).Bytes()...)

@@ -236,7 +236,6 @@ func updateExtraMetadata(tok b20Token, ext assetExt, key, value string) error {
 	return nil
 }
 
-// readStringArg decodes an ABI string argument at head word argIndex.
 func readStringArg(args []byte, argIndex int) (string, error) {
 	L := uint64(len(args))
 	off, ok := wordU64(args, uint64(argIndex)*32)

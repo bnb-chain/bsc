@@ -270,7 +270,6 @@ func (s b20Storage) setRoleAdmin(role, admin common.Hash) {
 
 // --- packed policy ids ------------------------------------------------------
 
-// getPackedU64 reads the u64 lane at byteOff within the slot at offset.
 func (s b20Storage) getPackedU64(offset uint64, byteOff uint) uint64 {
 	word := new(uint256.Int).SetBytes(s.getWord(slotAt(offset)).Bytes())
 	return word.Rsh(word, byteOff*8).Uint64()
