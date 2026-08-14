@@ -293,7 +293,7 @@ var CONTENT = {
         if (p.status === 'external') return;
         var li = el('li');
         var a = el('a', null, esc(p.name));
-        a.href = '#ecosysteme';
+        a.href = '/ecosysteme.html';
         li.appendChild(a);
         eco.appendChild(li);
       });
@@ -582,6 +582,44 @@ var CONTENT = {
         if (reduceMQ.matches) { stop(); frame(); } else { start(); }
       });
     }
+  })();
+
+  /* ================= BLOCS DE CODE : copie ================= */
+  (function copierCode() {
+    var boutons = document.querySelectorAll('.copy');
+    if (!boutons.length) return;
+    boutons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var bloc = b.closest('.code');
+        var code = bloc && bloc.querySelector('code');
+        if (!code) return;
+        var texte = code.textContent;
+        // Un retour visible est indispensable : sans lui, l'utilisateur reclique
+        // en croyant que rien ne s'est passé.
+        function ok() {
+          var avant = b.innerHTML;
+          b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg>Copié';
+          b.classList.add('done');
+          setTimeout(function () { b.innerHTML = avant; b.classList.remove('done'); }, 1800);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(texte).then(ok, repli);
+        } else {
+          repli();
+        }
+        // Repli pour les contextes où l'API presse-papiers est refusée.
+        function repli() {
+          var ta = document.createElement('textarea');
+          ta.value = texte;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); ok(); } catch (e) {}
+          document.body.removeChild(ta);
+        }
+      });
+    });
   })();
 
 })();

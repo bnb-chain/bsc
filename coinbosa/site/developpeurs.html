@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Développeurs — Coinbosa Chain</title>
+<meta name="description" content="Construire sur Coinbosa Chain : configuration Hardhat et Foundry, wallet_addEthereumChain, standard de jeton BRC20, surface RPC exposée.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#0a141f">
+<link rel="canonical" href="https://coinbosa.com/developpeurs.html">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Coinbosa">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:title" content="Développeurs — Coinbosa Chain">
+<meta property="og:description" content="Construire sur Coinbosa Chain : configuration Hardhat et Foundry, wallet_addEthereumChain, standard de jeton BRC20, surface RPC exposée.">
+<meta property="og:url" content="https://coinbosa.com/developpeurs.html">
+<meta property="og:image" content="https://coinbosa.com/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Développeurs — Coinbosa Chain">
+<meta name="twitter:description" content="Construire sur Coinbosa Chain : configuration Hardhat et Foundry, wallet_addEthereumChain, standard de jeton BRC20, surface RPC exposée.">
+<meta name="twitter:image" content="https://coinbosa.com/og-image.jpg">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/app.js" defer></script>
+
+<header class="hdr" id="top">
+  <div class="hdr-inner">
+    <a class="brand" href="/" aria-label="Coinbosa — accueil">
+      <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+      <span class="brand-name">Coin<b>bosa</b></span>
+    </a>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="/ecosysteme.html">Écosystème</a>
+      <a href="/chaine.html">Chaîne &amp; BOSA</a>
+      <a href="/developpeurs.html" aria-current="page">Développeurs</a>
+      <a href="/a-propos.html">À propos</a>
+      <span id="nav-extra"></span>
+    </nav>
+
+    <div class="hdr-actions">
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" aria-pressed="false">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" stroke-linecap="round"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm cta-nav" id="cta-nav" href="/#rejoindre">Rejoindre</a>
+      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="mobile-menu" id="mobile-menu">
+    <a href="/ecosysteme.html">Écosystème</a>
+    <a href="/chaine.html">Chaîne &amp; BOSA</a>
+    <a href="/developpeurs.html" aria-current="page">Développeurs</a>
+    <a href="/a-propos.html">À propos</a>
+    <span id="mnav-extra"></span>
+    <a class="btn btn-primary" href="/#rejoindre">Rejoindre l'écosystème</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head">
+    <div class="wrap">
+      <nav class="fil" aria-label="Fil d'Ariane">
+        <a href="/">Accueil</a>
+        <span aria-hidden="true">/</span>
+        <span>Développeurs</span>
+      </nav>
+      <h1>Construire sur Coinbosa Chain</h1>
+      <p class="lead">La chaîne est compatible EVM : Hardhat, Foundry, ethers.js et viem fonctionnent sans adaptation. Il suffit de pointer vers le bon RPC.</p>
+    </div>
+  </section>
+  <section class="scene" aria-label="Paramètres réseau">
+    <div class="wrap">
+      <div class="scene-head">
+        <span class="eyebrow reveal">Connexion</span>
+        <h2 class="reveal" style="transition-delay:.06s">Ajouter le réseau par le code.</h2>
+        <p class="lead reveal" style="transition-delay:.12s">
+          Un site peut proposer l'ajout du réseau en une invite, sans que l'utilisateur
+          recopie quoi que ce soit à la main.
+        </p>
+      </div>
+      <div class="code">
+        <div class="code-head">
+          <span>wallet_addEthereumChain</span>
+          <button class="copy" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>Copier</button>
+        </div>
+        <pre><code>await window.ethereum.request({
+  method: 'wallet_addEthereumChain',
+  params: [{
+    chainId: '0x6696',
+    chainName: 'Coinbosa Chain',
+    nativeCurrency: { name: 'Coinbosa', symbol: 'BOSA', decimals: 18 },
+    rpcUrls: ['https://explorer.coinbosa.com/rpc'],
+    blockExplorerUrls: ['https://explorer.coinbosa.com']
+  }]
+});</code></pre>
+      </div>
+      <div class="code">
+        <div class="code-head">
+          <span>hardhat.config.js</span>
+          <button class="copy" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>Copier</button>
+        </div>
+        <pre><code>module.exports = {
+  solidity: '0.8.24',
+  networks: {
+    coinbosa: {
+      url: 'https://explorer.coinbosa.com/rpc',
+      chainId: 26262,
+      accounts: [process.env.CLE_PRIVEE]   // jamais en clair dans le dépôt
+    }
+  }
+};</code></pre>
+      </div>
+      <div class="code">
+        <div class="code-head">
+          <span>foundry.toml</span>
+          <button class="copy" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>Copier</button>
+        </div>
+        <pre><code>[rpc_endpoints]
+coinbosa = "https://explorer.coinbosa.com/rpc"
+
+# forge script script/Deploy.s.sol --rpc-url coinbosa --broadcast</code></pre>
+      </div>
+
+      <div class="scene-head" style="margin-top:clamp(56px,8vw,90px)">
+        <span class="eyebrow reveal">Surface exposée</span>
+        <h2 class="reveal" style="transition-delay:.06s">Ce que le RPC public accepte.</h2>
+        <p class="lead reveal" style="transition-delay:.12s">
+          Le nœud public est volontairement restreint. Les familles de méthodes qui
+          permettent d'administrer un nœud ou d'en extraire des clés ne sont pas exposées.
+        </p>
+      </div>
+      <div class="kv-wrap">
+        <table class="kv">
+          <tbody>
+            <tr><th>Familles ouvertes</th><td><code>eth</code>, <code>net</code></td></tr>
+            <tr><th>Familles fermées</th><td><code>admin</code>, <code>personal</code>, <code>debug</code>, <code>txpool</code>, <code>miner</code></td></tr>
+            <tr><th>Requêtes groupées</th><td>50 au maximum par appel</td></tr>
+            <tr><th>Plage de journaux</th><td>bornée — une requête <code>eth_getLogs</code> sans borne est refusée</td></tr>
+            <tr><th>Limite de gaz par bloc</th><td>55 000 000 (bloc 0 : 40 000 000)</td></tr>
+            <tr><th>Transport</th><td>HTTPS uniquement</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="scene-head" style="margin-top:clamp(56px,8vw,90px)">
+        <span class="eyebrow reveal">Jetons</span>
+        <h2 class="reveal" style="transition-delay:.06s">Le standard BRC20.</h2>
+        <p class="lead reveal" style="transition-delay:.12s">
+          BRC20 est l'interface de jeton de Coinbosa Chain. Elle est compatible ERC-20 :
+          un contrat, un portefeuille ou un explorateur qui sait lire un ERC-20 sait lire un BRC20.
+        </p>
+      </div>
+      <div class="code">
+        <div class="code-head">
+          <span>Interface minimale</span>
+          <button class="copy" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>Copier</button>
+        </div>
+        <pre><code>interface IBRC20 {
+    function name()        external view returns (string memory);
+    function symbol()      external view returns (string memory);
+    function decimals()    external view returns (uint8);
+    function totalSupply() external view returns (uint256);
+
+    function balanceOf(address compte) external view returns (uint256);
+    function allowance(address proprietaire, address delegue) external view returns (uint256);
+
+    function transfer(address vers, uint256 montant) external returns (bool);
+    function approve(address delegue, uint256 montant) external returns (bool);
+    function transferFrom(address de, address vers, uint256 montant) external returns (bool);
+
+    event Transfer(address indexed de, address indexed vers, uint256 montant);
+    event Approval(address indexed proprietaire, address indexed delegue, uint256 montant);
+}</code></pre>
+      </div>
+      <p class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg><span><b>La transmission de propriété d'un contrat BRC20 se fait en deux temps</b> (<code>transferOwnership</code> puis <code>acceptOwnership</code> par le destinataire). Un transfert en une seule étape vers une adresse mal saisie rend le contrat définitivement orphelin : ce détour évite une erreur irréversible.</span></p>
+      <div class="suite">
+        <p><strong>Le code est ouvert</strong>Client, contrats système, genesis et scripts de déploiement sont publics et vérifiables.</p>
+        <a class="btn btn-primary" href="https://github.com/Coinbosa/coinbosa-chain">Voir le dépôt<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;vertical-align:-2px;margin-left:6px"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="ft">
+  <div class="wrap">
+    <div class="ft-top">
+      <div class="ft-brand">
+        <a class="brand" href="/" aria-label="Coinbosa — accueil">
+          <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+          <span class="brand-name">Coin<b>bosa</b></span>
+        </a>
+        <p>Un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.</p>
+        <div class="ft-socials" id="ft-socials"><!-- icônes sociales depuis CONTENT.links --></div>
+      </div>
+
+      <div class="ft-col">
+        <h4>Écosystème</h4>
+        <ul id="ft-eco"><!-- rendu depuis CONTENT.products --></ul>
+      </div>
+
+      <div class="ft-col">
+        <h4>Réseau</h4>
+        <ul id="ft-network"><!-- explorer / whitepaper / github --></ul>
+      </div>
+
+      <div class="ft-col">
+        <h4>Communauté</h4>
+        <ul id="ft-community"><!-- socials en texte --></ul>
+      </div>
+    </div>
+
+    <div class="ft-bottom">
+      <p id="ft-copyright"><!-- rendu depuis CONTENT.entity --></p>
+      <div class="legal">
+        <p id="ft-entity"><!-- rendu depuis CONTENT.entity --></p>
+      </div>
+    </div>
+  </div>
+</footer>

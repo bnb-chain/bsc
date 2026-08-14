@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coinbosa Chain & BOSA — paramètres du réseau</title>
+<meta name="description" content="Coinbosa Chain : compatible EVM, chain ID 26262, bloc de 5 secondes, offre fixe de 700 000 000 BOSA. Paramètres pour ajouter le réseau à un portefeuille.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#0a141f">
+<link rel="canonical" href="https://coinbosa.com/chaine.html">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Coinbosa">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:title" content="Coinbosa Chain & BOSA — paramètres du réseau">
+<meta property="og:description" content="Coinbosa Chain : compatible EVM, chain ID 26262, bloc de 5 secondes, offre fixe de 700 000 000 BOSA. Paramètres pour ajouter le réseau à un portefeuille.">
+<meta property="og:url" content="https://coinbosa.com/chaine.html">
+<meta property="og:image" content="https://coinbosa.com/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Coinbosa Chain & BOSA — paramètres du réseau">
+<meta name="twitter:description" content="Coinbosa Chain : compatible EVM, chain ID 26262, bloc de 5 secondes, offre fixe de 700 000 000 BOSA. Paramètres pour ajouter le réseau à un portefeuille.">
+<meta name="twitter:image" content="https://coinbosa.com/og-image.jpg">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/app.js" defer></script>
+
+<header class="hdr" id="top">
+  <div class="hdr-inner">
+    <a class="brand" href="/" aria-label="Coinbosa — accueil">
+      <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+      <span class="brand-name">Coin<b>bosa</b></span>
+    </a>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="/ecosysteme.html">Écosystème</a>
+      <a href="/chaine.html" aria-current="page">Chaîne &amp; BOSA</a>
+      <a href="/developpeurs.html">Développeurs</a>
+      <a href="/a-propos.html">À propos</a>
+      <span id="nav-extra"></span>
+    </nav>
+
+    <div class="hdr-actions">
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" aria-pressed="false">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" stroke-linecap="round"/></svg>
+      </button>
+      <a class="btn btn-primary btn-sm cta-nav" id="cta-nav" href="/#rejoindre">Rejoindre</a>
+      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="mobile-menu" id="mobile-menu">
+    <a href="/ecosysteme.html">Écosystème</a>
+    <a href="/chaine.html" aria-current="page">Chaîne &amp; BOSA</a>
+    <a href="/developpeurs.html">Développeurs</a>
+    <a href="/a-propos.html">À propos</a>
+    <span id="mnav-extra"></span>
+    <a class="btn btn-primary" href="/#rejoindre">Rejoindre l'écosystème</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head">
+    <div class="wrap">
+      <nav class="fil" aria-label="Fil d'Ariane">
+        <a href="/">Accueil</a>
+        <span aria-hidden="true">/</span>
+        <span>Chaîne &amp; BOSA</span>
+      </nav>
+      <h1>Coinbosa Chain &amp; BOSA</h1>
+      <p class="lead">Une chaîne compatible EVM, un coin natif à offre fixe. Tous les chiffres de cette page sont lisibles directement sur le réseau — rien n'est déclaratif.</p>
+    </div>
+  </section>
+  <section class="scene" aria-label="Caractéristiques du réseau">
+    <div class="wrap">
+      <div class="stat-grid reveal" id="stat-grid"><!-- rendu depuis CONTENT.network --></div>
+    </div>
+  </section>
+
+  <section class="scene" aria-label="Paramètres et empreinte">
+    <div class="wrap">
+      <div class="scene-head">
+        <span class="eyebrow reveal">Identité du réseau</span>
+        <h2 class="reveal" style="transition-delay:.06s">Ce que la chaîne déclare d'elle-même.</h2>
+        <p class="lead reveal" style="transition-delay:.12s">
+          L'empreinte du bloc 0 est immuable : elle fixe pour toujours l'état initial du réseau,
+          offre comprise. Deux nœuds qui n'affichent pas la même empreinte ne sont pas sur la même chaîne.
+        </p>
+      </div>
+      <div class="kv-wrap">
+        <table class="kv">
+          <tbody>
+            <tr><th>Nom du réseau</th><td>Coinbosa Chain</td></tr>
+            <tr><th>Chain ID</th><td>26262 <span style="color:var(--faint)">(0x6696)</span></td></tr>
+            <tr><th>Machine virtuelle</th><td>Compatible EVM</td></tr>
+            <tr><th>Consensus</th><td>Parlia (PoSA) · epoch 200 blocs</td></tr>
+            <tr><th>Temps de bloc</th><td>5 secondes</td></tr>
+            <tr><th>Coin natif</th><td>BOSA · 18 décimales</td></tr>
+            <tr><th>Offre totale</th><td>700 000 000 BOSA — fixe, aucune émission programmée</td></tr>
+            <tr><th>Standard de jeton</th><td>BRC20 (compatible ERC-20)</td></tr>
+            <tr><th>Point d'accès RPC</th><td><a href="https://explorer.coinbosa.com/rpc">https://explorer.coinbosa.com/rpc</a></td></tr>
+            <tr><th>Explorateur</th><td><a href="https://explorer.coinbosa.com">https://explorer.coinbosa.com</a></td></tr>
+            <tr><th>Empreinte du bloc 0</th><td><span style="word-break:break-all">0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6</span></td></tr>
+            <tr><th>Racine d'état du bloc 0</th><td><span style="word-break:break-all">0x93682eb9182a55531d47014b76a285b45d3e720a2951f9ffbdc67f52995f8c03</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="scene-head" style="margin-top:clamp(56px,8vw,90px)">
+        <span class="eyebrow reveal">Se connecter</span>
+        <h2 class="reveal" style="transition-delay:.06s">Ajouter le réseau à ton portefeuille.</h2>
+        <p class="lead reveal" style="transition-delay:.12s">
+          Trois champs suffisent. La manipulation est la même dans MetaMask, Trust Wallet,
+          Rabby ou tout portefeuille compatible EVM.
+        </p>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div>
+            <h3>Ouvrir la liste des réseaux</h3>
+            <p>Dans MetaMask : le sélecteur de réseau en haut à gauche, puis « Ajouter un réseau » et « Ajouter manuellement ».</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Saisir les paramètres</h3>
+            <p>Recopie exactement ces quatre valeurs. Le chain ID doit correspondre : un portefeuille qui reçoit un chain ID différent de celui annoncé refuse la connexion, et c'est une protection.</p>
+      <div class="code">
+        <div class="code-head">
+          <span>Paramètres du réseau</span>
+          <button class="copy" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>Copier</button>
+        </div>
+        <pre><code>Nom du réseau     Coinbosa Chain
+URL RPC           https://explorer.coinbosa.com/rpc
+Chain ID          26262
+Symbole           BOSA
+Explorateur       https://explorer.coinbosa.com</code></pre>
+      </div>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Vérifier que c'est la bonne chaîne</h3>
+            <p>Avant d'y envoyer quoi que ce soit, demande son identité au réseau. La réponse doit être exactement <code>0x6696</code>, la forme hexadécimale de 26262.</p>
+      <div class="code">
+        <div class="code-head">
+          <span>Vérification depuis un terminal</span>
+          <button class="copy" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>Copier</button>
+        </div>
+        <pre><code>curl -X POST https://explorer.coinbosa.com/rpc \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
+
+# réponse attendue :
+# {"jsonrpc":"2.0","id":1,"result":"0x6696"}</code></pre>
+      </div>
+          </div>
+        </li>
+      </ol>
+      <p class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg><span><b>Le réseau est jeune et opéré par un seul validateur.</b> Il n'est donc pas présenté comme décentralisé. Aucun audit externe n'a été publié à ce jour. Le code est ouvert et l'empreinte du bloc 0 est vérifiable par quiconque.</span></p>
+      <div class="suite">
+        <p><strong>Construire sur la chaîne</strong>Paramètres pour les outils de développement, déploiement d'un jeton BRC20, et surface RPC exposée.</p>
+        <a class="btn btn-primary" href="/developpeurs.html">Documentation développeurs<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;vertical-align:-2px;margin-left:6px"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="ft">
+  <div class="wrap">
+    <div class="ft-top">
+      <div class="ft-brand">
+        <a class="brand" href="/" aria-label="Coinbosa — accueil">
+          <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+          <span class="brand-name">Coin<b>bosa</b></span>
+        </a>
+        <p>Un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.</p>
+        <div class="ft-socials" id="ft-socials"><!-- icônes sociales depuis CONTENT.links --></div>
+      </div>
+
+      <div class="ft-col">
+        <h4>Écosystème</h4>
+        <ul id="ft-eco"><!-- rendu depuis CONTENT.products --></ul>
+      </div>
+
+      <div class="ft-col">
+        <h4>Réseau</h4>
+        <ul id="ft-network"><!-- explorer / whitepaper / github --></ul>
+      </div>
+
+      <div class="ft-col">
+        <h4>Communauté</h4>
+        <ul id="ft-community"><!-- socials en texte --></ul>
+      </div>
+    </div>
+
+    <div class="ft-bottom">
+      <p id="ft-copyright"><!-- rendu depuis CONTENT.entity --></p>
+      <div class="legal">
+        <p id="ft-entity"><!-- rendu depuis CONTENT.entity --></p>
+      </div>
+    </div>
+  </div>
+</footer>
