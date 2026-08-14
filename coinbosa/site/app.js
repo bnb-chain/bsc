@@ -67,7 +67,11 @@ var CONTENT = {
       name: "Coinbosa VPN",
       category: "Confidentialité",
       status: "building",
-      url: "https://bosavpn.com",
+      // url retirée : le domaine sert un certificat TLS qui ne correspond pas à
+      // bosavpn.com — le visiteur recevait un avertissement de sécurité plein
+      // écran depuis un lien de coinbosa.com. À rétablir dès que le certificat
+      // est corrigé : il suffit de remettre cette ligne.
+      // url: "https://bosavpn.com",
       desc: "Réseau privé et confidentialité en ligne. En développement."
     },
     {
@@ -80,7 +84,9 @@ var CONTENT = {
       name: "bite-fast",
       category: "Bourse externe",
       status: "external",
-      url: "https://bite-fast.com",
+      // url retirée : le domaine ne répond plus (délai dépassé sur 443 et 80),
+      // le produit est en maintenance. À rétablir quand le site revient.
+      // url: "https://bite-fast.com",
       desc: "Bourse tierce, opérée en dehors de Coinbosa. Partenaire externe."
     }
   ],
