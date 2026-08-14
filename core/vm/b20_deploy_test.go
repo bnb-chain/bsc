@@ -2,13 +2,9 @@ package vm
 
 import (
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -24,24 +20,6 @@ var deployStopCode = []byte{
 	0x00,
 }
 
-func newB20DeployEVM(t *testing.T) (*state.StateDB, *EVM) {
-	t.Helper()
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg := *b20TestChainConfig()
-	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        1,
-	}
-	seedActivation(statedb, b20ActivationAdmin)
-	return statedb, NewEVM(bc, statedb, &cfg, Config{})
-}
-
 // TestB20ReservedSpaceDeployment pins what ordinary contract creation does
 // against the reserved space. BEP-702 3.3 deliberately places no restriction on
 // CREATE/CREATE2 output addresses: a squatter that grinds its way in (2^80 for
@@ -49,7 +27,7 @@ func newB20DeployEVM(t *testing.T) (*state.StateDB, *EVM) {
 // token handler before any code runs. Nothing tested this, so the "deliberate"
 // half was an assumption rather than a fact.
 func TestB20ReservedSpaceDeployment(t *testing.T) {
-	statedb, evm := newB20DeployEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	statedb.SetBalance(creator, uint256.NewInt(1e18), 0)
 
@@ -107,7 +85,7 @@ func TestB20ReservedSpaceDeployment(t *testing.T) {
 // would happily overwrite foreign code, destroying it and inheriting whatever
 // storage it left behind.
 func TestB20CreateRejectsForeignCode(t *testing.T) {
-	statedb, evm := newB20DeployEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	statedb.SetBalance(creator, uint256.NewInt(1e18), 0)
 

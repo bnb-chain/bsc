@@ -19,13 +19,11 @@ package vm
 import (
 	"bytes"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -39,13 +37,7 @@ func newUnseededB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 		t.Fatal(err)
 	}
 	cfg := *b20TestChainConfig()
-	bc := BlockContext{
-		Random:      &common.Hash{},
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        1,
-	}
+	bc := b20BlockContext(1)
 	return statedb, NewEVM(bc, statedb, &cfg, Config{})
 }
 

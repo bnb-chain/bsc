@@ -19,13 +19,11 @@ package vm
 import (
 	"bytes"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -156,13 +154,7 @@ func TestB20EndToEndTransfer(t *testing.T) {
 	txHash := common.HexToHash("0x1234")
 	statedb.SetTxContext(txHash, 0)
 
-	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        1,
-	}
+	bc := b20BlockContext(1)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 	if !evm.b20Enabled() {
 		t.Fatal("B20 must be enabled for the precompile to resolve")

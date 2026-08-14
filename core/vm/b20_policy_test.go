@@ -43,6 +43,18 @@ func encodeUpdateList(sel [4]byte, id uint64, flag bool, addrs []common.Address)
 	return out
 }
 
+// b20BlockContext is the block context every B20 test runs under: post-merge, so
+// the fork rules resolve, with transfers stubbed out.
+func b20BlockContext(time uint64) BlockContext {
+	return BlockContext{
+		Random:      &common.Hash{},
+		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		BlockNumber: big.NewInt(1),
+		Time:        time,
+	}
+}
+
 func newB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -50,13 +62,7 @@ func newB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 		t.Fatal(err)
 	}
 	cfg := *b20TestChainConfig()
-	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        1,
-	}
+	bc := b20BlockContext(1)
 	seedActivation(statedb, b20ActivationAdmin)
 	return statedb, NewEVM(bc, statedb, &cfg, Config{})
 }

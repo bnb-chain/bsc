@@ -19,13 +19,11 @@ package vm
 import (
 	"bytes"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -99,13 +97,7 @@ func TestB20Factory(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := *b20TestChainConfig()
-	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        1,
-	}
+	bc := b20BlockContext(1)
 	seedActivation(statedb, b20ActivationAdmin)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 
@@ -178,13 +170,7 @@ func TestB20Factory(t *testing.T) {
 func TestB20FactoryOwnerless(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	cfg := *b20TestChainConfig()
-	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        1,
-	}
+	bc := b20BlockContext(1)
 	seedActivation(statedb, b20ActivationAdmin)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 	creator := common.HexToAddress("0xc4ea70")

@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -44,13 +43,7 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.St
 	if seed != nil {
 		seed(newB20Storage(statedb, token))
 	}
-	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
-		BlockNumber: big.NewInt(1),
-		Time:        now,
-	}
+	bc := b20BlockContext(now)
 	evm := NewEVM(bc, statedb, b20TestChainConfig(), Config{})
 	run := func(caller common.Address, input []byte) ([]byte, error) {
 		gas := NewGasBudget(2_000_000)
