@@ -115,10 +115,9 @@ func applyMultiplier(raw, mul *uint256.Int) (*uint256.Int, error) {
 	return p.Div(p, b20WAD), nil
 }
 
+// removeMultiplier answers zero for a zero multiplier without a guard of its own:
+// uint256 division by zero yields zero. updateMultiplier rejects zero anyway.
 func removeMultiplier(scaled, mul *uint256.Int) (*uint256.Int, error) {
-	if mul.IsZero() {
-		return new(uint256.Int), nil
-	}
 	p, overflow := new(uint256.Int).MulOverflow(scaled, b20WAD)
 	if overflow {
 		return nil, revPanic(0x11)
