@@ -38,6 +38,12 @@ done
 ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp   # filet de sécurité
 ufw allow 80/tcp
 ufw allow 443/tcp
+# QUIC / HTTP-3. Caddy écoute sur UDP/443 et l'annonce par l'en-tête alt-svc dès
+# qu'il sert en HTTPS. Sans cette règle, il annonce un transport que le pare-feu
+# jette : chaque navigateur compatible tente QUIC, attend l'expiration du délai,
+# puis retombe en TCP — une latence payée à chaque première visite, pour rien.
+# Aucun service nouveau n'est exposé : c'est le même Caddy, sur le même port.
+ufw allow 443/udp
 ufw default deny incoming
 ufw default allow outgoing
 # --force : évite la question interactive « Proceed (y|n) ? »

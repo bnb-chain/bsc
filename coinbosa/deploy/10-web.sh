@@ -70,8 +70,16 @@ cat > /etc/caddy/Caddyfile <<EOF
     }
 }
 
+# --- www redirige vers l'apex ---
+# www et l'apex servaient tous deux le site en 200. Deux URL canoniques pour un
+# même contenu divisent le référencement et doublent ce qu'il faut invalider en
+# cache. L'apex fait foi ; www redirige de façon permanente, chemin préservé.
+www.$SITE_DOMAIN {
+    redir https://$SITE_DOMAIN{uri} permanent
+}
+
 # --- Site vitrine + livre blanc ---
-$SITE_DOMAIN, www.$SITE_DOMAIN {
+$SITE_DOMAIN {
     encode gzip zstd
 
     log {
@@ -82,13 +90,37 @@ $SITE_DOMAIN, www.$SITE_DOMAIN {
         format json
     }
 
+    # Les ressources partagées portent une empreinte de leur contenu dans l'URL
+    # (?v=…), posée par coinbosa/site/coque.py. L'URL change dès que le contenu
+    # change : un cache d'un an ne peut donc PAS servir une version périmée.
+    # Sans cette empreinte, le même cache long serait un piège — c'est elle qui
+    # le rend sûr, et la CI vérifie qu'elle suit bien le contenu.
+    @versionnee query v=*
+    @image      path *.jpg *.jpeg *.png *.ico *.svg *.webp
+    @page       path / *.html
+    @volatil    path /version.json /sitemap.xml /robots.txt
+
+    # Sonde de vivacité : savoir de l'extérieur que le serveur web répond, sans
+    # dépendre du rendu d'une page ni d'un accès à la machine.
+    handle /health {
+        header Cache-Control "no-store"
+        respond "ok" 200
+    }
+
     handle_path /whitepaper* {
         root * /var/www/coinbosa/whitepaper
+        header @versionnee Cache-Control "public, max-age=31536000, immutable"
+        header @image      Cache-Control "public, max-age=2592000"
+        header @page       Cache-Control "public, max-age=0, must-revalidate"
         file_server
     }
 
     handle {
         root * /var/www/coinbosa/site
+        header @versionnee Cache-Control "public, max-age=31536000, immutable"
+        header @image      Cache-Control "public, max-age=2592000"
+        header @page       Cache-Control "public, max-age=0, must-revalidate"
+        header @volatil    Cache-Control "no-cache"
         file_server
     }
 
