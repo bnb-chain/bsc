@@ -25,7 +25,17 @@
 // ⚠ Nuance qui surprend : passer de 1 à 2 validateurs DÉGRADE la disponibilité. À N=2 il faut
 // 2 signataires sur 2 en permanence ; la perte d'un seul nœud arrête le réseau. Un opérateur
 // qui monte 1→2→3→4 en ajoutant les validateurs un par un traverse cet état fragile.
-// Ajouter les validateurs PAR PAIRES (1→3, 3→5) évite le quorum 2-sur-2.
+// ATTENTION — le conseil « ajouter par paires (1→3, 3→5) évite le quorum » est FAUX.
+// minerHistoryCheckLen() = (N/2+1)*TurnLength-1, en division ENTIÈRE :
+//     N=1 -> 0   (un seul scelleur suffit)
+//     N=2 -> 1   il faut 2 scelleurs DISTINCTS et EN LIGNE
+//     N=3 -> 1   il en faut 2 AUSSI — passer par 3 ne change RIEN
+//     N=5 -> 2   il en faut 3
+// 1→3 n'est donc pas plus sûr que 1→2 : dans les deux cas le validateur unique est
+// interdit de sceller le bloc qui suit l'epoch. La parité ne protège de rien.
+// Ce qui protège, et la SEULE chose qui protège : que ⌊N/2⌋+1 nœuds entrants
+// détiennent réellement leur clé, soient synchronisés, et aient été VUS sceller
+// AVANT la bascule. C'est ce que ce script vérifie ci-dessous ; ne pas contourner.
 const { ethers } = require('ethers');
 
 const RPC = process.env.RPC || 'http://127.0.0.1:8545';

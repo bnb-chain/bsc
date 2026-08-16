@@ -115,6 +115,37 @@ retrouveraient bloquées par la nouvelle CSP : site muet le temps de la bascule.
 
 ---
 
+## Arrêter un nœud : uniquement par systemd
+
+**Ne jamais tuer un processus geth directement.** Ni `kill -9`, ni `pkill geth`, ni
+extinction brutale de la machine.
+
+La raison n'est pas de la prudence de principe. Les deux nœuds utilisent le schéma
+d'état « path », dont l'écriture sur disque est différée : l'état en mémoire n'est
+recopié qu'aux points de sortie propres. Un arrêt brutal ne perd donc pas quelques
+blocs — il fait repartir le nœud **au dernier arrêt propre**, qui peut remonter très
+loin. Le drapeau censé supprimer ce délai, `--pathdb.sync`, est accepté par le binaire
+et propagé dans deux structures de configuration, puis **jamais lu** par la couche de
+stockage : il ne protège de rien aujourd'hui.
+
+```bash
+# Arrêter
+sudo systemctl stop coinbosa-validator     # envoie SIGINT, attend la purge sur disque
+sudo systemctl stop coinbosa-node
+
+# Redémarrer la machine
+sudo systemctl stop coinbosa-validator coinbosa-node && sudo reboot
+```
+
+Vérifier qu'un arrêt s'est bien passé avant de couper le courant :
+
+```bash
+journalctl -u coinbosa-validator -n 20 --no-pager | grep -i "blockchain stopped\|Writing.*state"
+```
+
+Tant que `PathSyncFlush` n'est pas câblé côté client, **cette discipline est le seul
+rempart** contre un rembobinage non borné.
+
 ## Durcissement SSH — `20-ssh-hardening.sh`
 
 Par défaut, un VPS Ubuntu accepte le mot de passe et le login root : n'importe qui peut

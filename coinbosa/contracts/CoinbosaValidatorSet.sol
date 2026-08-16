@@ -187,7 +187,11 @@ contract CoinbosaValidatorSet {
     ///   consensus/parlia/coinbosa_halt_repro_test.go
     ///
     /// A noter : N=2 impose un quorum 2-sur-2 permanent — passer de 1 a 2 DEGRADE la
-    /// disponibilite. Monter par paires (1 -> 3 -> 5) evite cet etat.
+    /// disponibilite. ATTENTION : monter par paires (1 -> 3 -> 5) n'evite PAS cet etat.
+    /// minerHistoryCheckLen vaut 1 pour N=2 COMME pour N=3 : il faut deux scelleurs
+    /// distincts et en ligne dans les deux cas. Seule protection reelle : que les
+    /// nouveaux validateurs aient ete VUS sceller avant la bascule d'epoch.
+    /// Voir coinbosa/scripts/rotate-validators.js, qui refuse la rotation sinon.
     ///
     /// NE JAMAIS appeler cette fonction directement. Passer par
     /// coinbosa/scripts/rotate-validators.js, qui verifie que les nouveaux validateurs

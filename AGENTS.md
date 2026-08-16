@@ -35,6 +35,27 @@ n'ont pas de « deuxième essai » :
   L'absence est déjà divulguée dans `coinbosa/README.md`, `coinbosa/ROADMAP.md` et
   `coinbosa/WHITEPAPER.md`. Ne pas écrire ailleurs que les sanctions existent.
 
+## Deux pièges qui arrêtent la chaîne, et qui ressemblent à des progrès
+
+**Ajouter un validateur.** Parlia n'exige pas *un* signataire mais **⌊N/2⌋+1 signataires
+distincts et en ligne** (`consensus/parlia/snapshot.go:243`). Passer de 1 à 2 validateurs
+alors qu'un seul nœud scelle arrête le réseau au bloc d'epoch suivant — silencieusement,
+sans erreur ni panique. Et comme plus aucun bloc n'est produit, **aucune transaction
+corrective ne peut être minée** : l'opération est irréversible on-chain.
+
+Le conseil « monter par paires, 1→3 est sûr » — qui figurait dans le contrat et dans le
+script de rotation — est **faux**. En division entière, `minerHistoryCheckLen` vaut 1 pour
+N=2 comme pour N=3 : il faut deux scelleurs distincts dans les deux cas. La parité ne
+protège de rien. Seule protection réelle : que les nœuds entrants aient été **vus sceller**
+avant la bascule. `coinbosa/scripts/rotate-validators.js` refuse la rotation sinon —
+ne pas contourner sa garde.
+Non-régression : `consensus/parlia/coinbosa_halt_repro_test.go`, exécuté en CI.
+
+**Tuer un processus geth.** Le schéma d'état « path » diffère l'écriture sur disque, et
+`--pathdb.sync` — censé la rendre synchrone — est propagé dans deux structures puis jamais
+lu par `triedb/pathdb`. Un `kill -9` ou une coupure fait donc repartir le nœud au dernier
+arrêt *propre*. Arrêt uniquement par `systemctl stop` ; voir `coinbosa/deploy/README.md`.
+
 ## Contraintes de projet
 
 - **Aucun conteneur.** Docker a été entièrement retiré du dépôt ; le déploiement est natif

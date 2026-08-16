@@ -55,6 +55,16 @@ jobs:
             || { echo "::error::le patch 5 s est absent de consensus/parlia/parlia.go"; exit 1; }
           echo "patch 5 s présent"
 
+      # --- la propriété la plus dangereuse du réseau, vérifiée à chaque push ---
+      # Passer de 1 à 2 validateurs alors qu'un seul nœud scelle ARRÊTE la chaîne au
+      # bloc d'epoch suivant, silencieusement, et de façon irréversible : plus aucun
+      # bloc n'étant produit, aucune transaction corrective ne peut être minée.
+      # Le test de reproduction existait au dépôt mais n'était exécuté par AUCUN
+      # workflow de cette branche — la garantie la plus critique du projet reposait
+      # donc sur un test que personne ne lançait.
+      - name: Test d'arrêt de chaîne (ajout d'un validateur)
+        run: go test ./consensus/parlia -run TestCoinbosa -count=1 -v
+
       - name: Compiler le client Coinbosa
         run: make geth
 
