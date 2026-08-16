@@ -198,6 +198,21 @@ $EXPLORER_DOMAIN {
         respond "method not allowed" 405
     }
 
+    # Les portefeuilles pointent vers /tx/<hash>, /block/<n>, /address/<adr>.
+    # L'explorateur est une page unique : ces chemins ne correspondent à aucun
+    # fichier et renvoyaient donc 404 — y compris pour les liens « voir sur
+    # l'explorateur » que MetaMask produira une fois la chaîne référencée.
+    # On les réécrit vers index.html ; app.js relit le chemin et lance la
+    # recherche. Le motif est BORNÉ aux trois préfixes attendus : tout autre
+    # chemin inexistant continue de renvoyer une vraie 404, plutôt que de servir
+    # la page d'accueil à des URL fantaisistes.
+    @routes path_regexp routes ^/(tx|block|blocs?|address|adresse)/[^/]+/?$
+    handle @routes {
+        rewrite * /index.html
+        root * /var/www/coinbosa/explorer
+        file_server
+    }
+
     handle {
         root * /var/www/coinbosa/explorer
         file_server

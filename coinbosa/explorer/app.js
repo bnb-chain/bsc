@@ -266,3 +266,22 @@ document.addEventListener('click',function(e){
 let cycleEnCours=false;
 async function cycle(){ if(cycleEnCours) return; cycleEnCours=true; try{ await refresh(); } finally { cycleEnCours=false; } }
 applyLang();showView(view);cycle();setInterval(cycle,5000);
+
+/* ─── URL de la forme /tx/<hash>, /block/<n>, /address/<adresse> ───────────────
+   Les portefeuilles construisent leurs liens « voir sur l'explorateur » sous
+   cette forme : MetaMask concatène l'URL déclarée dans la liste des chaînes et
+   « /tx/<hash> ». Sans ce routage, chacun de ces liens tombait sur une 404 —
+   y compris ceux que MetaMask produira dès que la chaîne sera référencée.
+
+   Caddy réécrit ces chemins vers index.html ; c'est ici qu'on récupère la valeur
+   et qu'on lance la recherche existante. Le champ de recherche et le panneau de
+   résultat vivent hors des onglets : il n'y a donc aucune vue à changer. */
+(function routeChemin(){
+  var m = location.pathname.match(/^\/(tx|block|blocs?|address|adresse)\/([^\/?#]+)\/?$/i);
+  if (!m) return;
+  var champ = document.getElementById('q');
+  if (!champ) return;
+  champ.value = decodeURIComponent(m[2]);
+  search();
+})();
+
