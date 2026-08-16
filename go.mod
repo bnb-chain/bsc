@@ -9,7 +9,7 @@ go 1.25.0
 // lui. Pour un nœud qui termine du TLS et analyse des entrées réseau hostiles, cela compte.
 // Le nombre de version (`go` ci-dessus) reste 1.25.0 : c'est la version minimale du langage,
 // on ne change pas la compatibilité, seulement le correctif utilisé pour compiler.
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
