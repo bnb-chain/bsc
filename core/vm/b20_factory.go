@@ -304,9 +304,9 @@ func decodeCreateParams(variant byte, params []byte) (b20CreateParams, error) {
 		return out, nil
 	}
 
-	// Stablecoin: decimals are fixed and not carried on the wire. The currency
-	// is only decoded here; its content is checked at initialization, after the
-	// occupancy check, matching where base-std validates it.
+	// Stablecoin: decimals are fixed and not carried on the wire. The currency's
+	// content is checked by the caller before the address is derived, since
+	// base-std reports a malformed one ahead of TokenAlreadyExists.
 	out.decimals = 6
 	if out.currency, err = readStringArg(body, 4); err != nil {
 		return out, err
