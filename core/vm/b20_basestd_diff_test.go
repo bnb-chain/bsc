@@ -147,11 +147,11 @@ func TestB20SurfaceMatchesBaseStd(t *testing.T) {
 //
 // isAuthorized and the policy event streams also begin carrying composite ids, so
 // a consumer asserting policyType is 0 or 1 needs widening.
-// Only composite policies remain: createCompositePolicy, updateComposite,
-// compositePolicyChildIds and the two child-count bounds, CompositePolicyUpdated,
-// InvalidChildPolicy and ChildPoliciesOutsideOfRange. The ERC-8056 scheduled
-// multiplier is implemented as of the Cobalt adoption.
-var b20CobaltGaps = map[string]int{"function": 5, "event": 1, "error": 2}
+// Nothing from Cobalt is deferred any more: the scheduled multiplier and composite
+// policies are both implemented, and seize was already. The map stays because the
+// next fork will land here, and a zero that has to be edited to become non-zero is
+// the point — an unimplemented addition cannot arrive silently.
+var b20CobaltGaps = map[string]int{"function": 0, "event": 0, "error": 0}
 
 type refEntry struct {
 	Sig  string `json:"sig"`

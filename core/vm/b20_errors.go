@@ -147,6 +147,8 @@ var (
 	errSelPolicyNotFoundID   = b20ErrorSel("PolicyNotFound(uint64)")
 	errSelUnsupportedScope   = b20ErrorSel("UnsupportedPolicyType(bytes32)")
 	errSelIncompatibleType   = b20ErrorSel("IncompatiblePolicyType()")
+	errSelInvalidChildPolicy = b20ErrorSel("InvalidChildPolicy(uint64)")
+	errSelChildrenOutOfRange = b20ErrorSel("ChildPoliciesOutsideOfRange()")
 	errSelBatchTooLarge      = b20ErrorSel("BatchSizeTooLarge(uint256)")
 	errSelEmptyBatch         = b20ErrorSel("EmptyBatch()")
 	errSelLengthMismatch     = b20ErrorSel("LengthMismatch(uint256,uint256)")

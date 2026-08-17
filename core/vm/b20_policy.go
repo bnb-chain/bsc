@@ -34,8 +34,14 @@ const b20PolicyNamespace = "bsc.policy_registry"
 const (
 	b20PolicyBlocklist = 0
 	b20PolicyAllowlist = 1
+	b20PolicyUnion     = 2 // authorized by ANY child (Cobalt)
+	b20PolicyIntersect = 3 // authorized by EVERY child (Cobalt)
 	b20PolicyBatchMax  = 64
-	b20PolicyFirstID   = 2 // counters 0 and 1 belong to the two sentinels
+
+	// A composite references between two and four simple policies, inclusive.
+	b20CompositeMinChildren = 2
+	b20CompositeMaxChildren = 4
+	b20PolicyFirstID        = 2 // counters 0 and 1 belong to the two sentinels
 
 	// Sentinel policy ids, seeded at initialization and always valid to bind.
 	b20PolicyAlwaysAllow = 0                 // blocklist type, empty -> allow all
@@ -54,8 +60,7 @@ const (
 	polSlotMembers       = 1 // mapping(uint64 => mapping(address => bool))
 	polSlotPendingAdmins = 2 // mapping(uint64 => address)
 	polSlotCounter       = 3 // uint64
-	// Slot 4 is reserved for composite-policy children, which base-std adds in a
-	// later logic version. Nothing may reuse it.
+	polSlotChildren      = 4 // mapping(uint64 => uint64[]) (Cobalt)
 )
 
 // A policy's existence and admin share one word: bit 255 exists, bits 159:0 the
@@ -74,7 +79,7 @@ func polWordAdmin(w common.Hash) common.Address { return common.BytesToAddress(w
 func polIDType(id uint64) byte { return byte(id >> 56) }
 
 // polIDWellFormed reports whether an id's type byte names a real policy type.
-func polIDWellFormed(id uint64) bool { return polIDType(id) <= b20PolicyAllowlist }
+func polIDWellFormed(id uint64) bool { return polIDType(id) <= b20PolicyIntersect }
 
 func isSentinelPolicy(id uint64) bool {
 	return id == b20PolicyAlwaysAllow || id == b20PolicyAlwaysBlock
@@ -85,6 +90,11 @@ var b20PolicyRoot = erc7201Root(b20PolicyNamespace)
 var (
 	selCreatePolicy             = selector("createPolicy(address,uint8)")
 	selCreatePolicyWithAccounts = selector("createPolicyWithAccounts(address,uint8,address[])")
+	selCreateComposite          = selector("createCompositePolicy(address,uint8,uint64[])")
+	selUpdateComposite          = selector("updateComposite(uint64,uint64[])")
+	selCompositeChildIds        = selector("compositePolicyChildIds(uint64)")
+	selMinCompositeChildren     = selector("MIN_COMPOSITE_CHILD_POLICIES()")
+	selMaxCompositeChildren     = selector("MAX_COMPOSITE_CHILD_POLICIES()")
 	selUpdateAllowlist          = selector("updateAllowlist(uint64,bool,address[])")
 	selUpdateBlocklist          = selector("updateBlocklist(uint64,bool,address[])")
 	selStageUpdateAdmin         = selector("stageUpdateAdmin(uint64,address)")
@@ -98,6 +108,7 @@ var (
 	b20TopicPolicyCreated      = eventTopic("PolicyCreated(uint64,address,uint8)")
 	b20TopicPolicyAdminStaged  = eventTopic("PolicyAdminStaged(uint64,address,address)")
 	b20TopicPolicyAdminUpdated = eventTopic("PolicyAdminUpdated(uint64,address,address)")
+	b20TopicCompositeUpdated   = eventTopic("CompositePolicyUpdated(uint64,address,uint64[])")
 	b20TopicAllowlistUpdated   = eventTopic("AllowlistUpdated(uint64,address,bool,address[])")
 	b20TopicBlocklistUpdated   = eventTopic("BlocklistUpdated(uint64,address,bool,address[])")
 )
@@ -206,11 +217,83 @@ func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 	case b20PolicyAlwaysBlock:
 		return false
 	}
+	// A composite has no members of its own: it asks its children, every time, so
+	// mutating a child's membership changes the composite's verdict with no call on
+	// the composite itself.
+	switch polIDType(id) {
+	case b20PolicyUnion:
+		for _, child := range p.children(id) {
+			if p.isAuthorized(child, account) {
+				return true
+			}
+		}
+		return false
+	case b20PolicyIntersect:
+		kids := p.children(id)
+		if len(kids) == 0 {
+			return false
+		}
+		for _, child := range kids {
+			if !p.isAuthorized(child, account) {
+				return false
+			}
+		}
+		return true
+	}
 	member := p.member(id, account)
 	if polIDType(id) == b20PolicyAllowlist {
 		return member
 	}
 	return !member
+}
+
+// polIsComposite reports whether an id names a UNION or INTERSECT policy.
+func polIsComposite(id uint64) bool {
+	t := polIDType(id)
+	return t == b20PolicyUnion || t == b20PolicyIntersect
+}
+
+// children reads a composite's child set. Solidity stores a uint64[] as a length
+// word at the mapping slot with the elements packed four per word from
+// keccak256(slot), which is what the factory and a reference contract must agree
+// on byte for byte.
+func (p policyReg) childrenSlot(id uint64) common.Hash {
+	return p.s.mapSlot(polSlot(polSlotChildren), idKey(id))
+}
+
+func (p policyReg) children(id uint64) []uint64 {
+	slot := p.childrenSlot(id)
+	n := new(uint256.Int).SetBytes(p.s.getWord(slot).Bytes()).Uint64()
+	if n == 0 || n > b20CompositeMaxChildren {
+		return nil
+	}
+	base := p.s.stringDataRoot(slot)
+	out := make([]uint64, 0, n)
+	for i := uint64(0); i < n; i++ {
+		if p.s.ctx != nil && p.s.ctx.OutOfGas() {
+			return nil
+		}
+		w := p.s.getWord(common.Hash(new(uint256.Int).AddUint64(base, i/4).Bytes32()))
+		// Four uint64 lanes per word, LSB-first as Solidity packs them.
+		lane := uint((i % 4) * 8)
+		out = append(out, new(uint256.Int).Rsh(new(uint256.Int).SetBytes(w.Bytes()), lane*8).Uint64())
+	}
+	return out
+}
+
+func (p policyReg) setChildren(id uint64, kids []uint64) {
+	slot := p.childrenSlot(id)
+	p.s.setWord(slot, common.Hash(uint256.NewInt(uint64(len(kids))).Bytes32()))
+	base := p.s.stringDataRoot(slot)
+	words := (len(kids) + 3) / 4
+	for w := 0; w < words; w++ {
+		packed := new(uint256.Int)
+		for lane := 0; lane < 4 && w*4+lane < len(kids); lane++ {
+			packed.Or(packed, new(uint256.Int).Lsh(uint256.NewInt(kids[w*4+lane]), uint(lane)*64))
+		}
+		p.s.setWord(common.Hash(new(uint256.Int).AddUint64(base, uint64(w)).Bytes32()),
+			common.Hash(packed.Bytes32()))
+	}
 }
 
 // policyExists is the ABI view. A malformed id never exists; the sentinels
@@ -317,6 +400,21 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 			return nil, err
 		}
 		return addrKey(reg.pendingPolicyAdminOf(id)).Bytes(), nil
+	case selMinCompositeChildren:
+		return encU256(uint256.NewInt(b20CompositeMinChildren)), nil
+	case selMaxCompositeChildren:
+		return encU256(uint256.NewInt(b20CompositeMaxChildren)), nil
+	case selCompositeChildIds:
+		id, err := readU64(args, 0)
+		if err != nil {
+			return nil, err
+		}
+		kids := reg.children(id)
+		words := make([]common.Hash, len(kids))
+		for i, k := range kids {
+			words[i] = wU64(k)
+		}
+		return encodeTuple(abiWordArray(words)), nil
 
 	}
 
@@ -324,7 +422,8 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	// decoding arguments. The order is consensus-visible (BEP-702 3.15).
 	switch sel {
 	case selCreatePolicy, selCreatePolicyWithAccounts, selUpdateAllowlist,
-		selUpdateBlocklist, selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin:
+		selUpdateBlocklist, selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin,
+		selCreateComposite, selUpdateComposite:
 		if ctx.ReadOnly {
 			return nil, ErrWriteProtection
 		}
@@ -341,6 +440,10 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		return createPolicy(ctx, reg, args, false)
 	case selCreatePolicyWithAccounts:
 		return createPolicy(ctx, reg, args, true)
+	case selCreateComposite:
+		return createCompositePolicy(ctx, reg, args)
+	case selUpdateComposite:
+		return nil, updateComposite(ctx, reg, args)
 	case selUpdateAllowlist:
 		return nil, updateMembers(ctx, reg, args, b20PolicyAllowlist)
 	case selUpdateBlocklist:
@@ -353,6 +456,119 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		return nil, renounceAdmin(ctx, reg, args)
 	}
 	return nil, ErrExecutionReverted // unreachable: the gate above is exhaustive
+}
+
+// validateChildren checks a proposed child set: the count, then that every entry
+// exists, then that none is itself a composite. Order follows base-std, and the
+// no-nesting rule keeps evaluation one level deep so isAuthorized cannot recurse
+// without bound.
+func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
+	if len(kids) < b20CompositeMinChildren || len(kids) > b20CompositeMaxChildren {
+		return nil, revB20("ChildPoliciesOutsideOfRange()", errSelChildrenOutOfRange)
+	}
+	out := make([]uint64, 0, len(kids))
+	for _, w := range kids {
+		id := new(uint256.Int).SetBytes(w.Bytes()).Uint64()
+		if !reg.policyExists(id) {
+			return nil, revB20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
+		}
+		if polIsComposite(id) {
+			return nil, revB20("InvalidChildPolicy(uint64)", errSelInvalidChildPolicy, wU64(id))
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// emitCompositeUpdated logs the complete post-update child set, as base-std does
+// on creation and on every replacement.
+func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Address, kids []uint64) {
+	words := make([]common.Hash, len(kids))
+	for i, k := range kids {
+		words[i] = wU64(k)
+	}
+	ctx.AddLog([]common.Hash{b20TopicCompositeUpdated, idKey(id), addrKey(admin)},
+		encodeTuple(abiWordArray(words)))
+}
+
+// createCompositePolicy mints a UNION or INTERSECT over existing simple policies.
+// The type is checked first, before the zero-admin guard — the reverse of the
+// simple constructors, which check the admin first and then refuse composites.
+func createCompositePolicy(ctx *PrecompileContext, reg policyReg, args []byte) ([]byte, error) {
+	if ctx.ReadOnly {
+		return nil, ErrWriteProtection
+	}
+	admin, err := readAddress(args, 0)
+	if err != nil {
+		return nil, err
+	}
+	ptypeWord, err := readWord(args, 1)
+	if err != nil {
+		return nil, err
+	}
+	if !isEnumWord(ptypeWord, b20PolicyIntersect) {
+		return nil, revPanic(0x21)
+	}
+	ptype := ptypeWord[31]
+	if !polIsComposite(uint64(ptype) << 56) {
+		return nil, revB20("IncompatiblePolicyType()", errSelIncompatibleType)
+	}
+	if admin == (common.Address{}) {
+		return nil, revB20("ZeroAddress()", errSelZeroAddress)
+	}
+	rawKids, err := readWordArray(args, 2)
+	if err != nil {
+		return nil, err
+	}
+	kids, err := validateChildren(reg, rawKids)
+	if err != nil {
+		return nil, err
+	}
+
+	c := reg.ensureInitialized()
+	if c >= b20PolicyCounterMax {
+		return nil, revPanic(0x11)
+	}
+	id := uint64(ptype)<<56 | c
+	reg.setCounter(c + 1)
+	reg.setPolicyAdmin(id, admin)
+	reg.setChildren(id, kids)
+	ctx.AddLog([]common.Hash{b20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes())
+	emitPolicyAdminUpdated(ctx, id, common.Address{}, admin)
+	emitCompositeUpdated(ctx, id, admin, kids)
+	return wU64(id).Bytes(), nil
+}
+
+// updateComposite replaces a composite's child set in full. There is no partial
+// update and no way to empty the list, since the count bound forbids it.
+func updateComposite(ctx *PrecompileContext, reg policyReg, args []byte) error {
+	if ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	id, err := readU64(args, 0)
+	if err != nil {
+		return err
+	}
+	if !reg.policyExists(id) {
+		return revB20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
+	}
+	if !polIsComposite(id) {
+		return revB20("IncompatiblePolicyType()", errSelIncompatibleType)
+	}
+	if admin := reg.admin(id); admin == (common.Address{}) || admin != ctx.Caller {
+		return revB20("Unauthorized()", errSelUnauthorized)
+	}
+	rawKids, err := readWordArray(args, 1)
+	if err != nil {
+		return err
+	}
+	kids, err := validateChildren(reg, rawKids)
+	if err != nil {
+		return err
+	}
+	reg.setChildren(id, kids)
+	emitCompositeUpdated(ctx, id, ctx.Caller, kids)
+	return nil
 }
 
 func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccounts bool) ([]byte, error) {
@@ -368,11 +584,17 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 		return nil, err
 	}
 	ptype := ptypeWord[31]
-	if !isEnumWord(ptypeWord, b20PolicyAllowlist) {
+	// The enum widened to four values at Cobalt, so 2 and 3 now decode. They are
+	// refused by the logic instead, after the zero-admin check and before the batch
+	// bound — a composite is minted only through createCompositePolicy.
+	if !isEnumWord(ptypeWord, b20PolicyIntersect) {
 		return nil, revPanic(0x21)
 	}
 	if admin == (common.Address{}) {
 		return nil, revB20("ZeroAddress()", errSelZeroAddress)
+	}
+	if polIsComposite(uint64(ptype) << 56) {
+		return nil, revB20("IncompatiblePolicyType()", errSelIncompatibleType)
 	}
 
 	// The batch is decoded and bounded before any state is written, matching

@@ -206,6 +206,10 @@ func TestB20RevertData(t *testing.T) {
 	if got := b20TopicSeized.Hex(); got != wantSeized {
 		t.Errorf("Seized topic0 = %s, want %s (base-std's published value)", got, wantSeized)
 	}
+	const wantComposite = "0x4ff6adaab31b0df87aa7b8b7320c52b8b3b5eede3bf28a6baaaa8b8b7e1d6363"
+	if got := b20TopicCompositeUpdated.Hex(); got != wantComposite {
+		t.Errorf("CompositePolicyUpdated topic0 = %s, want %s (base-std's published value)", got, wantComposite)
+	}
 }
 
 // TestB20UndecodableCalldataRevertsEmpty pins BEP-702 3.2's second failure kind:
@@ -301,6 +305,24 @@ func TestB20PublishedValuesMatchBaseStd(t *testing.T) {
 		{"SEIZE_ROLE()", selSeizeRole, "3c7e9ba5"},
 		{"SEIZE_HOLDER_POLICY()", selSeizeHolderScope, "b279d311"},
 		{"SEIZE_RECEIVER_POLICY()", selSeizeReceiverScope, "b31da27f"},
+		// The scheduled multiplier and composite policies, the two Cobalt features
+		// adopted after seize.
+		{"uiMultiplier()", selUIMultiplier, "a60bf13d"},
+		{"toUIAmount(uint256)", selToUIAmount, "3248d4ff"},
+		{"fromUIAmount(uint256)", selFromUIAmount, "65cd9b3c"},
+		{"balanceOfUI(address)", selBalanceOfUI, "437a9958"},
+		{"totalSupplyUI()", selTotalSupplyUI, "9bea6429"},
+		{"newUIMultiplier()", selNewUIMultiplier, "dc767007"},
+		{"effectiveAt()", selEffectiveAt, "97a4064f"},
+		{"updateUIMultiplier(uint256,uint256)", selUpdateUIMultiplier, "628e600f"},
+		{"cancelUIMultiplierUpdate()", selCancelUIMultiplier, "2c97a0f0"},
+		{"MAX_UI_MULTIPLIER()", selMaxUIMultiplier, "785c0cf0"},
+		{"supportsInterface(bytes4)", selSupportsInterface, "01ffc9a7"},
+		{"createCompositePolicy(address,uint8,uint64[])", selCreateComposite, "6fdd1491"},
+		{"updateComposite(uint64,uint64[])", selUpdateComposite, "bfe142c0"},
+		{"compositePolicyChildIds(uint64)", selCompositeChildIds, "7c40df74"},
+		{"MIN_COMPOSITE_CHILD_POLICIES()", selMinCompositeChildren, "b3ae29f7"},
+		{"MAX_COMPOSITE_CHILD_POLICIES()", selMaxCompositeChildren, "54309870"},
 	} {
 		if got := common.Bytes2Hex(tc.got[:]); got != tc.want {
 			t.Errorf("%s = 0x%s, want 0x%s (base-std's published selector)", tc.sig, got, tc.want)
@@ -336,9 +358,15 @@ func TestB20ConstantsMatchBaseStd(t *testing.T) {
 	}
 
 	// PolicyType, and the id codec: top byte is the type, low 56 bits the counter.
-	if b20PolicyBlocklist != 0 || b20PolicyAllowlist != 1 {
-		t.Errorf("PolicyType = {BLOCKLIST: %d, ALLOWLIST: %d}, want {0, 1}",
-			b20PolicyBlocklist, b20PolicyAllowlist)
+	if b20PolicyBlocklist != 0 || b20PolicyAllowlist != 1 ||
+		b20PolicyUnion != 2 || b20PolicyIntersect != 3 {
+		t.Errorf("PolicyType = {%d, %d, %d, %d}, want {0, 1, 2, 3} — the enum is "+
+			"append-only, so an existing ordinal moving repoints every stored id",
+			b20PolicyBlocklist, b20PolicyAllowlist, b20PolicyUnion, b20PolicyIntersect)
+	}
+	if b20CompositeMinChildren != 2 || b20CompositeMaxChildren != 4 {
+		t.Errorf("composite child bounds = [%d, %d], want [2, 4]",
+			b20CompositeMinChildren, b20CompositeMaxChildren)
 	}
 	if got := polIDType(uint64(b20PolicyAllowlist)<<56 | 42); got != b20PolicyAllowlist {
 		t.Errorf("polIDType of a packed allowlist id = %d, want %d", got, b20PolicyAllowlist)

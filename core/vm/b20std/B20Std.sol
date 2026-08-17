@@ -264,6 +264,21 @@ interface IPolicyRegistry {
     function finalizeUpdateAdmin(uint64 policyId) external;
     function renounceAdmin(uint64 policyId) external;
     function isAuthorized(uint64 policyId, address account) external view returns (bool);
+
+    // --- Composite policies (Cobalt) ---
+    // PolicyType widens to { BLOCKLIST, ALLOWLIST, UNION, INTERSECT }; a composite
+    // holds 2-4 simple children and is evaluated over them on every read.
+    event CompositePolicyUpdated(uint64 indexed policyId, address indexed updater, uint64[] childPolicyIds);
+
+    error InvalidChildPolicy(uint64 childPolicyId);
+    error ChildPoliciesOutsideOfRange();
+
+    function MIN_COMPOSITE_CHILD_POLICIES() external view returns (uint256);
+    function MAX_COMPOSITE_CHILD_POLICIES() external view returns (uint256);
+    function compositePolicyChildIds(uint64 policyId) external view returns (uint64[] memory);
+    function createCompositePolicy(address admin, PolicyType policyType, uint64[] calldata childPolicyIds)
+        external returns (uint64 policyId);
+    function updateComposite(uint64 policyId, uint64[] calldata childPolicyIds) external;
     function policyExists(uint64 policyId) external view returns (bool);
     function policyAdmin(uint64 policyId) external view returns (address);
     function pendingPolicyAdmin(uint64 policyId) external view returns (address);
