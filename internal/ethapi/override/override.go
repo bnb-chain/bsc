@@ -155,11 +155,19 @@ const MaxBSCMilliRemainder = 1000
 // 32-byte value is the millisecond remainder and must be below
 // MaxBSCMilliRemainder, exactly like the MixDigest of a real BSC header.
 func BSCMilliRemainder(prevRandao *common.Hash) (uint64, error) {
-	ms := new(big.Int).SetBytes(prevRandao[:])
-	if ms.Cmp(big.NewInt(MaxBSCMilliRemainder)) >= 0 {
-		return 0, fmt.Errorf(`block override "prevRandao" on BSC carries the millisecond remainder of the block timestamp (BEP-520/BEP-706) and must be less than %d, got %s`, MaxBSCMilliRemainder, ms)
+	// prevRandao is a 32-byte value, so parse it as big.Int first and reject
+	// anything that does not fit in uint64 before truncating. The actual bound
+	// check is then done in uint64, matching how parlia compares the header's
+	// millisecond timestamp (MilliTimestamp()/1000 vs Time).
+	v := new(big.Int).SetBytes(prevRandao[:])
+	if !v.IsUint64() {
+		return 0, fmt.Errorf(`block override "prevRandao" on BSC carries the millisecond remainder of the block timestamp (BEP-520/BEP-706) and must be less than %d, got %s`, MaxBSCMilliRemainder, v)
 	}
-	return ms.Uint64(), nil
+	ms := v.Uint64()
+	if ms >= MaxBSCMilliRemainder {
+		return 0, fmt.Errorf(`block override "prevRandao" on BSC carries the millisecond remainder of the block timestamp (BEP-520/BEP-706) and must be less than %d, got %d`, MaxBSCMilliRemainder, ms)
+	}
+	return ms, nil
 }
 
 // Apply overrides the given header fields into the given block context.
@@ -239,6 +247,14 @@ func (o *BlockOverrides) MakeHeader(header *types.Header) *types.Header {
 	}
 	if o.Time != nil {
 		h.Time = uint64(*o.Time)
+		// Mirror Apply: overriding the time resets the sub-second remainder to
+		// .000 unless the caller also overrides prevRandao. On BSC MixDigest is
+		// that millisecond remainder (BEP-520/BEP-706), so a stale remainder
+		// carried over from the copied header would no longer match the new
+		// time; zero it here so MakeHeader and Apply agree.
+		if o.PrevRandao == nil {
+			h.MixDigest = common.Hash{}
+		}
 	}
 	if o.GasLimit != nil {
 		h.GasLimit = uint64(*o.GasLimit)

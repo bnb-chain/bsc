@@ -300,13 +300,12 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		}
 		header.ExcessBlobGas = &excess
 	}
+	// NewEVMBlockContext already derives MilliTimestamp from
+	// header.MilliTimestamp() (BEP-520/BEP-706): on BSC the synthetic header's
+	// MixDigest is the millisecond remainder — zero, or a prevRandao override
+	// validated to be < 1000 in sanitizeChain — so the BEP-706 precompile reads
+	// the exact millisecond timestamp with no extra fix-up here.
 	blockContext := core.NewEVMBlockContext(header, sim.newSimulatedChainContext(ctx, headers), nil)
-	// The simulated header's MixDigest follows the BSC header semantics
-	// (BEP-520): it is the millisecond remainder of the block timestamp —
-	// either zero or a prevRandao override validated to be < 1000 in
-	// sanitizeChain. Header.MilliTimestamp() therefore assembles the exact
-	// millisecond timestamp the BEP-706 precompile must report.
-	blockContext.MilliTimestamp = header.MilliTimestamp()
 	if block.BlockOverrides.BlobBaseFee != nil {
 		blockContext.BlobBaseFee = block.BlockOverrides.BlobBaseFee.ToInt()
 	}

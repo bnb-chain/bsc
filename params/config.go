@@ -1598,10 +1598,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "osakaTime", timestamp: c.OsakaTime},
 		{name: "mendelTime", timestamp: c.MendelTime},
 		{name: "pasteurTime", timestamp: c.PasteurTime},
-		// Jenner (BEP-706) is the BSC fork right after Pasteur; keeping it here
-		// makes the ordering check require JennerTime to be at or after Pasteur
-		// and at or before the later (BPO/Amsterdam) forks.
-		{name: "jenner", timestamp: c.JennerTime, optional: true},
+		{name: "jennerTime", timestamp: c.JennerTime, optional: true},
 		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
 		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
 		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
@@ -1982,9 +1979,6 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 		return c.BPO2Time
 	case fork == forks.BPO1:
 		return c.BPO1Time
-	// Jenner sits right after Pasteur in the fork order (see forks.go);
-	// logForkReadiness relies on Timestamp(current+1) resolving for the fork
-	// enum value right after the current one, so keep this order aligned.
 	case fork == forks.Jenner:
 		return c.JennerTime
 	case fork == forks.Pasteur:
