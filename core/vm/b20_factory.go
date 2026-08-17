@@ -111,6 +111,7 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if !isEnumWord(variant, b20VariantStablecoin) {
 			return nil, revPanic(0x21)
 		}
+		ctx.chargeKeccak(64)
 		addr := b20DeriveAddress(variant[31], sender, salt)
 		return addrKey(addr).Bytes(), nil
 	case selIsB20:
@@ -193,6 +194,7 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		}
 	}
 	creator := ctx.Caller
+	ctx.chargeKeccak(64)
 	addr := b20DeriveAddress(variant, creator, salt)
 
 	if b20AddressOccupied(ctx, addr) {

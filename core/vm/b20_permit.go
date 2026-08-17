@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -149,8 +150,16 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 
 // domainSeparator computes the EIP-712 domain separator from the live token
 // name, version "1", chain id and the token address.
+// Every keccak here is a runtime hash the caller must pay for, at the same
+// per-word price the KECCAK256 opcode charges. A Solidity ERC-2612 hashes the
+// same three preimages and is billed for all of them; leaving them free would
+// make the native path cheaper than bytecode (BEP-702 3.14).
 func (t b20Token) domainSeparator() common.Hash {
-	nameHash := crypto.Keccak256Hash([]byte(t.s.name()))
+	name := t.s.name()
+	t.ctx.chargeKeccak(len(name))
+	t.ctx.chargeKeccak(len(b20EIP712Version))
+	t.ctx.chargeKeccak(160)
+	nameHash := crypto.Keccak256Hash([]byte(name))
 	versionHash := crypto.Keccak256Hash([]byte(b20EIP712Version))
 	chainID := t.ctx.ChainID().Bytes32()
 
@@ -222,6 +231,13 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	structHash = append(structHash, db[:]...)
 
 	dom := t.domainSeparator()
+	// The struct hash, the final digest, and the signature recovery. ECRECOVER is
+	// its own precompile at a flat 3000 gas; a native permit doing the same
+	// secp256k1 work owes the same, and owes it whether or not the signature turns
+	// out to be valid.
+	t.ctx.chargeKeccak(len(structHash))
+	t.ctx.chargeKeccak(66)
+	t.ctx.chargeStateGas(params.EcrecoverGas)
 	digest := crypto.Keccak256([]byte{0x19, 0x01}, dom.Bytes(), crypto.Keccak256(structHash))
 
 	signer, ok := ecrecoverAddress(digest, v, r, s)
