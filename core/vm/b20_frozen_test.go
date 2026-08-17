@@ -100,18 +100,32 @@ func TestB20BootstrapIsNotAWayBack(t *testing.T) {
 			NewGasBudget(9_000_000), uint256.NewInt(0))
 		return evm, common.BytesToAddress(ret), err
 	}
+	// Where the token would have been, so the rollback can be checked at an
+	// address the factory never returned.
+	derived := b20DeriveAddress(b20VariantAsset, creator, common.HexToHash("0x8007"))
 
 	// Renouncing and re-granting inside one bundle must fail, and take the whole
 	// creation with it.
-	_, token, err := newToken(t, creator, [][]byte{
+	evm, _, err := newToken(t, creator, [][]byte{
 		b20Call(selRenounceLastAdmin),
 		b20Call(selGrantRole, roleDefaultAdmin, addrKey(b20Bob)),
 	})
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("renounce-then-grant inside the bootstrap: %v, want a revert", err)
 	}
-	if code := len(token.Bytes()); code == 0 {
-		t.Fatal("no address returned")
+	// The creation is undone, not merely reported as failed: no sentinel at the
+	// derived address, and none of the bundle's grants survive. An earlier version
+	// asserted len(address.Bytes()) != 0 here, which is 20 for every address and so
+	// could not fail — it checked nothing at all.
+	if code := evm.StateDB.GetCode(derived); len(code) != 0 {
+		t.Errorf("code at %s after the refused creation: %x", derived.Hex(), code)
+	}
+	view := newB20Storage(evm.StateDB, derived)
+	if view.hasRole(roleDefaultAdmin, b20Bob) {
+		t.Error("bob holds DEFAULT_ADMIN_ROLE after the creation was refused")
+	}
+	if !view.adminCount().IsZero() {
+		t.Errorf("adminCount at the refused address = %s, want 0", view.adminCount())
 	}
 
 	// An ownerless token still configures its roles in the window: the freeze
@@ -122,7 +136,7 @@ func TestB20BootstrapIsNotAWayBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ownerless token granting MINT_ROLE in the window: %v", err)
 	}
-	view := newB20Storage(evm.StateDB, token)
+	view = newB20Storage(evm.StateDB, token)
 	if !view.hasRole(roleMint, b20Bob) {
 		t.Error("the ownerless token's bootstrap grant did not take effect")
 	}
