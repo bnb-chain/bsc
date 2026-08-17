@@ -337,7 +337,19 @@ func (t b20Token) renounceLastAdmin() error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) || !t.s.adminCount().Eq(uint256.NewInt(1)) {
+	// Two checks, not one condition: base-std reports a caller who holds no
+	// admin role as unauthorized and reserves NotSoleAdmin for one who does hold
+	// it but is not the last. Collapsing them told a stranger they were "not the
+	// sole admin", which is true but says the wrong thing.
+	//
+	// hasRole directly rather than ensureRole, because this guard is not
+	// skippable inside the privileged bootstrap: it is the anti-resurrection
+	// check BEP-702 3.4 says is never skipped.
+	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) {
+		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
+			addrKey(t.ctx.Caller), roleDefaultAdmin)
+	}
+	if !t.s.adminCount().Eq(uint256.NewInt(1)) {
 		return revB20("NotSoleAdmin()", errSelNotSoleAdmin)
 	}
 	t.s.setRole(roleDefaultAdmin, t.ctx.Caller, false)

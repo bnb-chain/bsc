@@ -337,3 +337,50 @@ func TestB20PermitRevertOrder(t *testing.T) {
 		t.Errorf("permit set an allowance of %s for the zero address", got)
 	}
 }
+
+// TestB20RenounceLastAdminRevertOrder separates the two failures base-std
+// distinguishes: a caller holding no admin role is unauthorized, and NotSoleAdmin
+// is reserved for one who does hold it while others also do. A single collapsed
+// condition told a stranger they were "not the sole admin".
+func TestB20RenounceLastAdminRevertOrder(t *testing.T) {
+	_, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	second := common.HexToAddress("0x5ec0nd")
+	stranger := common.HexToAddress("0x57ra496")
+
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	ret, err := call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x7e0"), creator, nil))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	renounce := b20Call(selRenounceLastAdmin)
+
+	// A caller with no admin role, while there is exactly one admin — the
+	// sole-admin condition holds, so only the role check can be speaking.
+	ret, err = call(stranger, token, renounce)
+	wantRevert(t, ret, err, errSelACUnauthorized, "no admin role, count is 1")
+
+	// With two admins the holder is refused for the other reason.
+	if _, err := call(creator, token, b20Call(selGrantRole, roleDefaultAdmin, addrKey(second))); err != nil {
+		t.Fatalf("granting a second admin: %v", err)
+	}
+	ret, err = call(creator, token, renounce)
+	wantRevert(t, ret, err, errSelNotSoleAdmin, "holds the role but is not the last")
+
+	// And a stranger still gets the role error, not NotSoleAdmin.
+	ret, err = call(stranger, token, renounce)
+	wantRevert(t, ret, err, errSelACUnauthorized, "no admin role, count is 2")
+
+	// Back to one admin, and it succeeds — so neither revert above was the setup.
+	if _, err := call(creator, token, b20Call(selRevokeRole, roleDefaultAdmin, addrKey(second))); err != nil {
+		t.Fatalf("revoking the second admin: %v", err)
+	}
+	if _, err := call(creator, token, renounce); err != nil {
+		t.Fatalf("the sole admin could not renounce: %v", err)
+	}
+}

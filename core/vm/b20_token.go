@@ -175,6 +175,12 @@ func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([
 	if t.ctx.ReadOnly {
 		return nil, ErrWriteProtection
 	}
+	// base-std checks the approver first. owner is msg.sender, so a zero one only
+	// arises from a frame with no caller, but the check is declared and costs a
+	// comparison.
+	if owner == (common.Address{}) {
+		return nil, revB20("InvalidApprover(address)", errSelInvalidApprover, addrKey(owner))
+	}
 	if spender == (common.Address{}) {
 		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
 	}
