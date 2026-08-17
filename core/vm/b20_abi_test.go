@@ -310,3 +310,51 @@ func TestB20PublishedValuesMatchBaseStd(t *testing.T) {
 		}
 	}
 }
+
+// TestB20ConstantsMatchBaseStd pins the numeric constants base-std publishes in
+// B20Constants.sol and its policy-id codec.
+//
+// A wrong bound here is not caught by the signature diff — the selector set is
+// identical whether MIN_ASSET_DECIMALS is 6 or 8 — and not caught by the
+// behavioural tests either, which assert against the same constant they exercise.
+func TestB20ConstantsMatchBaseStd(t *testing.T) {
+	// B20Constants.sol
+	if b20MinDecimals != 6 || b20MaxDecimals != 18 {
+		t.Errorf("asset decimals bounds = [%d, %d], want [6, 18]", b20MinDecimals, b20MaxDecimals)
+	}
+	wantCap := new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
+	if !b20NoSupplyCap.Eq(wantCap) {
+		t.Errorf("MAX_SUPPLY_CAP = %s, want type(uint128).max", b20NoSupplyCap)
+	}
+	// ALL_FEATURES_PAUSED is 15 at Cobalt, which is the four features 0..3 —
+	// TRANSFER, MINT, BURN and the SEIZE ordinal Cobalt appended.
+	if b20PauseSeize != 3 {
+		t.Errorf("SEIZE pause ordinal = %d, want 3; PausableFeature is append-only", b20PauseSeize)
+	}
+	if mask := 1<<(b20PauseSeize+1) - 1; mask != 15 {
+		t.Errorf("all-features mask = %d, want 15", mask)
+	}
+
+	// PolicyType, and the id codec: top byte is the type, low 56 bits the counter.
+	if b20PolicyBlocklist != 0 || b20PolicyAllowlist != 1 {
+		t.Errorf("PolicyType = {BLOCKLIST: %d, ALLOWLIST: %d}, want {0, 1}",
+			b20PolicyBlocklist, b20PolicyAllowlist)
+	}
+	if got := polIDType(uint64(b20PolicyAllowlist)<<56 | 42); got != b20PolicyAllowlist {
+		t.Errorf("polIDType of a packed allowlist id = %d, want %d", got, b20PolicyAllowlist)
+	}
+	// The two built-ins take counters 0 and 1 under their own types.
+	if b20PolicyAlwaysAllow != 0 {
+		t.Errorf("ALWAYS_ALLOW = %d, want 0 (BLOCKLIST type, counter 0)", b20PolicyAlwaysAllow)
+	}
+	if want := uint64(b20PolicyAllowlist)<<56 | 1; b20PolicyAlwaysBlock != want {
+		t.Errorf("ALWAYS_BLOCK = %#x, want %#x (ALLOWLIST type, counter 1)", b20PolicyAlwaysBlock, want)
+	}
+
+	// The membership batch limit is ours: base-std raises BatchSizeTooLarge for
+	// "the registry limit" without publishing the number in any interface. 64 comes
+	// from BEP-702 3.8, so this pins the spec rather than the reference.
+	if b20PolicyBatchMax != 64 {
+		t.Errorf("membership batch limit = %d, want 64 (BEP-702 3.8)", b20PolicyBatchMax)
+	}
+}
