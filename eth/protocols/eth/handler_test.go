@@ -20,6 +20,7 @@ import (
 	"bytes"
 	rand2 "crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"io"
 	"math"
 	"math/big"
@@ -907,6 +908,70 @@ func TestHandleNewBlock(t *testing.T) {
 			err := handleNewBlock(backend, tc.msg, localEth)
 			if err != tc.err {
 				t.Errorf("expected error %v, got %v", tc.err, err)
+			}
+		})
+	}
+}
+
+// TestHandleNewBlockBadBody verifies that a propagated block whose body does
+// not match its header commitments (TxHash / UncleHash) is rejected with an
+// error, which tears the connection down, instead of only being logged. This
+// pins the fix for the former "return nil" that let a peer replay malformed
+// blocks and burn DeriveSha for free.
+func TestHandleNewBlockBadBody(t *testing.T) {
+	t.Parallel()
+
+	backend := newTestBackend(maxBodiesServe + 15)
+	defer backend.close()
+
+	protos := []p2p.Protocol{
+		{Name: "eth", Version: ETH68},
+		{Name: "bsc", Version: bsc.Bsc1},
+	}
+	caps := []p2p.Cap{
+		{Name: "eth", Version: ETH68},
+		{Name: "bsc", Version: bsc.Bsc1},
+	}
+	p2pEthSrc, p2pEthSink := p2p.MsgPipe()
+	defer p2pEthSrc.Close()
+	defer p2pEthSink.Close()
+	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, backend.chain.Config())
+
+	encode := func(block *types.Block) p2p.Msg {
+		size, r, _ := rlp.EncodeToReader(NewBlockPacket{Block: block, TD: big.NewInt(1)})
+		return p2p.Msg{Code: NewBlockMsg, Size: uint32(size), Payload: r}
+	}
+
+	// Header whose TxHash does not match the (empty) transaction list:
+	// DeriveSha(nil) == EmptyTxsHash != the header's TxHash.
+	badTxBlock := types.NewBlockWithHeader(&types.Header{
+		Number:      big.NewInt(0),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      common.HexToHash("0xdeadbeef"),
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	// Header whose UncleHash does not match the (empty) uncle list.
+	badUncleBlock := types.NewBlockWithHeader(&types.Header{
+		Number:      big.NewInt(0),
+		UncleHash:   common.HexToHash("0xdeadbeef"),
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+
+	for _, tc := range []struct {
+		name  string
+		block *types.Block
+	}{
+		{"invalid body (TxHash mismatch)", badTxBlock},
+		{"invalid uncles (UncleHash mismatch)", badUncleBlock},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := handleNewBlock(backend, encode(tc.block), localEth)
+			if err == nil {
+				t.Fatalf("a body/header-commitment mismatch must return an error (disconnect), got nil")
+			}
+			if !errors.Is(err, errDecode) {
+				t.Fatalf("expected an errDecode-wrapped error, got %v", err)
 			}
 		})
 	}

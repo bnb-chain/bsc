@@ -394,13 +394,24 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
+	// A propagated block whose body does not match its header commitments is
+	// malformed: it can never enter the chain and forcing the recipient to
+	// re-derive the commitments (CalcUncleHash / DeriveSha over every tx) is
+	// pure wasted work. Treat it as a bad peer and tear the connection down
+	// (handleMessage disconnects on any returned error) instead of only
+	// logging and staying connected, which let a peer repeat it for free.
+	//
+	// Upstream go-ethereum resolved the original TODO here by removing the
+	// whole NewBlock broadcast path post-merge; BSC (Parlia PoSA) still relies
+	// on eth NewBlock gossip to propagate blocks, so the handler stays and the
+	// mismatch must be an explicit disconnect signal.
 	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
 		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
-		return nil // TODO(karalabe): return error eventually, but wait a few releases
+		return fmt.Errorf("%w: propagated block has invalid uncle hash: have %x, exp %x", errDecode, hash, ann.Block.UncleHash())
 	}
 	if hash := types.DeriveSha(ann.Block.Transactions(), trie.NewStackTrie(nil)); hash != ann.Block.TxHash() {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
-		return nil // TODO(karalabe): return error eventually, but wait a few releases
+		return fmt.Errorf("%w: propagated block has invalid body: have %x, exp %x", errDecode, hash, ann.Block.TxHash())
 	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
