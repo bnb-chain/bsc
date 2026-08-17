@@ -145,8 +145,22 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f.rangeLimit != 0 && (end-begin) > f.rangeLimit {
-		return nil, invalidParamsErr("exceed maximum block range %d", f.rangeLimit)
+	if f.rangeLimit != 0 {
+		// "latest"/"pending" resolve to MaxUint64 here and are only translated to
+		// the real head inside rangeLogs, so clamp them to the current head before
+		// measuring the range, otherwise any query up to head is falsely rejected.
+		lo, hi := begin, end
+		if head := f.sys.backend.CurrentHeader(); head != nil {
+			if lo == math.MaxUint64 {
+				lo = head.Number.Uint64()
+			}
+			if hi == math.MaxUint64 {
+				hi = head.Number.Uint64()
+			}
+		}
+		if hi >= lo && hi-lo > f.rangeLimit {
+			return nil, invalidParamsErr("exceed maximum block range %d", f.rangeLimit)
+		}
 	}
 	return f.rangeLogs(ctx, begin, end)
 }
