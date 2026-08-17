@@ -43,10 +43,11 @@ import (
 //	slot 7   roleAdmins  mapping(bytes32 => bytes32)
 //	slot 8   adminCount (uint256)
 //	slot 9   packed: transferSender|transferReceiver|transferExecutor|reserved (4×u64)
-//	slot 10  packed: mintReceiver|seizeHolder|seizeReceiver|reserved (4×u64)
+//	slot 10  packed: mintReceiver|reserved (4×u64)
 //	slot 11  paused (uint256 bitmask)
 //	slot 12  supplyCap (uint256)
 //	slot 13  nonces      mapping(address => uint256)
+//	slot 14  packed: seizeHolder|seizeReceiver|reserved (4×u64)
 const b20Namespace = "bsc.b20"
 
 const (
@@ -64,16 +65,21 @@ const (
 	b20SlotPaused           = 11
 	b20SlotSupplyCap        = 12
 	b20SlotNonces           = 13
+	b20SlotSeizePolicies    = 14
 )
 
-// packed u64 byte offsets within the policy slots.
+// Packed u64 byte offsets within the policy slots. The lanes a group leaves
+// free are reserved for that group: the mint slot holds one id today and the
+// rest of it belongs to future mint-side policy types, which is why the seize
+// ids sit in a slot of their own rather than filling it. Seize is a cold path,
+// so the extra load costs nothing that matters.
 const (
 	b20OffTransferSender   = 0
 	b20OffTransferReceiver = 8
 	b20OffTransferExecutor = 16
 	b20OffMintReceiver     = 0
-	b20OffSeizeHolder      = 8
-	b20OffSeizeReceiver    = 16
+	b20OffSeizeHolder      = 0
+	b20OffSeizeReceiver    = 8
 )
 
 // b20CoreRoot is the ERC-7201 root of the core storage namespace, computed once.
@@ -298,17 +304,16 @@ func (s b20Storage) setPackedU64(offset uint64, byteOff uint, v uint64) {
 
 // transferPolicies reads all three transfer-side ids with one storage access:
 // they share a slot, so reading them separately pays for the same slot three
-// times. mintPolicies does the same for the mint and seize lanes.
+// times. seizePolicies does the same for its pair.
 func (s b20Storage) transferPolicies() (sender, receiver, executor uint64) {
 	w := s.getU256At(slotAt(b20SlotTransferPolicies))
 	return packedLane(w, b20OffTransferSender), packedLane(w, b20OffTransferReceiver),
 		packedLane(w, b20OffTransferExecutor)
 }
 
-func (s b20Storage) mintPolicies() (mintReceiver, seizeHolder, seizeReceiver uint64) {
-	w := s.getU256At(slotAt(b20SlotMintPolicy))
-	return packedLane(w, b20OffMintReceiver), packedLane(w, b20OffSeizeHolder),
-		packedLane(w, b20OffSeizeReceiver)
+func (s b20Storage) seizePolicies() (holder, receiver uint64) {
+	w := s.getU256At(slotAt(b20SlotSeizePolicies))
+	return packedLane(w, b20OffSeizeHolder), packedLane(w, b20OffSeizeReceiver)
 }
 
 // packedLane extracts the u64 lane at byteOff from an already-read slot value.
@@ -329,10 +334,10 @@ func (s b20Storage) mintReceiverPolicy() uint64 {
 	return s.getPackedU64(b20SlotMintPolicy, b20OffMintReceiver)
 }
 func (s b20Storage) seizeHolderPolicy() uint64 {
-	return s.getPackedU64(b20SlotMintPolicy, b20OffSeizeHolder)
+	return s.getPackedU64(b20SlotSeizePolicies, b20OffSeizeHolder)
 }
 func (s b20Storage) seizeReceiverPolicy() uint64 {
-	return s.getPackedU64(b20SlotMintPolicy, b20OffSeizeReceiver)
+	return s.getPackedU64(b20SlotSeizePolicies, b20OffSeizeReceiver)
 }
 func (s b20Storage) setTransferSenderPolicy(id uint64) {
 	s.setPackedU64(b20SlotTransferPolicies, b20OffTransferSender, id)
@@ -347,10 +352,10 @@ func (s b20Storage) setMintReceiverPolicy(id uint64) {
 	s.setPackedU64(b20SlotMintPolicy, b20OffMintReceiver, id)
 }
 func (s b20Storage) setSeizeHolderPolicy(id uint64) {
-	s.setPackedU64(b20SlotMintPolicy, b20OffSeizeHolder, id)
+	s.setPackedU64(b20SlotSeizePolicies, b20OffSeizeHolder, id)
 }
 func (s b20Storage) setSeizeReceiverPolicy(id uint64) {
-	s.setPackedU64(b20SlotMintPolicy, b20OffSeizeReceiver, id)
+	s.setPackedU64(b20SlotSeizePolicies, b20OffSeizeReceiver, id)
 }
 
 // --- strings (Solidity storage encoding) ------------------------------------

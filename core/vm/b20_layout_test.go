@@ -84,9 +84,10 @@ func TestB20StringKeyedSlots(t *testing.T) {
 	}
 }
 
-// TestB20ComplianceLanes pins the three lanes packed into core slot 10. Slot 9's
-// transfer lanes are covered elsewhere; swapping slot 10's holder and receiver
-// offsets would apply the wrong policy to a seizure.
+// TestB20ComplianceLanes pins which slot each compliance id lands in and where
+// inside it. Swapping the seize holder and receiver offsets would apply the
+// wrong policy to a seizure; putting a seize id back in the mint slot would
+// take a lane reserved for future mint-side policy types.
 func TestB20ComplianceLanes(t *testing.T) {
 	s := newTestStorage(t)
 	const (
@@ -98,33 +99,55 @@ func TestB20ComplianceLanes(t *testing.T) {
 	s.setSeizeHolderPolicy(seizeHold)
 	s.setSeizeReceiverPolicy(seizeRecv)
 
-	// One raw word, read straight from the slot, with each lane at its own byte
+	// Distinct values, so a swapped pair cannot pass by coincidence.
+	if mintRecv == seizeHold || seizeHold == seizeRecv || mintRecv == seizeRecv {
+		t.Fatal("the lane values must differ for a swap to be detectable")
+	}
+
+	// Raw words, read straight from their slots, with each lane at its own byte
 	// offset from the low end.
-	word := s.getU256At(slotAt(b20SlotMintPolicy)).Bytes32()
+	lane := func(slot uint64, off int) uint64 {
+		word := s.getU256At(slotAt(slot)).Bytes32()
+		// bytes are big-endian in the word, so lane n occupies [31-off-7 : 31-off]
+		var got uint64
+		for _, b := range word[32-off-8 : 32-off] {
+			got = got<<8 | uint64(b)
+		}
+		return got
+	}
 	for _, tc := range []struct {
 		name string
+		slot uint64
 		off  int
 		want uint64
 	}{
-		{"mintReceiver", 0, mintRecv},
-		{"seizeHolder", 8, seizeHold},
-		{"seizeReceiver", 16, seizeRecv},
+		{"mintReceiver", b20SlotMintPolicy, 0, mintRecv},
+		{"seizeHolder", b20SlotSeizePolicies, 0, seizeHold},
+		{"seizeReceiver", b20SlotSeizePolicies, 8, seizeRecv},
 	} {
-		// bytes are big-endian in the word, so lane n occupies [31-off-7 : 31-off]
-		lo := 32 - tc.off - 8
-		var got uint64
-		for _, b := range word[lo : lo+8] {
-			got = got<<8 | uint64(b)
-		}
-		if got != tc.want {
-			t.Errorf("%s lane at byte offset %d = %#x, want %#x (raw word %s)", tc.name, tc.off, got, tc.want, common.Hash(word).Hex())
+		if got := lane(tc.slot, tc.off); got != tc.want {
+			t.Errorf("%s at slot %d byte offset %d = %#x, want %#x",
+				tc.name, tc.slot, tc.off, got, tc.want)
 		}
 	}
 
-	// Distinct values, so a swapped pair cannot pass by coincidence.
-	if mintRecv == seizeHold || seizeHold == seizeRecv {
-		t.Fatal("the lane values must differ for the swap to be detectable")
+	// And the mint slot holds nothing but its one id: the rest of that word is
+	// reserved for mint-side policy types a later revision adds, so a seize id
+	// straying back into it is a divergence even though both still read back.
+	if word := s.getU256At(slotAt(b20SlotMintPolicy)).Bytes32(); word != mintOnly(mintRecv) {
+		t.Errorf("mint slot = %s, want only the receiver id in the low lane",
+			common.Hash(word).Hex())
 	}
+}
+
+// mintOnly is the mint slot's expected word: one id in the low lane, the rest
+// zero.
+func mintOnly(id uint64) [32]byte {
+	var w [32]byte
+	for i := 0; i < 8; i++ {
+		w[31-i] = byte(id >> (8 * i))
+	}
+	return w
 }
 
 // TestB20SlotNumbers pins every field's slot number as a literal. The accessors
@@ -150,6 +173,7 @@ func TestB20SlotNumbers(t *testing.T) {
 		{"core.paused", b20SlotPaused, 11},
 		{"core.supplyCap", b20SlotSupplyCap, 12},
 		{"core.nonces", b20SlotNonces, 13},
+		{"core.seizePolicies", b20SlotSeizePolicies, 14},
 
 		{"activation.features", actSlotFeatures, 0},
 		{"activation.admin", actSlotAdmin, 1},
@@ -180,8 +204,8 @@ func TestB20SlotNumbers(t *testing.T) {
 		{"transferReceiver", b20OffTransferReceiver, 8},
 		{"transferExecutor", b20OffTransferExecutor, 16},
 		{"mintReceiver", b20OffMintReceiver, 0},
-		{"seizeHolder", b20OffSeizeHolder, 8},
-		{"seizeReceiver", b20OffSeizeReceiver, 16},
+		{"seizeHolder", b20OffSeizeHolder, 0},
+		{"seizeReceiver", b20OffSeizeReceiver, 8},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("offset %s = %d, want %d", tc.name, tc.got, tc.want)

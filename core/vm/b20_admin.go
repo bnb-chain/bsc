@@ -465,7 +465,7 @@ func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
 	}
 	// MINT_RECEIVER compliance is enforced even during privileged bootstrap. Each
 	// value below is read once and reused, the revert payloads included.
-	mintReceiver, _, _ := t.s.mintPolicies()
+	mintReceiver := t.s.mintReceiverPolicy()
 	if !t.policyAllows(mintReceiver, to) {
 		return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
 			scopeMintReceiver, wU64(mintReceiver))
@@ -525,7 +525,7 @@ func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, me
 		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
 	// Both seize ids share a slot, so they are read together.
-	_, seizeHolder, seizeReceiver := t.s.mintPolicies()
+	seizeHolder, seizeReceiver := t.s.seizePolicies()
 	if t.policyAllows(seizeHolder, from) {
 		return revB20("AccountNotSeizable(address)", errSelAccountNotSeizable, addrKey(from))
 	}
