@@ -361,6 +361,12 @@ func batchMint(tok b20Token, args []byte) error {
 		// discarded either way, but the node has already done the work. A batch
 		// long enough to exhaust its gas on the first recipient measured the same
 		// wall-clock as one that paid for every one of them.
+		//
+		// Bounded, not exact: a charge that consumes the last of the budget
+		// succeeds, so the flag is still clear on the iteration that spends gas
+		// down to zero and one more runs before the next charge fails. That is
+		// what the interpreter does too — the opcode that exactly exhausts gas
+		// completes and its successor faults.
 		if tok.ctx.OutOfGas() {
 			return ErrOutOfGas
 		}
