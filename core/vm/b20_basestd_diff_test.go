@@ -147,7 +147,11 @@ func TestB20SurfaceMatchesBaseStd(t *testing.T) {
 //
 // isAuthorized and the policy event streams also begin carrying composite ids, so
 // a consumer asserting policyType is 0 or 1 needs widening.
-var b20CobaltGaps = map[string]int{"function": 16, "event": 3, "error": 6}
+// Only composite policies remain: createCompositePolicy, updateComposite,
+// compositePolicyChildIds and the two child-count bounds, CompositePolicyUpdated,
+// InvalidChildPolicy and ChildPoliciesOutsideOfRange. The ERC-8056 scheduled
+// multiplier is implemented as of the Cobalt adoption.
+var b20CobaltGaps = map[string]int{"function": 5, "event": 1, "error": 2}
 
 type refEntry struct {
 	Sig  string `json:"sig"`

@@ -159,6 +159,28 @@ interface IB20Asset {
     function announce(bytes[] calldata internalCalls, string calldata id, string calldata description, string calldata uri)
         external;
     function isAnnouncementIdUsed(string calldata id) external view returns (bool);
+
+    // --- ERC-8056 scheduled multiplier (Cobalt) ---
+    // The canonical names alias the originals above, which stay dialable.
+    event UIMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier, uint256 effectiveAt);
+    event UIMultiplierUpdateCancelled(uint256 cancelledMultiplier, uint256 cancelledEffectiveAt);
+
+    error EffectiveAtInPast(uint256 effectiveAt);
+    error EffectiveAtTooFar(uint256 effectiveAt);
+    error UIMultiplierUpdateExists(uint256 effectiveAt);
+    error UIMultiplierUpdateDoesNotExist();
+
+    function uiMultiplier() external view returns (uint256);
+    function toUIAmount(uint256 rawAmount) external view returns (uint256);
+    function fromUIAmount(uint256 uiAmount) external view returns (uint256);
+    function balanceOfUI(address account) external view returns (uint256);
+    function totalSupplyUI() external view returns (uint256);
+    function newUIMultiplier() external view returns (uint256);
+    function effectiveAt() external view returns (uint256);
+    function MAX_UI_MULTIPLIER() external pure returns (uint256);
+    function updateUIMultiplier(uint256 newMultiplier, uint256 effectiveAtTimestamp) external; // OPERATOR_ROLE
+    function cancelUIMultiplierUpdate() external;                                              // OPERATOR_ROLE
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool);
     function batchMint(address[] calldata recipients, uint256[] calldata amounts) external;
     function extraMetadata(string calldata key) external view returns (string memory);
     function updateExtraMetadata(string calldata key, string calldata value) external;

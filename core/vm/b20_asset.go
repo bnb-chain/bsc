@@ -33,14 +33,24 @@ const (
 	b20AssetSlotMultiplier    = 1
 	b20AssetSlotAnnouncements = 2 // mapping(string id => bool used)
 	b20AssetSlotExtraMeta     = 3 // mapping(string key => string value)
-	// Slot 4 is reserved for the scheduled multiplier (ERC-8056), which
-	// base-std adds in a later logic version. Nothing may reuse it.
+	b20AssetSlotPending       = 4 // packed: multiplier (u128) | effectiveAt (u64)
+)
+
+// Packed lane offsets in the pending slot, LSB-first as Solidity packs a struct
+// of {uint128 multiplier; uint64 effectiveAt}.
+const (
+	b20PendingMulBits  = 0
+	b20PendingWhenBits = 128
 )
 
 var (
 	b20AssetRoot = erc7201Root(b20AssetNamespace)
 	// b20WAD is the multiplier fixed-point base (1e18 = 1.0x).
 	b20WAD = uint256.NewInt(1_000_000_000_000_000_000)
+	// b20U128Mask isolates the pending slot's low lane, and is also the ceiling
+	// every multiplier is bounded by (type(uint128).max).
+	b20U64Max   = new(uint256.Int).SetUint64(^uint64(0))
+	b20U128Mask = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 
 	roleOperator = crypto.Keccak256Hash([]byte("OPERATOR_ROLE"))
 
@@ -59,11 +69,40 @@ var (
 	selExtraMetadata       = selector("extraMetadata(string)")
 	selUpdateExtraMetadata = selector("updateExtraMetadata(string,string)")
 
+	// ERC-8056 (Cobalt). The canonical names alias the Beryl ones, which stay
+	// dialable; updateUIMultiplier is the scheduled setter and is not a rename of
+	// updateMultiplier, which remains as the instant failsafe.
+	selUIMultiplier       = selector("uiMultiplier()")
+	selToUIAmount         = selector("toUIAmount(uint256)")
+	selFromUIAmount       = selector("fromUIAmount(uint256)")
+	selBalanceOfUI        = selector("balanceOfUI(address)")
+	selTotalSupplyUI      = selector("totalSupplyUI()")
+	selNewUIMultiplier    = selector("newUIMultiplier()")
+	selEffectiveAt        = selector("effectiveAt()")
+	selUpdateUIMultiplier = selector("updateUIMultiplier(uint256,uint256)")
+	selCancelUIMultiplier = selector("cancelUIMultiplierUpdate()")
+	selMaxUIMultiplier    = selector("MAX_UI_MULTIPLIER()")
+	selSupportsInterface  = selector("supportsInterface(bytes4)")
+
 	b20TopicMultiplierUpdated    = eventTopic("MultiplierUpdated(uint256)")
 	b20TopicAnnouncement         = eventTopic("Announcement(address,string,string,string)")
 	b20TopicEndAnnouncement      = eventTopic("EndAnnouncement(string)")
 	b20TopicExtraMetadataUpdated = eventTopic("ExtraMetadataUpdated(string,string)")
+
+	b20TopicUIMultiplierUpdated   = eventTopic("UIMultiplierUpdated(uint256,uint256,uint256)")
+	b20TopicUIMultiplierCancelled = eventTopic("UIMultiplierUpdateCancelled(uint256,uint256)")
 )
+
+// The ERC-165 ids the Asset variant advertises: ERC-165 itself and three of the
+// four ERC-8056 interfaces. Conversion (0x57854fc3) is deliberately absent even
+// though toUIAmount and fromUIAmount are implemented, matching base-std — the
+// advertised set is part of the observable surface, not a summary of it.
+var b20AssetInterfaceIDs = map[[4]byte]bool{
+	{0x01, 0xff, 0xc9, 0xa7}: true, // IERC165
+	{0xa6, 0x0b, 0xf1, 0x3d}: true, // IScaledUIAmount
+	{0x4b, 0xd2, 0x76, 0x48}: true, // IScaledUIAmountNewUIMultiplier
+	{0xd8, 0x90, 0xfd, 0x71}: true, // IScaledUIAmountBalances
+}
 
 // assetExt is a gas-metered view over the Asset extension storage.
 type assetExt struct{ s b20Storage }
@@ -84,6 +123,44 @@ func (e assetExt) multiplier() *uint256.Int {
 func (e assetExt) setMultiplier(m *uint256.Int) {
 	e.s.setWord(assetSlot(b20AssetSlotMultiplier), common.Hash(m.Bytes32()))
 }
+
+// --- ERC-8056 scheduled multiplier (Cobalt) ---------------------------------
+//
+// Two values decide what a holder's balance is worth: the multiplier at slot 1,
+// set by the instant setter, and a pending schedule at slot 4. The *effective*
+// multiplier is the pending one once its timestamp has passed, and the stored one
+// otherwise — so multiplier() changes value at a timestamp, with no transaction
+// and no event at the flip. That is base-std's behaviour and it is the reason
+// adopting ERC-8056 is not a pure addition: an indexer rebuilding state from logs
+// alone will diverge (BEP-702 3.12).
+
+func (e assetExt) pendingSlot() common.Hash { return assetSlot(b20AssetSlotPending) }
+
+// pending reads the scheduled update. A zero effectiveAt means none is recorded;
+// a non-zero one may be live or already matured.
+func (e assetExt) pending() (mul *uint256.Int, effectiveAt uint64) {
+	w := new(uint256.Int).SetBytes(e.s.getWord(e.pendingSlot()).Bytes())
+	lane := new(uint256.Int).Rsh(w, b20PendingWhenBits)
+	return new(uint256.Int).And(w, b20U128Mask), lane.Uint64()
+}
+
+func (e assetExt) setPending(mul *uint256.Int, effectiveAt uint64) {
+	packed := new(uint256.Int).And(mul, b20U128Mask)
+	packed.Or(packed, new(uint256.Int).Lsh(uint256.NewInt(effectiveAt), b20PendingWhenBits))
+	e.s.setWord(e.pendingSlot(), common.Hash(packed.Bytes32()))
+}
+
+func (e assetExt) clearPending() { e.s.setWord(e.pendingSlot(), common.Hash{}) }
+
+// effectiveMultiplier is what every conversion and balance view uses. It is the
+// scheduled value once its timestamp has arrived, and the stored one until then.
+func (e assetExt) effectiveMultiplier(now uint64) *uint256.Int {
+	if mul, at := e.pending(); at != 0 && now >= at {
+		return mul
+	}
+	return e.multiplier()
+}
+
 func (e assetExt) announcementSlot(id string) common.Hash {
 	return e.s.strMapSlot(assetSlot(b20AssetSlotAnnouncements), id)
 }
@@ -150,41 +227,86 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 	copy(sel[:], input[:4])
 	args := input[4:]
 
+	// Every conversion and balance view reads the effective multiplier, which is
+	// the scheduled one once its timestamp has passed (ERC-8056).
+	effective := func() *uint256.Int { return ext.effectiveMultiplier(tok.ctx.BlockTime()) }
+
 	switch sel {
 	case selDecimals:
 		return encU256(uint256.NewInt(uint64(ext.decimals()))), nil, true
-	case selMultiplier:
-		return encU256(ext.multiplier()), nil, true
+	case selMultiplier, selUIMultiplier:
+		return encU256(effective()), nil, true
 	case selWadPrecision:
 		return encU256(b20WAD), nil, true
+	case selMaxUIMultiplier:
+		return encU256(b20U128Mask), nil, true
 	case selOperatorRole:
 		return roleOperator.Bytes(), nil, true
-	case selScaledBalanceOf:
+	case selNewUIMultiplier:
+		mul, _ := ext.pending()
+		return encU256(mul), nil, true
+	case selEffectiveAt:
+		_, at := ext.pending()
+		return encU256(uint256.NewInt(at)), nil, true
+	case selTotalSupplyUI:
+		v, err := applyMultiplier(tok.s.totalSupply(), effective())
+		if err != nil {
+			return nil, err, true
+		}
+		return encU256(v), nil, true
+	case selSupportsInterface:
+		id, err := readWord(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		// bytes4 occupies the high four bytes of its word; anything in the
+		// remaining 28 is not a valid bytes4 and cannot be advertised.
+		var want [4]byte
+		copy(want[:], id[:4])
+		for _, b := range id[4:] {
+			if b != 0 {
+				return encBool(false), nil, true
+			}
+		}
+		return encBool(b20AssetInterfaceIDs[want]), nil, true
+	case selCancelUIMultiplier:
+		return nil, cancelUIMultiplier(tok, ext), true
+	case selUpdateUIMultiplier:
+		mul, err := readU256(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		at, err := readU256(args, 1)
+		if err != nil {
+			return nil, err, true
+		}
+		return nil, updateUIMultiplier(tok, ext, mul, at), true
+	case selScaledBalanceOf, selBalanceOfUI:
 		a, err := readAddress(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		v, err := applyMultiplier(tok.s.balanceOf(a), ext.multiplier())
+		v, err := applyMultiplier(tok.s.balanceOf(a), effective())
 		if err != nil {
 			return nil, err, true
 		}
 		return encU256(v), nil, true
-	case selToScaledBalance:
+	case selToScaledBalance, selToUIAmount:
 		raw, err := readU256(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		v, err := applyMultiplier(raw, ext.multiplier())
+		v, err := applyMultiplier(raw, effective())
 		if err != nil {
 			return nil, err, true
 		}
 		return encU256(v), nil, true
-	case selToRawBalance:
+	case selToRawBalance, selFromUIAmount:
 		scaled, err := readU256(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		v, err := removeMultiplier(scaled, ext.multiplier())
+		v, err := removeMultiplier(scaled, effective())
 		if err != nil {
 			return nil, err, true
 		}
@@ -314,6 +436,59 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	return nil
 }
 
+// updateUIMultiplier schedules a multiplier change for a future timestamp. Check
+// order follows base-std: role, then the value, then the two timestamp bounds,
+// then whether a live schedule already exists.
+func updateUIMultiplier(tok b20Token, ext assetExt, newMul, at *uint256.Int) error {
+	if tok.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	if err := tok.ensureRole(roleOperator); err != nil {
+		return err
+	}
+	if newMul.IsZero() || newMul.Gt(b20U128Mask) { // (0, type(uint128).max]
+		return revB20("InvalidMultiplier()", errSelInvalidMultiplier)
+	}
+	now := tok.ctx.BlockTime()
+	if !at.GtUint64(now) {
+		return revB20("EffectiveAtInPast(uint256)", errSelEffectiveAtInPast, wU256(at))
+	}
+	if at.Gt(b20U64Max) {
+		return revB20("EffectiveAtTooFar(uint256)", errSelEffectiveAtTooFar, wU256(at))
+	}
+	// Only a *live* schedule blocks a new one. A matured record is stale state,
+	// not a commitment, so it is silently replaced.
+	if _, existing := ext.pending(); existing > now {
+		return revB20("UIMultiplierUpdateExists(uint256)", errSelUIMulExists, wU64(existing))
+	}
+	previous := ext.effectiveMultiplier(now)
+	ext.setPending(newMul, at.Uint64())
+	// The third argument is when the value takes effect, which for a schedule is
+	// the future timestamp rather than now.
+	tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
+		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(at).Bytes()...))
+	return nil
+}
+
+// cancelUIMultiplier drops a live schedule. A matured one is not cancellable —
+// its value is already in force, so there is nothing pending to withdraw.
+func cancelUIMultiplier(tok b20Token, ext assetExt) error {
+	if tok.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	if err := tok.ensureRole(roleOperator); err != nil {
+		return err
+	}
+	mul, at := ext.pending()
+	if at <= tok.ctx.BlockTime() {
+		return revB20("UIMultiplierUpdateDoesNotExist()", errSelUIMulMissing)
+	}
+	ext.clearPending()
+	tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierCancelled},
+		append(wU256(mul).Bytes(), wU64(at).Bytes()...))
+	return nil
+}
+
 func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -324,9 +499,25 @@ func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 	if newMul.IsZero() || newMul.Gt(b20NoSupplyCap) { // (0, type(uint128).max]
 		return revB20("InvalidMultiplier()", errSelInvalidMultiplier)
 	}
+	// The instant setter is the failsafe, so it overrides any schedule. A live one
+	// is withdrawn loudly; a matured one is stale state and goes quietly, since its
+	// value was already in force and is now being replaced.
+	now := tok.ctx.BlockTime()
+	previous := ext.effectiveMultiplier(now)
+	if pendingMul, at := ext.pending(); at != 0 {
+		ext.clearPending()
+		if at > now {
+			tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierCancelled},
+				append(wU256(pendingMul).Bytes(), wU64(at).Bytes()...))
+		}
+	}
 	ext.setMultiplier(newMul)
 	mb := newMul.Bytes32()
 	tok.ctx.AddLog([]common.Hash{b20TopicMultiplierUpdated}, mb[:])
+	// ERC-8056's canonical event, emitted by both setters so one stream carries
+	// every change (base-std's changelog calls this out explicitly).
+	tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
+		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(uint256.NewInt(now)).Bytes()...))
 	return nil
 }
 
