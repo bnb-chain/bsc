@@ -45,7 +45,7 @@ const LINKS = {
   facebook:           'https://www.facebook.com/coinbosa',
   twitter:            '',                               // à remplir
   telegram:           'https://t.me/coinbosa',          // groupe @coinbosa
-  telegramCommunity:  'https://t.me/coinbosagroup',     // communauté
+  telegramCommunity:  'https://t.me/Coinbosaofficial',     // communauté
   discord:            '',                               // à remplir
   // produits de l'écosystème (liens à compléter quand ils ouvrent)
   academy:            '', nextfuture: '', card: '', vpn: '',

@@ -28,7 +28,7 @@ var CONTENT = {
     github:            "https://github.com/Coinbosa/coinbosa-chain",   // dépôt(s)
     facebook:          "https://www.facebook.com/coinbosa",   // page Facebook
     telegram:          "https://t.me/coinbosa",   // canal Telegram officiel
-    telegramCommunity: "https://t.me/coinbosagroup",   // groupe communautaire Telegram
+    telegramCommunity: "https://t.me/Coinbosaofficial",   // groupe communautaire Telegram
     twitter:           "",   // X / Twitter
     discord:           ""    // serveur Discord
   },
