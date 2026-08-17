@@ -266,3 +266,63 @@ func TestB20AssetInterfaceIDs(t *testing.T) {
 		}
 	}
 }
+
+// TestB20MaturedScheduleIsSettledBeforeReplacement covers the one path where the
+// lazy effective-multiplier model can lose a value.
+//
+// Reads compute the effective multiplier and cannot write, so a matured schedule
+// lives on in the pending slot rather than in the stored one. Replacing it with a
+// new schedule therefore has to fold it into storage first. Without that the token
+// silently drops back to its pre-maturity multiplier for the whole gap until the
+// new schedule arrives — measured before the fix: 3x reverted to 1x for 400
+// seconds and then jumped to 5x, revaluing every holder's balance twice with no
+// event either time.
+//
+// Reachable with two ordinary successful calls, which is why it is worth its own
+// test rather than a note.
+func TestB20MaturedScheduleIsSettledBeforeReplacement(t *testing.T) {
+	token, at, operator := newScheduledAssetToken(t, 100)
+	mul := func(now uint64) uint64 {
+		t.Helper()
+		ret, _, err := at(now).Call(operator, token, b20Call(selMultiplier),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("multiplier() at t=%d: %v", now, err)
+		}
+		return new(uint256.Int).SetBytes(ret).Uint64() / b20WadU64
+	}
+	schedule := func(now, factor, when uint64) {
+		t.Helper()
+		if _, _, err := at(now).Call(operator, token,
+			b20Call(selUpdateUIMultiplier, u256hash(factor*b20WadU64), u256hash(when)),
+			NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
+			t.Fatalf("scheduling %dx at t=%d: %v", factor, now, err)
+		}
+	}
+
+	schedule(100, 3, 500)
+	if got := mul(600); got != 3 {
+		t.Fatalf("after maturity multiplier = %dx, want 3x", got)
+	}
+
+	// Replace the matured schedule. The value it put in force must survive.
+	schedule(600, 5, 1000)
+	for _, now := range []uint64{600, 999} {
+		if got := mul(now); got != 3 {
+			t.Errorf("t=%d multiplier = %dx, want 3x — replacing a matured schedule "+
+				"reverted the token to its pre-maturity value", now, got)
+		}
+	}
+	if got := mul(1000); got != 5 {
+		t.Errorf("t=1000 multiplier = %dx, want 5x", got)
+	}
+
+	// And it chains, so the fold is not a one-off.
+	schedule(1100, 7, 1500)
+	if got := mul(1200); got != 5 {
+		t.Errorf("t=1200 multiplier = %dx, want 5x", got)
+	}
+	if got := mul(1500); got != 7 {
+		t.Errorf("t=1500 multiplier = %dx, want 7x", got)
+	}
+}

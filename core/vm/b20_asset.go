@@ -152,6 +152,16 @@ func (e assetExt) setPending(mul *uint256.Int, effectiveAt uint64) {
 
 func (e assetExt) clearPending() { e.s.setWord(e.pendingSlot(), common.Hash{}) }
 
+// settleMatured folds a matured schedule into the stored multiplier. Reads compute
+// the effective value and cannot write, so the fold has to happen on the next write
+// that reuses the pending slot — otherwise replacing a matured schedule would
+// silently revert the token to the value from before it matured.
+func (e assetExt) settleMatured(now uint64) {
+	if mul, at := e.pending(); at != 0 && now >= at {
+		e.setMultiplier(mul)
+	}
+}
+
 // effectiveMultiplier is what every conversion and balance view uses. It is the
 // scheduled value once its timestamp has arrived, and the stored one until then.
 func (e assetExt) effectiveMultiplier(now uint64) *uint256.Int {
@@ -461,7 +471,11 @@ func updateUIMultiplier(tok b20Token, ext assetExt, newMul, at *uint256.Int) err
 	if _, existing := ext.pending(); existing > now {
 		return revB20("UIMultiplierUpdateExists(uint256)", errSelUIMulExists, wU64(existing))
 	}
-	previous := ext.effectiveMultiplier(now)
+	// The outgoing schedule may already be in force. Persist it before the slot is
+	// reused, or the token drops back to its pre-maturity multiplier until the new
+	// schedule arrives — a silent revaluation of every holder's balance.
+	ext.settleMatured(now)
+	previous := ext.multiplier()
 	ext.setPending(newMul, at.Uint64())
 	// The third argument is when the value takes effect, which for a schedule is
 	// the future timestamp rather than now.
