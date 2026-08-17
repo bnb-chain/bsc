@@ -5,13 +5,17 @@ package miner
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
@@ -34,7 +38,7 @@ func setBidBlockPermissionClock(m *BidBlockPermissionManager, f func() time.Time
 }
 
 func TestBidBlockPermission_DefaultActive(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 	if !m.IsAllowed(builder) {
 		t.Fatal("default state should be Active for any builder")
@@ -45,7 +49,7 @@ func TestBidBlockPermission_DefaultActive(t *testing.T) {
 }
 
 func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 	hash := common.HexToHash("0xabc")
 
@@ -73,7 +77,7 @@ func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
 }
 
 func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
 
@@ -87,7 +91,7 @@ func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
 }
 
 func TestBidBlockPermission_RevokeForCustomDuration(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
 
@@ -109,7 +113,7 @@ func TestBidBlockPermission_RevokeForCustomDuration(t *testing.T) {
 }
 
 func TestBidBlockPermission_RevokeOverwrites(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 
 	m.Revoke(builder, testInsertChainReason, common.HexToHash("0x1"), 1)
@@ -128,7 +132,7 @@ func TestBidBlockPermission_RevokeOverwrites(t *testing.T) {
 }
 
 func TestBidBlockPermission_ExpiresAt24h(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 
 	revokeTime := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
@@ -150,7 +154,7 @@ func TestBidBlockPermission_ExpiresAt24h(t *testing.T) {
 }
 
 func TestBidBlockPermission_StillRevokedWithin24h(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 
 	// UTC midnight should not reset the revoke; only elapsed time matters.
@@ -174,7 +178,7 @@ func TestBidBlockPermission_StillRevokedWithin24h(t *testing.T) {
 
 // Builders revoked at different times should expire independently.
 func TestBidBlockPermission_IndependentResetAt(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
 
@@ -217,7 +221,7 @@ func TestBidBlockPermission_IndependentResetAt(t *testing.T) {
 }
 
 func TestBidBlockPermission_ConcurrentAccess(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builders := []common.Address{
 		common.HexToAddress("0xa"),
 		common.HexToAddress("0xb"),
@@ -236,7 +240,7 @@ func TestBidBlockPermission_ConcurrentAccess(t *testing.T) {
 }
 
 func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 
 	if got := m.ActiveRevokeCount(); got != 0 {
 		t.Fatalf("empty manager: got %d, want 0", got)
@@ -262,7 +266,7 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 }
 
 func TestBidBlockPermission_GetStatus(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 	now := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
 	resetAt := now.Add(24 * time.Hour)
@@ -291,7 +295,7 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 }
 
 func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
-	permMgr := NewBidBlockPermissionManager()
+	permMgr := NewBidBlockPermissionManager(nil)
 	b := &bidSimulator{
 		builders:          make(map[common.Address]*builderclient.Client),
 		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
@@ -370,7 +374,7 @@ func TestBidBlockAdmission_DisabledDoesNotConsumeQuota(t *testing.T) {
 }
 
 func TestMinerBidBlockPermission_UsesWorkerManager(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	miner := &Miner{worker: &worker{permMgr: m}}
 	builder := common.HexToAddress("0x1")
 
@@ -381,7 +385,7 @@ func TestMinerBidBlockPermission_UsesWorkerManager(t *testing.T) {
 }
 
 func TestBidBlockPermission_SetAllowed_Deny(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 
 	m.SetAllowed(builder, false)
@@ -398,7 +402,7 @@ func TestBidBlockPermission_SetAllowed_Deny(t *testing.T) {
 }
 
 func TestBidBlockPermission_SetAllowed_Clear(t *testing.T) {
-	m := NewBidBlockPermissionManager()
+	m := NewBidBlockPermissionManager(nil)
 	builder := common.HexToAddress("0x1")
 
 	m.Revoke(builder, testInsertChainReason, common.HexToHash("0xabc"), 100)
@@ -408,5 +412,174 @@ func TestBidBlockPermission_SetAllowed_Clear(t *testing.T) {
 	}
 	if _, ok := getBidBlockPermissionRecord(m, builder); ok {
 		t.Fatal("record should be cleared")
+	}
+}
+
+// waitForBidBlockPersist polls until the asynchronous persistence has written a
+// non-empty blob, or fails the test after a short deadline.
+func waitForBidBlockPersist(t *testing.T, db ethdb.KeyValueStore) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if blob, _ := db.Get(bidBlockRevokesKey); len(blob) > 0 {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for BidBlock revokes to persist")
+}
+
+// TestBidBlockPermission_SurvivesRestart is the regression for the reported
+// gap: a revoke persisted by one manager must still be in effect (with the same
+// resetAt) after a fresh manager is constructed over the same database, as
+// happens when the validator process restarts within the lockout window.
+func TestBidBlockPermission_SurvivesRestart(t *testing.T) {
+	db := rawdb.NewMemoryDatabase()
+	builder := common.HexToAddress("0x1")
+	hash := common.HexToHash("0xabc")
+
+	m1 := NewBidBlockPermissionManager(db)
+	m1.Revoke(builder, testInsertChainReason, hash, 100)
+	waitForBidBlockPersist(t, db)
+	want := m1.GetStatus(builder)
+
+	// Simulate a restart: a brand-new manager over the same database.
+	m2 := NewBidBlockPermissionManager(db)
+	if m2.IsAllowed(builder) {
+		t.Fatal("revoke must survive a restart within its window")
+	}
+	got := m2.GetStatus(builder)
+	if !got.ResetAt.Equal(want.ResetAt) {
+		t.Fatalf("resetAt changed across restart: got %v, want %v", got.ResetAt, want.ResetAt)
+	}
+	if !got.RevokedAt.Equal(want.RevokedAt) || got.Reason != want.Reason || got.BlockHash != want.BlockHash || got.BlockNum != want.BlockNum {
+		t.Fatalf("restored record differs from persisted one: got %+v, want %+v", got, want)
+	}
+}
+
+// TestBidBlockPermission_ExpiredNotRestored verifies that a revoke whose window
+// elapsed while the process was down is dropped on load, while a still-active
+// one is restored. The database is seeded directly so the elapsed time is
+// deterministic and does not depend on wall-clock waits.
+func TestBidBlockPermission_ExpiredNotRestored(t *testing.T) {
+	db := rawdb.NewMemoryDatabase()
+	active := common.HexToAddress("0x1")
+	expired := common.HexToAddress("0x2")
+
+	now := time.Now()
+	seed := map[common.Address]BidBlockRevokeRecord{
+		active:  {RevokedAt: now.Add(-1 * time.Hour), Duration: bidBlockRevokeDuration, Reason: "active"},
+		expired: {RevokedAt: now.Add(-25 * time.Hour), Duration: bidBlockRevokeDuration, Reason: "expired"},
+	}
+	blob, err := json.Marshal(seed)
+	if err != nil {
+		t.Fatalf("marshal seed: %v", err)
+	}
+	if err := db.Put(bidBlockRevokesKey, blob); err != nil {
+		t.Fatalf("seed db: %v", err)
+	}
+
+	m := NewBidBlockPermissionManager(db)
+	if m.IsAllowed(active) {
+		t.Fatal("still-active revoke must be restored")
+	}
+	if !m.IsAllowed(expired) {
+		t.Fatal("revoke expired during downtime must not be restored")
+	}
+}
+
+// TestBidBlockPermission_LoadTolERatesBadState verifies that a missing or
+// corrupt persisted blob leaves the manager empty instead of panicking.
+func TestBidBlockPermission_LoadToleratesBadState(t *testing.T) {
+	builder := common.HexToAddress("0x1")
+
+	// Corrupt blob: start empty, no panic.
+	db := rawdb.NewMemoryDatabase()
+	if err := db.Put(bidBlockRevokesKey, []byte("not json")); err != nil {
+		t.Fatalf("seed db: %v", err)
+	}
+	m := NewBidBlockPermissionManager(db)
+	if !m.IsAllowed(builder) {
+		t.Fatal("a corrupt persisted blob must yield an empty manager")
+	}
+
+	// Missing key (fresh db): start empty, no panic.
+	m2 := NewBidBlockPermissionManager(rawdb.NewMemoryDatabase())
+	if !m2.IsAllowed(builder) {
+		t.Fatal("a fresh db must yield an empty manager")
+	}
+}
+
+// putFailingDB wraps a key-value store and can be told to fail Put calls, to
+// exercise the best-effort persistence paths.
+type putFailingDB struct {
+	ethdb.KeyValueStore
+	failPut bool
+}
+
+func (d *putFailingDB) Put(key, value []byte) error {
+	if d.failPut {
+		return errors.New("simulated put failure")
+	}
+	return d.KeyValueStore.Put(key, value)
+}
+
+// TestBidBlockPermission_FailedNewerBlocksOlder locks the ordering guarantee:
+// once a newer snapshot has entered the writer — even if its write fails — an
+// older snapshot must never overwrite it and resurrect stale state. persistAsync
+// is called directly to control ordering deterministically.
+func TestBidBlockPermission_FailedNewerBlocksOlder(t *testing.T) {
+	base := rawdb.NewMemoryDatabase()
+	db := &putFailingDB{KeyValueStore: base}
+	m := NewBidBlockPermissionManager(db)
+
+	builder := common.HexToAddress("0x1")
+	revoked := map[common.Address]BidBlockRevokeRecord{
+		builder: {RevokedAt: time.Now(), Duration: bidBlockRevokeDuration, Reason: "revoke"},
+	}
+	cleared := map[common.Address]BidBlockRevokeRecord{} // SetAllowed(true) result
+
+	// The newer snapshot (seq 2, cleared) is attempted first but its write fails.
+	db.failPut = true
+	m.persistAsync(2, cleared)
+	if m.persistedSeq != 2 {
+		t.Fatalf("persistedSeq must advance to 2 even when the write fails, got %d", m.persistedSeq)
+	}
+
+	// The older snapshot (seq 1, revoked) is now handled with writes working
+	// again — it must be dropped, not overwrite the newer intent.
+	db.failPut = false
+	m.persistAsync(1, revoked)
+	if blob, _ := base.Get(bidBlockRevokesKey); len(blob) != 0 {
+		t.Fatalf("older snapshot must not overwrite a newer (failed) one; disk should be empty, got %s", blob)
+	}
+}
+
+// TestBidBlockPermission_SetAllowedPersists verifies that a manual clear is also
+// mirrored to disk, so it is not resurrected on restart.
+func TestBidBlockPermission_SetAllowedPersists(t *testing.T) {
+	db := rawdb.NewMemoryDatabase()
+	builder := common.HexToAddress("0x1")
+
+	m1 := NewBidBlockPermissionManager(db)
+	m1.Revoke(builder, testInsertChainReason, common.HexToHash("0xabc"), 100)
+	waitForBidBlockPersist(t, db)
+	m1.SetAllowed(builder, true) // manual clear must persist too
+	// Wait until the cleared (empty-map) blob has been written.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		blob, _ := db.Get(bidBlockRevokesKey)
+		var stored map[common.Address]BidBlockRevokeRecord
+		if json.Unmarshal(blob, &stored) == nil {
+			if _, ok := stored[builder]; !ok {
+				break
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	m2 := NewBidBlockPermissionManager(db)
+	if !m2.IsAllowed(builder) {
+		t.Fatal("a manually cleared builder must not be resurrected on restart")
 	}
 }

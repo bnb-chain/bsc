@@ -6,11 +6,14 @@
 package miner
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
+	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // RevokeReasonManual is the Reason value used when an operator manually revokes
@@ -25,6 +28,19 @@ const (
 	bidBlockGasPriceLowRevokeDuration = 450 * time.Second
 )
 
+// bidBlockRevokesKey is the database key under which the whole revoke map is
+// persisted (a single blob, overwritten on every change) so that lockouts
+// survive a process restart within their window.
+//
+// The blob is JSON-encoded rather than RLP. RLP is geth's codec for
+// consensus-critical and large/frequent data, but it supports neither maps nor
+// time.Time, so it would require flattening the map and converting timestamps
+// through a separate wire struct. This state is tiny, written rarely (only on
+// bad bids), never on-chain, and benefits from JSON's forgiving schema
+// evolution and readability — matching the existing rawdb precedent for small
+// metadata blobs (e.g. WriteChainConfig).
+var bidBlockRevokesKey = []byte("bidBlockRevokes")
+
 // BidBlockRevokeRecord holds one active revoke event.
 type BidBlockRevokeRecord struct {
 	RevokedAt time.Time
@@ -35,19 +51,119 @@ type BidBlockRevokeRecord struct {
 }
 
 // BidBlockPermissionManager tracks per-builder SendBidBlock revokes.
+//
 // Revokes are kept in memory and expire lazily after their lockout window.
+// They are also mirrored to the chain database (best-effort, asynchronously)
+// so that a lockout is not silently cleared when the validator restarts within
+// its window — the RPC advertises resetAt = revokedAt + duration as a
+// wall-clock promise, which must hold across restarts.
 type BidBlockPermissionManager struct {
 	mu      sync.RWMutex
 	revoked map[common.Address]BidBlockRevokeRecord
 
 	clock func() time.Time
+
+	// db is the optional persistence backend. When nil the manager is purely
+	// in-memory (used by tests and any caller that does not wire a database),
+	// preserving the original behaviour.
+	db ethdb.KeyValueStore
+
+	// Persistence is asynchronous and best-effort: mutations only snapshot the
+	// map under mu and hand it to a background writer, never blocking the
+	// mining path on disk I/O. Losing the newest write on a crash is
+	// acceptable (at worst one lockout is not restored); what must never happen
+	// is a disk hiccup stalling Revoke/SetAllowed.
+	persistMu    sync.Mutex // serialises background writers so they don't interleave
+	persistSeq   uint64     // bumped under mu on every mutation; identifies the latest snapshot
+	persistedSeq uint64     // highest seq handled by a writer (guarded by persistMu); advanced before the write, so a failed newer write still blocks older ones
 }
 
-// NewBidBlockPermissionManager returns a fresh manager with no builders revoked.
-func NewBidBlockPermissionManager() *BidBlockPermissionManager {
-	return &BidBlockPermissionManager{
+// NewBidBlockPermissionManager returns a manager backed by db (may be nil for a
+// purely in-memory manager). Any revokes persisted by a previous process that
+// are still within their lockout window are restored; expired ones are dropped.
+func NewBidBlockPermissionManager(db ethdb.KeyValueStore) *BidBlockPermissionManager {
+	m := &BidBlockPermissionManager{
 		revoked: make(map[common.Address]BidBlockRevokeRecord),
 		clock:   time.Now,
+		db:      db,
+	}
+	m.load()
+	return m
+}
+
+// load restores persisted revokes at startup, dropping any whose window has
+// already elapsed (including time spent offline). It runs once, synchronously,
+// off the hot path. Any error leaves the manager empty — same as a fresh node.
+func (m *BidBlockPermissionManager) load() {
+	if m.db == nil {
+		return
+	}
+	blob, err := m.db.Get(bidBlockRevokesKey)
+	if err != nil || len(blob) == 0 {
+		return // no persisted state (or key absent): start empty
+	}
+	var stored map[common.Address]BidBlockRevokeRecord
+	if err := json.Unmarshal(blob, &stored); err != nil {
+		log.Warn("Failed to decode persisted BidBlock revokes, starting empty", "err", err)
+		return
+	}
+	now := m.clock()
+	for builder, rec := range stored {
+		if isRevokeActive(rec, now) {
+			m.revoked[builder] = rec
+		}
+	}
+	if len(m.revoked) > 0 {
+		log.Info("Restored BidBlock revokes from database", "count", len(m.revoked))
+	}
+}
+
+// markDirtyLocked snapshots the current map and kicks off an asynchronous write.
+// It MUST be called with m.mu held. The snapshot is taken here (under the lock)
+// so the background writer never touches the live map; the caller returns
+// immediately without waiting for the disk write.
+func (m *BidBlockPermissionManager) markDirtyLocked() {
+	if m.db == nil {
+		return
+	}
+	m.persistSeq++
+	seq := m.persistSeq
+	snapshot := make(map[common.Address]BidBlockRevokeRecord, len(m.revoked))
+	for k, v := range m.revoked {
+		snapshot[k] = v
+	}
+	// Fire-and-forget: mutations are rare (only on bad bids), so spawning a
+	// goroutine per change is cheap. persistAsync serialises writers and drops
+	// stale snapshots via the seq guard.
+	go m.persistAsync(seq, snapshot)
+}
+
+// persistAsync writes snapshot to the database unless a newer snapshot has
+// already been handled. Errors are logged and swallowed: persistence is
+// best-effort and must not affect the caller.
+//
+// persistedSeq is advanced BEFORE the write and regardless of its outcome. This
+// makes the seq that actually reaches db.Put strictly monotonic: once a newer
+// snapshot has entered here, every older one is dropped even if the newer
+// write failed. Otherwise a newer write failing could let an older snapshot
+// win the disk afterwards and resurrect stale state (e.g. a revoke overwriting
+// a later manual clear). Losing the newest write on failure is acceptable
+// (best-effort); an older snapshot overwriting a newer one is not.
+func (m *BidBlockPermissionManager) persistAsync(seq uint64, snapshot map[common.Address]BidBlockRevokeRecord) {
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+	if seq <= m.persistedSeq {
+		return // an equal-or-newer snapshot has already been handled; this one is stale
+	}
+	m.persistedSeq = seq
+	blob, err := json.Marshal(snapshot)
+	if err != nil {
+		log.Warn("Failed to encode BidBlock revokes for persistence", "err", err)
+		return
+	}
+	if err := m.db.Put(bidBlockRevokesKey, blob); err != nil {
+		log.Warn("Failed to persist BidBlock revokes", "err", err)
+		return
 	}
 }
 
@@ -90,6 +206,7 @@ func (m *BidBlockPermissionManager) RevokeFor(
 		BlockHash: blockHash,
 		BlockNum:  blockNum,
 	}
+	m.markDirtyLocked()
 }
 
 func (m *BidBlockPermissionManager) GetStatus(builder common.Address) buildertypes.BidBlockPermissionStatus {
@@ -130,6 +247,7 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 	defer m.mu.Unlock()
 	if allowed {
 		delete(m.revoked, builder)
+		m.markDirtyLocked()
 		return
 	}
 	m.revoked[builder] = BidBlockRevokeRecord{
@@ -137,6 +255,7 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 		Duration:  bidBlockRevokeDuration,
 		Reason:    RevokeReasonManual,
 	}
+	m.markDirtyLocked()
 }
 
 // isRevokeActive reports whether now is before the revoke reset time.

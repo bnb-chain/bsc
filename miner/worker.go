@@ -268,7 +268,7 @@ type worker struct {
 
 func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, permMgr *BidBlockPermissionManager) *worker {
 	if permMgr == nil {
-		permMgr = NewBidBlockPermissionManager()
+		permMgr = NewBidBlockPermissionManager(nil)
 	}
 	chainConfig := eth.BlockChain().Config()
 	prefetcher := core.NewStatePrefetcher(chainConfig, eth.BlockChain().HeadChain())

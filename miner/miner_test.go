@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
@@ -59,6 +60,10 @@ func (m *mockBackend) BlockChain() *core.BlockChain {
 
 func (m *mockBackend) TxPool() *txpool.TxPool {
 	return m.txPool
+}
+
+func (m *mockBackend) ChainDb() ethdb.Database {
+	return rawdb.NewMemoryDatabase()
 }
 
 func (m *mockBackend) SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription {
