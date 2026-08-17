@@ -16,8 +16,9 @@ import (
 // TestB20AssetEventPayloads pins the two Asset events that carried empty data.
 //
 // Both emitted only topics: ExtraMetadataUpdated dropped its key and value,
-// Announcement its description and uri. base-std declares all four as non-indexed
-// arguments, so an indexer following that ABI decoded nothing. Filling them in also
+// Announcement its description and uri. BEP-702 3.12 declares all four as
+// non-indexed arguments, so an indexer following that ABI decoded nothing.
+// Filling them in also
 // changes the gas — log data is charged per byte — so this test asserts the bytes
 // and the next one the price.
 //
