@@ -168,3 +168,172 @@ func TestB20UpdatePolicyRevertOrder(t *testing.T) {
 		t.Fatalf("binding ALWAYS_ALLOW: %v", err)
 	}
 }
+
+// TestB20TransferFromRevertOrder pins base-std's order for transferFrom:
+// ContractPaused(TRANSFER), InvalidReceiver, InvalidSender, InsufficientAllowance,
+// PolicyForbids(TRANSFER_EXECUTOR), then the sender/receiver policies and the
+// balance.
+//
+// Two of these were wrong. The zero-address checks lived in move(), which runs
+// after the allowance is spent, and the executor policy was consulted before the
+// allowance rather than after — so a transfer to the zero address, or an
+// unauthorized executor with too little allowance, named the wrong failure.
+func TestB20TransferFromRevertOrder(t *testing.T) {
+	_, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	spender := common.HexToAddress("0x59e6de4")
+
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	ret, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset,
+		common.HexToHash("0x7fa05"), creator, [][]byte{
+			b20Call(selGrantRole, roleMint, addrKey(creator)),
+			b20Call(selGrantRole, rolePause, addrKey(creator)),
+			b20Call(selGrantRole, roleUnpause, addrKey(creator)),
+			b20Call(selMint, addrKey(b20Bob), u256hash(1000)),
+		}))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	from := func(f, to common.Address, amount uint64) ([]byte, error) {
+		return call(spender, token, b20Call(selTransferFrom, addrKey(f), addrKey(to), u256hash(amount)))
+	}
+
+	// 1. Pause outranks every argument check.
+	if _, err := call(creator, token, b20CallU8Array(selPause, b20PauseTransfer)); err != nil {
+		t.Fatalf("pause(TRANSFER): %v", err)
+	}
+	ret, err = from(common.Address{}, common.Address{}, 1<<40)
+	wantRevert(t, ret, err, errSelContractPaused, "paused with zero addresses and no allowance")
+	if _, err := call(creator, token, b20CallU8Array(selUnpause, b20PauseTransfer)); err != nil {
+		t.Fatalf("unpause(TRANSFER): %v", err)
+	}
+
+	// 2. A zero destination outranks the allowance, which is zero here.
+	ret, err = from(b20Bob, common.Address{}, 1<<40)
+	wantRevert(t, ret, err, errSelInvalidReceiver, "zero to with no allowance")
+
+	// 3. So does a zero source.
+	ret, err = from(common.Address{}, b20Alice, 1<<40)
+	wantRevert(t, ret, err, errSelInvalidSender, "zero from with no allowance")
+
+	// 4. Then the allowance, ahead of the balance it also exceeds.
+	ret, err = from(b20Bob, b20Alice, 1<<40)
+	wantRevert(t, ret, err, errSelInsufficientAllow, "no allowance and amount over balance")
+
+	// 4b. And the allowance outranks the executor policy: block the spender on
+	//     TRANSFER_EXECUTOR, and with no allowance it is still the allowance that
+	//     is reported. Without a denied executor the previous case holds under
+	//     either order, which is how this one was wrong to begin with.
+	ret, err = call(creator, B20PolicyRegistryAddress,
+		b20Call(selCreatePolicy, addrKey(creator), u256hash(b20PolicyBlocklist)))
+	if err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	execBlock := new(uint256.Int).SetBytes(ret).Uint64()
+	if _, err := call(creator, B20PolicyRegistryAddress,
+		encodeUpdateList(selUpdateBlocklist, execBlock, true, []common.Address{spender})); err != nil {
+		t.Fatalf("updateBlocklist: %v", err)
+	}
+	if _, err := call(creator, token,
+		b20Call(selUpdatePolicy, scopeTransferExecutor, wU64(execBlock))); err != nil {
+		t.Fatalf("updatePolicy(TRANSFER_EXECUTOR): %v", err)
+	}
+	ret, err = from(b20Bob, b20Alice, 1<<40)
+	wantRevert(t, ret, err, errSelInsufficientAllow, "blocked executor and no allowance")
+
+	// With an allowance, the blocked executor is what binds — so the case above
+	// really did have two failing conditions.
+	if _, err := call(b20Bob, token, b20Call(selApprove, addrKey(spender), u256hash(1<<40))); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	ret, err = from(b20Bob, b20Alice, 1<<40)
+	wantRevert(t, ret, err, errSelPolicyForbids, "blocked executor with an allowance")
+
+	// Unblock it for the rest.
+	if _, err := call(creator, token,
+		b20Call(selUpdatePolicy, scopeTransferExecutor, wU64(b20PolicyAlwaysAllow))); err != nil {
+		t.Fatalf("unbinding the executor policy: %v", err)
+	}
+
+	// 5. With enough allowance, the balance is what binds — so the allowance
+	//    check above was not the only thing failing.
+	if _, err := call(b20Bob, token, b20Call(selApprove, addrKey(spender), u256hash(1<<40))); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	ret, err = from(b20Bob, b20Alice, 1<<40)
+	wantRevert(t, ret, err, errSelInsufficientBalance, "allowance granted, amount over balance")
+
+	// And a transfer inside both bounds succeeds.
+	if _, err := from(b20Bob, b20Alice, 100); err != nil {
+		t.Fatalf("a transferFrom that should succeed: %v", err)
+	}
+}
+
+// TestB20PermitRevertOrder pins ExpiredSignature, InvalidSigner, InvalidSpender —
+// base-std's order. The spender check was missing entirely, so permit could set an
+// allowance for the zero address that approve() refuses.
+func TestB20PermitRevertOrder(t *testing.T) {
+	_, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	ret, err := call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x9e12"), creator, nil))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// An expired deadline outranks a signature that is garbage and a spender that
+	// is zero.
+	bad := b20Call(selPermit, addrKey(b20Alice), common.Hash{}, u256hash(1), u256hash(0),
+		wU8(27), common.Hash{}, common.Hash{})
+	ret, err = call(creator, token, bad)
+	wantRevert(t, ret, err, errSelExpiredSignature, "expired, bad signature, zero spender")
+
+	// Unexpired, the garbage signature is next — still ahead of the zero spender.
+	future := b20Call(selPermit, addrKey(b20Alice), common.Hash{}, u256hash(1), u256hash(1<<40),
+		wU8(27), common.Hash{}, common.Hash{})
+	ret, err = call(creator, token, future)
+	wantRevert(t, ret, err, errSelInvalidSigner, "unexpired, bad signature, zero spender")
+
+	// And a real signature over a zero spender reaches the spender check. Signing
+	// it is what makes this case reachable at all — without a valid signature the
+	// InvalidSigner check above would keep answering.
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := crypto.PubkeyToAddress(key.PublicKey)
+	gas := NewGasBudget(1)
+	domTok := newB20Token(&PrecompileContext{evm: evm, StateDB: evm.StateDB, Self: token, gas: &gas}, 18)
+
+	const value, deadline, nonce = uint64(1), uint64(1 << 40), uint64(0)
+	sh := append([]byte{}, b20PermitTypehash.Bytes()...)
+	sh = append(sh, addrKey(owner).Bytes()...)
+	sh = append(sh, common.Hash{}.Bytes()...) // spender: the zero address
+	sh = append(sh, u256hash(value).Bytes()...)
+	sh = append(sh, u256hash(nonce).Bytes()...)
+	sh = append(sh, u256hash(deadline).Bytes()...)
+	digest := crypto.Keccak256([]byte{0x19, 0x01}, domTok.domainSeparator().Bytes(), crypto.Keccak256(sh))
+	sig, err := crypto.Sign(digest, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ret, err = call(creator, token, b20Call(selPermit, addrKey(owner), common.Hash{},
+		u256hash(value), u256hash(deadline), u256hash(uint64(sig[64]+27)),
+		common.BytesToHash(sig[0:32]), common.BytesToHash(sig[32:64])))
+	wantRevert(t, ret, err, errSelInvalidSpender, "valid signature over a zero spender")
+
+	// The allowance must not have been written, which is the point of the guard.
+	if got := newB20Storage(evm.StateDB, token).allowance(owner, common.Address{}); got.Sign() != 0 {
+		t.Errorf("permit set an allowance of %s for the zero address", got)
+	}
+}

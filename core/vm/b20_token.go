@@ -205,23 +205,38 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 	if t.isPaused(b20PauseTransfer) {
 		return nil, revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseTransfer))
 	}
+	// The two malformed-argument checks come before the allowance and the
+	// executor policy, matching base-std: a transfer to the zero address is
+	// reported as such whatever the caller's allowance is. move() repeats them for
+	// the direct transfer path; they are comparisons on already-decoded arguments,
+	// so the duplicate costs nothing.
+	if to == (common.Address{}) {
+		return nil, revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
+	}
+	if from == (common.Address{}) {
+		return nil, revB20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
+	}
 	// Spend allowance unless the caller is the owner. U256::MAX is treated as
 	// an infinite, non-decreasing allowance.
 	if spender != from {
+		// The allowance slot is two nested mapping levels; derive it once.
+		slot := t.s.allowanceSlot(from, spender)
+		allowed := t.s.getU256At(slot)
+		infinite := allowed.Eq(maxU256)
+		if !infinite && allowed.Lt(amount) {
+			return nil, revB20("InsufficientAllowance(address,uint256,uint256)", errSelInsufficientAllow,
+				addrKey(spender), wU256(allowed), wU256(amount))
+		}
+		// The executor policy is consulted after the allowance, again per
+		// base-std: an unauthorized executor with too little allowance is told
+		// about the allowance.
 		if !t.privileged {
 			if _, _, executor := t.s.transferPolicies(); !t.policyAllows(executor, spender) {
 				return nil, revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
 					scopeTransferExecutor, wU64(executor))
 			}
 		}
-		// The allowance slot is two nested mapping levels; derive it once.
-		slot := t.s.allowanceSlot(from, spender)
-		allowed := t.s.getU256At(slot)
-		if !allowed.Eq(maxU256) {
-			if allowed.Lt(amount) {
-				return nil, revB20("InsufficientAllowance(address,uint256,uint256)", errSelInsufficientAllow,
-					addrKey(spender), wU256(allowed), wU256(amount))
-			}
+		if !infinite {
 			t.s.setU256At(slot, new(uint256.Int).Sub(allowed, amount))
 		}
 	}

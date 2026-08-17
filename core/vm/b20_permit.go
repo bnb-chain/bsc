@@ -230,6 +230,12 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 			addrKey(signer), addrKey(owner))
 	}
 
+	// After recovery, as base-std orders it: a signature over a zero spender is a
+	// valid signature for an approval that must still be refused, and without this
+	// permit would set an allowance approve() rejects.
+	if spender == (common.Address{}) {
+		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
+	}
 	t.s.setNonce(owner, new(uint256.Int).AddUint64(nonce, 1))
 	t.s.setAllowance(owner, spender, value)
 	t.emit(b20TopicApproval, owner, spender, value)
