@@ -390,6 +390,9 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 	base := s.stringDataRoot(slot)
 	out := make([]byte, 0, length)
 	for i := uint64(0); i < length; i += 32 {
+		if s.ctx != nil && s.ctx.OutOfGas() {
+			return ""
+		}
 		chunkSlot := common.Hash(new(uint256.Int).AddUint64(base, i/32).Bytes32())
 		chunk := s.getWord(chunkSlot)
 		out = append(out, chunk[:]...)

@@ -227,6 +227,11 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 
 	// Privileged bootstrap: any initCall failure reverts the whole creation.
 	for i, call := range initCalls {
+		// Same shape as announce's bundle: each entry dispatches a full token
+		// call, so without this the whole array runs on an exhausted budget.
+		if ctx.OutOfGas() {
+			return nil, ErrOutOfGas
+		}
 		if len(call) < 4 {
 			return nil, revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, call)
 		}
