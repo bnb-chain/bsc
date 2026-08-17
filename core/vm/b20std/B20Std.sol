@@ -52,8 +52,7 @@ interface IB20 {
     error LastAdminCannotRenounce();
     error NotSoleAdmin();
     error PolicyForbids(bytes32 policyScope, uint64 policyId);
-    error PolicyNotFound();          // PolicyRegistry: the caller named the id
-    error PolicyNotFound(uint64 policyId); // token: which binding failed
+    error PolicyNotFound(uint64 policyId); // which of the token's bindings failed
     error UnsupportedPolicyType(bytes32 policyScope);
     error EmptyFeatureSet();
     error AccountNotSeizable(address account);
@@ -87,13 +86,13 @@ interface IB20 {
     function updateContractURI(string calldata newURI) external;
 
     // --- roles ---
-    function DEFAULT_ADMIN_ROLE() external pure returns (bytes32);
-    function MINT_ROLE() external pure returns (bytes32);
-    function BURN_ROLE() external pure returns (bytes32);
-    function SEIZE_ROLE() external pure returns (bytes32);
-    function PAUSE_ROLE() external pure returns (bytes32);
-    function UNPAUSE_ROLE() external pure returns (bytes32);
-    function METADATA_ROLE() external pure returns (bytes32);
+    function DEFAULT_ADMIN_ROLE() external view returns (bytes32);
+    function MINT_ROLE() external view returns (bytes32);
+    function BURN_ROLE() external view returns (bytes32);
+    function SEIZE_ROLE() external view returns (bytes32);
+    function PAUSE_ROLE() external view returns (bytes32);
+    function UNPAUSE_ROLE() external view returns (bytes32);
+    function METADATA_ROLE() external view returns (bytes32);
     function hasRole(bytes32 role, address account) external view returns (bool);
     function getRoleAdmin(bytes32 role) external view returns (bytes32);
     function grantRole(bytes32 role, address account) external;
@@ -103,12 +102,12 @@ interface IB20 {
     function renounceLastAdmin() external;
 
     // --- policy slots (six scopes; ids are keccak256 of the scope names) ---
-    function TRANSFER_SENDER_POLICY() external pure returns (bytes32);
-    function TRANSFER_RECEIVER_POLICY() external pure returns (bytes32);
-    function TRANSFER_EXECUTOR_POLICY() external pure returns (bytes32);
-    function MINT_RECEIVER_POLICY() external pure returns (bytes32);
-    function SEIZE_HOLDER_POLICY() external pure returns (bytes32);
-    function SEIZE_RECEIVER_POLICY() external pure returns (bytes32);
+    function TRANSFER_SENDER_POLICY() external view returns (bytes32);
+    function TRANSFER_RECEIVER_POLICY() external view returns (bytes32);
+    function TRANSFER_EXECUTOR_POLICY() external view returns (bytes32);
+    function MINT_RECEIVER_POLICY() external view returns (bytes32);
+    function SEIZE_HOLDER_POLICY() external view returns (bytes32);
+    function SEIZE_RECEIVER_POLICY() external view returns (bytes32);
     function policyId(bytes32 scope) external view returns (uint64);
     function updatePolicy(bytes32 scope, uint64 newPolicyId) external;
 
@@ -149,8 +148,8 @@ interface IB20Asset {
     error LengthMismatch(uint256 leftLen, uint256 rightLen);
     error EmptyBatch();
 
-    function OPERATOR_ROLE() external pure returns (bytes32);
-    function WAD_PRECISION() external pure returns (uint256);
+    function OPERATOR_ROLE() external view returns (bytes32);
+    function WAD_PRECISION() external view returns (uint256);
     function multiplier() external view returns (uint256);
     function updateMultiplier(uint256 newMultiplier) external;
     function toScaledBalance(uint256 rawBalance) external view returns (uint256);
@@ -177,10 +176,10 @@ interface IB20Asset {
     function totalSupplyUI() external view returns (uint256);
     function newUIMultiplier() external view returns (uint256);
     function effectiveAt() external view returns (uint256);
-    function MAX_UI_MULTIPLIER() external pure returns (uint256);
+    function MAX_UI_MULTIPLIER() external view returns (uint256);
     function updateUIMultiplier(uint256 newMultiplier, uint256 effectiveAtTimestamp) external; // OPERATOR_ROLE
     function cancelUIMultiplierUpdate() external;                                              // OPERATOR_ROLE
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool);
+    function supportsInterface(bytes4 interfaceId) external view returns (bool);
     function batchMint(address[] calldata recipients, uint256[] calldata amounts) external;
     function extraMetadata(string calldata key) external view returns (string memory);
     function updateExtraMetadata(string calldata key, string calldata value) external;
@@ -232,8 +231,8 @@ interface IB20Factory {
     function createB20(Variant variant, bytes32 salt, bytes calldata params, bytes[] calldata initCalls)
         external returns (address token);
     function getB20Address(Variant variant, address creator, bytes32 salt) external view returns (address);
-    function isB20(address account) external pure returns (bool);
-    function variantOf(address token) external pure returns (Variant);
+    function isB20(address account) external view returns (bool);
+    function variantOf(address token) external view returns (Variant);
     function isB20Initialized(address token) external view returns (bool);
 }
 
@@ -251,6 +250,9 @@ interface IPolicyRegistry {
 
     error Unauthorized();
     error ZeroAddress();
+    /// @dev The registry answers about an id the caller named, so it does not
+    /// repeat it; the token's form carries which binding failed.
+    error PolicyNotFound();
     error IncompatiblePolicyType();
     error BatchSizeTooLarge(uint256 maxBatchSize);
     error NoPendingAdmin();
@@ -331,7 +333,7 @@ library B20Constants {
     uint256 internal constant MAX_SUPPLY_CAP = type(uint128).max;
     uint256 internal constant MAX_MULTIPLIER = type(uint128).max;
 
-    address internal constant B20_FACTORY = 0x20Bf000000000000000000000000000000000000;
+    address internal constant B20_FACTORY = 0x20bF000000000000000000000000000000000000;
     address internal constant ACTIVATION_REGISTRY = 0x7020000000000000000000000000000000000001;
     address internal constant POLICY_REGISTRY = 0x7020000000000000000000000000000000000002;
 }

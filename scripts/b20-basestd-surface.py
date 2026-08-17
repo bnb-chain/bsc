@@ -20,7 +20,8 @@ below — re-check it when bumping the pin.
 Usage:
     python3 scripts/b20-basestd-surface.py [--commit SHA] [--out PATH]
 
-Needs only network access to raw.githubusercontent.com. No credentials, no packages.
+Needs only network access to raw.githubusercontent.com — or --local DIR pointing at
+a checkout, when that host rate-limits. No credentials, no packages.
 """
 
 import argparse
@@ -97,7 +98,19 @@ ENUMS = {
 }
 
 
-def fetch(commit, path):
+def fetch(commit, path, local=None):
+    # raw.githubusercontent rate-limits, so --local takes a checkout (or a
+    # directory of the interface files) already on disk. The commit still goes in
+    # the fixture, so a local run has to name what it read.
+    if local:
+        name = path.rsplit("/", 1)[-1]
+        for candidate in (f"{local}/{path}", f"{local}/{name}"):
+            try:
+                with open(candidate) as f:
+                    return f.read()
+            except FileNotFoundError:
+                continue
+        sys.exit(f"--local {local} holds neither {path} nor {name}")
     url = f"https://raw.githubusercontent.com/{REPO}/{commit}/{path}"
     with urllib.request.urlopen(url, timeout=30) as r:
         return r.read().decode()
@@ -136,26 +149,53 @@ def extract(src):
     return found
 
 
+def mutability(src):
+    """Return {function signature: view|pure|payable|nonpayable}.
+
+    Not part of a selector, so the signature diff cannot see it, and a caller's
+    own `pure` function may only call a `pure` one — so a mirror that says `pure`
+    where the reference says `view` compiles code that base-std rejects.
+    """
+    out = {}
+    pattern = (
+        r"function\s+(\w+)\s*\(([^;{]*?)\)\s*"
+        r"(?:external|public|internal|private)?\s*(view|pure|payable)?"
+    )
+    for m in re.finditer(pattern, src, flags=re.S):
+        sig = f"{m.group(1)}({','.join(arg_types(m.group(2)))})"
+        out[sig] = m.group(3) or "nonpayable"
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", default=DEFAULT_COMMIT)
     ap.add_argument("--out", default="core/vm/testdata/basestd_surface.json")
+    ap.add_argument("--local", help="read the interfaces from this directory "
+                    "instead of raw.githubusercontent (which rate-limits); "
+                    "--commit must still name the revision it holds")
     args = ap.parse_args()
 
     merged = {"function": set(), "event": set(), "error": set()}
+    muts = {}
     for path in INTERFACES:
-        for kind, sigs in extract(strip_comments(fetch(args.commit, path))).items():
+        src = strip_comments(fetch(args.commit, path, args.local))
+        for kind, sigs in extract(src).items():
             merged[kind] |= sigs
+        muts.update(mutability(src))
 
     unknown = COBALT - (merged["function"] | merged["event"] | merged["error"])
     if unknown:
         sys.exit(f"COBALT names signatures absent from the interfaces: {sorted(unknown)}")
 
     def entries(kind):
-        return [
-            {"sig": sig, "fork": "cobalt" if sig in COBALT else "beryl"}
-            for sig in sorted(merged[kind])
-        ]
+        out = []
+        for sig in sorted(merged[kind]):
+            e = {"sig": sig, "fork": "cobalt" if sig in COBALT else "beryl"}
+            if kind == "function":
+                e["mut"] = muts[sig]
+            out.append(e)
+        return out
 
     doc = {
         "_comment": (

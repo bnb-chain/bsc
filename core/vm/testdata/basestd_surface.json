@@ -5,415 +5,518 @@
   "functions": [
     {
       "sig": "BURN_BLOCKED_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "BURN_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "DEFAULT_ADMIN_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "DOMAIN_SEPARATOR()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "MAX_COMPOSITE_CHILD_POLICIES()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "MAX_UI_MULTIPLIER()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "METADATA_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "MINT_RECEIVER_POLICY()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "MINT_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "MIN_COMPOSITE_CHILD_POLICIES()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "OPERATOR_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "PAUSE_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "SEIZE_HOLDER_POLICY()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "SEIZE_RECEIVER_POLICY()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "SEIZE_ROLE()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "TRANSFER_EXECUTOR_POLICY()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "TRANSFER_RECEIVER_POLICY()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "TRANSFER_SENDER_POLICY()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "UNPAUSE_ROLE()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "WAD_PRECISION()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "activate(bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "admin()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "allowance(address,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "announce(bytes[],string,string,string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "approve(address,uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "balanceOf(address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "balanceOfUI(address)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "batchMint(address[],uint256[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "burn(uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "burnBlocked(address,uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "burnWithMemo(uint256,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "cancelUIMultiplierUpdate()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "nonpayable"
     },
     {
       "sig": "checkActivated(bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "compositePolicyChildIds(uint64)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "contractURI()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "createB20(uint8,bytes32,bytes,bytes[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "payable"
     },
     {
       "sig": "createCompositePolicy(address,uint8,uint64[])",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "nonpayable"
     },
     {
       "sig": "createPolicy(address,uint8)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "createPolicyWithAccounts(address,uint8,address[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "currency()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "deactivate(bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "decimals()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "effectiveAt()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "eip712Domain()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "extraMetadata(string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "finalizeUpdateAdmin(uint64)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "fromUIAmount(uint256)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "getB20Address(uint8,address,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "getRoleAdmin(bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "grantRole(bytes32,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "hasRole(bytes32,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "isActivated(bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "isAnnouncementIdUsed(string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "isAuthorized(uint64,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "isB20(address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "isB20Initialized(address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "isPaused(uint8)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "mint(address,uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "mintWithMemo(address,uint256,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "multiplier()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "name()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "newUIMultiplier()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "nonces(address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "pause(uint8[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "pausedFeatures()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "pendingPolicyAdmin(uint64)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "permit(address,address,uint256,uint256,uint8,bytes32,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "policyAdmin(uint64)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "policyExists(uint64)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "policyId(bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "renounceAdmin(uint64)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "renounceLastAdmin()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "renounceRole(bytes32,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "revokeRole(bytes32,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "scaledBalanceOf(address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "seizeWithMemo(address,address,uint256,bytes32)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "nonpayable"
     },
     {
       "sig": "setRoleAdmin(bytes32,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "stageUpdateAdmin(uint64,address)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "supplyCap()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "supportsInterface(bytes4)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "symbol()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "toRawBalance(uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "toScaledBalance(uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "toUIAmount(uint256)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "totalSupply()",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "view"
     },
     {
       "sig": "totalSupplyUI()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "transfer(address,uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "transferFrom(address,address,uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "transferFromWithMemo(address,address,uint256,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "transferWithMemo(address,uint256,bytes32)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "uiMultiplier()",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "view"
     },
     {
       "sig": "unpause(uint8[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateAllowlist(uint64,bool,address[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateBlocklist(uint64,bool,address[])",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateComposite(uint64,uint64[])",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateContractURI(string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateExtraMetadata(string,string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateMultiplier(uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateName(string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updatePolicy(bytes32,uint64)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateSupplyCap(uint256)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateSymbol(string)",
-      "fork": "beryl"
+      "fork": "beryl",
+      "mut": "nonpayable"
     },
     {
       "sig": "updateUIMultiplier(uint256,uint256)",
-      "fork": "cobalt"
+      "fork": "cobalt",
+      "mut": "nonpayable"
     }
   ],
   "events": [
