@@ -521,8 +521,14 @@ func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, me
 	if err := t.ensureRole(roleSeize); err != nil {
 		return err
 	}
-	if to == (common.Address{}) {
+	// A seizure is a reassignment, so it needs a real source and a different
+	// destination: self-seizing would emit Seized over a no-op, and a zero source
+	// would report InsufficientBalance for what is really a malformed argument.
+	if to == (common.Address{}) || from == to {
 		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
+	}
+	if from == (common.Address{}) {
+		return revB20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
 	// Both seize ids share a slot, so they are read together.
 	seizeHolder, seizeReceiver := t.s.seizePolicies()
@@ -580,6 +586,27 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
 	}
+	// The scope is validated before the id, matching base-std: an unrecognized
+	// scope is reported as such whatever id accompanies it. Resolving it to its
+	// accessors first is what puts that check ahead of the registry lookup.
+	var read func() uint64
+	var write func(uint64)
+	switch scope {
+	case scopeTransferSender:
+		read, write = t.s.transferSenderPolicy, t.s.setTransferSenderPolicy
+	case scopeTransferReceiver:
+		read, write = t.s.transferReceiverPolicy, t.s.setTransferReceiverPolicy
+	case scopeTransferExecutor:
+		read, write = t.s.transferExecutorPolicy, t.s.setTransferExecutorPolicy
+	case scopeMintReceiver:
+		read, write = t.s.mintReceiverPolicy, t.s.setMintReceiverPolicy
+	case scopeSeizeHolder:
+		read, write = t.s.seizeHolderPolicy, t.s.setSeizeHolderPolicy
+	case scopeSeizeReceiver:
+		read, write = t.s.seizeReceiverPolicy, t.s.setSeizeReceiverPolicy
+	default:
+		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
+	}
 	// policyExists answers for the sentinels itself, so binding one needs no
 	// special case here (BEP-702 3.8).
 	if !newPolicyReg(t.ctx).policyExists(id) {
@@ -588,29 +615,8 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	// The event carries the id being replaced, so the previous binding is read
 	// before the write — an SLOAD a Solidity implementation emitting the same
 	// event would also pay.
-	var previous uint64
-	switch scope {
-	case scopeTransferSender:
-		previous = t.s.transferSenderPolicy()
-		t.s.setTransferSenderPolicy(id)
-	case scopeTransferReceiver:
-		previous = t.s.transferReceiverPolicy()
-		t.s.setTransferReceiverPolicy(id)
-	case scopeTransferExecutor:
-		previous = t.s.transferExecutorPolicy()
-		t.s.setTransferExecutorPolicy(id)
-	case scopeMintReceiver:
-		previous = t.s.mintReceiverPolicy()
-		t.s.setMintReceiverPolicy(id)
-	case scopeSeizeHolder:
-		previous = t.s.seizeHolderPolicy()
-		t.s.setSeizeHolderPolicy(id)
-	case scopeSeizeReceiver:
-		previous = t.s.seizeReceiverPolicy()
-		t.s.setSeizeReceiverPolicy(id)
-	default:
-		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
-	}
+	previous := read()
+	write(id)
 	t.ctx.AddLog([]common.Hash{b20TopicPolicyUpdated, scope},
 		append(wU64(previous).Bytes(), wU64(id).Bytes()...))
 	return nil
