@@ -285,14 +285,28 @@ func (p policyReg) setChildren(id uint64, kids []uint64) {
 	slot := p.childrenSlot(id)
 	p.s.setWord(slot, common.Hash(uint256.NewInt(uint64(len(kids))).Bytes32()))
 	base := p.s.stringDataRoot(slot)
-	words := (len(kids) + 3) / 4
-	for w := 0; w < words; w++ {
+	// Each word is built from scratch and written whole, so lanes past the new
+	// length are zeroed rather than left behind. The loop then runs to the word
+	// count the *maximum* set would need, not the new one, which clears any tail a
+	// shrink orphaned — Solidity's array assignment does the same, and without it
+	// the state root would diverge from a reference contract even though every read
+	// agreed. Today the cap of four is exactly one word so the tail is empty; this
+	// is what keeps that from being load-bearing.
+	maxWords := (b20CompositeMaxChildren + 3) / 4
+	for w := 0; w < maxWords; w++ {
 		packed := new(uint256.Int)
 		for lane := 0; lane < 4 && w*4+lane < len(kids); lane++ {
 			packed.Or(packed, new(uint256.Int).Lsh(uint256.NewInt(kids[w*4+lane]), uint(lane)*64))
 		}
-		p.s.setWord(common.Hash(new(uint256.Int).AddUint64(base, uint64(w)).Bytes32()),
-			common.Hash(packed.Bytes32()))
+		slotW := common.Hash(new(uint256.Int).AddUint64(base, uint64(w)).Bytes32())
+		if packed.IsZero() && w*4 >= len(kids) {
+			// Nothing to store here; only write if something is already there, so a
+			// fresh composite does not pay for clearing empty slots.
+			if p.s.getWord(slotW) == (common.Hash{}) {
+				continue
+			}
+		}
+		p.s.setWord(slotW, common.Hash(packed.Bytes32()))
 	}
 }
 

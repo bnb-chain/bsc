@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 )
 
@@ -187,5 +188,60 @@ func TestB20CompositeRevertOrder(t *testing.T) {
 	if _, err := call(admin, encodeU64Array(selUpdateComposite,
 		[]common.Hash{wU64(nested)}, childB, childA)); err != nil {
 		t.Fatalf("the admin replacing the child set: %v", err)
+	}
+}
+
+// TestB20CompositeChildStorageLayout pins the child array's encoding, which is
+// the port's correctness argument: a Solidity reference contract must produce the
+// same slots byte for byte, so the state roots agree and not merely the reads.
+//
+// Solidity stores a uint64[] in a mapping as a length word at the mapping slot
+// with the elements packed four per 32-byte word, LSB-first, from keccak256(slot).
+// The shrink case is the one that can diverge while reads still agree: an
+// implementation that only rewrote the words the new length needs would leave the
+// old lanes behind, and the root would differ from the reference even though
+// compositePolicyChildIds returned the right answer.
+func TestB20CompositeChildStorageLayout(t *testing.T) {
+	statedb, _ := newB20EVM(t)
+	reg := policyReg{s: b20Storage{state: statedb, token: B20PolicyRegistryAddress}}
+	const id = uint64(7)
+
+	slot := reg.childrenSlot(id)
+	// The data region hangs off the mapping slot by one keccak, as Solidity does.
+	if got, want := reg.s.stringDataRoot(slot), new(uint256.Int).SetBytes(
+		crypto.Keccak256(slot.Bytes())); got.Cmp(want) != 0 {
+		t.Errorf("data root = %s, want keccak256(slot) = %s", got, want)
+	}
+	word := func(i uint64) common.Hash {
+		return statedb.GetState(B20PolicyRegistryAddress,
+			common.Hash(new(uint256.Int).AddUint64(reg.s.stringDataRoot(slot), i).Bytes32()))
+	}
+
+	reg.setChildren(id, []uint64{0x11, 0x22, 0x33, 0x44})
+	if got := new(uint256.Int).SetBytes(statedb.GetState(B20PolicyRegistryAddress, slot).Bytes()).Uint64(); got != 4 {
+		t.Errorf("length word = %d, want 4", got)
+	}
+	// Four lanes LSB-first: the first element occupies the low bytes.
+	wantPacked := "0x0000000000000044000000000000003300000000000000220000000000000011"
+	if got := word(0).Hex(); got != wantPacked {
+		t.Errorf("packed word = %s, want %s (four uint64 lanes, LSB-first)", got, wantPacked)
+	}
+
+	// Shrinking must zero the lanes it abandons, not merely shorten the length.
+	reg.setChildren(id, []uint64{0xaa, 0xbb})
+	wantShrunk := "0x0000000000000000000000000000000000000000000000bb00000000000000aa"
+	if got := word(0).Hex(); got != wantShrunk {
+		t.Errorf("after shrinking to 2, word = %s, want %s — the abandoned lanes are "+
+			"still set, so the state root diverges from a reference contract", got, wantShrunk)
+	}
+	if got := reg.children(id); len(got) != 2 || got[0] != 0xaa || got[1] != 0xbb {
+		t.Errorf("children = %v, want [aa bb]", got)
+	}
+
+	// And the cap keeps the array inside one word today, which is why the tail
+	// clearing above has nothing to do. If the cap rises, it starts mattering.
+	if words := (b20CompositeMaxChildren + 3) / 4; words != 1 {
+		t.Errorf("a maximal child set spans %d words; the shrink path now has a real "+
+			"tail to clear and needs a test that exercises more than one word", words)
 	}
 }
