@@ -354,6 +354,7 @@ func (t b20Token) renounceLastAdmin() error {
 	}
 	t.s.setRole(roleDefaultAdmin, t.ctx.Caller, false)
 	t.s.setAdminCount(new(uint256.Int))
+	t.ctx.adminRenounced = true
 	t.ctx.AddLog([]common.Hash{b20TopicRoleRevoked, roleDefaultAdmin, addrKey(t.ctx.Caller), addrKey(t.ctx.Caller)}, nil)
 	// The dedicated event marks the transition an indexer cannot infer from
 	// RoleRevoked alone: the token is now permanently ungovernable.
@@ -397,7 +398,10 @@ func (t b20Token) ensureRoleMutable(role common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.privileged && t.s.adminCount().IsZero() {
+	// The zero-admin freeze yields to the bootstrap window so an ownerless token
+	// can be configured, but not once this frame has renounced: that transition is
+	// advertised as permanent, and the window is not a way back (BEP-702 3.4).
+	if (!t.privileged || t.ctx.adminRenounced) && t.s.adminCount().IsZero() {
 		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), t.s.roleAdmin(role))
 	}

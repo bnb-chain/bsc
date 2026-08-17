@@ -80,6 +80,19 @@ type PrecompileContext struct {
 	// data-dependent cost in place.
 	gas *GasBudget
 
+	// adminRenounced records that a token gave up its last admin during this
+	// frame. adminCount reaching zero freezes role mutation, but the factory's
+	// privileged bootstrap skips that freeze — so without this marker a bundle
+	// could renounce and then grant again, undoing a transition the token has
+	// already advertised as permanent (BEP-702 3.4). An ownerless token also
+	// starts at zero admins and must still accept grants, which is why the freeze
+	// cannot simply stop being skippable.
+	//
+	// Per-frame rather than stored: outside the bootstrap window the zero count
+	// freezes on its own, so the marker only has to outlive the initCalls loop,
+	// which shares this context.
+	adminRenounced bool
+
 	// frame holds the accounting that belongs to the EVM frame rather than to
 	// this context. A spawned context is the same frame with a different Self —
 	// it shares the gas budget — so exhaustion and the state-gas tally have to be

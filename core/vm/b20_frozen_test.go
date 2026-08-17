@@ -76,3 +76,74 @@ func TestB20RequiredGasIsZero(t *testing.T) {
 		}
 	}
 }
+
+// TestB20BootstrapIsNotAWayBack covers the resurrection the privileged bootstrap
+// allowed. Renouncing the last admin advertises a permanent transition —
+// LastAdminRenounced is emitted for exactly that — but the window skips the
+// zero-admin freeze so a later call in the same bundle could grant the role
+// again. adminCount went 1 -> 0 -> 1 and a new admin held it.
+//
+// base-std keys the freeze on having been "transitioned to admin-less via
+// renounceLastAdmin" (IB20.grantRole's natspec), not on the count alone, which is
+// what distinguishes this from an ownerless token: that one also starts at zero
+// admins and must still accept role grants inside the window. Both directions are
+// checked here, because a fix that simply stopped skipping the freeze would break
+// the second.
+func TestB20BootstrapIsNotAWayBack(t *testing.T) {
+	creator := common.HexToAddress("0xc4ea70")
+	newToken := func(t *testing.T, admin common.Address, calls [][]byte) (*EVM, common.Address, error) {
+		t.Helper()
+		_, evm := newB20EVM(t)
+		params := b20AssetParams("T", "T", admin, 18)
+		ret, _, err := evm.Call(creator, B20FactoryAddress,
+			encodeCreateB20WithParams(b20VariantAsset, common.HexToHash("0x8007"), params, calls),
+			NewGasBudget(9_000_000), uint256.NewInt(0))
+		return evm, common.BytesToAddress(ret), err
+	}
+
+	// Renouncing and re-granting inside one bundle must fail, and take the whole
+	// creation with it.
+	_, token, err := newToken(t, creator, [][]byte{
+		b20Call(selRenounceLastAdmin),
+		b20Call(selGrantRole, roleDefaultAdmin, addrKey(b20Bob)),
+	})
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("renounce-then-grant inside the bootstrap: %v, want a revert", err)
+	}
+	if code := len(token.Bytes()); code == 0 {
+		t.Fatal("no address returned")
+	}
+
+	// An ownerless token still configures its roles in the window: the freeze
+	// yields to privilege until a renunciation happens, not always.
+	evm, token, err := newToken(t, common.Address{}, [][]byte{
+		b20Call(selGrantRole, roleMint, addrKey(b20Bob)),
+	})
+	if err != nil {
+		t.Fatalf("ownerless token granting MINT_ROLE in the window: %v", err)
+	}
+	view := newB20Storage(evm.StateDB, token)
+	if !view.hasRole(roleMint, b20Bob) {
+		t.Error("the ownerless token's bootstrap grant did not take effect")
+	}
+	if !view.adminCount().IsZero() {
+		t.Errorf("ownerless adminCount = %s, want 0", view.adminCount())
+	}
+
+	// And renouncing as the last act of a bundle is still allowed — it is only
+	// the grant *after* it that is refused.
+	evm, token, err = newToken(t, creator, [][]byte{
+		b20Call(selGrantRole, roleMint, addrKey(b20Bob)),
+		b20Call(selRenounceLastAdmin),
+	})
+	if err != nil {
+		t.Fatalf("configure-then-renounce inside the bootstrap: %v", err)
+	}
+	view = newB20Storage(evm.StateDB, token)
+	if !view.adminCount().IsZero() || view.hasRole(roleDefaultAdmin, creator) {
+		t.Error("the renunciation did not take effect")
+	}
+	if !view.hasRole(roleMint, b20Bob) {
+		t.Error("the grant before the renunciation was lost")
+	}
+}
