@@ -2,6 +2,7 @@ package vm
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -13,9 +14,10 @@ import (
 // expectations must be literals: deriving them with erc7201Root passes whatever
 // the namespace says.
 //
-// There is no published counterpart to check against — base-std uses its own
-// "base."-prefixed namespaces — so these are regression anchors, changeable only
-// by editing this list.
+// The roots have no published counterpart — base-std uses its own
+// "base."-prefixed namespaces, so no root can match — and are regression anchors
+// here, changeable only by editing this list. What does have a counterpart is
+// the naming, checked in TestB20NamespacesMirrorBaseStd.
 func TestB20NamespaceRoots(t *testing.T) {
 	for _, tc := range []struct {
 		namespace string
@@ -36,7 +38,8 @@ func TestB20NamespaceRoots(t *testing.T) {
 	// The namespace strings themselves, so a rename has to be deliberate. The
 	// two conventions here are worth noticing: storage namespaces separate the
 	// variant with a dot, while the activation feature ids use an underscore
-	// ("bsc.b20_asset"). Both are load-bearing and neither is interchangeable.
+	// ("bsc.b20_asset"). Both are load-bearing and neither is interchangeable —
+	// and both follow base-std, which draws the same distinction.
 	for _, tc := range []struct{ got, want string }{
 		{b20Namespace, "bsc.b20"},
 		{b20AssetNamespace, "bsc.b20.asset"},
@@ -46,6 +49,42 @@ func TestB20NamespaceRoots(t *testing.T) {
 	} {
 		if tc.got != tc.want {
 			t.Errorf("namespace = %q, want %q", tc.got, tc.want)
+		}
+	}
+}
+
+// TestB20NamespacesMirrorBaseStd checks the two things about the namespaces that
+// a counterpart exists for.
+//
+// The roots cannot match: a namespace string carries the chain's own prefix, so
+// "bsc.b20" and "base.b20" hash apart by construction. What can match is the
+// naming — one namespace per variant rather than the extensions sharing the core
+// root at higher offsets — and it does, name for name with only the prefix
+// swapped. base-std's storage mocks declare each one in an
+// @custom:storage-location tag and publish its location as a constant
+// (test/lib/mocks/MockB20Storage.sol, MockActivationRegistryStorage.sol,
+// MockPolicyRegistryStorage.sol).
+//
+// Those five constants also serve as production vectors for erc7201Root: the
+// formula test checks it against the one vector ERC-7201 publishes, which a
+// misreading of the standard would satisfy alongside a wrong implementation.
+// These come from a shipped chain that reads its own storage through them.
+func TestB20NamespacesMirrorBaseStd(t *testing.T) {
+	for _, tc := range []struct {
+		ours, theirs, location string
+	}{
+		{b20Namespace, "base.b20", "0xc78b71fee795ddd74aff64ea9b2474194c938c3196430e10bb5f01ed48434000"},
+		{b20AssetNamespace, "base.b20.asset", "0xfdc6d4552d1286ade4d9facdbf0fb50d2ec9b89a90e104f26fd277585e374b00"},
+		{b20StablecoinNamespace, "base.b20.stablecoin", "0x35827975a06ca0e9367ea3129b19441d45d0ca58e30b7693f09e73d0943d6200"},
+		{b20ActivationNamespace, "base.activation_registry", "0x43ee1bbe25e988521cccd8b2c8fbd38c8287ebff8e074e825a70dfd3885cce00"},
+		{b20PolicyNamespace, "base.policy_registry", "0x00503aeb06982fa1fe3151dc68f90b3946c55c449dfd447e49dcaece71ba4a00"},
+	} {
+		if got := strings.Replace(tc.ours, "bsc.", "base.", 1); got != tc.theirs {
+			t.Errorf("%q renames to %q, but base-std calls it %q", tc.ours, got, tc.theirs)
+		}
+		if got := erc7201Root(tc.theirs).Hex(); got != tc.location {
+			t.Errorf("erc7201Root(%q) = %s, want %s (base-std's published location)",
+				tc.theirs, got, tc.location)
 		}
 	}
 }

@@ -22,6 +22,10 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// The Asset variant keeps its state in its own ERC-7201 namespace, disjoint
+// from the core one, so the extension composes without touching the shared
+// layout. Structure and offsets mirror base-std's MockB20AssetStorage
+// ("base.b20.asset"); only the chain prefix differs.
 const b20AssetNamespace = "bsc.b20.asset"
 
 const (
@@ -29,6 +33,8 @@ const (
 	b20AssetSlotMultiplier    = 1
 	b20AssetSlotAnnouncements = 2 // mapping(bytes32 id => bool used)
 	b20AssetSlotExtraMeta     = 3 // mapping(string key => string value)
+	// Slot 4 is reserved for the scheduled multiplier (ERC-8056), which
+	// base-std adds in a later logic version. Nothing may reuse it.
 )
 
 var (
