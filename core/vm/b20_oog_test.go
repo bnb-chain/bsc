@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -126,5 +127,74 @@ func TestB20BootstrapStopsOnExhaustion(t *testing.T) {
 	if starved*3 > funded {
 		t.Errorf("a starved bootstrap took %v against %v for one that could pay — the "+
 			"initCalls loop is still running past exhaustion", starved, funded)
+	}
+}
+
+// TestB20OldTailReleaseStopsOnExhaustion covers the one loop whose bound comes
+// from state rather than from the call's own calldata: replacing a long stored
+// string with a short one releases the old tail, and the old length is whatever a
+// previous caller paid to store.
+//
+// That makes it the only case here with sustained amplification. The others cost
+// the attacker more as they grow — a bigger payload costs quadratically more to
+// deliver than the work it buys. This one is paid for once and re-bought at
+// out-of-gas prices indefinitely, because an exhausted frame reverts and leaves
+// the long string in place for the next attempt.
+func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0xta11"), creator,
+			[][]byte{b20Call(selGrantRole, roleMetadata, addrKey(creator))}),
+		NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// A name long enough that clearing its tail is measurable, stored and paid for.
+	long := strings.Repeat("N", 40_000)
+	if _, _, err := evm.Call(creator, token, encodeStringCall(selUpdateName, long),
+		NewGasBudget(500_000_000), uint256.NewInt(0)); err != nil {
+		t.Fatalf("storing the long name: %v", err)
+	}
+	chunks := newB20Storage(statedb, token).stringChunks(slotAt(b20SlotName))
+	if chunks < 1000 {
+		t.Fatalf("the long name occupies %d chunks, too few for this to measure", chunks)
+	}
+
+	short := encodeStringCall(selUpdateName, "x")
+	best := func(budget uint64, wantErr bool) time.Duration {
+		t.Helper()
+		out := time.Hour
+		for rep := 0; rep < 5; rep++ {
+			sdb := statedb.Copy()
+			e := NewEVM(b20BlockContext(1), sdb, b20TestChainConfig(), Config{})
+			start := time.Now()
+			_, _, err := e.Call(creator, token, short, NewGasBudget(budget), uint256.NewInt(0))
+			if d := time.Since(start); d < out {
+				out = d
+			}
+			if wantErr && err == nil {
+				t.Fatalf("a starved updateName should not succeed")
+			}
+			if !wantErr && err != nil {
+				t.Fatalf("a funded updateName should succeed: %v", err)
+			}
+			// The long name surviving a failed attempt is what makes the work
+			// re-buyable, so assert it rather than assuming it.
+			if wantErr {
+				if got := newB20Storage(sdb, token).stringChunks(slotAt(b20SlotName)); got != chunks {
+					t.Fatalf("after a reverted attempt the name occupies %d chunks, want %d", got, chunks)
+				}
+			}
+		}
+		return out
+	}
+
+	starved, funded := best(30_000, true), best(200_000_000, false)
+	if starved*3 > funded {
+		t.Errorf("a starved release took %v against %v for one that could pay — the "+
+			"old-tail loop is still running past exhaustion", starved, funded)
 	}
 }

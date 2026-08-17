@@ -436,7 +436,17 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 		copy(chunk[:], b[i*32:])
 		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), chunk)
 	}
+	// The release loop needs its own guard, and for a different reason than the
+	// write loop above: oldChunks comes from state, not from this call's calldata.
+	// Replacing a long stored string with a short one does work proportional to the
+	// *old* length, which the current caller never paid for — and since an
+	// exhausted frame reverts, the long string survives for the next attempt. A
+	// 60,000-byte name costs 41.9M gas to store once, after which updateName("x")
+	// on 30,000 gas cleared 1875 slots in 126us and could do so again forever.
 	for i := newChunks; i < oldChunks; i++ {
+		if s.ctx != nil && s.ctx.OutOfGas() {
+			return
+		}
 		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), common.Hash{})
 	}
 }
