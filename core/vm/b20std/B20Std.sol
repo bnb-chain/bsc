@@ -239,7 +239,7 @@ interface IB20Factory {
 
 /// @notice Singleton shared policy registry (BEP-702 §3.8).
 interface IPolicyRegistry {
-    enum PolicyType { BLOCKLIST, ALLOWLIST }
+    enum PolicyType { BLOCKLIST, ALLOWLIST, UNION, INTERSECT }
 
     event PolicyCreated(uint64 indexed policyId, address indexed creator, PolicyType policyType);
     event PolicyAdminStaged(uint64 indexed policyId, address indexed currentAdmin, address indexed pendingAdmin);
@@ -266,8 +266,7 @@ interface IPolicyRegistry {
     function isAuthorized(uint64 policyId, address account) external view returns (bool);
 
     // --- Composite policies (Cobalt) ---
-    // PolicyType widens to { BLOCKLIST, ALLOWLIST, UNION, INTERSECT }; a composite
-    // holds 2-4 simple children and is evaluated over them on every read.
+    // A composite holds 2-4 simple children and is evaluated over them on every read.
     event CompositePolicyUpdated(uint64 indexed policyId, address indexed updater, uint64[] childPolicyIds);
 
     error InvalidChildPolicy(uint64 childPolicyId);

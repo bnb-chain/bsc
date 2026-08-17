@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -384,5 +386,72 @@ func TestB20ConstantsMatchBaseStd(t *testing.T) {
 	// from BEP-702 3.8, so this pins the spec rather than the reference.
 	if b20PolicyBatchMax != 64 {
 		t.Errorf("membership batch limit = %d, want 64 (BEP-702 3.8)", b20PolicyBatchMax)
+	}
+}
+
+// TestB20SolEnumsMatchGo pins each enum declared in b20std/B20Std.sol to the Go
+// ordinals, member by member.
+//
+// No signature diff can do this: an enum parameter is uint8 on the wire, so
+// createCompositePolicy(address,uint8,uint64[]) matched base-std exactly while
+// PolicyType in the same file still read { BLOCKLIST, ALLOWLIST }. An integrator
+// importing the interface had no PolicyType.UNION to name, and the cast around it
+// — PolicyType(2) — panics on conversion, so the composite constructor was
+// undialable from the published mirror.
+func TestB20SolEnumsMatchGo(t *testing.T) {
+	src, err := os.ReadFile("b20std/B20Std.sol")
+	if err != nil {
+		t.Fatalf("read the interface mirror: %v", err)
+	}
+	found := map[string][]string{}
+	for _, m := range regexp.MustCompile(`enum (\w+) \{([^}]*)\}`).FindAllStringSubmatch(string(src), -1) {
+		var members []string
+		for _, name := range strings.Split(m[2], ",") {
+			members = append(members, strings.TrimSpace(name))
+		}
+		found[m[1]] = members
+	}
+
+	// Ordinals from the Go side, so a member reordered on either side fails.
+	want := map[string][]struct {
+		name    string
+		ordinal uint
+	}{
+		"PausableFeature": {
+			{"TRANSFER", b20PauseTransfer}, {"MINT", b20PauseMint},
+			{"BURN", b20PauseBurn}, {"SEIZE", b20PauseSeize},
+		},
+		"Variant": {
+			{"ASSET", b20VariantAsset}, {"STABLECOIN", b20VariantStablecoin},
+		},
+		"PolicyType": {
+			{"BLOCKLIST", b20PolicyBlocklist}, {"ALLOWLIST", b20PolicyAllowlist},
+			{"UNION", b20PolicyUnion}, {"INTERSECT", b20PolicyIntersect},
+		},
+	}
+	if len(found) != len(want) {
+		t.Errorf("the mirror declares %d enum(s), Go pins %d — add the new one here",
+			len(found), len(want))
+	}
+	for name, members := range want {
+		got := found[name]
+		if got == nil {
+			t.Errorf("enum %s is not declared in the mirror", name)
+			continue
+		}
+		if len(got) != len(members) {
+			t.Errorf("enum %s has %d member(s) in the mirror, Go accepts %d: %v",
+				name, len(got), len(members), got)
+			continue
+		}
+		for i, m := range members {
+			if got[i] != m.name {
+				t.Errorf("enum %s member %d is %s in the mirror, want %s", name, i, got[i], m.name)
+			}
+			if uint(i) != m.ordinal {
+				t.Errorf("enum %s member %s is ordinal %d in the mirror, %d in Go",
+					name, m.name, i, m.ordinal)
+			}
+		}
 	}
 }
