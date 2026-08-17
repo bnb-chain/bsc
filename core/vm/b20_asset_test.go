@@ -19,8 +19,10 @@ package vm
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -340,5 +342,132 @@ func TestB20ExtraMetadata(t *testing.T) {
 	// non-METADATA caller reverts.
 	if _, err := call(b20Alice, token, encodeStringCall(selUpdateExtraMetadata, "k", "v")); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unauthorized err = %v, want revert", err)
+	}
+}
+
+// TestB20AnnounceEncoderIsCanonical checks the hand-rolled encoder above against
+// go-ethereum's ABI packer.
+//
+// encodeAnnounceWith feeds the decoder under test (readBytesArray, readStringArg).
+// A mistake shared by both — a head offset counted from the wrong base, a tail
+// padded the wrong way — leaves every announce test passing while the precompile
+// disagrees with every real ABI encoder in existence. Nothing else in the suite
+// distinguishes those two worlds.
+//
+// The cases exercise the shapes where the two encoders could part company: an
+// all-empty call, a bytes[] element that is an exact multiple of 32 (so its tail
+// needs no padding), an empty element inside a non-empty array, and a long id
+// that pushes the later tails past one word.
+func TestB20AnnounceEncoderIsCanonical(t *testing.T) {
+	mustType := func(s string) abi.Type {
+		t.Helper()
+		ty, err := abi.NewType(s, "", nil)
+		if err != nil {
+			t.Fatalf("NewType(%s): %v", s, err)
+		}
+		return ty
+	}
+	args := abi.Arguments{
+		{Type: mustType("bytes[]")},
+		{Type: mustType("string")},
+		{Type: mustType("string")},
+		{Type: mustType("string")},
+	}
+
+	for _, tc := range []struct {
+		name          string
+		calls         [][]byte
+		id, desc, uri string
+	}{
+		{name: "all empty"},
+		{name: "no calls", id: "2026-Q1-NAV", desc: "d", uri: "u"},
+		{name: "one call", calls: [][]byte{{1, 2, 3, 4}}, id: "id", desc: "desc", uri: "uri"},
+		{
+			name:  "element of exactly one word",
+			calls: [][]byte{bytes.Repeat([]byte{9}, 32)},
+			id:    "id", desc: "d", uri: "u",
+		},
+		{
+			name:  "empty element among non-empty",
+			calls: [][]byte{{}, {1, 2, 3, 4}, {}},
+			id:    "id", desc: "d", uri: "u",
+		},
+		{
+			name:  "multi-word id and description",
+			calls: [][]byte{{1, 2, 3, 4}, bytes.Repeat([]byte{9}, 40)},
+			id:    strings.Repeat("L", 70), desc: strings.Repeat("d", 33), uri: "u",
+		},
+		// Either side of the word boundary, where a string's tail either fits
+		// exactly or spills into a second word and moves every later offset.
+		{name: "id of 31 bytes", id: strings.Repeat("L", 31), desc: "d", uri: "u"},
+		{name: "id of 32 bytes", id: strings.Repeat("L", 32), desc: "d", uri: "u"},
+		{name: "id of 33 bytes", id: strings.Repeat("L", 33), desc: "d", uri: "u"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := args.Pack(tc.calls, tc.id, tc.desc, tc.uri)
+			if err != nil {
+				t.Fatalf("Pack: %v", err)
+			}
+			if got := encodeAnnounceWith(tc.calls, tc.id, tc.desc, tc.uri)[4:]; !bytes.Equal(got, want) {
+				t.Errorf("encoder disagrees with abi.Pack:\n got  %x\n want %x", got, want)
+			}
+		})
+	}
+}
+
+// TestB20AnnouncementIDShapes covers the id lengths the fixed test ids do not.
+//
+// Announcement ids became strings, so their slot comes from keccak over the raw
+// key bytes rather than a padded word. Every other announce test uses one
+// 11-character id, which cannot tell that rule apart from a mistaken one for
+// keys at or past a word boundary. The prefix pair is the point of the last
+// check: keccak(key . base) must not let "x" and "xz" reach the same slot.
+func TestB20AnnouncementIDShapes(t *testing.T) {
+	for _, id := range []string{
+		"",
+		"x",
+		strings.Repeat("L", 31),
+		strings.Repeat("L", 32),
+		strings.Repeat("L", 200),
+	} {
+		_, evm := newB20EVM(t)
+		creator := common.HexToAddress("0xc4ea70")
+		ret, _, err := evm.Call(creator, B20FactoryAddress,
+			encodeCreateB20(b20VariantAsset, common.HexToHash("0xbb"), creator,
+				[][]byte{b20Call(selGrantRole, roleOperator, addrKey(creator))}),
+			NewGasBudget(9_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("createB20: %v", err)
+		}
+		token := common.BytesToAddress(ret)
+
+		call := func(input []byte) ([]byte, error) {
+			out, _, err := evm.Call(creator, token, input, NewGasBudget(9_000_000), uint256.NewInt(0))
+			return out, err
+		}
+		used := func(id string) bool {
+			t.Helper()
+			out, err := call(encodeStringCall(selIsAnnouncementIdUsed, id))
+			if err != nil {
+				t.Fatalf("isAnnouncementIdUsed(len %d): %v", len(id), err)
+			}
+			return bytes.Equal(out, encBool(true))
+		}
+
+		if used(id) {
+			t.Fatalf("len %d: reported used before any announcement", len(id))
+		}
+		if _, err := call(encodeAnnounce(nil, id)); err != nil {
+			t.Fatalf("announce(len %d): %v", len(id), err)
+		}
+		if !used(id) {
+			t.Errorf("len %d: not marked used after announcing", len(id))
+		}
+		if _, err := call(encodeAnnounce(nil, id)); !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("len %d: reuse err = %v, want a revert", len(id), err)
+		}
+		if used(id + "z") {
+			t.Errorf("len %d: a one-character-longer id aliases onto it", len(id))
+		}
 	}
 }

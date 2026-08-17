@@ -34,46 +34,44 @@ func TestB20AssetEventPayloads(t *testing.T) {
 	}
 	twoStrings := abi.Arguments{{Type: mustType("string")}, {Type: mustType("string")}}
 
-	// A short pair and one whose first member spans several words, since a long
-	// first string moves the second's tail — a fixed-offset assumption survives
-	// the short case.
+	// A short pair; one whose first member spans several words, since a long
+	// first string moves the second's tail and a fixed-offset assumption
+	// survives the short case; and an empty value, which is how an entry is
+	// deleted and still emits. The key may not be empty — updateExtraMetadata
+	// rejects that — so an empty first member has no case here.
 	for _, tc := range []struct{ a, b string }{
 		{"category", "rwa"},
 		{strings.Repeat("k", 100), strings.Repeat("v", 3)},
-		{"", ""},
+		{"category", ""},
 	} {
 		want, err := twoStrings.Pack(tc.a, tc.b)
 		if err != nil {
 			t.Fatalf("Pack: %v", err)
 		}
 
-		// updateExtraMetadata rejects an empty key, so the empty case only
-		// exercises the announcement.
-		if tc.a != "" {
-			statedb, evm := newB20EVM(t)
-			creator := common.HexToAddress("0xc4ea70")
-			ret, _, err := evm.Call(creator, B20FactoryAddress,
-				encodeCreateB20(b20VariantAsset, common.HexToHash("0xe1"), creator,
-					[][]byte{b20Call(selGrantRole, roleMetadata, addrKey(creator))}),
-				NewGasBudget(5_000_000), uint256.NewInt(0))
-			if err != nil {
-				t.Fatalf("createB20: %v", err)
-			}
-			token := common.BytesToAddress(ret)
+		statedb, evm := newB20EVM(t)
+		creator := common.HexToAddress("0xc4ea70")
+		ret, _, err := evm.Call(creator, B20FactoryAddress,
+			encodeCreateB20(b20VariantAsset, common.HexToHash("0xe1"), creator,
+				[][]byte{b20Call(selGrantRole, roleMetadata, addrKey(creator))}),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("createB20: %v", err)
+		}
+		token := common.BytesToAddress(ret)
 
-			if _, _, err := evm.Call(creator, token,
-				encodeStringCall(selUpdateExtraMetadata, tc.a, tc.b),
-				NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
-				t.Fatalf("updateExtraMetadata(%q, %q): %v", tc.a, tc.b, err)
-			}
-			logs := statedb.Logs()
-			last := logs[len(logs)-1]
-			if last.Topics[0] != b20TopicExtraMetadataUpdated {
-				t.Fatalf("last log topic0 = %s, want ExtraMetadataUpdated", last.Topics[0].Hex())
-			}
-			if !bytes.Equal(last.Data, want) {
-				t.Errorf("ExtraMetadataUpdated data for (%q, %q):\n got %x\nwant %x", tc.a, tc.b, last.Data, want)
-			}
+		if _, _, err := evm.Call(creator, token,
+			encodeStringCall(selUpdateExtraMetadata, tc.a, tc.b),
+			NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
+			t.Fatalf("updateExtraMetadata(%q, %q): %v", tc.a, tc.b, err)
+		}
+		logs := statedb.Logs()
+		last := logs[len(logs)-1]
+		if last.Topics[0] != b20TopicExtraMetadataUpdated {
+			t.Fatalf("last log topic0 = %s, want ExtraMetadataUpdated", last.Topics[0].Hex())
+		}
+		if !bytes.Equal(last.Data, want) {
+			t.Errorf("ExtraMetadataUpdated data for (%q, %q):\n got %x\nwant %x", tc.a, tc.b, last.Data, want)
 		}
 	}
 }
@@ -141,6 +139,30 @@ func TestB20AnnouncementPayload(t *testing.T) {
 	}
 	if len(found.Topics) != 2 || found.Topics[1] != addrKey(operator) {
 		t.Errorf("Announcement topics = %v, want [sig, caller] — the id is data, not a topic", found.Topics)
+	}
+
+	// EndAnnouncement closes the bracket and carries the id the same way, with
+	// no indexed argument at all. Indexers pair the two by that id, so it has to
+	// be readable from the data rather than hashed into a topic.
+	var end *types.Log
+	for _, l := range statedb.Logs() {
+		if l.Topics[0] == b20TopicEndAnnouncement {
+			end = l
+		}
+	}
+	if end == nil {
+		t.Fatal("no EndAnnouncement log")
+	}
+	oneString := abi.Arguments{{Type: str}}
+	wantEnd, err := oneString.Pack(announceID)
+	if err != nil {
+		t.Fatalf("Pack: %v", err)
+	}
+	if !bytes.Equal(end.Data, wantEnd) {
+		t.Errorf("EndAnnouncement data:\n got %x\nwant %x", end.Data, wantEnd)
+	}
+	if len(end.Topics) != 1 {
+		t.Errorf("EndAnnouncement topics = %v, want the signature alone", end.Topics)
 	}
 
 	// The added bytes are charged at the LOG data rate, no more and no less. The
