@@ -124,6 +124,29 @@ func TestB20SurfaceMatchesBaseStd(t *testing.T) {
 //
 // Asserted rather than logged so that adopting a piece of Cobalt, or bumping the
 // base-std pin onto a fork that adds more, has to be acknowledged here.
+//
+// What deferring costs, so the decision is made with it stated. Selectors and
+// storage are safe: every Beryl selector and topic0 survives at Cobalt, and both
+// additions take slot 4 of a namespace whose slots 0-3 are already in use, so no
+// populated slot moves. Three existing behaviours do change, and the middle one is
+// the reason this is not simply "add it whenever":
+//
+//   - updateMultiplier(uint256) keeps its selector but starts emitting
+//     UIMultiplierUpdated as well, and UIMultiplierUpdateCancelled when it clears
+//     a pending schedule. The log count per call changes, so the gas does too.
+//   - multiplier() — an existing read — becomes time-dependent. Once any operator
+//     schedules an update, "once block.timestamp >= effectiveAt, uiMultiplier() /
+//     multiplier() flip on read. No event fires at maturation."
+//     (base-std changelog/02_Cobalt_B20Asset_multiplier.md). An indexer rebuilding
+//     state from the event stream alone silently diverges, and no signature diff
+//     can show this.
+//   - createPolicy and createPolicyWithAccounts change the revert for policyType
+//     2 or 3 from Panic(0x21) to IncompatiblePolicyType(). Only reachable with
+//     input that is invalid today, so it affects error decoding rather than any
+//     working call.
+//
+// isAuthorized and the policy event streams also begin carrying composite ids, so
+// a consumer asserting policyType is 0 or 1 needs widening.
 var b20CobaltGaps = map[string]int{"function": 16, "event": 3, "error": 6}
 
 type refEntry struct {
