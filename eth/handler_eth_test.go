@@ -622,65 +622,79 @@ func TestBroadcastMalformedBlock68(t *testing.T) { testBroadcastMalformedBlock(t
 func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 	t.Parallel()
 
-	// Create a source handler to broadcast blocks from and a number of sinks
-	// to receive them.
-	source := newTestHandlerWithBlocks(1, ethconfig.FullSync)
-	defer source.close()
-
-	// Create a source handler to send messages through and a sink peer to receive them
-	p2pSrc, p2pSink := p2p.MsgPipe()
-	defer p2pSrc.Close()
-	defer p2pSink.Close()
-
-	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, source.txpool, source.chain.Config())
-	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, source.txpool, source.chain.Config())
-	defer src.Close()
-	defer sink.Close()
-
-	go source.handler.runEthPeer(src, func(peer *eth.Peer) error {
-		return eth.Handle((*ethHandler)(source.handler), peer)
-	})
-	// Run the handshake locally to avoid spinning up a sink handler
-	var (
-		genesis = source.chain.Genesis()
-		td      = source.chain.GetTd(genesis.Hash(), genesis.NumberU64())
-	)
-	if err := sink.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
-		t.Fatalf("failed to run protocol handshake")
+	// A propagated block whose body does not match its header commitments is
+	// malformed: the receiver must drop it (not forward it) AND disconnect the
+	// peer that sent it. Each malformation is exercised over a fresh connection
+	// because the first malformed block tears the connection down.
+	makeMalformed := func(source *testHandler, mutate func(*types.Header)) *types.Block {
+		head := source.chain.CurrentBlock()
+		block := source.chain.GetBlock(head.Hash(), head.Number.Uint64())
+		header := *head
+		mutate(&header)
+		return types.NewBlockWithHeader(&header).WithBody(types.Body{Transactions: block.Transactions(), Uncles: block.Uncles()})
 	}
-	// After the handshake completes, the source handler should stream the sink
-	// the blocks, subscribe to inbound network events
-	backend := new(testEthHandler)
+	cases := []struct {
+		name   string
+		mutate func(*types.Header)
+	}{
+		{"uncles", func(h *types.Header) { h.UncleHash[0]++ }},
+		{"transactions", func(h *types.Header) { h.TxHash[0]++ }},
+		{"everything", func(h *types.Header) { h.UncleHash[0]++; h.TxHash[0]++ }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			source := newTestHandlerWithBlocks(1, ethconfig.FullSync)
+			defer source.close()
 
-	blocks := make(chan *types.Block, 1)
-	sub := backend.blockBroadcasts.Subscribe(blocks)
-	defer sub.Unsubscribe()
+			p2pSrc, p2pSink := p2p.MsgPipe()
+			defer p2pSrc.Close()
+			defer p2pSink.Close()
 
-	go eth.Handle(backend, sink)
+			src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, source.txpool, source.chain.Config())
+			sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, source.txpool, source.chain.Config())
+			defer src.Close()
+			defer sink.Close()
 
-	// Create various combinations of malformed blocks
-	head := source.chain.CurrentBlock()
-	block := source.chain.GetBlock(head.Hash(), head.Number.Uint64())
+			go source.handler.runEthPeer(src, func(peer *eth.Peer) error {
+				return eth.Handle((*ethHandler)(source.handler), peer)
+			})
+			// Run the handshake locally to avoid spinning up a sink handler
+			genesis := source.chain.Genesis()
+			td := source.chain.GetTd(genesis.Hash(), genesis.NumberU64())
+			if err := sink.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
+				t.Fatalf("failed to run protocol handshake")
+			}
 
-	malformedUncles := head
-	malformedUncles.UncleHash[0]++
-	malformedTransactions := head
-	malformedTransactions.TxHash[0]++
-	malformedEverything := head
-	malformedEverything.UncleHash[0]++
-	malformedEverything.TxHash[0]++
+			backend := new(testEthHandler)
+			blocks := make(chan *types.Block, 1)
+			sub := backend.blockBroadcasts.Subscribe(blocks)
+			defer sub.Unsubscribe()
 
-	// Try to broadcast all malformations and ensure they all get discarded
-	for _, header := range []*types.Header{malformedUncles, malformedTransactions, malformedEverything} {
-		block := types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: block.Transactions(), Uncles: block.Uncles()})
-		if err := src.SendNewBlock(block, big.NewInt(131136)); err != nil {
-			t.Fatalf("failed to broadcast block: %v", err)
-		}
-		select {
-		case <-blocks:
-			t.Fatalf("malformed block forwarded")
-		case <-time.After(100 * time.Millisecond):
-		}
+			// Capture the sink handler's return value: a malformed block must
+			// make it return an error (disconnect).
+			sinkErr := make(chan error, 1)
+			go func() { sinkErr <- eth.Handle(backend, sink) }()
+
+			block := makeMalformed(source, tc.mutate)
+			if err := src.SendNewBlock(block, big.NewInt(131136)); err != nil {
+				t.Fatalf("failed to broadcast block: %v", err)
+			}
+			// The malformed block must not be forwarded.
+			select {
+			case <-blocks:
+				t.Fatalf("malformed block forwarded")
+			case <-time.After(100 * time.Millisecond):
+			}
+			// The sink must disconnect (its handler returns an error).
+			select {
+			case err := <-sinkErr:
+				if err == nil {
+					t.Fatalf("expected the sink to disconnect on a malformed block, got nil error")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("sink did not disconnect on a malformed block")
+			}
+		})
 	}
 }
 
