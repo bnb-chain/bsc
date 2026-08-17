@@ -23,6 +23,16 @@ import (
 // Timing is the only way to see this: the state is reverted either way, so no
 // storage assertion can tell the two apart. The threshold is deliberately loose —
 // the point is order of magnitude, not a benchmark.
+//
+// The ABI decoders are deliberately left unguarded, and measured rather than
+// assumed. They also run after exhaustion, but their work is linear in the
+// calldata while the cost of delivering that calldata is quadratic in it — memory
+// expansion carries a words^2/512 term, and a transaction pays 16 gas per byte.
+// Measured on a starved budget: 1KB of calldata buys 3.2us of decoding for 107
+// gas of memory, 512KB buys 1.44ms for 573,641. The ratio worsens with size,
+// where batchMint's did the opposite: the same 574k bought 17ms there, because
+// each recipient triggered trie work rather than a byte copy. Guarding the
+// decoders would cost a branch per word to remove nothing.
 func TestB20ExhaustedBudgetStopsWork(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
