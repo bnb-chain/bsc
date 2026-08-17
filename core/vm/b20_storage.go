@@ -132,6 +132,17 @@ func (s b20Storage) mapSlot(base, key common.Hash) common.Hash {
 	return mappingSlot(base, key)
 }
 
+// strMapSlot derives mapping[key] for a string-keyed mapping. Solidity hashes
+// the key's raw bytes concatenated with the base slot rather than padding the
+// key to a word, so the preimage is variable-length — and so is the charge,
+// which is what keeps a long caller-supplied key from hashing for free.
+func (s b20Storage) strMapSlot(base common.Hash, key string) common.Hash {
+	if s.ctx != nil {
+		s.ctx.chargeKeccak(len(key) + 32)
+	}
+	return crypto.Keccak256Hash([]byte(key), base.Bytes())
+}
+
 // newB20Storage returns an unmetered view (read-only queries, tests).
 func newB20Storage(state StateDB, token common.Address) b20Storage {
 	return b20Storage{state: state, token: token}

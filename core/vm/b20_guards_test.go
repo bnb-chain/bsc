@@ -125,16 +125,43 @@ func TestB20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	// Positive control: an announcement this operator IS entitled to make must
 	// succeed, so a failure below cannot be blamed on the setup.
 	if _, err := call(operator, token, encodeAnnounce(
-		[][]byte{b20Call(selUpdateMultiplier, u256hash(2_000_000_000_000_000_000))}, u256hash(1))); err != nil {
+		[][]byte{b20Call(selUpdateMultiplier, u256hash(2_000_000_000_000_000_000))}, "2026-Q1-NAV")); err != nil {
 		t.Fatalf("an OPERATOR_ROLE holder could not announce updateMultiplier: %v", err)
 	}
 
 	// And the bundle must not gain a role its announcer lacks.
 	inner := encodeBatchMint([]common.Address{b20Alice}, []uint64{1000})
-	if _, err := call(operator, token, encodeAnnounce([][]byte{inner}, u256hash(2))); err == nil {
+	if _, err := call(operator, token, encodeAnnounce([][]byte{inner}, "2026-Q2-NAV")); err == nil {
 		t.Fatal("an announcer without MINT_ROLE ran batchMint inside its announcement")
 	}
 	if newB20Storage(evm.StateDB, token).balanceOf(b20Alice).Sign() != 0 {
 		t.Error("batchMint took effect despite the announcement failing")
+	}
+}
+
+// TestB20NonDirectCallPlumbing drives the non-direct paths through the EVM's own
+// entry points rather than a hand-built context, so the fields evm.go fills in
+// are covered too. TestB20DelegateCallGuard covers the guard itself.
+func TestB20NonDirectCallPlumbing(t *testing.T) {
+	_, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x9a11"), creator, nil),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	caller := common.HexToAddress("0xca11e5")
+	origin := common.HexToAddress("0x0416019")
+
+	if _, _, err := evm.CallCode(caller, token, b20Call(selTotalSupply),
+		NewGasBudget(100_000), uint256.NewInt(7)); !errors.Is(err, ErrB20DelegateCall) {
+		t.Errorf("CALLCODE err = %v, want ErrB20DelegateCall", err)
+	}
+	if _, _, err := evm.DelegateCall(origin, caller, token, b20Call(selTotalSupply),
+		NewGasBudget(100_000), uint256.NewInt(0)); !errors.Is(err, ErrB20DelegateCall) {
+		t.Errorf("DELEGATECALL err = %v, want ErrB20DelegateCall", err)
 	}
 }

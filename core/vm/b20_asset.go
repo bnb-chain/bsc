@@ -31,7 +31,7 @@ const b20AssetNamespace = "bsc.b20.asset"
 const (
 	b20AssetSlotDecimals      = 0
 	b20AssetSlotMultiplier    = 1
-	b20AssetSlotAnnouncements = 2 // mapping(bytes32 id => bool used)
+	b20AssetSlotAnnouncements = 2 // mapping(string id => bool used)
 	b20AssetSlotExtraMeta     = 3 // mapping(string key => string value)
 	// Slot 4 is reserved for the scheduled multiplier (ERC-8056), which
 	// base-std adds in a later logic version. Nothing may reuse it.
@@ -53,15 +53,15 @@ var (
 	selOperatorRole     = selector("OPERATOR_ROLE()")
 	selBatchMint        = selector("batchMint(address[],uint256[])")
 
-	selAnnounce             = selector("announce(bytes[],uint256,string,string)")
-	selIsAnnouncementIdUsed = selector("isAnnouncementIdUsed(uint256)")
+	selAnnounce             = selector("announce(bytes[],string,string,string)")
+	selIsAnnouncementIdUsed = selector("isAnnouncementIdUsed(string)")
 
 	selExtraMetadata       = selector("extraMetadata(string)")
 	selUpdateExtraMetadata = selector("updateExtraMetadata(string,string)")
 
 	b20TopicMultiplierUpdated    = eventTopic("MultiplierUpdated(uint256)")
-	b20TopicAnnouncement         = eventTopic("Announcement(address,uint256,string,string)")
-	b20TopicEndAnnouncement      = eventTopic("EndAnnouncement(uint256)")
+	b20TopicAnnouncement         = eventTopic("Announcement(address,string,string,string)")
+	b20TopicEndAnnouncement      = eventTopic("EndAnnouncement(string)")
 	b20TopicExtraMetadataUpdated = eventTopic("ExtraMetadataUpdated(string,string)")
 )
 
@@ -84,25 +84,26 @@ func (e assetExt) multiplier() *uint256.Int {
 func (e assetExt) setMultiplier(m *uint256.Int) {
 	e.s.setWord(assetSlot(b20AssetSlotMultiplier), common.Hash(m.Bytes32()))
 }
-func (e assetExt) announcementUsed(id common.Hash) bool {
-	return e.s.getWord(e.s.mapSlot(assetSlot(b20AssetSlotAnnouncements), id)) != (common.Hash{})
+func (e assetExt) announcementSlot(id string) common.Hash {
+	return e.s.strMapSlot(assetSlot(b20AssetSlotAnnouncements), id)
 }
-func (e assetExt) markAnnouncement(id common.Hash) {
+func (e assetExt) announcementUsed(id string) bool {
+	return e.s.getWord(e.announcementSlot(id)) != (common.Hash{})
+}
+func (e assetExt) markAnnouncement(id string) {
 	var one common.Hash
 	one[31] = 1
-	e.s.setWord(e.s.mapSlot(assetSlot(b20AssetSlotAnnouncements), id), one)
+	e.s.setWord(e.announcementSlot(id), one)
 }
 
-// extraMetaSlot is the Solidity mapping(string=>string) value slot for key:
-// keccak256(keyBytes ++ baseSlot).
-func extraMetaSlot(key string) common.Hash {
-	return crypto.Keccak256Hash([]byte(key), assetSlot(b20AssetSlotExtraMeta).Bytes())
+func (e assetExt) extraMetaSlot(key string) common.Hash {
+	return e.s.strMapSlot(assetSlot(b20AssetSlotExtraMeta), key)
 }
 func (e assetExt) extraMetadata(key string) string {
-	return e.s.getStringAt(extraMetaSlot(key))
+	return e.s.getStringAt(e.extraMetaSlot(key))
 }
 func (e assetExt) setExtraMetadata(key, value string) {
-	e.s.setStringAt(extraMetaSlot(key), value)
+	e.s.setStringAt(e.extraMetaSlot(key), value)
 }
 
 // initAssetExtension seeds a new Asset token's extension storage. decimals is
@@ -197,7 +198,7 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 	case selBatchMint:
 		return nil, batchMint(tok, args), true
 	case selIsAnnouncementIdUsed:
-		id, err := readWord(args, 0)
+		id, err := readStringArg(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
@@ -276,12 +277,12 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	if err != nil {
 		return err
 	}
-	id, err := readWord(args, 1)
+	// Decoded here rather than at the point of use so a malformed payload reverts
+	// before the id is consumed: markAnnouncement is one-way.
+	id, err := readStringArg(args, 1)
 	if err != nil {
 		return err
 	}
-	// Decoded here rather than at the point of use so a malformed payload reverts
-	// before the id is consumed: markAnnouncement is one-way.
 	description, err := readStringArg(args, 2)
 	if err != nil {
 		return err
@@ -291,11 +292,11 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 		return err
 	}
 	if ext.announcementUsed(id) {
-		return revB20("AnnouncementIdAlreadyUsed(uint256)", errSelAnnounceIdUsed, id)
+		return revB20Bytes("AnnouncementIdAlreadyUsed(string)", errSelAnnounceIdUsed, []byte(id))
 	}
 	ext.markAnnouncement(id) // marked before execution
-	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller), id},
-		encodeTuple(abiString(description), abiString(uri)))
+	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller)},
+		encodeTuple(abiString(id), abiString(description), abiString(uri)))
 
 	tok.inAnnounce = true // threaded into the internal calls below by value
 	for _, c := range calls {
@@ -306,7 +307,7 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 			return revB20Bytes("InternalCallFailed(bytes)", errSelInternalFailed, c)
 		}
 	}
-	tok.ctx.AddLog([]common.Hash{b20TopicEndAnnouncement, id}, nil)
+	tok.ctx.AddLog([]common.Hash{b20TopicEndAnnouncement}, encodeTuple(abiString(id)))
 	return nil
 }
 

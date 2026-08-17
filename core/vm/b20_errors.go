@@ -137,7 +137,7 @@ var (
 	errSelInvalidMultiplier   = b20ErrorSel("InvalidMultiplier()")
 	errSelInvalidMetadataKey  = b20ErrorSel("InvalidMetadataKey()")
 	errSelAnnounceInProgress  = b20ErrorSel("AnnouncementInProgress()")
-	errSelAnnounceIdUsed      = b20ErrorSel("AnnouncementIdAlreadyUsed(uint256)")
+	errSelAnnounceIdUsed      = b20ErrorSel("AnnouncementIdAlreadyUsed(string)")
 	errSelInternalMalformed   = b20ErrorSel("InternalCallMalformed(bytes)")
 	errSelInternalFailed      = b20ErrorSel("InternalCallFailed(bytes)")
 	errSelInvalidVariant      = b20ErrorSel("InvalidVariant()")

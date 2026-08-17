@@ -238,3 +238,38 @@ func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
 		}
 	}
 }
+
+// TestB20AnnounceMatchesBaseStd pins the announcement id's type to base-std's.
+//
+// The id is a string, not the uint256 BEP-702 first specified: base-std ships
+// announce as 0x595135dd, published in its Beryl-to-Cobalt migration note
+// alongside the rest of the frozen Asset surface. Every other Asset selector in
+// that table already matched, which is what isolated this one.
+//
+// A uint256 id gives 0x8d03a071 — a different function, silently, to any caller
+// built against Base's ABI. The baseline test only checks the Go code against
+// BEP-702's own Solidity, so both could drift back together; this is the
+// external anchor.
+func TestB20AnnounceMatchesBaseStd(t *testing.T) {
+	for _, tc := range []struct {
+		sig  string
+		got  [4]byte
+		want string
+	}{
+		{"announce(bytes[],string,string,string)", selAnnounce, "595135dd"},
+		{"multiplier()", selMultiplier, "1b3ed722"},
+		{"toScaledBalance(uint256)", selToScaledBalance, "04f04c99"},
+		{"toRawBalance(uint256)", selToRawBalance, "0ca06c44"},
+		{"scaledBalanceOf(address)", selScaledBalanceOf, "1da24f3e"},
+		{"updateMultiplier(uint256)", selUpdateMultiplier, "5ffe6146"},
+		{"OPERATOR_ROLE()", selOperatorRole, "f5b541a6"},
+		{"WAD_PRECISION()", selWadPrecision, "664808a8"},
+	} {
+		if got := common.Bytes2Hex(tc.got[:]); got != tc.want {
+			t.Errorf("%s = 0x%s, want 0x%s (base-std's published selector)", tc.sig, got, tc.want)
+		}
+		if got := selector(tc.sig); got != tc.got {
+			t.Errorf("%s does not hash to the registered selector: %x vs %x", tc.sig, got, tc.got)
+		}
+	}
+}

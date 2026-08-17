@@ -1,8 +1,10 @@
 package vm
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -62,5 +64,41 @@ func TestB20CalldataGasMirrorsCalldatacopy(t *testing.T) {
 			t.Fatalf("charged %d < interpreter %d at %d bytes — cheaper than bytecode",
 				charged(n), interpreterCost(n), n)
 		}
+	}
+}
+
+// TestB20StringKeyGasScalesWithKey pins the keccak charge for a string-keyed
+// mapping against KECCAK256's own price for the same preimage.
+//
+// The value-keyed mapSlot hashes a fixed 64 bytes, so a constant covered it.
+// A string key does not: the preimage is the caller's bytes plus the base slot,
+// and charging a constant would hand out an unbounded hash for a fixed fee.
+// Both string-keyed mappings — extraMetadata and announcement ids — take their
+// key straight from calldata.
+func TestB20StringKeyGasScalesWithKey(t *testing.T) {
+	charged := func(key string) uint64 {
+		budget := NewGasBudget(100_000_000)
+		ctx := &PrecompileContext{gas: &budget}
+		b20Storage{ctx: ctx}.strMapSlot(common.Hash{}, key)
+		return ctx.frameGas().stateGasUsed
+	}
+	// What the interpreter charges to keccak the same preimage: the key's bytes
+	// concatenated with the 32-byte base slot.
+	interpreterCost := func(key string) uint64 {
+		words := (uint64(len(key)) + 32 + 31) / 32
+		return params.Keccak256Gas + params.Keccak256WordGas*words
+	}
+
+	for _, key := range []string{"", "a", "category", strings.Repeat("k", 31), strings.Repeat("k", 32), strings.Repeat("k", 1024)} {
+		if got, want := charged(key), interpreterCost(key); got != want {
+			t.Errorf("strMapSlot with a %d-byte key charged %d, KECCAK256 charges %d",
+				len(key), got, want)
+		}
+	}
+
+	// And the charge must actually grow, or a constant would satisfy the loop
+	// above for every size that happens to round to the same word count.
+	if short, long := charged("a"), charged(strings.Repeat("k", 4096)); short >= long {
+		t.Errorf("a 1-byte key costs %d and a 4096-byte key %d — the charge does not scale", short, long)
 	}
 }

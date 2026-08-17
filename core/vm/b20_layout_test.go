@@ -52,19 +52,35 @@ func TestB20PolicyMemberSlot(t *testing.T) {
 	}
 }
 
-// TestB20ExtraMetadataSlot pins mapping(string => string): a dynamic key is
-// hashed unpadded, keccak256(bytes(key) . slot).
-func TestB20ExtraMetadataSlot(t *testing.T) {
-	const key = "category"
-	want := crypto.Keccak256Hash([]byte(key), solSlot(b20AssetRoot, b20AssetSlotExtraMeta).Bytes())
-	if got := extraMetaSlot(key); got != want {
-		t.Errorf("extraMetaSlot(%q) = %s, want keccak256(key . slot) = %s", key, got.Hex(), want.Hex())
+// TestB20StringKeyedSlots pins both string-keyed mappings: a dynamic key is
+// hashed unpadded, keccak256(bytes(key) . slot). Padding it to a word instead —
+// the rule for value-typed keys — would put every entry somewhere else.
+func TestB20StringKeyedSlots(t *testing.T) {
+	ext := assetExt{s: newB20Storage(nil, common.Address{})}
+	for _, tc := range []struct {
+		name string
+		slot uint64
+		got  func(string) common.Hash
+	}{
+		{"extraMetadata", b20AssetSlotExtraMeta, ext.extraMetaSlot},
+		{"announcements", b20AssetSlotAnnouncements, ext.announcementSlot},
+	} {
+		const key = "category"
+		base := solSlot(b20AssetRoot, tc.slot)
+		if want, got := crypto.Keccak256Hash([]byte(key), base.Bytes()), tc.got(key); got != want {
+			t.Errorf("%s slot for %q = %s, want keccak256(key . slot) = %s",
+				tc.name, key, got.Hex(), want.Hex())
+		}
+		// And the reversed preimage must differ, or the assertion above is vacuous.
+		if reversed := crypto.Keccak256Hash(base.Bytes(), []byte(key)); tc.got(key) == reversed {
+			t.Errorf("%s: slot . key and key . slot agree; the order is not pinned", tc.name)
+		}
 	}
 
-	// And the reversed preimage must differ, or the assertion above is vacuous.
-	reversed := crypto.Keccak256Hash(solSlot(b20AssetRoot, b20AssetSlotExtraMeta).Bytes(), []byte(key))
-	if got := extraMetaSlot(key); got == reversed {
-		t.Error("slot . key and key . slot agree; the concatenation order is not pinned")
+	// The two mappings must not answer the same slot for the same key, which is
+	// what keeps a metadata key from marking an announcement id used.
+	if ext.extraMetaSlot("x") == ext.announcementSlot("x") {
+		t.Error("extraMetadata and announcements collide on a shared key")
 	}
 }
 

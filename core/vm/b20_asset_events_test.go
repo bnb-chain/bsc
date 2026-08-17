@@ -16,11 +16,10 @@ import (
 // TestB20AssetEventPayloads pins the two Asset events that carried empty data.
 //
 // Both emitted only topics: ExtraMetadataUpdated dropped its key and value,
-// Announcement its description and uri. BEP-702 3.12 declares all four as
-// non-indexed arguments, so an indexer following that ABI decoded nothing.
-// Filling them in also
-// changes the gas — log data is charged per byte — so this test asserts the bytes
-// and the next one the price.
+// Announcement its description and uri. base-std declares them as non-indexed
+// arguments, so an indexer following that ABI decoded nothing. Filling them in
+// also changes the gas — log data is charged per byte — so this test asserts the
+// bytes and the next one the price.
 //
 // The expectation comes from go-ethereum's own ABI packer rather than from
 // encodeTuple, which is the encoder under test.
@@ -81,6 +80,9 @@ func TestB20AssetEventPayloads(t *testing.T) {
 
 // TestB20AnnouncementPayload pins the other half, and the price the data carries.
 //
+// Announcement carries three strings, not two: base-std indexes only the caller
+// and leaves the id in the data, so the id is part of the payload this checks.
+//
 // The gas delta is derived from params.LogDataGas rather than measured against
 // another B20 call: comparing two B20 shapes would hold under any per-byte rate,
 // which is how the calldata charge went wrong earlier in this work.
@@ -93,7 +95,8 @@ func TestB20AnnouncementPayload(t *testing.T) {
 		}
 		return ty
 	}
-	twoStrings := abi.Arguments{{Type: mustType("string")}, {Type: mustType("string")}}
+	str := mustType("string")
+	threeStrings := abi.Arguments{{Type: str}, {Type: str}, {Type: str}}
 
 	newToken := func(t *testing.T) (*state.StateDB, *EVM, common.Address, common.Address) {
 		t.Helper()
@@ -109,15 +112,18 @@ func TestB20AnnouncementPayload(t *testing.T) {
 		return statedb, evm, common.BytesToAddress(ret), creator
 	}
 
-	const desc = "quarterly NAV update"
-	const uri = "ipfs://QmExample"
+	const (
+		announceID = "2026-Q1-NAV"
+		desc       = "quarterly NAV update"
+		uri        = "ipfs://QmExample"
+	)
 
 	statedb, evm, token, operator := newToken(t)
-	if _, _, err := evm.Call(operator, token, encodeAnnounceWith(nil, u256hash(1), desc, uri),
+	if _, _, err := evm.Call(operator, token, encodeAnnounceWith(nil, announceID, desc, uri),
 		NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
-	want, err := twoStrings.Pack(desc, uri)
+	want, err := threeStrings.Pack(announceID, desc, uri)
 	if err != nil {
 		t.Fatalf("Pack: %v", err)
 	}
@@ -133,8 +139,8 @@ func TestB20AnnouncementPayload(t *testing.T) {
 	if !bytes.Equal(found.Data, want) {
 		t.Errorf("Announcement data:\n got %x\nwant %x", found.Data, want)
 	}
-	if len(found.Topics) != 3 || found.Topics[2] != u256hash(1) {
-		t.Errorf("Announcement topics = %v, want [sig, caller, id]", found.Topics)
+	if len(found.Topics) != 2 || found.Topics[1] != addrKey(operator) {
+		t.Errorf("Announcement topics = %v, want [sig, caller] — the id is data, not a topic", found.Topics)
 	}
 
 	// The added bytes are charged at the LOG data rate, no more and no less. The
@@ -143,7 +149,7 @@ func TestB20AnnouncementPayload(t *testing.T) {
 	// which would hold under any per-byte rate.
 	gasFor := func(description, u string) (uint64, int) {
 		_, evm, token, operator := newToken(t)
-		input := encodeAnnounceWith(nil, u256hash(2), description, u)
+		input := encodeAnnounceWith(nil, announceID, description, u)
 		budget := NewGasBudget(5_000_000)
 		_, left, err := evm.Call(operator, token, input, budget, uint256.NewInt(0))
 		if err != nil {
@@ -161,7 +167,7 @@ func TestB20AnnouncementPayload(t *testing.T) {
 
 	emptyGas, emptyLen := gasFor("", "")
 	fullGas, fullLen := gasFor(desc, uri)
-	emptyData, _ := twoStrings.Pack("", "")
+	emptyData, _ := threeStrings.Pack(announceID, "", "")
 
 	wantLog := params.LogDataGas * uint64(len(want)-len(emptyData))
 	wantCalldata := calldataGas(fullLen) - calldataGas(emptyLen)

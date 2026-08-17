@@ -133,14 +133,14 @@ interface IB20 {
 /// @notice Asset-variant extensions (BEP-702 §3.12).
 interface IB20Asset {
     event MultiplierUpdated(uint256 multiplier);
-    event Announcement(address indexed caller, uint256 indexed id, string description, string uri);
-    event EndAnnouncement(uint256 indexed id);
+    event Announcement(address indexed caller, string id, string description, string uri);
+    event EndAnnouncement(string id);
     event ExtraMetadataUpdated(string key, string value);
 
     error InvalidMultiplier();
     error InvalidMetadataKey();
     error AnnouncementInProgress();
-    error AnnouncementIdAlreadyUsed(uint256 id);
+    error AnnouncementIdAlreadyUsed(string id);
     error InternalCallMalformed(bytes call);
     error InternalCallFailed(bytes call);
     error LengthMismatch(uint256 leftLen, uint256 rightLen);
@@ -153,9 +153,9 @@ interface IB20Asset {
     function toScaledBalance(uint256 rawBalance) external view returns (uint256);
     function toRawBalance(uint256 scaledBalance) external view returns (uint256);
     function scaledBalanceOf(address account) external view returns (uint256);
-    function announce(bytes[] calldata internalCalls, uint256 id, string calldata description, string calldata uri)
+    function announce(bytes[] calldata internalCalls, string calldata id, string calldata description, string calldata uri)
         external;
-    function isAnnouncementIdUsed(uint256 id) external view returns (bool);
+    function isAnnouncementIdUsed(string calldata id) external view returns (bool);
     function batchMint(address[] calldata recipients, uint256[] calldata amounts) external;
     function extraMetadata(string calldata key) external view returns (string memory);
     function updateExtraMetadata(string calldata key, string calldata value) external;

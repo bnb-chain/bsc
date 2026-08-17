@@ -142,13 +142,20 @@ func TestB20AssetExtension(t *testing.T) {
 	}
 }
 
-// encodeAnnounce ABI-encodes announce(bytes[],bytes32,string,string) with the
-// bytes[] placed right after the head and empty description/uri strings.
-func encodeAnnounce(calls [][]byte, id common.Hash) []byte {
+// abiStr encodes a string's tail: its length followed by the bytes padded up to
+// a word. An empty string is one zero word and nothing else.
+func abiStr(s string) []byte {
+	return append(u256hash(uint64(len(s))).Bytes(), rightPad32([]byte(s))...)
+}
+
+// encodeAnnounce ABI-encodes announce(bytes[],string,string,string) with the
+// bytes[] placed right after the head and empty description/uri strings. All
+// four arguments are dynamic, so the head is four offsets.
+func encodeAnnounce(calls [][]byte, id string) []byte {
 	return encodeAnnounceWith(calls, id, "", "")
 }
 
-func encodeAnnounceWith(calls [][]byte, id common.Hash, description, uri string) []byte {
+func encodeAnnounceWith(calls [][]byte, id, description, uri string) []byte {
 	elems := make([][]byte, len(calls))
 	for i, c := range calls {
 		elems[i] = append(u256hash(uint64(len(c))).Bytes(), rightPad32(c)...)
@@ -162,17 +169,20 @@ func encodeAnnounceWith(calls [][]byte, id common.Hash, description, uri string)
 	for _, e := range elems {
 		arr = append(arr, e...)
 	}
-	descOff := uint64(0x80 + len(arr))
-	desc := append(u256hash(uint64(len(description))).Bytes(), rightPad32([]byte(description))...)
+	idEnc, descEnc, uriEnc := abiStr(id), abiStr(description), abiStr(uri)
+	idOff := uint64(0x80 + len(arr))
+	descOff := idOff + uint64(len(idEnc))
+	uriOff := descOff + uint64(len(descEnc))
+
 	out := append([]byte{}, selAnnounce[:]...)
-	out = append(out, u256hash(0x80).Bytes()...)                      // w0 offset -> bytes[]
-	out = append(out, id.Bytes()...)                                  // w1 id
-	out = append(out, u256hash(descOff).Bytes()...)                   // w2 offset -> description
-	out = append(out, u256hash(descOff+uint64(len(desc))).Bytes()...) // w3 offset -> uri
+	out = append(out, u256hash(0x80).Bytes()...)    // w0 offset -> bytes[]
+	out = append(out, u256hash(idOff).Bytes()...)   // w1 offset -> id
+	out = append(out, u256hash(descOff).Bytes()...) // w2 offset -> description
+	out = append(out, u256hash(uriOff).Bytes()...)  // w3 offset -> uri
 	out = append(out, arr...)
-	out = append(out, desc...)
-	out = append(out, u256hash(uint64(len(uri))).Bytes()...)
-	out = append(out, rightPad32([]byte(uri))...)
+	out = append(out, idEnc...)
+	out = append(out, descEnc...)
+	out = append(out, uriEnc...)
 	return out
 }
 
@@ -205,7 +215,7 @@ func TestB20Announce(t *testing.T) {
 		return new(uint256.Int).SetBytes(r).Uint64()
 	}
 
-	id1 := common.HexToHash("0x1111")
+	const id1 = "2026-Q1-NAV"
 
 	// happy path: announce bundling an updateMultiplier runs atomically.
 	inner := [][]byte{b20Call(selUpdateMultiplier, u256hash(1_200_000_000_000_000_000))}
@@ -215,7 +225,7 @@ func TestB20Announce(t *testing.T) {
 	if got := mul(); got != 1_200_000_000_000_000_000 {
 		t.Fatalf("multiplier after announce = %d, want 1.2e18", got)
 	}
-	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, id1)); !bytes.Equal(r, encBool(true)) {
+	if r, _ := call(creator, token, encodeStringCall(selIsAnnouncementIdUsed, id1)); !bytes.Equal(r, encBool(true)) {
 		t.Fatal("id1 should be marked used")
 	}
 
@@ -224,21 +234,21 @@ func TestB20Announce(t *testing.T) {
 		t.Fatalf("reused id err = %v, want revert", err)
 	}
 	// non-operator reverts.
-	if _, err := call(creator, token, encodeAnnounce(nil, common.HexToHash("0x2222"))); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(creator, token, encodeAnnounce(nil, "2026-Q2-NAV")); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("non-operator announce err = %v, want revert", err)
 	}
 	// nesting announce inside announce reverts (and rolls back, id unused).
-	nestedID := common.HexToHash("0x3333")
-	nested := [][]byte{encodeAnnounce(nil, common.HexToHash("0x4444"))}
+	const nestedID = "2026-Q3-NAV"
+	nested := [][]byte{encodeAnnounce(nil, "2026-Q4-NAV")}
 	if _, err := call(operator, token, encodeAnnounce(nested, nestedID)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("nested announce err = %v, want revert", err)
 	}
-	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, nestedID)); !bytes.Equal(r, encBool(false)) {
+	if r, _ := call(creator, token, encodeStringCall(selIsAnnouncementIdUsed, nestedID)); !bytes.Equal(r, encBool(false)) {
 		t.Fatal("failed announce must not mark its id (atomic rollback)")
 	}
 
 	// a failing internal call rolls the whole announce back.
-	badID := common.HexToHash("0x5555")
+	const badID = "2027-Q1-NAV"
 	bad := [][]byte{b20Call(selUpdateMultiplier, u256hash(0))} // zero multiplier reverts
 	if _, err := call(operator, token, encodeAnnounce(bad, badID)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("failing internal call err = %v, want revert", err)
@@ -246,7 +256,7 @@ func TestB20Announce(t *testing.T) {
 	if got := mul(); got != 1_200_000_000_000_000_000 {
 		t.Fatalf("multiplier changed despite rollback = %d", got)
 	}
-	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, badID)); !bytes.Equal(r, encBool(false)) {
+	if r, _ := call(creator, token, encodeStringCall(selIsAnnouncementIdUsed, badID)); !bytes.Equal(r, encBool(false)) {
 		t.Fatal("badID must not be marked (rollback)")
 	}
 }
