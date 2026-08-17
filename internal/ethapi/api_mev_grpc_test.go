@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -128,36 +129,62 @@ func TestMevGRPCHandlerRejectsBeforeBusinessCall(t *testing.T) {
 
 func TestToMevGRPCStatus(t *testing.T) {
 	tests := []struct {
-		err  error
-		code codes.Code
+		name        string
+		err         error
+		grpcCode    codes.Code
+		jsonRPCCode int
 	}{
-		{buildertypes.NewInvalidBidError("invalid"), codes.InvalidArgument},
-		{buildertypes.NewBidBlockPreSealVerifyError("invalid"), codes.InvalidArgument},
-		{buildertypes.ErrMevNotRunning, codes.Unavailable},
-		{buildertypes.ErrMevBusy, codes.ResourceExhausted},
-		{buildertypes.ErrMevNotInTurn, codes.FailedPrecondition},
-		{buildertypes.NewBidBlockPermissionRevokedError("revoked"), codes.PermissionDenied},
-		{buildertypes.NewBidBlockTooLateError("late"), codes.DeadlineExceeded},
-		{context.Canceled, codes.Canceled},
-		{context.DeadlineExceeded, codes.DeadlineExceeded},
-		{errors.New("secret internal detail"), codes.Internal},
+		{"invalid bid", buildertypes.NewInvalidBidError("invalid"), codes.InvalidArgument, buildertypes.InvalidBidParamError},
+		{"invalid pay bid tx", buildertypes.NewInvalidPayBidTxError("invalid payment"), codes.InvalidArgument, buildertypes.InvalidPayBidTxError},
+		{"pre-seal", buildertypes.NewBidBlockPreSealVerifyError("invalid"), codes.InvalidArgument, buildertypes.BidBlockPreSealVerifyError},
+		{"not running", buildertypes.ErrMevNotRunning, codes.Unavailable, buildertypes.MevNotRunningError},
+		{"busy", buildertypes.ErrMevBusy, codes.ResourceExhausted, buildertypes.MevBusyError},
+		{"not in turn", buildertypes.ErrMevNotInTurn, codes.FailedPrecondition, buildertypes.MevNotInTurnError},
+		{"permission", buildertypes.NewBidBlockPermissionRevokedError("revoked"), codes.PermissionDenied, buildertypes.BidBlockPermissionRevokedError},
+		{"too late", buildertypes.NewBidBlockTooLateError("late"), codes.DeadlineExceeded, buildertypes.BidBlockTooLateError},
+		{"duplicate", errors.New("bid already exists"), codes.Unknown, jsonRPCDefaultErrorCode},
+		{"quota", errors.New("too many bids: exceeded limit of 2 bids per builder per block"), codes.Unknown, jsonRPCDefaultErrorCode},
+		{"discarded", errors.New("BidBlock is discarded, stale block number"), codes.Unknown, jsonRPCDefaultErrorCode},
+		{"unmapped RPC error", testMevRPCError{}, codes.Unknown, -38999},
 	}
 	for _, test := range tests {
-		mapped := toMevGRPCStatus(test.err)
-		require.Equal(t, test.code, status.Code(mapped), "error: %v", test.err)
-		if test.code == codes.Internal {
-			require.Equal(t, "internal error", status.Convert(mapped).Message())
-		}
+		t.Run(test.name, func(t *testing.T) {
+			mapped := status.Convert(toMevGRPCStatus(test.err))
+			require.Equal(t, test.grpcCode, mapped.Code())
+			require.Equal(t, test.err.Error(), mapped.Message())
+			require.Len(t, mapped.Details(), 1)
+			info, ok := mapped.Details()[0].(*errdetails.ErrorInfo)
+			require.True(t, ok)
+			require.Equal(t, strconv.Itoa(test.jsonRPCCode), info.Reason)
+			require.Equal(t, mevErrorDomain, info.Domain)
+		})
 	}
 
-	mapped := toMevGRPCStatus(buildertypes.NewBidBlockTooLateError("late"))
-	details := status.Convert(mapped).Details()
-	require.Len(t, details, 1)
-	info, ok := details[0].(*errdetails.ErrorInfo)
+	for _, test := range []struct {
+		err  error
+		code codes.Code
+	}{{context.Canceled, codes.Canceled}, {context.DeadlineExceeded, codes.DeadlineExceeded}} {
+		require.Equal(t, test.code, status.Code(toMevGRPCStatus(test.err)))
+	}
+
+	mapped := status.Convert(toMevGRPCStatus(testMevRPCDataError{}))
+	require.Equal(t, codes.Unknown, mapped.Code())
+	require.Equal(t, "error with data", mapped.Message())
+	require.Len(t, mapped.Details(), 1)
+	info, ok := mapped.Details()[0].(*errdetails.ErrorInfo)
 	require.True(t, ok)
-	require.Equal(t, "-38008", info.Reason)
-	require.Equal(t, mevErrorDomain, info.Domain)
+	require.JSONEq(t, `{"retry":false}`, info.Metadata[jsonRPCErrorDataKey])
 }
+
+type testMevRPCError struct{}
+
+func (testMevRPCError) Error() string  { return "unmapped business error" }
+func (testMevRPCError) ErrorCode() int { return -38999 }
+
+type testMevRPCDataError struct{}
+
+func (testMevRPCDataError) Error() string          { return "error with data" }
+func (testMevRPCDataError) ErrorData() interface{} { return map[string]bool{"retry": false} }
 
 type testBidBlockServiceServer struct {
 	mevpb.UnimplementedBidBlockServiceServer

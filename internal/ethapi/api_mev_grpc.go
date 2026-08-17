@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -34,7 +35,11 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const mevErrorDomain = "mev.bnbchain.org"
+const (
+	mevErrorDomain          = "mev.bnbchain.org"
+	jsonRPCDefaultErrorCode = -32000
+	jsonRPCErrorDataKey     = "json_rpc_error_data"
+)
 
 var (
 	grpcBidBlockRequests = metrics.NewRegisteredCounter("bidblock/grpc/requests", nil)
@@ -101,8 +106,8 @@ func (s *MevGRPCServer) SendBidBlock(ctx context.Context, req *mevpb.BidBlockReq
 	return &mevpb.BidBlockResponse{BidHash: bidHash.Bytes()}, nil
 }
 
-// toMevGRPCStatus maps stable MEV JSON-RPC errors to gRPC status while
-// retaining their numeric business code in ErrorInfo.
+// toMevGRPCStatus maps stable MEV errors to gRPC status while preserving the
+// message, JSON-RPC code and optional error data returned by the JSON endpoint.
 func toMevGRPCStatus(err error) error {
 	if err == nil {
 		return nil
@@ -114,12 +119,13 @@ func toMevGRPCStatus(err error) error {
 		return status.FromContextError(err).Err()
 	}
 
+	jsonRPCCode := jsonRPCDefaultErrorCode
+	code := codes.Unknown
 	var rpcErr rpc.Error
-	if !errors.As(err, &rpcErr) {
-		return status.Error(codes.Internal, "internal error")
+	if errors.As(err, &rpcErr) {
+		jsonRPCCode = rpcErr.ErrorCode()
 	}
-	var code codes.Code
-	switch rpcErr.ErrorCode() {
+	switch jsonRPCCode {
 	case buildertypes.InvalidBidParamError, buildertypes.InvalidPayBidTxError,
 		buildertypes.BidBlockPreSealVerifyError:
 		code = codes.InvalidArgument
@@ -133,15 +139,20 @@ func toMevGRPCStatus(err error) error {
 		code = codes.PermissionDenied
 	case buildertypes.BidBlockTooLateError:
 		code = codes.DeadlineExceeded
-	default:
-		return status.Error(codes.Internal, "internal error")
 	}
 
 	st := status.New(code, err.Error())
-	if detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-		Reason: strconv.Itoa(rpcErr.ErrorCode()),
+	detail := &errdetails.ErrorInfo{
+		Reason: strconv.Itoa(jsonRPCCode),
 		Domain: mevErrorDomain,
-	}); detailErr == nil {
+	}
+	var dataErr rpc.DataError
+	if errors.As(err, &dataErr) {
+		if encoded, encodeErr := json.Marshal(dataErr.ErrorData()); encodeErr == nil {
+			detail.Metadata = map[string]string{jsonRPCErrorDataKey: string(encoded)}
+		}
+	}
+	if detailed, detailErr := st.WithDetails(detail); detailErr == nil {
 		st = detailed
 	}
 	return st.Err()
