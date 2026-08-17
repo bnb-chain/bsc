@@ -300,6 +300,9 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 
 	tok.inAnnounce = true // threaded into the internal calls below by value
 	for _, c := range calls {
+		if tok.ctx.OutOfGas() {
+			return ErrOutOfGas
+		}
 		if len(c) < 4 {
 			return revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, c)
 		}
@@ -353,6 +356,14 @@ func batchMint(tok b20Token, args []byte) error {
 		return revB20("EmptyBatch()", errSelEmptyBatch)
 	}
 	for i := range recipients {
+		// chargeStateGas marks the frame out of gas and returns, so without this
+		// the loop would run to completion on an exhausted budget — the state is
+		// discarded either way, but the node has already done the work. A batch
+		// long enough to exhaust its gas on the first recipient measured the same
+		// wall-clock as one that paid for every one of them.
+		if tok.ctx.OutOfGas() {
+			return ErrOutOfGas
+		}
 		to, ok := addressFromWord(recipients[i])
 		if !ok {
 			return ErrExecutionReverted

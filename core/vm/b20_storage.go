@@ -426,6 +426,9 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 	// it would in Solidity — deriving the root twice would overcharge.
 	base := s.stringDataRoot(slot)
 	for i := uint64(0); i < newChunks; i++ {
+		if s.ctx != nil && s.ctx.OutOfGas() {
+			return
+		}
 		var chunk common.Hash
 		copy(chunk[:], b[i*32:])
 		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), chunk)
