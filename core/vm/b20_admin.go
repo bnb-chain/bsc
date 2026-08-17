@@ -83,10 +83,10 @@ var (
 	b20TopicSeized           = eventTopic("Seized(address,address,address,uint256)")
 
 	b20TopicLastAdminRenounced = eventTopic("LastAdminRenounced(address)")
-	b20TopicPolicyUpdated      = eventTopic("PolicyUpdated(bytes32,uint64)")
+	b20TopicPolicyUpdated      = eventTopic("PolicyUpdated(bytes32,uint64,uint64)")
 	b20TopicPaused             = eventTopic("Paused(address,uint8[])")
 	b20TopicUnpaused           = eventTopic("Unpaused(address,uint8[])")
-	b20TopicSupplyCapUpdated   = eventTopic("SupplyCapUpdated(uint256,uint256)")
+	b20TopicSupplyCapUpdated   = eventTopic("SupplyCapUpdated(address,uint256,uint256)")
 )
 
 // dispatchAdmin handles the RBAC / pause / mint-burn selectors. ok is false
@@ -564,7 +564,7 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	}
 	previous := t.s.supplyCap()
 	t.s.setSupplyCap(newCap)
-	t.ctx.AddLog([]common.Hash{b20TopicSupplyCapUpdated},
+	t.ctx.AddLog([]common.Hash{b20TopicSupplyCapUpdated, addrKey(t.ctx.Caller)},
 		append(wU256(previous).Bytes(), wU256(newCap).Bytes()...))
 	return nil
 }
@@ -583,25 +583,36 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	// policyExists answers for the sentinels itself, so binding one needs no
 	// special case here (BEP-702 3.8).
 	if !newPolicyReg(t.ctx).policyExists(id) {
-		return revB20("PolicyNotFound()", errSelPolicyNotFound)
+		return revB20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
 	}
+	// The event carries the id being replaced, so the previous binding is read
+	// before the write — an SLOAD a Solidity implementation emitting the same
+	// event would also pay.
+	var previous uint64
 	switch scope {
 	case scopeTransferSender:
+		previous = t.s.transferSenderPolicy()
 		t.s.setTransferSenderPolicy(id)
 	case scopeTransferReceiver:
+		previous = t.s.transferReceiverPolicy()
 		t.s.setTransferReceiverPolicy(id)
 	case scopeTransferExecutor:
+		previous = t.s.transferExecutorPolicy()
 		t.s.setTransferExecutorPolicy(id)
 	case scopeMintReceiver:
+		previous = t.s.mintReceiverPolicy()
 		t.s.setMintReceiverPolicy(id)
 	case scopeSeizeHolder:
+		previous = t.s.seizeHolderPolicy()
 		t.s.setSeizeHolderPolicy(id)
 	case scopeSeizeReceiver:
+		previous = t.s.seizeReceiverPolicy()
 		t.s.setSeizeReceiverPolicy(id)
 	default:
 		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
 	}
-	t.ctx.AddLog([]common.Hash{b20TopicPolicyUpdated, scope}, wU64(id).Bytes())
+	t.ctx.AddLog([]common.Hash{b20TopicPolicyUpdated, scope},
+		append(wU64(previous).Bytes(), wU64(id).Bytes()...))
 	return nil
 }
 

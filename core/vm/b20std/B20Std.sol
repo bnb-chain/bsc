@@ -18,22 +18,24 @@ interface IB20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event Memo(address indexed caller, bytes32 indexed memo);
-    event NameUpdated(string newName);
-    event SymbolUpdated(string newSymbol);
+    event NameUpdated(address indexed updater, string newName);
+    event SymbolUpdated(address indexed updater, string newSymbol);
     event ContractURIUpdated();
     event Seized(address indexed caller, address indexed from, address indexed to, uint256 value);
     event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender);
     event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender);
     event RoleAdminChanged(bytes32 indexed role, bytes32 previousAdminRole, bytes32 newAdminRole);
     event LastAdminRenounced(address indexed previousAdmin);
-    event PolicyUpdated(bytes32 indexed scope, uint64 policyId);
+    event PolicyUpdated(bytes32 indexed scope, uint64 oldPolicyId, uint64 newPolicyId);
     event Paused(address indexed updater, PausableFeature[] features);
     event Unpaused(address indexed updater, PausableFeature[] features);
-    event SupplyCapUpdated(uint256 previousCap, uint256 newCap);
+    event SupplyCapUpdated(address indexed updater, uint256 previousCap, uint256 newCap);
     event EIP712DomainChanged();
 
     // --- errors ---
     error NonPayable();
+    error DelegateCallNotAllowed();
+    error StaticCallNotAllowed();
     error InvalidReceiver(address receiver);
     error InvalidSender(address sender);
     error InvalidSpender(address spender);
@@ -50,7 +52,8 @@ interface IB20 {
     error LastAdminCannotRenounce();
     error NotSoleAdmin();
     error PolicyForbids(bytes32 policyScope, uint64 policyId);
-    error PolicyNotFound();
+    error PolicyNotFound();          // PolicyRegistry: the caller named the id
+    error PolicyNotFound(uint64 policyId); // token: which binding failed
     error UnsupportedPolicyType(bytes32 policyScope);
     error EmptyFeatureSet();
     error AccountNotSeizable(address account);

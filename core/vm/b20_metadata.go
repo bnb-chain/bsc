@@ -34,8 +34,8 @@ var (
 	selSupplyCap         = selector("supplyCap()")
 	selEIP712Domain      = selector("eip712Domain()")
 
-	b20TopicNameUpdated         = eventTopic("NameUpdated(string)")
-	b20TopicSymbolUpdated       = eventTopic("SymbolUpdated(string)")
+	b20TopicNameUpdated         = eventTopic("NameUpdated(address,string)")
+	b20TopicSymbolUpdated       = eventTopic("SymbolUpdated(address,string)")
 	b20TopicContractURIUpdated  = eventTopic("ContractURIUpdated()")
 	b20TopicEIP712DomainChanged = eventTopic("EIP712DomainChanged()")
 )
@@ -88,7 +88,7 @@ func (t b20Token) updateName(v string) error {
 		return err
 	}
 	t.s.setName(v)
-	t.ctx.AddLog([]common.Hash{b20TopicNameUpdated}, encString(v))
+	t.ctx.AddLog([]common.Hash{b20TopicNameUpdated, addrKey(t.ctx.Caller)}, encString(v))
 	t.ctx.AddLog([]common.Hash{b20TopicEIP712DomainChanged}, nil)
 	return nil
 }
@@ -98,7 +98,7 @@ func (t b20Token) updateSymbol(v string) error {
 		return err
 	}
 	t.s.setSymbol(v)
-	t.ctx.AddLog([]common.Hash{b20TopicSymbolUpdated}, encString(v))
+	t.ctx.AddLog([]common.Hash{b20TopicSymbolUpdated, addrKey(t.ctx.Caller)}, encString(v))
 	return nil
 }
 

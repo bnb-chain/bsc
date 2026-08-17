@@ -68,6 +68,19 @@ func (e *b20RevertError) Is(target error) bool { return target == ErrExecutionRe
 // finishB20 converts a typed revert into (returndata, ErrExecutionReverted) at
 // the precompile boundary. All other results pass through unchanged.
 func finishB20(ret []byte, err error) ([]byte, error) {
+	// A refused call form is a revert, not an exceptional halt: BEP-702 3.2 says
+	// DELEGATECALL and CALLCODE MUST revert, and base-std names both this and the
+	// write-protection failure as ABI errors. Returning the sentinels straight to
+	// the EVM would exhaust the caller's gas and hand back no returndata, so an
+	// integrator could neither decode the reason nor keep the gas — a footgun no
+	// contract at an ordinary address has. Converted here rather than at each of
+	// the twenty guard sites, which keep the plain sentinel internally.
+	switch {
+	case errors.Is(err, ErrB20DelegateCall):
+		err = revB20("DelegateCallNotAllowed()", errSelDelegateCallDenied)
+	case errors.Is(err, ErrWriteProtection):
+		err = revB20("StaticCallNotAllowed()", errSelStaticCallDenied)
+	}
 	var rev *b20RevertError
 	if errors.As(err, &rev) {
 		return rev.data, ErrExecutionReverted
@@ -127,35 +140,41 @@ var (
 	errSelLastAdminRenounce   = b20ErrorSel("LastAdminCannotRenounce()")
 	errSelNotSoleAdmin        = b20ErrorSel("NotSoleAdmin()")
 	errSelPolicyForbids       = b20ErrorSel("PolicyForbids(bytes32,uint64)")
-	errSelPolicyNotFound      = b20ErrorSel("PolicyNotFound()")
-	errSelUnsupportedScope    = b20ErrorSel("UnsupportedPolicyType(bytes32)")
-	errSelIncompatibleType    = b20ErrorSel("IncompatiblePolicyType()")
-	errSelBatchTooLarge       = b20ErrorSel("BatchSizeTooLarge(uint256)")
-	errSelEmptyBatch          = b20ErrorSel("EmptyBatch()")
-	errSelLengthMismatch      = b20ErrorSel("LengthMismatch(uint256,uint256)")
-	errSelEmptyFeatureSet     = b20ErrorSel("EmptyFeatureSet()")
-	errSelInvalidMultiplier   = b20ErrorSel("InvalidMultiplier()")
-	errSelInvalidMetadataKey  = b20ErrorSel("InvalidMetadataKey()")
-	errSelAnnounceInProgress  = b20ErrorSel("AnnouncementInProgress()")
-	errSelAnnounceIdUsed      = b20ErrorSel("AnnouncementIdAlreadyUsed(string)")
-	errSelInternalMalformed   = b20ErrorSel("InternalCallMalformed(bytes)")
-	errSelInternalFailed      = b20ErrorSel("InternalCallFailed(bytes)")
-	errSelInvalidVariant      = b20ErrorSel("InvalidVariant()")
-	errSelTokenExists         = b20ErrorSel("TokenAlreadyExists(address)")
-	errSelInitCallFailed      = b20ErrorSel("InitCallFailed(uint256)")
-	errSelUnauthorized        = b20ErrorSel("Unauthorized()")
-	errSelNoPendingAdmin      = b20ErrorSel("NoPendingAdmin()")
-	errSelZeroAddress         = b20ErrorSel("ZeroAddress()")
-	errSelAccountNotSeizable  = b20ErrorSel("AccountNotSeizable(address)")
-	errSelPanic               = b20ErrorSel("Panic(uint256)")
-	errSelFeatureNotActive    = b20ErrorSel("FeatureNotActivated(bytes32)")
-	errSelAlreadyActivated    = b20ErrorSel("AlreadyActivated(bytes32)")
-	errSelUnauthorizedAddr    = b20ErrorSel("Unauthorized(address)")
-	errSelZeroAdminAddress    = b20ErrorSel("ZeroAdminAddress()")
-	errSelUnsupportedVersion  = b20ErrorSel("UnsupportedVersion(uint8,uint8)")
-	errSelInvalidDecimals     = b20ErrorSel("InvalidDecimals(uint8)")
-	errSelMissingField        = b20ErrorSel("MissingRequiredField(string)")
-	errSelInvalidCurrency     = b20ErrorSel("InvalidCurrency(string)")
+	// Two forms, as base-std declares them: the registry answers about a policy
+	// the caller named, so the id adds nothing; a token binding one reports which
+	// id it could not find (IPolicyRegistry vs IB20).
+	errSelPolicyNotFound     = b20ErrorSel("PolicyNotFound()")
+	errSelPolicyNotFoundID   = b20ErrorSel("PolicyNotFound(uint64)")
+	errSelUnsupportedScope   = b20ErrorSel("UnsupportedPolicyType(bytes32)")
+	errSelIncompatibleType   = b20ErrorSel("IncompatiblePolicyType()")
+	errSelBatchTooLarge      = b20ErrorSel("BatchSizeTooLarge(uint256)")
+	errSelEmptyBatch         = b20ErrorSel("EmptyBatch()")
+	errSelLengthMismatch     = b20ErrorSel("LengthMismatch(uint256,uint256)")
+	errSelEmptyFeatureSet    = b20ErrorSel("EmptyFeatureSet()")
+	errSelInvalidMultiplier  = b20ErrorSel("InvalidMultiplier()")
+	errSelInvalidMetadataKey = b20ErrorSel("InvalidMetadataKey()")
+	errSelAnnounceInProgress = b20ErrorSel("AnnouncementInProgress()")
+	errSelAnnounceIdUsed     = b20ErrorSel("AnnouncementIdAlreadyUsed(string)")
+	errSelInternalMalformed  = b20ErrorSel("InternalCallMalformed(bytes)")
+	errSelInternalFailed     = b20ErrorSel("InternalCallFailed(bytes)")
+	errSelInvalidVariant     = b20ErrorSel("InvalidVariant()")
+	errSelTokenExists        = b20ErrorSel("TokenAlreadyExists(address)")
+	errSelInitCallFailed     = b20ErrorSel("InitCallFailed(uint256)")
+	errSelUnauthorized       = b20ErrorSel("Unauthorized()")
+	errSelNoPendingAdmin     = b20ErrorSel("NoPendingAdmin()")
+	errSelZeroAddress        = b20ErrorSel("ZeroAddress()")
+	errSelAccountNotSeizable = b20ErrorSel("AccountNotSeizable(address)")
+	errSelPanic              = b20ErrorSel("Panic(uint256)")
+	errSelFeatureNotActive   = b20ErrorSel("FeatureNotActivated(bytes32)")
+	errSelAlreadyActivated   = b20ErrorSel("AlreadyActivated(bytes32)")
+	errSelUnauthorizedAddr   = b20ErrorSel("Unauthorized(address)")
+	errSelZeroAdminAddress   = b20ErrorSel("ZeroAdminAddress()")
+	errSelDelegateCallDenied = b20ErrorSel("DelegateCallNotAllowed()")
+	errSelStaticCallDenied   = b20ErrorSel("StaticCallNotAllowed()")
+	errSelUnsupportedVersion = b20ErrorSel("UnsupportedVersion(uint8,uint8)")
+	errSelInvalidDecimals    = b20ErrorSel("InvalidDecimals(uint8)")
+	errSelMissingField       = b20ErrorSel("MissingRequiredField(string)")
+	errSelInvalidCurrency    = b20ErrorSel("InvalidCurrency(string)")
 )
 
 // revPanic mirrors Solidity's Panic(code): 0x11 arithmetic over/underflow,

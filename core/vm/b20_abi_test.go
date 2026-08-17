@@ -183,6 +183,29 @@ func TestB20RevertData(t *testing.T) {
 	if !bytes.Equal(ret, errSelNonPayable[:]) {
 		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)
 	}
+
+	// The role and policy-scope ids themselves, which base-std publishes as full
+	// hashes next to those selectors. A getter can return the right shape and the
+	// wrong constant; these are what a token's storage is actually keyed on.
+	for _, tc := range []struct {
+		name string
+		got  common.Hash
+		want string
+	}{
+		{"SEIZE_ROLE", roleSeize, "0x3469b8b0d89e9604f8510ed143f74a8336d22955d4f83e23bf53d9414e27f432"},
+		{"SEIZE_HOLDER_POLICY", scopeSeizeHolder, "0x1497ab2b67ebb0a75dd9cdd6aec9f0e64620e6b87e911af7a088ac12e58d9ef2"},
+		{"SEIZE_RECEIVER_POLICY", scopeSeizeReceiver, "0xbf15b19caf5c77422c038bc25f26b8b815c3a14f6d04c6616076b81bcfe07b3d"},
+	} {
+		if got := tc.got.Hex(); got != tc.want {
+			t.Errorf("%s = %s, want %s (base-std's published value)", tc.name, got, tc.want)
+		}
+	}
+
+	// And the one event topic0 it publishes in full.
+	const wantSeized = "0xa9aec5d8b86e2fa2fd6ac3af62f2622e3dfdab1967d4cbbb56a5df7d74cb887c"
+	if got := b20TopicSeized.Hex(); got != wantSeized {
+		t.Errorf("Seized topic0 = %s, want %s (base-std's published value)", got, wantSeized)
+	}
 }
 
 // TestB20UndecodableCalldataRevertsEmpty pins BEP-702 3.2's second failure kind:
@@ -239,9 +262,16 @@ func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
 	}
 }
 
-// TestB20AnnounceMatchesBaseStd pins the announcement id's type to base-std's.
+// TestB20PublishedValuesMatchBaseStd pins every selector, role id and topic0
+// base-std states as a literal in its own changelog tables, so the values can be
+// checked by eye against the reference rather than trusted.
 //
-// The id is a string, not the uint256 BEP-702 first specified: base-std ships
+// TestB20SurfaceMatchesBaseStd covers whether the signature *sets* agree. This
+// covers whether our hashing of them agrees, which that test cannot: it derives
+// both sides from the same strings with the same code.
+//
+// The announcement id is the reason this exists. It is a string, not the uint256
+// BEP-702 first specified: base-std ships
 // announce as 0x595135dd, published in its Beryl-to-Cobalt migration note
 // alongside the rest of the frozen Asset surface. Every other Asset selector in
 // that table already matched, which is what isolated this one.
@@ -250,7 +280,7 @@ func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
 // built against Base's ABI. The baseline test only checks the Go code against
 // BEP-702's own Solidity, so both could drift back together; this is the
 // external anchor.
-func TestB20AnnounceMatchesBaseStd(t *testing.T) {
+func TestB20PublishedValuesMatchBaseStd(t *testing.T) {
 	for _, tc := range []struct {
 		sig  string
 		got  [4]byte
@@ -264,6 +294,13 @@ func TestB20AnnounceMatchesBaseStd(t *testing.T) {
 		{"updateMultiplier(uint256)", selUpdateMultiplier, "5ffe6146"},
 		{"OPERATOR_ROLE()", selOperatorRole, "f5b541a6"},
 		{"WAD_PRECISION()", selWadPrecision, "664808a8"},
+		// The seize surface, published in base-std's Cobalt seize note. It is the
+		// one Cobalt group we implement — it replaces the burn-based freeze-and
+		// seize that base-std deprecated and we never carried.
+		{"seizeWithMemo(address,address,uint256,bytes32)", selSeizeWithMemo, "f916d81b"},
+		{"SEIZE_ROLE()", selSeizeRole, "3c7e9ba5"},
+		{"SEIZE_HOLDER_POLICY()", selSeizeHolderScope, "b279d311"},
+		{"SEIZE_RECEIVER_POLICY()", selSeizeReceiverScope, "b31da27f"},
 	} {
 		if got := common.Bytes2Hex(tc.got[:]); got != tc.want {
 			t.Errorf("%s = 0x%s, want 0x%s (base-std's published selector)", tc.sig, got, tc.want)

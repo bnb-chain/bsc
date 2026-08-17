@@ -191,13 +191,24 @@ func TestB20VariantOf(t *testing.T) {
 }
 
 // TestB20DelegateCallGuard checks that every variant rejects non-direct calls
-// before touching any state.
+// before touching any state, and reverts rather than halting: BEP-702 3.2 says
+// DELEGATECALL and CALLCODE MUST revert, so the caller keeps its gas and can
+// decode the reason. Returning the bare sentinel drained the whole budget and
+// returned nothing.
 func TestB20DelegateCallGuard(t *testing.T) {
-	ctx := &PrecompileContext{DirectCall: false}
+	want := revB20("DelegateCallNotAllowed()", errSelDelegateCallDenied)
+	wantData, _ := finishB20(nil, want)
+	if len(wantData) != 4 {
+		t.Fatalf("the expected payload is %d bytes, want a bare selector", len(wantData))
+	}
 	precompiles := []StatefulPrecompiledContract{b20Factory, b20Asset, b20Stablecoin, b20Policy, b20Activation}
 	for _, p := range precompiles {
-		if _, err := p.RunStateful(ctx, nil); !errors.Is(err, ErrB20DelegateCall) {
-			t.Errorf("%T: err = %v, want ErrB20DelegateCall", p, err)
+		ret, err := p.RunStateful(&PrecompileContext{DirectCall: false}, nil)
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%T: err = %v, want a revert", p, err)
+		}
+		if !bytes.Equal(ret, wantData) {
+			t.Errorf("%T: returndata = %x, want DelegateCallNotAllowed() = %x", p, ret, wantData)
 		}
 	}
 }

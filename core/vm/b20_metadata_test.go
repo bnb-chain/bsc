@@ -212,12 +212,23 @@ func TestB20MetadataEvents(t *testing.T) {
 		t.Fatalf("got %d logs, want %d (NameUpdated, EIP712DomainChanged, SymbolUpdated, ContractURIUpdated)",
 			len(logs), len(wantTopics))
 	}
+	// NameUpdated and SymbolUpdated index the account that made the change, as
+	// base-std declares them; the other two take no arguments.
+	wantIndexed := map[common.Hash]bool{b20TopicNameUpdated: true, b20TopicSymbolUpdated: true}
 	for i, want := range wantTopics {
 		if logs[i].Address != token {
 			t.Errorf("log %d address = %s, want the token", i, logs[i].Address.Hex())
 		}
-		if len(logs[i].Topics) != 1 || logs[i].Topics[0] != want {
-			t.Errorf("log %d topics = %v, want [%s]", i, logs[i].Topics, want.Hex())
+		topics := 1
+		if wantIndexed[want] {
+			topics = 2
+		}
+		if len(logs[i].Topics) != topics || logs[i].Topics[0] != want {
+			t.Errorf("log %d topics = %v, want %d starting with %s", i, logs[i].Topics, topics, want.Hex())
+			continue
+		}
+		if topics == 2 && logs[i].Topics[1] != addrKey(editor) {
+			t.Errorf("log %d updater = %s, want %s", i, logs[i].Topics[1].Hex(), addrKey(editor).Hex())
 		}
 	}
 	if got := decodeString(t, logs[0].Data); got != longName {
@@ -355,20 +366,24 @@ func TestB20PausedFeaturesAndSupplyCap(t *testing.T) {
 	if !bytes.Equal(logs[1].Data, wantUnpaused) {
 		t.Errorf("Unpaused data = %x, want %x", logs[1].Data, wantUnpaused)
 	}
-	// SupplyCapUpdated(uint256 previousCap, uint256 newCap): both non-indexed.
-	if logs[2].Topics[0] != b20TopicSupplyCapUpdated || len(logs[2].Topics) != 1 {
-		t.Errorf("SupplyCapUpdated topics = %v", logs[2].Topics)
+	// SupplyCapUpdated(address indexed updater, uint256 previousCap, uint256 newCap).
+	if len(logs[2].Topics) != 2 || logs[2].Topics[0] != b20TopicSupplyCapUpdated ||
+		logs[2].Topics[1] != addrKey(admin) {
+		t.Errorf("SupplyCapUpdated topics = %v, want [sig, updater %s]", logs[2].Topics, admin.Hex())
 	}
 	wantCap := append(u256hash(1000).Bytes(), u256hash(5000).Bytes()...)
 	if !bytes.Equal(logs[2].Data, wantCap) {
 		t.Errorf("SupplyCapUpdated data = %x, want %x", logs[2].Data, wantCap)
 	}
-	// PolicyUpdated(bytes32 indexed scope, uint64 policyId).
+	// PolicyUpdated(bytes32 indexed scope, uint64 oldPolicyId, uint64 newPolicyId).
+	// The old id is what lets an indexer reconstruct a scope's binding history
+	// without replaying every block since creation.
 	if len(logs[3].Topics) != 2 || logs[3].Topics[0] != b20TopicPolicyUpdated || logs[3].Topics[1] != scopeTransferSender {
 		t.Errorf("PolicyUpdated topics = %v, want [PolicyUpdated, TRANSFER_SENDER]", logs[3].Topics)
 	}
-	if !bytes.Equal(logs[3].Data, wU64(b20PolicyAlwaysBlock).Bytes()) {
-		t.Errorf("PolicyUpdated data = %x, want %x", logs[3].Data, wU64(b20PolicyAlwaysBlock).Bytes())
+	wantPolicy := append(wU64(0).Bytes(), wU64(b20PolicyAlwaysBlock).Bytes()...)
+	if !bytes.Equal(logs[3].Data, wantPolicy) {
+		t.Errorf("PolicyUpdated data = %x, want %x (unbound -> ALWAYS_BLOCK)", logs[3].Data, wantPolicy)
 	}
 }
 

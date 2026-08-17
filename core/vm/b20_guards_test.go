@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -22,10 +23,19 @@ func TestB20CreateRejectsStaticCall(t *testing.T) {
 	minter := common.HexToAddress("0x33333")
 	bundle := [][]byte{b20Call(selGrantRole, roleMint, addrKey(minter))}
 	input := encodeCreateB20(b20VariantAsset, salt, caller, bundle)
-	if _, _, err := evm.StaticCall(caller, B20FactoryAddress, input, NewGasBudget(5_000_000)); err == nil {
-		t.Fatal("createB20 succeeded under STATICCALL")
-	} else if !errors.Is(err, ErrWriteProtection) {
-		t.Errorf("STATICCALL createB20 gave %v, want write protection", err)
+	// A refused write is a revert carrying StaticCallNotAllowed(), not an
+	// exceptional halt: the caller keeps its gas and can decode the reason.
+	budget := NewGasBudget(5_000_000)
+	ret, left, err := evm.StaticCall(caller, B20FactoryAddress, input, budget)
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("STATICCALL createB20 gave %v, want a revert", err)
+	}
+	wantData, _ := finishB20(nil, revB20("StaticCallNotAllowed()", errSelStaticCallDenied))
+	if !bytes.Equal(ret, wantData) {
+		t.Errorf("returndata = %x, want StaticCallNotAllowed() = %x", ret, wantData)
+	}
+	if left.RegularGas == 0 {
+		t.Error("the whole budget was consumed; a revert refunds what it did not spend")
 	}
 
 	// Nothing may have been written: no sentinel, so the address stays free.
@@ -159,12 +169,29 @@ func TestB20NonDirectCallPlumbing(t *testing.T) {
 	caller := common.HexToAddress("0xca11e5")
 	origin := common.HexToAddress("0x0416019")
 
-	if _, _, err := evm.CallCode(caller, token, b20Call(selTotalSupply),
-		NewGasBudget(100_000), uint256.NewInt(7)); !errors.Is(err, ErrB20DelegateCall) {
-		t.Errorf("CALLCODE err = %v, want ErrB20DelegateCall", err)
-	}
-	if _, _, err := evm.DelegateCall(origin, caller, token, b20Call(selTotalSupply),
-		NewGasBudget(100_000), uint256.NewInt(0)); !errors.Is(err, ErrB20DelegateCall) {
-		t.Errorf("DELEGATECALL err = %v, want ErrB20DelegateCall", err)
+	// Both revert with DelegateCallNotAllowed() and refund; see
+	// TestB20DelegateCallGuard for the payload.
+	wantDelegate, _ := finishB20(nil, revB20("DelegateCallNotAllowed()", errSelDelegateCallDenied))
+	for _, tc := range []struct {
+		name string
+		run  func() ([]byte, GasBudget, error)
+	}{
+		{"CALLCODE", func() ([]byte, GasBudget, error) {
+			return evm.CallCode(caller, token, b20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(7))
+		}},
+		{"DELEGATECALL", func() ([]byte, GasBudget, error) {
+			return evm.DelegateCall(origin, caller, token, b20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
+		}},
+	} {
+		ret, left, err := tc.run()
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s err = %v, want a revert", tc.name, err)
+		}
+		if !bytes.Equal(ret, wantDelegate) {
+			t.Errorf("%s returndata = %x, want %x", tc.name, ret, wantDelegate)
+		}
+		if left.RegularGas == 0 {
+			t.Errorf("%s consumed the whole budget; a revert refunds the rest", tc.name)
+		}
 	}
 }
