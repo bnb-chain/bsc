@@ -1,6 +1,8 @@
 package vm
 
 import (
+	"os"
+	"regexp"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -36,5 +38,34 @@ func TestB20SingletonAddresses(t *testing.T) {
 		if IsB20Address(reg) {
 			t.Errorf("%s must fall outside the reserved token space", reg.Hex())
 		}
+	}
+
+	// And the same three in the interface we publish. The mirror had the two
+	// registries the other way round — a caller wiring POLICY_REGISTRY from
+	// B20Constants reached the ActivationRegistry, which answers a different ABI
+	// entirely. Nothing compiles the mirror, so only a check like this sees it.
+	src, err := os.ReadFile("b20std/B20Std.sol")
+	if err != nil {
+		t.Fatalf("read the interface mirror: %v", err)
+	}
+	published := map[string]common.Address{}
+	for _, m := range regexp.MustCompile(`address internal constant (\w+) = (0x[0-9a-fA-F]{40});`).
+		FindAllStringSubmatch(string(src), -1) {
+		published[m[1]] = common.HexToAddress(m[2])
+	}
+	for name, want := range map[string]common.Address{
+		"B20_FACTORY":         B20FactoryAddress,
+		"ACTIVATION_REGISTRY": B20ActivationRegistryAddress,
+		"POLICY_REGISTRY":     B20PolicyRegistryAddress,
+	} {
+		got, ok := published[name]
+		if !ok {
+			t.Errorf("B20Constants declares no %s", name)
+		} else if got != want {
+			t.Errorf("B20Constants.%s = %s, the precompile is at %s", name, got.Hex(), want.Hex())
+		}
+	}
+	if len(published) != 3 {
+		t.Errorf("B20Constants declares %d address(es), 3 are pinned here", len(published))
 	}
 }
