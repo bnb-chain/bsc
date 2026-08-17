@@ -85,12 +85,17 @@ func TestB20SurfaceMatchesBaseStd(t *testing.T) {
 				"    Implement it, or record why not in b20IntentionalOmission.", group.kind, sig)
 		}
 
-		// A Cobalt one is a tracked gap. Failing on it would make every commit
-		// wait on a fork we have not decided to follow; going silent would let it
-		// rot. Logged, and counted so a change in the count is visible.
-		if len(cobaltGaps) > 0 {
-			sort.Strings(cobaltGaps)
-			t.Logf("%d %s(s) added at Cobalt, not implemented (deferred, additive per base-std's changelogs):\n  %s",
+		// A Cobalt one is a tracked gap. Failing on each would make every commit
+		// wait on a fork we have not decided to follow; logging alone would rot,
+		// since nobody reads a passing test's output. So the count is asserted:
+		// implementing one, or a pin bump that adds one, has to come here.
+		sort.Strings(cobaltGaps)
+		if want := b20CobaltGaps[group.kind]; len(cobaltGaps) != want {
+			t.Errorf("%d %s(s) from Cobalt are unimplemented, expected %d. Update "+
+				"b20CobaltGaps if this is deliberate:\n  %s",
+				len(cobaltGaps), group.kind, want, strings.Join(cobaltGaps, "\n  "))
+		} else if len(cobaltGaps) > 0 {
+			t.Logf("%d %s(s) deferred from Cobalt (additive per base-std's changelogs):\n  %s",
 				len(cobaltGaps), group.kind, strings.Join(cobaltGaps, "\n  "))
 		}
 
@@ -111,6 +116,15 @@ func TestB20SurfaceMatchesBaseStd(t *testing.T) {
 
 	t.Logf("diffed against %s @ %s", ref.Source, ref.Commit[:12])
 }
+
+// b20CobaltGaps is how much of the Cobalt fork we have deliberately not
+// implemented: the ERC-8056 scheduled multiplier and composite policies. Cobalt's
+// third addition, transfer-based seize, we do implement — it replaces the
+// burn-based path base-std deprecated and we never carried.
+//
+// Asserted rather than logged so that adopting a piece of Cobalt, or bumping the
+// base-std pin onto a fork that adds more, has to be acknowledged here.
+var b20CobaltGaps = map[string]int{"function": 16, "event": 3, "error": 6}
 
 type refEntry struct {
 	Sig  string `json:"sig"`
