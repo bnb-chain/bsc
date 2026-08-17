@@ -90,35 +90,39 @@ func TestLatestFork_Jenner(t *testing.T) {
 	if got := c.LatestFork(testJennerTime - 1); got != forks.Pasteur {
 		t.Fatalf("LatestFork right before Jenner: got %v, want Pasteur", got)
 	}
-	// forks.Fork arithmetic used by logForkReadiness: the enum value right
-	// after the pre-Jenner latest fork chain must eventually reach Jenner,
-	// and Timestamp must resolve for it (see TestTimestampFunc_Jenner).
-	if forks.Jenner <= forks.Amsterdam {
-		t.Fatalf("Jenner must be the newest fork enum value")
+	// forks.Fork arithmetic used by logForkReadiness: Jenner sits immediately
+	// after Pasteur, and before the (far-future, upstream) BPO/Amsterdam forks.
+	if forks.Jenner != forks.Pasteur+1 {
+		t.Fatalf("Jenner must immediately follow Pasteur in the fork enum")
+	}
+	if forks.Jenner >= forks.Amsterdam {
+		t.Fatalf("Jenner must be ordered before the far-future Amsterdam fork")
 	}
 }
 
-// TestVerifyForkOrdering_JennerNotEarlier pins down the "equal or later than
-// every other fork, never earlier" invariant enforced via CheckConfigForkOrder.
-func TestVerifyForkOrdering_JennerNotEarlier(t *testing.T) {
+// TestVerifyForkOrdering_JennerAfterPasteur pins down the ordering invariant
+// enforced via CheckConfigForkOrder: JennerTime must be at or after Pasteur
+// (Jenner is the BSC fork right after Pasteur), but it is NOT required to be
+// after the far-future BPO/Amsterdam forks.
+func TestVerifyForkOrdering_JennerAfterPasteur(t *testing.T) {
 	// Chapel has PasteurTime scheduled; use it as the reference fork.
 	pasteur := *ChapelChainConfig.PasteurTime
 
-	// Earlier than another defined fork: must be rejected.
+	// Earlier than Pasteur: must be rejected.
 	c := *ChapelChainConfig
 	c.JennerTime = newUint64(pasteur - 1)
 	if err := c.CheckConfigForkOrder(); err == nil {
 		t.Fatalf("CheckConfigForkOrder must reject JennerTime earlier than PasteurTime")
 	}
 
-	// Equal is explicitly allowed.
+	// Equal to Pasteur is explicitly allowed.
 	c = *ChapelChainConfig
 	c.JennerTime = newUint64(pasteur)
 	if err := c.CheckConfigForkOrder(); err != nil {
 		t.Fatalf("CheckConfigForkOrder must accept JennerTime equal to PasteurTime: %v", err)
 	}
 
-	// Later is allowed.
+	// Later than Pasteur is allowed.
 	c = *ChapelChainConfig
 	c.JennerTime = newUint64(testJennerTime)
 	if err := c.CheckConfigForkOrder(); err != nil {

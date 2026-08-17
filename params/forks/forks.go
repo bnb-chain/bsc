@@ -46,13 +46,13 @@ const (
 	Osaka
 	Mendel
 	Pasteur
+	Jenner
 	BPO1
 	BPO2
 	BPO3
 	BPO4
 	BPO5
 	Amsterdam
-	Jenner
 )
 
 // String implements fmt.Stringer.
@@ -90,11 +90,11 @@ var forkToString = map[Fork]string{
 	Osaka:            "Osaka",
 	Mendel:           "Mendel",
 	Pasteur:          "Pasteur",
+	Jenner:           "Jenner",
 	BPO1:             "BPO1",
 	BPO2:             "BPO2",
 	BPO3:             "BPO3",
 	BPO4:             "BPO4",
 	BPO5:             "BPO5",
 	Amsterdam:        "Amsterdam",
-	Jenner:           "Jenner",
 }

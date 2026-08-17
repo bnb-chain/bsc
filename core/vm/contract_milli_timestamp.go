@@ -35,7 +35,7 @@ func (c *milliTimestamp) Run(input []byte) ([]byte, error) {
 }
 
 func (c *milliTimestamp) Name() string {
-	return "milliTimestamp"
+	return "MILLI_TIMESTAMP"
 }
 
 // RunWithBlockContext is the actual entry point, dispatched from

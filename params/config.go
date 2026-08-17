@@ -1598,6 +1598,10 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "osakaTime", timestamp: c.OsakaTime},
 		{name: "mendelTime", timestamp: c.MendelTime},
 		{name: "pasteurTime", timestamp: c.PasteurTime},
+		// Jenner (BEP-706) is the BSC fork right after Pasteur; keeping it here
+		// makes the ordering check require JennerTime to be at or after Pasteur
+		// and at or before the later (BPO/Amsterdam) forks.
+		{name: "jenner", timestamp: c.JennerTime, optional: true},
 		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
 		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
 		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
@@ -1605,10 +1609,6 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
 		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
 		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
-		// Jenner must always be the latest fork: keeping it last in this list
-		// makes the ordering check reject any JennerTime earlier than another
-		// defined fork (equal is allowed).
-		{name: "jenner", timestamp: c.JennerTime, optional: true},
 	} {
 		if lastFork.name != "" {
 			switch {
@@ -1877,10 +1877,6 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
-	// Jenner is defined to always be the latest BSC fork (enforced by the
-	// fork ordering check in CheckConfigForkOrder), so it stays on top.
-	case c.IsJenner(london, time):
-		return forks.Jenner
 	case c.IsAmsterdam(london, time):
 		return forks.Amsterdam
 	case c.IsBPO5(london, time):
@@ -1893,6 +1889,10 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.BPO2
 	case c.IsBPO1(london, time):
 		return forks.BPO1
+	// Jenner (BEP-706) is the BSC fork right after Pasteur, before the
+	// (far-future, upstream) BPO/Amsterdam forks.
+	case c.IsJenner(london, time):
+		return forks.Jenner
 	case c.IsPasteur(london, time):
 		return forks.Pasteur
 	case c.IsMendel(london, time):
@@ -1970,11 +1970,6 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
-	// Keep Jenner first: it is defined to be the latest fork, and
-	// logForkReadiness in core/blockchain.go relies on Timestamp(current+1)
-	// resolving for the fork enum value right after the current one.
-	case fork == forks.Jenner:
-		return c.JennerTime
 	case fork == forks.Amsterdam:
 		return c.AmsterdamTime
 	case fork == forks.BPO5:
@@ -1987,6 +1982,11 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 		return c.BPO2Time
 	case fork == forks.BPO1:
 		return c.BPO1Time
+	// Jenner sits right after Pasteur in the fork order (see forks.go);
+	// logForkReadiness relies on Timestamp(current+1) resolving for the fork
+	// enum value right after the current one, so keep this order aligned.
+	case fork == forks.Jenner:
+		return c.JennerTime
 	case fork == forks.Pasteur:
 		return c.PasteurTime
 	case fork == forks.Mendel:
