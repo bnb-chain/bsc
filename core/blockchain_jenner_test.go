@@ -108,7 +108,9 @@ func TestJennerForkTransition(t *testing.T) {
 		caller = common.HexToAddress("0x000000000000000000000000000000000000aaaa")
 		db     = rawdb.NewMemoryDatabase()
 
-		key, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+		// Generate a fresh key per run: the test only needs some funded account
+		// to sign transactions, not a specific address, so no key is hardcoded.
+		key, _ = crypto.GenerateKey()
 		sender = crypto.PubkeyToAddress(key.PublicKey)
 
 		gspec = &Genesis{
