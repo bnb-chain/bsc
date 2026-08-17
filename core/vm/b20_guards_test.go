@@ -140,8 +140,11 @@ func TestB20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 }
 
 // TestB20NonDirectCallPlumbing drives the non-direct paths through the EVM's own
-// entry points rather than a hand-built context, so the fields evm.go fills in
-// are covered too. TestB20DelegateCallGuard covers the guard itself.
+// entry points rather than a hand-built context, so the DirectCall flag evm.go
+// sets is covered rather than assumed. It says nothing about the Caller and
+// Value evm.go passes alongside it — the guard fires before either is read, so
+// this test holds whatever they are; TestStatefulPrecompileCallContext pins
+// those. TestB20DelegateCallGuard covers the guard itself.
 func TestB20NonDirectCallPlumbing(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
