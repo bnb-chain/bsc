@@ -424,10 +424,17 @@ func TestB20CreateParamsRejectsMalformed(t *testing.T) {
 	}
 }
 
-// TestB20CurrencyValidationFollowsOccupancy pins the precedence Base has: a
-// duplicate salt is reported as TokenAlreadyExists even when the currency in
-// the same call is invalid, because the occupancy check runs first.
-func TestB20CurrencyValidationFollowsOccupancy(t *testing.T) {
+// TestB20FieldValidationPrecedesOccupancy pins base-std's precedence: an invalid
+// currency is reported as such even when the salt in the same call is already
+// taken, because every field is validated before the address is derived
+// (IB20Factory.createB20's documented order puts MissingRequiredField and
+// InvalidCurrency ahead of TokenAlreadyExists).
+//
+// This test asserted the opposite, and said it was "the precedence Base has".
+// Nobody had read base-std, which was public the whole time; the order came from
+// the implementation, and the spec was then written to match the implementation.
+// validateCurrency reads no storage, so there was never a reason to defer it.
+func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdup)")
 	call := func(salt common.Hash, currency string) ([]byte, error) {
@@ -442,12 +449,25 @@ func TestB20CurrencyValidationFollowsOccupancy(t *testing.T) {
 	if _, err := call(salt, "USD"); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
-	// Same salt, invalid currency: occupancy wins.
+	// Same salt AND an invalid currency: the currency is what is reported.
 	ret, err := call(salt, "usd")
 	if !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("duplicate salt err = %v, want revert", err)
+		t.Fatalf("duplicate salt with a bad currency: err = %v, want revert", err)
 	}
+	if len(ret) < 4 || [4]byte(ret[:4]) != errSelInvalidCurrency {
+		t.Fatalf("revert selector = %x, want InvalidCurrency %x", ret[:min(4, len(ret))], errSelInvalidCurrency)
+	}
+	// An empty one likewise outranks the duplicate salt.
+	ret, err = call(salt, "")
+	if len(ret) < 4 || [4]byte(ret[:4]) != errSelMissingField {
+		t.Fatalf("empty currency: selector = %x, want MissingRequiredField %x",
+			ret[:min(4, len(ret))], errSelMissingField)
+	}
+	// And with a valid currency the duplicate salt is what binds, so the cases
+	// above had two failing conditions rather than one.
+	ret, err = call(salt, "EUR")
 	if len(ret) < 4 || [4]byte(ret[:4]) != errSelTokenExists {
-		t.Fatalf("revert selector = %x, want TokenAlreadyExists %x", ret[:min(4, len(ret))], errSelTokenExists)
+		t.Fatalf("valid currency, duplicate salt: selector = %x, want TokenAlreadyExists %x",
+			ret[:min(4, len(ret))], errSelTokenExists)
 	}
 }

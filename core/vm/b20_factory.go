@@ -183,6 +183,15 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Every field is validated before the address is derived, matching base-std:
+	// a malformed currency is reported as such even when the salt is also taken.
+	// validateCurrency reads no storage, so there was never a reason to defer it
+	// to initialization.
+	if variant == b20VariantStablecoin {
+		if err := validateCurrency(create.currency); err != nil {
+			return nil, err
+		}
+	}
 	creator := ctx.Caller
 	addr := b20DeriveAddress(variant, creator, salt)
 
@@ -205,9 +214,6 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if variant == b20VariantAsset {
 		initAssetExtension(tokenCtx, create.decimals)
 	} else {
-		if err := validateCurrency(create.currency); err != nil {
-			return nil, err
-		}
 		newStablecoinExt(tokenCtx).setCurrency(create.currency)
 	}
 	initialAdmin := create.initialAdmin
