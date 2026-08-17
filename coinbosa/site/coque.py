@@ -49,7 +49,8 @@ PAGES = {
     "a-propos.html": "/a-propos.html",
 }
 
-PARTAGE = {"assets/style.css": "/assets/style.css", "app.js": "/app.js"}
+PARTAGE = {"assets/style.css": "/assets/style.css", "app.js": "/app.js",
+           "assets/scene.js": "/assets/scene.js"}
 
 
 def lire(p):

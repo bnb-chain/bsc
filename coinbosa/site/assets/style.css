@@ -575,3 +575,67 @@
   }
   .suite p { color: var(--muted); font-size: 1rem; max-width: 46ch; }
   .suite strong { color: var(--text); display: block; font-size: 1.1rem; margin-bottom: 5px; font-weight: 650; }
+
+  /* ============================================================
+     SCÈNES 3D
+     Le canvas .hero #node-net existait déjà pour l'ancienne animation ; il
+     porte maintenant la lune. La section planète est nouvelle.
+     ============================================================ */
+  .voile-hero {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(100deg,
+      color-mix(in srgb, var(--bg) 94%, transparent) 0%,
+      color-mix(in srgb, var(--bg) 84%, transparent) 26%,
+      color-mix(in srgb, var(--bg) 42%, transparent) 48%,
+      transparent 68%);
+  }
+  @media (max-width: 900px) {
+    .voile-hero {
+      background: linear-gradient(180deg, transparent 0%,
+        color-mix(in srgb, var(--bg) 36%, transparent) 38%,
+        color-mix(in srgb, var(--bg) 90%, transparent) 60%,
+        var(--bg) 100%);
+    }
+  }
+  .hero-inner { position: relative; z-index: 2; }
+
+  .planete {
+    position: relative; min-height: 92svh; display: grid; align-items: center;
+    overflow: hidden; border-top: 1px solid var(--border);
+  }
+  #anneaux { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; display: block; }
+  .voile-planete {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(260deg,
+      color-mix(in srgb, var(--bg) 94%, transparent) 0%,
+      color-mix(in srgb, var(--bg) 84%, transparent) 24%,
+      color-mix(in srgb, var(--bg) 40%, transparent) 47%,
+      transparent 68%);
+  }
+  @media (max-width: 900px) {
+    .voile-planete {
+      background: linear-gradient(180deg, transparent 0%,
+        color-mix(in srgb, var(--bg) 38%, transparent) 40%,
+        color-mix(in srgb, var(--bg) 92%, transparent) 62%,
+        var(--bg) 100%);
+    }
+  }
+  .planete-in { position: relative; z-index: 2; padding: 104px 0; }
+  .planete-in .dedans { display: flex; justify-content: flex-end; }
+  .planete-in .col { max-width: 560px; }
+  @media (max-width: 900px) {
+    .planete-in { padding: 58vh 0 76px; }
+    .planete-in .dedans { justify-content: flex-start; }
+  }
+  .orbites { list-style: none; margin: 26px 0 0; padding: 0; }
+  .orbites li {
+    display: grid; grid-template-columns: 12px 1fr auto; align-items: center;
+    gap: 14px; padding: 13px 0; border-top: 1px solid var(--border); font-size: .97rem;
+  }
+  .orbites li:last-child { border-bottom: 1px solid var(--border); }
+  .orbites .bille { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 12px currentColor; }
+  .orbites b { font-weight: 650; color: var(--text); }
+  .orbites .etat {
+    font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+    font-weight: 700; color: var(--faint); white-space: nowrap;
+  }
