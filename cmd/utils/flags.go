@@ -319,6 +319,11 @@ var (
 		Usage:    "Manually specify the Pasteur fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideJenner = &cli.Uint64Flag{
+		Name:     "override.jenner",
+		Usage:    "Manually specify the Jenner fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideBPO1 = &cli.Uint64Flag{
 		Name:     "override.bpo1",
 		Usage:    "Manually specify the bpo1 fork timestamp, overriding the bundled setting",
