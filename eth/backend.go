@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -522,9 +523,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	stack.RegisterAPIs(eth.APIs())
 	stack.RegisterProtocols(eth.Protocols())
 	stack.RegisterLifecycle(eth)
-	if config.Miner.Mev.GRPCListenAddr != "" {
+	if config.Miner.Mev.GRPCPort != 0 {
+		if config.Miner.Mev.GRPCPort < 0 || config.Miner.Mev.GRPCPort > 65535 {
+			return nil, fmt.Errorf("invalid MEV gRPC port %d", config.Miner.Mev.GRPCPort)
+		}
+		grpcHost := stack.Config().HTTPHost
+		if grpcHost == "" {
+			grpcHost = node.DefaultHTTPHost
+		}
+		grpcListenAddr := net.JoinHostPort(grpcHost, fmt.Sprintf("%d", config.Miner.Mev.GRPCPort))
 		stack.RegisterLifecycle(ethapi.NewMevGRPCService(
-			config.Miner.Mev.GRPCListenAddr,
+			grpcListenAddr,
 			config.Miner.Mev.GRPCConcurrency,
 			config.Miner.Mev.GRPCRequestTimeout,
 			eth.APIBackend,

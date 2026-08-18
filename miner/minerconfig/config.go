@@ -112,7 +112,7 @@ type MevConfig struct {
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
-	GRPCListenAddr        string          `toml:",omitempty"` // Optional BEP-675 BidBlockService address; empty disables it
+	GRPCPort              int             `toml:",omitempty"` // Optional BEP-675 BidBlockService port; zero disables it
 	GRPCConcurrency       uint32          `toml:",omitempty"` // Maximum in-flight gRPC SendBidBlock calls; 0 uses the default
 	GRPCRequestTimeout    time.Duration   `toml:",omitempty"` // Total gRPC request timeout, including body upload; 0 uses the default
 }
@@ -128,7 +128,7 @@ var DefaultMevConfig = MevConfig{
 	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
 	NoInterruptLeftOver:   getDefaultNoInterruptLeftOver(),
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
-	GRPCListenAddr:        "",
+	GRPCPort:              0,
 	GRPCConcurrency:       defaultGRPCConcurrency,
 	GRPCRequestTimeout:    defaultGRPCRequestTimeout,
 }
