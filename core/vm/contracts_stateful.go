@@ -164,8 +164,15 @@ func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
 // stateGasUsed returns the gas attributed to state operations across the frame,
-// a bootstrap child's charges included. Unexported: the tally exists so the
-// metering tests can assert on it, and a precompile has no use for it.
+// a bootstrap child's charges included.
+//
+// Only the metering tests read it today, which is why it is unexported rather
+// than deleted: it is the accounting half of the state-gas dimension this tree
+// already carries as GasCosts.StateGas / GasBudget.StateGas ("the state gas
+// reservoir"). Should BSC adopt a separate dimension (EIP-8037 / EIP-8038), the
+// charges chargeStateGas already separates are what feeds it, and BEP-702 3.14
+// commits to inheriting it with no amendment. Deleting the tally as unused would
+// have to be undone at that point.
 func (ctx *PrecompileContext) stateGasUsed() uint64 {
 	if ctx.frame == nil {
 		return 0

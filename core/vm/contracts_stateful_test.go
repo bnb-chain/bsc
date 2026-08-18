@@ -128,3 +128,42 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 		})
 	}
 }
+
+// TestSpawnBootstrapCarriesReadOnly pins the one flag spawnBootstrap has to copy
+// by hand, because nothing else can tell you it stopped copying it.
+//
+// The carry is unreachable today: createB20 refuses a read-only frame at its
+// first line, so no spawn happens under STATICCALL and dropping the field
+// changes no observable behaviour — TestB20CreateRejectsStaticCall still passes
+// with it gone. That makes it exactly the kind of defence that rots. Asserted
+// here on the derivation itself rather than through a call path, so it holds
+// whether or not one exists.
+//
+// Read-through instead of a copy would not work: StaticCall hands the dispatcher
+// a literal true and never sets evm.readOnly, which only evm.Run does, and the
+// precompile path does not go through Run. A context reading evm.readOnly would
+// see false inside a STATICCALL and let the token write.
+func TestSpawnBootstrapCarriesReadOnly(t *testing.T) {
+	for _, readOnly := range []bool{false, true} {
+		parent := &PrecompileContext{
+			Self:       B20FactoryAddress,
+			Caller:     common.HexToAddress("0xca11e4"),
+			DirectCall: true,
+			ReadOnly:   readOnly,
+			gas:        new(GasBudget),
+		}
+		child := parent.spawnBootstrap(b20Addr(b20VariantAsset, 1), parent.Caller)
+		if child.ReadOnly != readOnly {
+			t.Errorf("a context spawned from a ReadOnly=%v frame has ReadOnly=%v. Every "+
+				"write guard in the B20 handlers tests ctx.ReadOnly, so the bootstrap "+
+				"bundle would write inside a STATICCALL", readOnly, child.ReadOnly)
+		}
+		// Sharing, not copying: the child must not get its own budget or tally.
+		if child.gas != parent.gas {
+			t.Error("the child has its own gas budget, so its charges are lost on return")
+		}
+		if child.frameGas() != parent.frameGas() {
+			t.Error("the child has its own frame accounting, so its out-of-gas is lost")
+		}
+	}
+}
