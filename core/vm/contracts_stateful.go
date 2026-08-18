@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -73,9 +72,6 @@ type PrecompileContext struct {
 	// (BEP-702 section 3.2).
 	Value *uint256.Int
 
-	// Rules are the chain rules active for this block.
-	Rules params.Rules
-
 	// gas points at the caller's remaining budget so UseGas can meter
 	// data-dependent cost in place.
 	gas *GasBudget
@@ -126,7 +122,7 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 }
 
 // spawnBootstrap derives a context bound to a different self address, sharing
-// this frame's state, gas budget, rules and accounting. ReadOnly is carried
+// this frame's state, gas budget and accounting. ReadOnly is carried
 // across: dropping it would let initCalls write during a STATICCALL.
 func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *PrecompileContext {
 	return &PrecompileContext{
@@ -136,7 +132,6 @@ func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *Preco
 		Caller:     caller,
 		DirectCall: true,
 		ReadOnly:   ctx.ReadOnly,
-		Rules:      ctx.Rules,
 		gas:        ctx.gas,
 		frame:      ctx.frameGas(),
 	}
@@ -168,17 +163,19 @@ func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 // ErrOutOfGas so the frame reverts.
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
-// StateGasUsed returns the gas attributed to state operations across the frame,
-// a bootstrap child's charges included.
-func (ctx *PrecompileContext) StateGasUsed() uint64 {
+// stateGasUsed returns the gas attributed to state operations across the frame,
+// a bootstrap child's charges included. Unexported: the tally exists so the
+// metering tests can assert on it, and a precompile has no use for it.
+func (ctx *PrecompileContext) stateGasUsed() uint64 {
 	if ctx.frame == nil {
 		return 0
 	}
 	return ctx.frame.stateGasUsed
 }
 
-// GasLeft reports the regular gas remaining in the budget.
-func (ctx *PrecompileContext) GasLeft() uint64 { return ctx.gas.RegularGas }
+// gasLeft reports the regular gas remaining in the budget. Unexported for the
+// same reason as stateGasUsed; in-tree callers that need it read ctx.gas.
+func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.RegularGas }
 
 // BlockTime returns the timestamp of the block being executed (used e.g. by
 // EIP-2612 permit deadline checks).
@@ -190,12 +187,6 @@ func (ctx *PrecompileContext) ChainID() *uint256.Int {
 	id, _ := uint256.FromBig(ctx.evm.chainConfig.ChainID)
 	return id
 }
-
-// Snapshot / RevertToSnapshot expose nested journalling so a precompile can
-// make a group of mutations atomic (e.g. the factory's initCalls bootstrap or
-// the Asset variant's announce/batchMint).
-func (ctx *PrecompileContext) Snapshot() int           { return ctx.StateDB.Snapshot() }
-func (ctx *PrecompileContext) RevertToSnapshot(id int) { ctx.StateDB.RevertToSnapshot(id) }
 
 // AddLog emits an EVM log at the precompile's own address (Self). The
 // remaining fields (tx hash/index, block hash, log index) are filled by the
@@ -231,7 +222,6 @@ func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, cal
 		ReadOnly:   readOnly,
 		DirectCall: directCall,
 		Value:      value,
-		Rules:      evm.chainRules,
 		gas:        &gas,
 	}
 	output, err := p.RunStateful(ctx, input)

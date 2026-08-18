@@ -237,7 +237,7 @@ func TestB20StorageGas(t *testing.T) {
 	}
 	_ = reset
 
-	if got, want := ctx.StateGasUsed(), 4*keccak64+cold+set+warm+warm+warm; got != want {
+	if got, want := ctx.stateGasUsed(), 4*keccak64+cold+set+warm+warm+warm; got != want {
 		t.Errorf("stateGasUsed = %d, want %d", got, want)
 	}
 	if ctx.OutOfGas() {
@@ -470,7 +470,7 @@ func TestB20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	if !parent.OutOfGas() {
 		t.Error("spawner does not see the child's exhaustion — it would report success over an empty budget")
 	}
-	if got := parent.GasLeft(); got != 0 {
+	if got := parent.gasLeft(); got != 0 {
 		t.Errorf("shared budget = %d, want 0", got)
 	}
 
@@ -506,10 +506,10 @@ func TestB20SpawnedContextSharesStateGasTally(t *testing.T) {
 	parent.chargeStateGas(700)
 	child.chargeStateGas(300)
 
-	if got := parent.StateGasUsed(); got != 1000 {
+	if got := parent.stateGasUsed(); got != 1000 {
 		t.Errorf("spawner StateGasUsed = %d, want 1000 — the child's charges are missing", got)
 	}
-	if got := child.StateGasUsed(); got != 1000 {
+	if got := child.stateGasUsed(); got != 1000 {
 		t.Errorf("child StateGasUsed = %d, want 1000 — the tally is not frame-wide", got)
 	}
 }
@@ -543,7 +543,7 @@ func TestB20SpawnedContextPropagatesSentryRefusal(t *testing.T) {
 	if got := statedb.GetState(token, common.Hash{31: 7}); got != (common.Hash{}) {
 		t.Errorf("refused write landed anyway: slot = %x", got)
 	}
-	if parent.GasLeft() == 0 {
+	if parent.gasLeft() == 0 {
 		t.Error("sentry refusal should not itself drain the budget; the test would prove nothing")
 	}
 }

@@ -59,9 +59,9 @@ func policyReadGas(t *testing.T, seed func(policyReg), id uint64, account common
 		StateDB: statedb, Self: b20Addr(b20VariantAsset, 1),
 		Caller: account, DirectCall: true, gas: &gas,
 	}
-	before := ctx.StateGasUsed()
+	before := ctx.stateGasUsed()
 	newB20Token(ctx, 18).policyAllows(id, account)
-	return ctx.StateGasUsed() - before
+	return ctx.stateGasUsed() - before
 }
 
 // TestB20SentinelScopesReadNoRegistry pins that both sentinels answer from the id
