@@ -155,6 +155,44 @@ if [ -n "${fin:-}" ]; then
   [ "$reste" -lt "$CERT_JOURS" ] 2>/dev/null && alerte error "certificat TLS expire bientot" "$reste jours restants ($DOMAINE)"
 fi
 
+# --- 6. le RPC public est-il UTILISABLE par un tiers ? (sonde n6) -------------
+# Le 12 aout 2026, FilterMaps — l'index des journaux de geth — a echoue a demarrer
+# et n'est jamais reparti. Pendant SIX JOURS eth_getLogs a expire au bout de 30 s :
+# la chaine etait illisible pour toute bourse, tout portefeuille, tout indexeur.
+# Aucune alerte n'est partie. Le chien de garde regardait la hauteur, les services
+# et le disque — tous verts — et la chaine produisait bien ses blocs.
+#
+# Une chaine qui avance mais que personne ne peut lire est en panne. Cette sonde
+# mesure ce qu'un TIERS ferait vraiment, et par la meme porte que lui : une requete
+# HTTPS sur le relais public, pas un appel local qui contournerait Caddy et le
+# nœud RPC.
+LOGS_SEUIL=8   # secondes ; un index sain repond en 1 s
+
+hex_h=$(curl -s -X POST "https://$DOMAINE/rpc" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' -m 20 \
+  | sed -n 's/.*"result"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+
+if [ -z "${hex_h:-}" ]; then
+  alerte error "RPC public muet" "eth_blockNumber sans reponse sur https://$DOMAINE/rpc"
+else
+  t0=$(date +%s)
+  rep=$(curl -s -X POST "https://$DOMAINE/rpc" -H 'content-type: application/json' \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getLogs\",\"params\":[{\"fromBlock\":\"$hex_h\",\"toBlock\":\"$hex_h\"}]}" \
+    -m $(( LOGS_SEUIL + 4 )))
+  duree=$(( $(date +%s) - t0 ))
+
+  # Trois pannes distinctes, trois messages distincts : « ca ne marche pas » ne dit
+  # pas par ou commencer un dimanche a 3 h du matin.
+  if [ -z "${rep:-}" ]; then
+    alerte error "index des journaux MORT" "eth_getLogs sans reponse en ${duree}s — aucun tiers ne peut lire la chaine"
+  elif echo "$rep" | grep -qE '"error"[[:space:]]*:'; then
+    msg=$(echo "$rep" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    alerte error "index des journaux en erreur" "eth_getLogs repond: ${msg:-erreur} — chercher FilterMaps dans journalctl -u coinbosa-node"
+  elif [ "$duree" -ge "$LOGS_SEUIL" ]; then
+    alerte error "index des journaux LENT" "eth_getLogs a mis ${duree}s (seuil ${LOGS_SEUIL}s) — index en reconstruction, ou qui derive"
+  fi
+fi
+
 # Battement de coeur quotidien. Sans lui, l'absence d'alerte est ambigue : canal muet
 # parce que tout va bien, ou parce qu'il est casse ? Un evenement de niveau info par jour
 # permet de distinguer les deux — s'il manque, c'est la supervision elle-meme qui est morte.
