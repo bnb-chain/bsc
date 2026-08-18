@@ -51,7 +51,7 @@ func TestB20TokenDispatch(t *testing.T) {
 	token := b20Addr(b20VariantAsset, 1)
 
 	// Seed initial state through the unmetered view.
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	view.setName("Test Token")
 	view.setSymbol("TT")
 	view.setTotalSupply(uint256.NewInt(1000))
@@ -125,7 +125,7 @@ func TestB20TokenDispatch(t *testing.T) {
 func TestB20TokenPauseBlocksTransfer(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	token := b20Addr(b20VariantAsset, 1)
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	view.setBalance(b20Alice, uint256.NewInt(100))
 	view.setPaused(uint256.NewInt(1 << b20PauseTransfer))
 
@@ -147,7 +147,7 @@ func TestB20EndToEndTransfer(t *testing.T) {
 	token := b20Addr(b20VariantAsset, 1)
 	// Simulate factory creation: initialization marker + seed balance.
 	statedb.SetCode(token, b20MarkerCode, 0)
-	newB20Storage(statedb, token).setBalance(b20Alice, uint256.NewInt(1000))
+	newUnmeteredB20Storage(statedb, token).setBalance(b20Alice, uint256.NewInt(1000))
 
 	cfg := *b20TestChainConfig()
 
@@ -169,7 +169,7 @@ func TestB20EndToEndTransfer(t *testing.T) {
 		t.Fatalf("transfer returned %x, want true", ret)
 	}
 
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if got := view.balanceOf(b20Alice).Uint64(); got != 750 {
 		t.Errorf("alice balance = %d, want 750", got)
 	}

@@ -147,7 +147,7 @@ func TestB20ActivationGates(t *testing.T) {
 	if _, err := call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10))); err != nil {
 		t.Fatalf("transfer on a live token must not be gated: %v", err)
 	}
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if got := view.balanceOf(b20Bob).Uint64(); got != 10 {
 		t.Fatalf("bob balance = %d, want 10", got)
 	}

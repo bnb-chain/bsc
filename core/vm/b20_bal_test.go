@@ -52,7 +52,7 @@ func policyReadGas(t *testing.T, seed func(policyReg), id uint64, account common
 		t.Fatal(err)
 	}
 	if seed != nil {
-		seed(policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)})
+		seed(policyReg{s: newUnmeteredB20Storage(statedb, B20PolicyRegistryAddress)})
 	}
 	gas := NewGasBudget(5_000_000)
 	ctx := &PrecompileContext{
@@ -131,10 +131,10 @@ func TestB20TokenStorageIsPerToken(t *testing.T) {
 		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
 		t.Fatalf("transfer: %v", err)
 	}
-	if got := newB20Storage(statedb, a).balanceOf(b20Bob).Uint64(); got != 100 {
+	if got := newUnmeteredB20Storage(statedb, a).balanceOf(b20Bob).Uint64(); got != 100 {
 		t.Errorf("token A credited %d, want 100", got)
 	}
-	if got := newB20Storage(statedb, b).balanceOf(b20Bob).Uint64(); got != 0 {
+	if got := newUnmeteredB20Storage(statedb, b).balanceOf(b20Bob).Uint64(); got != 0 {
 		t.Errorf("token B saw %d — the two tokens share storage", got)
 	}
 }

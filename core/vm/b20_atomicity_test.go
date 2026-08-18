@@ -45,10 +45,10 @@ func TestB20CreateIsAtomic(t *testing.T) {
 	if code := statedb.GetCode(addr); len(code) != 0 {
 		t.Errorf("code left at %s: %x — the sentinel survived the revert", addr.Hex(), code)
 	}
-	if view := newB20Storage(statedb, addr); view.totalSupply().Sign() != 0 {
+	if view := newUnmeteredB20Storage(statedb, addr); view.totalSupply().Sign() != 0 {
 		t.Errorf("totalSupply left at %s: %s", addr.Hex(), view.totalSupply())
 	}
-	if view := newB20Storage(statedb, addr); view.hasRole(roleMint, minter) {
+	if view := newUnmeteredB20Storage(statedb, addr); view.hasRole(roleMint, minter) {
 		t.Error("the granted MINT_ROLE survived the revert")
 	}
 

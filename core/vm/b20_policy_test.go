@@ -236,7 +236,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 	if _, err := call(creator, token, b20Call(selMint, addrKey(custody), u256hash(500))); err != nil {
 		t.Fatalf("mint to custody: %v", err)
 	}
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if view.balanceOf(custody).Uint64() != 500 {
 		t.Fatalf("custody balance = %d, want 500", view.balanceOf(custody).Uint64())
 	}
@@ -267,7 +267,7 @@ func TestB20SeizeWithMemo(t *testing.T) {
 		t.Fatalf("createB20: %v", err)
 	}
 	token := common.BytesToAddress(ret)
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 
 	memo := common.HexToHash("0x5e12e")
 
@@ -342,7 +342,7 @@ func TestB20PolicyStorageLayout(t *testing.T) {
 	}
 	id := new(uint256.Int).SetBytes(ret).Uint64()
 
-	view := newB20Storage(statedb, B20PolicyRegistryAddress)
+	view := newUnmeteredB20Storage(statedb, B20PolicyRegistryAddress)
 	word := view.getWord(mappingSlot(polSlot(polSlotPolicies), idKey(id)))
 	if word[0]&0x80 == 0 {
 		t.Errorf("policy word %x has no exists bit", word)
@@ -494,7 +494,7 @@ func TestB20PolicySentinelsIgnoreMembership(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 
 	// Plant membership under both sentinels, bypassing the ABI entirely.
-	view := policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)}
+	view := policyReg{s: newUnmeteredB20Storage(statedb, B20PolicyRegistryAddress)}
 	view.setMember(b20PolicyAlwaysAllow, b20Bob, true) // "block bob" on ALWAYS_ALLOW
 	view.setMember(b20PolicyAlwaysBlock, b20Bob, true) // "allow bob" on ALWAYS_BLOCK
 
@@ -523,7 +523,7 @@ func TestB20PolicySentinelsIgnoreMembership(t *testing.T) {
 func TestB20PolicyCounterExhaustion(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
-	view := policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)}
+	view := policyReg{s: newUnmeteredB20Storage(statedb, B20PolicyRegistryAddress)}
 
 	create := func() ([]byte, error) {
 		ret, _, err := evm.Call(admin, B20PolicyRegistryAddress,

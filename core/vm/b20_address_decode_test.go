@@ -44,7 +44,7 @@ func TestB20AddressArrayDecodesStrictly(t *testing.T) {
 	if _, _, err := evm.Call(creator, token, call, NewGasBudget(5_000_000), uint256.NewInt(0)); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("batchMint accepted a dirty recipient word: %v", err)
 	}
-	if bal := newB20Storage(evm.StateDB, token).balanceOf(b20Bob); bal.Sign() != 0 {
+	if bal := newUnmeteredB20Storage(evm.StateDB, token).balanceOf(b20Bob); bal.Sign() != 0 {
 		t.Errorf("balanceOf(truncated address) = %s, want 0", bal)
 	}
 
@@ -53,7 +53,7 @@ func TestB20AddressArrayDecodesStrictly(t *testing.T) {
 	if _, _, err := evm.Call(creator, token, clean, NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
 		t.Fatalf("batchMint with a clean recipient word: %v", err)
 	}
-	if bal := newB20Storage(evm.StateDB, token).balanceOf(b20Bob); bal.Uint64() != 1000 {
+	if bal := newUnmeteredB20Storage(evm.StateDB, token).balanceOf(b20Bob); bal.Uint64() != 1000 {
 		t.Fatalf("balanceOf after the clean batch = %s, want 1000", bal)
 	}
 

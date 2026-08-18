@@ -166,7 +166,7 @@ func TestB20MemoVariants(t *testing.T) {
 			}
 			return out
 		}
-		view := newB20Storage(statedb, b20Addr(b20VariantAsset, 1))
+		view := newUnmeteredB20Storage(statedb, b20Addr(b20VariantAsset, 1))
 		return &view, run, topics
 	}
 
@@ -236,7 +236,7 @@ func TestB20RoleAdminMachinery(t *testing.T) {
 		s.setRole(roleDefaultAdmin, admin, true)
 		s.setAdminCount(uint256.NewInt(1))
 	})
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 
 	// Unset means DEFAULT_ADMIN, which is the zero hash.
 	got, err := run(admin, b20Call(selGetRoleAdmin, roleMint))
@@ -417,7 +417,7 @@ func TestB20RoleMutationsRefusedReadOnly(t *testing.T) {
 
 	// Seed a role so revokeRole has something to remove; without it a refused
 	// revoke and a successful one look alike.
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	view.setRole(roleMint, b20Bob, true)
 
 	// The error alone is not enough: a write followed by ErrWriteProtection would

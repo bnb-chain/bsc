@@ -333,7 +333,7 @@ func TestB20PermitRevertOrder(t *testing.T) {
 	wantRevert(t, ret, err, errSelInvalidSpender, "valid signature over a zero spender")
 
 	// The allowance must not have been written, which is the point of the guard.
-	if got := newB20Storage(evm.StateDB, token).allowance(owner, common.Address{}); got.Sign() != 0 {
+	if got := newUnmeteredB20Storage(evm.StateDB, token).allowance(owner, common.Address{}); got.Sign() != 0 {
 		t.Errorf("permit set an allowance of %s for the zero address", got)
 	}
 }

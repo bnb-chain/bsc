@@ -38,7 +38,7 @@ func SeedB20Activation(state StateDB, admin common.Address) {
 	if admin == (common.Address{}) {
 		return
 	}
-	reg := b20Storage{state: state, token: B20ActivationRegistryAddress}
+	reg := newUnmeteredB20Storage(state, B20ActivationRegistryAddress)
 	// Only ever set on a registry that has none: rotation is governance's to do
 	// through setAdmin, and a fork must not silently undo it.
 	if reg.getWord(actSlot(actSlotAdmin)) == (common.Hash{}) {
@@ -59,6 +59,6 @@ func seedB20Sentinel(state StateDB, addr common.Address) {
 // reads the registry rather than configuration, so it follows any rotation
 // governance has performed since the fork.
 func B20ActivationAdmin(state StateDB) common.Address {
-	reg := b20Storage{state: state, token: B20ActivationRegistryAddress}
+	reg := newUnmeteredB20Storage(state, B20ActivationRegistryAddress)
 	return common.BytesToAddress(reg.getWord(actSlot(actSlotAdmin)).Bytes())
 }

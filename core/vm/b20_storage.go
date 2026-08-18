@@ -149,8 +149,14 @@ func (s b20Storage) strMapSlot(base common.Hash, key string) common.Hash {
 	return crypto.Keccak256Hash([]byte(key), base.Bytes())
 }
 
-// newB20Storage returns an unmetered view (read-only queries, tests).
-func newB20Storage(state StateDB, token common.Address) b20Storage {
+// newUnmeteredB20Storage returns a view that charges no gas. Only for callers
+// that have no frame to charge — the fork seeding hook and the state queries
+// behind it — and for tests. Everything reached from a precompile call must use
+// newMeteredB20Storage, or its state access is free.
+//
+// Named rather than written as a b20Storage literal so that the choice is
+// visible at the call site; TestB20StorageViewsAreConstructed holds that.
+func newUnmeteredB20Storage(state StateDB, token common.Address) b20Storage {
 	return b20Storage{state: state, token: token}
 }
 
@@ -158,6 +164,14 @@ func newB20Storage(state StateDB, token common.Address) b20Storage {
 // each slot access.
 func newMeteredB20Storage(ctx *PrecompileContext) b20Storage {
 	return b20Storage{state: ctx.StateDB, token: ctx.Self, ctx: ctx}
+}
+
+// newMeteredB20StorageAt is newMeteredB20Storage for a fixed address instead of
+// ctx.Self, which a token needs when it consults a registry for its own gating.
+// Charged as storage with no account-access surcharge, as if the slot were its
+// own (BEP-702 3.14).
+func newMeteredB20StorageAt(ctx *PrecompileContext, token common.Address) b20Storage {
+	return b20Storage{state: ctx.StateDB, token: token, ctx: ctx}
 }
 
 // chargeRead meters an SLOAD-equivalent at EIP-2929 prices: warm always, plus
@@ -376,17 +390,40 @@ func (s b20Storage) stringDataRoot(slot common.Hash) *uint256.Int {
 	return new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
 }
 
+// b20MaxStringLen bounds a string read against a malformed length word.
+//
+// Only setStringAt writes these slots, so no longer value can exist: 16 MiB
+// occupies 2^19 slots and creating them costs SstoreSet each, about 1.0e10 gas —
+// two orders of magnitude past any block limit. So the cap cannot refuse a value
+// the chain could hold, while a corrupt word cannot make a read allocate or loop
+// without bound.
+const b20MaxStringLen = 1 << 24
+
 // getStringAt / setStringAt read and write a Solidity string at an arbitrary
 // slot (used for fixed fields and for string-keyed mapping values).
+//
+// A length word that no write could have produced reads as the empty string. The
+// slot is only reachable through setStringAt today, but a read must not depend on
+// that: state also arrives from genesis and from fork hooks, and an unvalidated
+// length word panics the node — 2*len over 62 slices past the end of the word,
+// and a long length overflows makeslice. The empty string is the answer a
+// reimplementation has to give too, since a panic is not a consensus outcome.
 func (s b20Storage) getStringAt(slot common.Hash) string {
 	word := s.getWord(slot)
 	if word[31]&1 == 0 {
 		// short string: content in the high bytes, low byte holds 2*len.
 		n := int(word[31]) / 2
+		if n > 31 {
+			return ""
+		}
 		return string(word[:n])
 	}
 	// long string: slot holds 2*len+1; content starts at keccak256(slot).
-	length := (new(uint256.Int).SetBytes(word.Bytes()).Uint64() - 1) / 2
+	encoded := new(uint256.Int).SetBytes(word.Bytes())
+	if encoded.Gt(uint256.NewInt(2*b20MaxStringLen + 1)) {
+		return ""
+	}
+	length := (encoded.Uint64() - 1) / 2
 	base := s.stringDataRoot(slot)
 	out := make([]byte, 0, length)
 	for i := uint64(0); i < length; i += 32 {
@@ -458,7 +495,14 @@ func (s b20Storage) stringChunks(slot common.Hash) uint64 {
 	if word[31]&1 == 0 {
 		return 0
 	}
-	length := (new(uint256.Int).SetBytes(word.Bytes()).Uint64() - 1) / 2
+	// Same untrusted word as getStringAt, so the same bound: without it the
+	// release loop in setStringAt would be handed a chunk count of any size, and
+	// an unmetered view has no out-of-gas guard to stop it.
+	encoded := new(uint256.Int).SetBytes(word.Bytes())
+	if encoded.Gt(uint256.NewInt(2*b20MaxStringLen + 1)) {
+		return 0
+	}
+	length := (encoded.Uint64() - 1) / 2
 	return (length + 31) / 32
 }
 

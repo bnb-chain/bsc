@@ -138,7 +138,7 @@ func TestB20Factory(t *testing.T) {
 	}
 
 	// the created token is live: bootstrap state applied.
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if view.totalSupply().Uint64() != 1000 || view.balanceOf(b20Alice).Uint64() != 1000 {
 		t.Fatalf("supply %d aliceBal %d, want 1000/1000", view.totalSupply().Uint64(), view.balanceOf(b20Alice).Uint64())
 	}
@@ -183,7 +183,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 		t.Fatalf("createB20 ownerless: %v", err)
 	}
 	token := common.BytesToAddress(ret)
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if !view.adminCount().IsZero() {
 		t.Fatalf("adminCount = %d, want 0 (ownerless)", view.adminCount().Uint64())
 	}
@@ -249,7 +249,7 @@ func TestB20CreateParams(t *testing.T) {
 		t.Fatalf("createB20 asset: %v", err)
 	}
 	asset := common.BytesToAddress(ret)
-	view := newB20Storage(statedb, asset)
+	view := newUnmeteredB20Storage(statedb, asset)
 	if got := view.name(); got != "Gold Fund" {
 		t.Fatalf("name = %q, want Gold Fund", got)
 	}
@@ -371,7 +371,7 @@ func TestB20CreateParamsCanonicalEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createB20 with a canonically encoded blob: %v", err)
 	}
-	view := newB20Storage(statedb, common.BytesToAddress(ret))
+	view := newUnmeteredB20Storage(statedb, common.BytesToAddress(ret))
 	if view.name() != "A" || view.symbol() != "B" {
 		t.Fatalf("name/symbol = %q/%q, want A/B", view.name(), view.symbol())
 	}

@@ -58,7 +58,7 @@ var (
 type activationReg struct{ s b20Storage }
 
 func newActivationReg(ctx *PrecompileContext) activationReg {
-	return activationReg{s: b20Storage{state: ctx.StateDB, token: B20ActivationRegistryAddress, ctx: ctx}}
+	return activationReg{s: newMeteredB20StorageAt(ctx, B20ActivationRegistryAddress)}
 }
 
 func actSlot(offset uint64) common.Hash {

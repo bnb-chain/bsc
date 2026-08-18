@@ -92,7 +92,7 @@ func TestB20AdminLifecycle(t *testing.T) {
 	minter := common.HexToAddress("0x33333")
 
 	// Seed: admin holds DEFAULT_ADMIN, adminCount 1, generous cap.
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	view.setRole(roleDefaultAdmin, admin, true)
 	view.setAdminCount(uint256.NewInt(1))
 	view.setSupplyCap(uint256.NewInt(1_000_000))
@@ -172,7 +172,7 @@ func TestB20AdminLastAdminProtection(t *testing.T) {
 	token := b20Addr(b20VariantStablecoin, 1)
 	admin := common.HexToAddress("0xad4149")
 
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	view.setRole(roleDefaultAdmin, admin, true)
 	view.setAdminCount(uint256.NewInt(1))
 

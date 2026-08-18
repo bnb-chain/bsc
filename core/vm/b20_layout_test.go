@@ -56,7 +56,7 @@ func TestB20PolicyMemberSlot(t *testing.T) {
 // hashed unpadded, keccak256(bytes(key) . slot). Padding it to a word instead —
 // the rule for value-typed keys — would put every entry somewhere else.
 func TestB20StringKeyedSlots(t *testing.T) {
-	ext := assetExt{s: newB20Storage(nil, common.Address{})}
+	ext := assetExt{s: newUnmeteredB20Storage(nil, common.Address{})}
 	for _, tc := range []struct {
 		name string
 		slot uint64

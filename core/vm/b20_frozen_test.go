@@ -120,7 +120,7 @@ func TestB20BootstrapIsNotAWayBack(t *testing.T) {
 	if code := evm.StateDB.GetCode(derived); len(code) != 0 {
 		t.Errorf("code at %s after the refused creation: %x", derived.Hex(), code)
 	}
-	view := newB20Storage(evm.StateDB, derived)
+	view := newUnmeteredB20Storage(evm.StateDB, derived)
 	if view.hasRole(roleDefaultAdmin, b20Bob) {
 		t.Error("bob holds DEFAULT_ADMIN_ROLE after the creation was refused")
 	}
@@ -136,7 +136,7 @@ func TestB20BootstrapIsNotAWayBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ownerless token granting MINT_ROLE in the window: %v", err)
 	}
-	view = newB20Storage(evm.StateDB, token)
+	view = newUnmeteredB20Storage(evm.StateDB, token)
 	if !view.hasRole(roleMint, b20Bob) {
 		t.Error("the ownerless token's bootstrap grant did not take effect")
 	}
@@ -153,7 +153,7 @@ func TestB20BootstrapIsNotAWayBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("configure-then-renounce inside the bootstrap: %v", err)
 	}
-	view = newB20Storage(evm.StateDB, token)
+	view = newUnmeteredB20Storage(evm.StateDB, token)
 	if !view.adminCount().IsZero() || view.hasRole(roleDefaultAdmin, creator) {
 		t.Error("the renunciation did not take effect")
 	}

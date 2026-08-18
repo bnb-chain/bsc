@@ -158,7 +158,7 @@ func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 		NewGasBudget(500_000_000), uint256.NewInt(0)); err != nil {
 		t.Fatalf("storing the long name: %v", err)
 	}
-	chunks := newB20Storage(statedb, token).stringChunks(slotAt(b20SlotName))
+	chunks := newUnmeteredB20Storage(statedb, token).stringChunks(slotAt(b20SlotName))
 	if chunks < 1000 {
 		t.Fatalf("the long name occupies %d chunks, too few for this to measure", chunks)
 	}
@@ -184,7 +184,7 @@ func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 			// The long name surviving a failed attempt is what makes the work
 			// re-buyable, so assert it rather than assuming it.
 			if wantErr {
-				if got := newB20Storage(sdb, token).stringChunks(slotAt(b20SlotName)); got != chunks {
+				if got := newUnmeteredB20Storage(sdb, token).stringChunks(slotAt(b20SlotName)); got != chunks {
 					t.Fatalf("after a reverted attempt the name occupies %d chunks, want %d", got, chunks)
 				}
 			}

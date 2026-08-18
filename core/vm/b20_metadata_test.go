@@ -65,7 +65,7 @@ func TestB20MetadataUpdates(t *testing.T) {
 		s.setRole(roleDefaultAdmin, admin, true)
 		s.setAdminCount(uint256.NewInt(1))
 	})
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 
 	// A caller without METADATA_ROLE cannot touch any of the three fields.
 	for _, input := range [][]byte{
@@ -158,7 +158,7 @@ func TestB20MetadataDuringBootstrap(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if got := view.name(); got != "Configured" {
 		t.Errorf("name = %q, want Configured", got)
 	}

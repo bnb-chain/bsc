@@ -43,7 +43,7 @@ func TestB20CreateRejectsStaticCall(t *testing.T) {
 	if code := evm.StateDB.GetCode(addr); len(code) != 0 {
 		t.Errorf("code at %s after a refused STATICCALL: %x", addr.Hex(), code)
 	}
-	if newB20Storage(evm.StateDB, addr).hasRole(roleMint, minter) {
+	if newUnmeteredB20Storage(evm.StateDB, addr).hasRole(roleMint, minter) {
 		t.Error("the bundle's grantRole took effect under STATICCALL")
 	}
 
@@ -77,7 +77,7 @@ func TestB20AdminCountGuards(t *testing.T) {
 		s.setRole(roleDefaultAdmin, admin, true)
 		s.setAdminCount(uint256.NewInt(1))
 	})
-	view := func() *uint256.Int { return newB20Storage(statedb, token).adminCount() }
+	view := func() *uint256.Int { return newUnmeteredB20Storage(statedb, token).adminCount() }
 
 	// Granting a role its holder already has must not count twice.
 	if _, err := run(admin, b20Call(selGrantRole, roleDefaultAdmin, addrKey(admin))); err != nil {
@@ -144,7 +144,7 @@ func TestB20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	if _, err := call(operator, token, encodeAnnounce([][]byte{inner}, "2026-Q2-NAV")); err == nil {
 		t.Fatal("an announcer without MINT_ROLE ran batchMint inside its announcement")
 	}
-	if newB20Storage(evm.StateDB, token).balanceOf(b20Alice).Sign() != 0 {
+	if newUnmeteredB20Storage(evm.StateDB, token).balanceOf(b20Alice).Sign() != 0 {
 		t.Error("batchMint took effect despite the announcement failing")
 	}
 }

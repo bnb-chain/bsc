@@ -41,7 +41,7 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.St
 	}
 	token := b20Addr(b20VariantAsset, 1)
 	if seed != nil {
-		seed(newB20Storage(statedb, token))
+		seed(newUnmeteredB20Storage(statedb, token))
 	}
 	bc := b20BlockContext(now)
 	evm := NewEVM(bc, statedb, b20TestChainConfig(), Config{})
@@ -58,7 +58,7 @@ func TestB20Permit(t *testing.T) {
 	statedb, token, run := newTokenWithEVM(t, now, func(s b20Storage) {
 		s.setName("Test Token")
 	})
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 
 	// Build the token used only to compute the domain separator (same EVM cfg).
 	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, b20TestChainConfig(), Config{})

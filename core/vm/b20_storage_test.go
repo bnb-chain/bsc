@@ -35,7 +35,7 @@ func newTestStorage(t *testing.T) b20Storage {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newB20Storage(statedb, b20Addr(b20VariantAsset, 1))
+	return newUnmeteredB20Storage(statedb, b20Addr(b20VariantAsset, 1))
 }
 
 func TestB20StorageScalars(t *testing.T) {
@@ -245,7 +245,7 @@ func TestB20StorageGas(t *testing.T) {
 	}
 
 	// Unmetered view never charges.
-	free := newB20Storage(statedb, token)
+	free := newUnmeteredB20Storage(statedb, token)
 	if c := charged(func() { _ = free.balanceOf(alice) }); c != 0 {
 		t.Errorf("unmetered read charged %d, want 0", c)
 	}

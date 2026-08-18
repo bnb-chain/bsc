@@ -131,7 +131,7 @@ func TestB20AssetExtension(t *testing.T) {
 	if _, err := call(minter, token, encodeBatchMint([]common.Address{b20Bob, b20Carol}, []uint64{10, 20})); err != nil {
 		t.Fatalf("batchMint: %v", err)
 	}
-	view := newB20Storage(statedb, token)
+	view := newUnmeteredB20Storage(statedb, token)
 	if view.balanceOf(b20Bob).Uint64() != 10 || view.balanceOf(b20Carol).Uint64() != 20 {
 		t.Errorf("batchMint balances bob %d carol %d, want 10/20", view.balanceOf(b20Bob).Uint64(), view.balanceOf(b20Carol).Uint64())
 	}

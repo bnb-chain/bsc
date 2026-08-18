@@ -146,7 +146,7 @@ func boolWord(b bool) common.Hash {
 type policyReg struct{ s b20Storage }
 
 func newPolicyReg(ctx *PrecompileContext) policyReg {
-	return policyReg{s: b20Storage{state: ctx.StateDB, token: B20PolicyRegistryAddress, ctx: ctx}}
+	return policyReg{s: newMeteredB20StorageAt(ctx, B20PolicyRegistryAddress)}
 }
 
 func polSlot(offset uint64) common.Hash { return offsetSlot(b20PolicyRoot, offset) }

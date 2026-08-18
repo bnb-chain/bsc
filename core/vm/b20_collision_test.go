@@ -109,7 +109,7 @@ func TestB20SlotsNeverCollide(t *testing.T) {
 	}
 
 	// Long-string data regions, which hang off a length slot by another keccak.
-	view := newB20Storage(nil, common.Address{})
+	view := newUnmeteredB20Storage(nil, common.Address{})
 	for _, r := range roots {
 		for off := uint64(0); off < 4; off++ {
 			root := common.Hash(view.stringDataRoot(offsetSlot(r.root, off)).Bytes32())
