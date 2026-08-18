@@ -26,10 +26,9 @@ import (
 )
 
 // B20 native token family. The factory, the two variants and the registries are
-// native precompiles; a token deploys no *executable* bytecode, only the
-// one-byte sentinel below. A token is identified by its address, routed to
-// variant code by its address prefix, and isolated by the state stored under
-// that address. See BEP-702 §3.3.
+// native precompiles; a token deploys no executable bytecode, only the one-byte
+// sentinel. It is identified by its address, routed by the address prefix, and
+// isolated by the state stored under that address (BEP-702 §3.3).
 //
 // Address layout (20 bytes):
 //
@@ -44,10 +43,8 @@ const (
 	b20VariantStablecoin = 0x01
 )
 
-// The three singletons (BEP-702 §3.1). The factory shares the 0x20B nibble
-// prefix with the token space and is separated from it by the second byte,
-// which the token space pins to 0xB0 — so no singleton is matched by
-// IsB20Address or can collide with a token.
+// The three singletons (BEP-702 §3.1). The factory's second byte is 0xBF where
+// the token space pins 0xB0, so IsB20Address matches no singleton.
 // B20PolicyRegistryAddress is declared in b20_policy.go.
 var (
 	B20FactoryAddress            = common.HexToAddress("0x20BF000000000000000000000000000000000000")
@@ -60,16 +57,16 @@ var (
 	// as the storage root.
 	ErrB20DelegateCall = errors.New("b20: delegate call not allowed")
 
-	// ErrB20StatelessDispatch guards the plain Run path: B20 precompiles are
-	// stateful and must be reached through runPrecompile's stateful route. This
-	// is a defensive backstop and should never fire in practice.
+	// ErrB20StatelessDispatch guards the plain Run path: B20 precompiles must be
+	// reached through runPrecompile's stateful route. b20Precompile makes this
+	// unreachable; it stays as a backstop.
 	ErrB20StatelessDispatch = errors.New("b20: stateful precompile invoked without state")
 )
 
 // IsB20Address reports whether addr falls in the reserved B20 token space:
-// byte[0:2] == 0x20B0 and byte[2:10] all zero. It intentionally does not inspect
-// the variant byte, so addresses of future variants are still recognised as
-// B20 (matching the spec's isB20 rule).
+// byte[0:2] == 0x20B0 and byte[2:10] all zero. The variant byte is deliberately
+// not inspected, so a future variant's addresses still read as B20, matching the
+// spec's isB20 rule.
 func IsB20Address(addr common.Address) bool {
 	if addr[0] != b20MarkerPrefix[0] || addr[1] != b20MarkerPrefix[1] {
 		return false
@@ -82,22 +79,16 @@ func IsB20Address(addr common.Address) bool {
 	return true
 }
 
-// b20MarkerCodeHash is keccak256(0xEF): the code hash the factory's sentinel
-// produces. Existence is an exact comparison against it, not a non-empty test
-// (BEP-702 section 3.3) — EIP-3541 makes 0xEF-prefixed code undeployable, so
-// nothing an attacker installs can hash to it.
+// b20MarkerCodeHash is keccak256(0xEF), the code hash of the factory's sentinel.
+// EIP-3541 makes 0xEF-prefixed code undeployable, so nothing an attacker installs
+// can hash to it (BEP-702 3.3).
 var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 
-// b20InitializedMetered reports whether a token has been created at addr: true
-// exactly when the account's code hash equals the sentinel's, charged as an
-// account access. An exact comparison rather than a non-empty test, so foreign
-// code at the address is not mistaken for a token.
+// b20InitializedMetered reports whether a B20 token exists at addr, charged as an
+// account access. Exact-hash, not non-empty: foreign code is not a token.
 //
-// It is NOT the factory's occupancy check: existence asks "is a B20 token here",
-// which only the sentinel answers, while occupancy asks "is this address free",
-// which any code denies. Use b20AddressOccupied for the latter. Dispatch
-// resolution asks neither: resolveB20Token routes on the address alone, so a
-// value-bearing call to an empty B20 address is refused rather than stranded.
+// Not the factory's occupancy check — that asks whether the address is free,
+// which any code denies. See b20AddressOccupied.
 func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
 	ctx.chargeAccountAccess(addr)
 	return ctx.StateDB.GetCodeHash(addr) == b20MarkerCodeHash
@@ -129,11 +120,9 @@ func (ctx *PrecompileContext) ensureSentinel() {
 	ctx.StateDB.SetCode(ctx.Self, b20MarkerCode, tracing.CodeChangeContractCreation)
 }
 
-// b20EnterCall applies the guards shared by every B20 entry point: only direct
-// calls (CALL/STATICCALL) are dispatched, every entry point is nonpayable, and
-// the input is charged once (BEP-702 section 3.14). The value check precedes
-// the charge so a value-bearing call is refused before it can consume gas,
-// matching the order base-std's dispatch uses.
+// b20EnterCall applies the guards every B20 entry point shares: direct calls
+// only, nonpayable, and calldata charged once (BEP-702 3.14). The value check
+// precedes the charge, as in base-std, so a value-bearing call consumes no gas.
 func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	if !ctx.DirectCall {
 		return ErrB20DelegateCall
@@ -145,14 +134,11 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	return nil
 }
 
-// b20Precompile is what every B20 precompile satisfies. The two host interfaces
-// are independent — PrecompiledContract is {RequiredGas, Run, Name} and
-// StatefulPrecompiledContract is {RequiredGas, RunStateful} — and only the first
-// is enforced by flowing through evm.precompile. runPrecompile reaches the second
-// through a runtime type assertion, so a precompile missing RunStateful would
-// build, then answer every call with ErrB20StatelessDispatch. Naming both here
-// and returning this type from the resolvers moves that to compile time at the
-// point of use, with no separate list of assertions to keep in step.
+// b20Precompile is both host interfaces at once. They are independent, and only
+// PrecompiledContract is enforced by flowing through evm.precompile: runPrecompile
+// reaches RunStateful by runtime type assertion, so a precompile missing it would
+// build and then answer every call with ErrB20StatelessDispatch. The resolvers
+// return this type so the compiler catches that instead.
 type b20Precompile interface {
 	PrecompiledContract
 	StatefulPrecompiledContract
@@ -172,9 +158,8 @@ func resolveB20Token(addr common.Address) (b20Precompile, bool) {
 	}
 }
 
-// resolveB20 is the "BerylLookup" equivalent: given an address, decide whether
-// it is a B20 precompile (fixed factory or a dynamic token) and return the
-// bound instance. Fork gating is the caller's responsibility.
+// resolveB20 decides whether an address is a B20 precompile — a singleton or a
+// dynamic token — and returns the bound instance. Fork gating is the caller's.
 func resolveB20(addr common.Address) (b20Precompile, bool) {
 	switch addr {
 	case B20FactoryAddress:
@@ -202,11 +187,10 @@ type b20StatefulBase struct{}
 
 func (b20StatefulBase) Run([]byte) ([]byte, error) { return nil, ErrB20StatelessDispatch }
 
-// RequiredGas is zero for every B20 precompile. A stateful precompile cannot be
-// priced up front — the cost depends on state it has not read when the call
-// begins, such as whether a slot is cold or whether a write creates or rewrites —
-// so all metering happens inside RunStateful as the work is performed
-// (BEP-702 3.14, see b20_gas.go).
+// RequiredGas is zero for every B20 precompile: the cost depends on state not yet
+// read — whether a slot is cold, whether a write creates or rewrites — so all
+// metering happens inside RunStateful as the work is performed (BEP-702 3.14, see
+// b20_gas.go).
 func (b20StatefulBase) RequiredGas([]byte) uint64 { return 0 }
 
 type b20FactoryPrecompile struct{ b20StatefulBase }
@@ -221,8 +205,8 @@ func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte)
 	return finishB20Metered(ctx, ret, err)
 }
 
-// b20AssetPrecompile is the Asset (RWA) variant. It is stateless: the token it
-// acts on comes from ctx.Self, so one value serves every Asset address.
+// b20AssetPrecompile is the Asset (RWA) variant. Stateless: the token it acts on
+// comes from ctx.Self, so one value serves every Asset address.
 type b20AssetPrecompile struct{ b20StatefulBase }
 
 func (p *b20AssetPrecompile) Name() string { return "B20Asset" }
@@ -231,15 +215,13 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 	return runB20Token(ctx, input, bindAsset)
 }
 
-// bindAsset binds the Asset variant's token and extension. Decimals is
-// intercepted by the extension (read from extension storage), so the shared
-// token's decimals field is unused here.
+// bindAsset binds the Asset variant's token and extension. The extension
+// intercepts decimals, so the shared token's field is unused here.
 func bindAsset(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	return assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
 }
 
-// b20StablecoinPrecompile is the Stablecoin variant, stateless for the same
-// reason as the Asset one.
+// b20StablecoinPrecompile is the Stablecoin variant, stateless for the same reason.
 type b20StablecoinPrecompile struct{ b20StatefulBase }
 
 func (p *b20StablecoinPrecompile) Name() string { return "B20Stablecoin" }
@@ -248,19 +230,16 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []by
 	return runB20Token(ctx, input, bindStablecoin)
 }
 
-// bindStablecoin binds the Stablecoin variant's token and extension. Its
-// decimals are fixed at 6 (BEP-702 3.13).
+// bindStablecoin binds the Stablecoin variant's token and extension. Its decimals
+// are fixed at 6 (BEP-702 3.13).
 func bindStablecoin(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	return stablecoinDispatch(newB20Token(ctx, 6), newStablecoinExt(ctx), input)
 }
 
-// runB20Token is the call sequence both variants share: the entry guards, the
-// existence check, then the variant's own binding behind the metered exit. Held
-// in one place because a change to the order — which guard reports first, which
-// exit a charge is attributed to — is observable through the error a caller gets,
-// and applying it to one variant and not the other would be silent. bind is a
-// top-level function value rather than a closure, so the split costs no
-// allocation on the hot path.
+// runB20Token is the sequence both variants share: entry guards, existence check,
+// then the variant's binding behind the metered exit. The order is observable
+// through the error a caller gets, so it lives in one place. bind is a top-level
+// function value, not a closure, so the split allocates nothing.
 func runB20Token(ctx *PrecompileContext, input []byte,
 	bind func(*PrecompileContext, []byte) ([]byte, error),
 ) ([]byte, error) {
@@ -268,9 +247,8 @@ func runB20Token(ctx *PrecompileContext, input []byte,
 		return finishB20(nil, err)
 	}
 	if !b20InitializedMetered(ctx, ctx.Self) {
-		// The existence check above charged an account access, so route the exit
-		// through the metered finisher: if that charge is what exhausted the
-		// budget, this is out of gas rather than a revert.
+		// Metered exit: if the check's own charge exhausted the budget, this is
+		// out of gas rather than a revert.
 		return finishB20Metered(ctx, nil, ErrExecutionReverted)
 	}
 	ret, err := bind(ctx, input)
