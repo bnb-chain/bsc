@@ -89,8 +89,13 @@ func IsB20Address(addr common.Address) bool {
 var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 
 // b20Initialized reports whether a token has been created at addr: true exactly
-// when the account's code hash equals the sentinel's. Unmetered; used by
-// dispatch resolution, which runs before a frame's gas context exists.
+// when the account's code hash equals the sentinel's — not a non-empty test, so
+// foreign code at the address is not mistaken for a token.
+//
+// Unmetered, and kept separate from the metered wrapper below so that the
+// comparison can be stated once and asserted without a gas context. Dispatch
+// resolution does not use it: resolveB20Token routes on the address alone, so a
+// value-bearing call to an empty B20 address is refused rather than stranded.
 func b20Initialized(state StateDB, addr common.Address) bool {
 	return state.GetCodeHash(addr) == b20MarkerCodeHash
 }
@@ -188,19 +193,15 @@ var (
 	b20Stablecoin = &b20StablecoinPrecompile{}
 )
 
-// Every B20 precompile reports RequiredGas zero. A stateful precompile cannot
-// be priced up front — the cost depends on state it has not read when the call
-// begins, such as whether a slot is cold or whether a write creates or rewrites
-// — so all metering happens inside RunStateful as the work is performed
-// (BEP-702 section 3.14, see b20_gas.go).
-
 type b20StatefulBase struct{}
 
 func (b20StatefulBase) Run([]byte) ([]byte, error) { return nil, ErrB20StatelessDispatch }
 
-// RequiredGas is zero for every B20 precompile: a stateful precompile's cost
-// depends on state it has not read when the call begins, so it is metered inside
-// RunStateful (BEP-702 3.14).
+// RequiredGas is zero for every B20 precompile. A stateful precompile cannot be
+// priced up front — the cost depends on state it has not read when the call
+// begins, such as whether a slot is cold or whether a write creates or rewrites —
+// so all metering happens inside RunStateful as the work is performed
+// (BEP-702 3.14, see b20_gas.go).
 func (b20StatefulBase) RequiredGas([]byte) uint64 { return 0 }
 
 type b20FactoryPrecompile struct{ b20StatefulBase }
@@ -222,19 +223,14 @@ type b20AssetPrecompile struct{ b20StatefulBase }
 func (p *b20AssetPrecompile) Name() string { return "B20Asset" }
 
 func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if err := b20EnterCall(ctx, input); err != nil {
-		return finishB20(nil, err)
-	}
-	if !b20InitializedMetered(ctx, ctx.Self) {
-		// The existence check above charged an account access, so route the exit
-		// through the metered finisher: if that charge is what exhausted the
-		// budget, this is out of gas rather than a revert.
-		return finishB20Metered(ctx, nil, ErrExecutionReverted)
-	}
-	// Decimals is intercepted by the Asset extension (read from extension
-	// storage), so the shared token's decimals field is unused here.
-	ret, err := assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
-	return finishB20Metered(ctx, ret, err)
+	return runB20Token(ctx, input, bindAsset)
+}
+
+// bindAsset binds the Asset variant's token and extension. Decimals is
+// intercepted by the extension (read from extension storage), so the shared
+// token's decimals field is unused here.
+func bindAsset(ctx *PrecompileContext, input []byte) ([]byte, error) {
+	return assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
 }
 
 // b20StablecoinPrecompile is the Stablecoin variant, stateless for the same
@@ -244,6 +240,25 @@ type b20StablecoinPrecompile struct{ b20StatefulBase }
 func (p *b20StablecoinPrecompile) Name() string { return "B20Stablecoin" }
 
 func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
+	return runB20Token(ctx, input, bindStablecoin)
+}
+
+// bindStablecoin binds the Stablecoin variant's token and extension. Its
+// decimals are fixed at 6 (BEP-702 3.13).
+func bindStablecoin(ctx *PrecompileContext, input []byte) ([]byte, error) {
+	return stablecoinDispatch(newB20Token(ctx, 6), newStablecoinExt(ctx), input)
+}
+
+// runB20Token is the call sequence both variants share: the entry guards, the
+// existence check, then the variant's own binding behind the metered exit. Held
+// in one place because a change to the order — which guard reports first, which
+// exit a charge is attributed to — is observable through the error a caller gets,
+// and applying it to one variant and not the other would be silent. bind is a
+// top-level function value rather than a closure, so the split costs no
+// allocation on the hot path.
+func runB20Token(ctx *PrecompileContext, input []byte,
+	bind func(*PrecompileContext, []byte) ([]byte, error),
+) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
 	}
@@ -253,19 +268,27 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []by
 		// budget, this is out of gas rather than a revert.
 		return finishB20Metered(ctx, nil, ErrExecutionReverted)
 	}
-	// Stablecoin decimals are fixed at 6.
-	ret, err := stablecoinDispatch(newB20Token(ctx, 6), newStablecoinExt(ctx), input)
+	ret, err := bind(ctx, input)
 	return finishB20Metered(ctx, ret, err)
 }
 
-// compile-time checks that the skeletons satisfy both the plain precompile
-// contract (so they flow through evm.precompile) and the stateful host contract.
+// Every B20 precompile must satisfy both interfaces, and they are independent:
+// PrecompiledContract is {RequiredGas, Run, Name}, so it flows through
+// evm.precompile, while StatefulPrecompiledContract is {RequiredGas,
+// RunStateful}. The stateful half is the quiet one — runPrecompile type-asserts
+// for it, so a precompile that only satisfies the plain interface falls through
+// to Run and answers every call with ErrB20StatelessDispatch. Both are therefore
+// asserted for all five, here and nowhere else; add a new precompile to both
+// lists.
 var (
 	_ PrecompiledContract         = (*b20FactoryPrecompile)(nil)
 	_ PrecompiledContract         = (*b20AssetPrecompile)(nil)
 	_ PrecompiledContract         = (*b20StablecoinPrecompile)(nil)
-	_ StatefulPrecompiledContract = (*b20ActivationPrecompile)(nil)
+	_ PrecompiledContract         = (*b20PolicyPrecompile)(nil)
+	_ PrecompiledContract         = (*b20ActivationPrecompile)(nil)
 	_ StatefulPrecompiledContract = (*b20FactoryPrecompile)(nil)
 	_ StatefulPrecompiledContract = (*b20AssetPrecompile)(nil)
 	_ StatefulPrecompiledContract = (*b20StablecoinPrecompile)(nil)
+	_ StatefulPrecompiledContract = (*b20PolicyPrecompile)(nil)
+	_ StatefulPrecompiledContract = (*b20ActivationPrecompile)(nil)
 )

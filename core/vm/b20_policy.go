@@ -373,8 +373,6 @@ func (p *b20PolicyPrecompile) RunStateful(ctx *PrecompileContext, input []byte) 
 	return finishB20Metered(ctx, ret, err)
 }
 
-var _ StatefulPrecompiledContract = (*b20PolicyPrecompile)(nil)
-
 func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if len(input) < 4 {
 		return nil, ErrExecutionReverted

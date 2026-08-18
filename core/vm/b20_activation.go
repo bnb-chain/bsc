@@ -111,8 +111,6 @@ func (p *b20ActivationPrecompile) RunStateful(ctx *PrecompileContext, input []by
 	return finishB20Metered(ctx, ret, err)
 }
 
-var _ StatefulPrecompiledContract = (*b20ActivationPrecompile)(nil)
-
 func runB20Activation(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if len(input) < 4 {
 		return nil, ErrExecutionReverted
