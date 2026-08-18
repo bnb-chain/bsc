@@ -88,27 +88,19 @@ func IsB20Address(addr common.Address) bool {
 // nothing an attacker installs can hash to it.
 var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 
-// b20Initialized reports whether a token has been created at addr: true exactly
-// when the account's code hash equals the sentinel's — not a non-empty test, so
-// foreign code at the address is not mistaken for a token.
+// b20InitializedMetered reports whether a token has been created at addr: true
+// exactly when the account's code hash equals the sentinel's, charged as an
+// account access. An exact comparison rather than a non-empty test, so foreign
+// code at the address is not mistaken for a token.
 //
-// Unmetered, and kept separate from the metered wrapper below so that the
-// comparison can be stated once and asserted without a gas context. Dispatch
-// resolution does not use it: resolveB20Token routes on the address alone, so a
+// It is NOT the factory's occupancy check: existence asks "is a B20 token here",
+// which only the sentinel answers, while occupancy asks "is this address free",
+// which any code denies. Use b20AddressOccupied for the latter. Dispatch
+// resolution asks neither: resolveB20Token routes on the address alone, so a
 // value-bearing call to an empty B20 address is refused rather than stranded.
-func b20Initialized(state StateDB, addr common.Address) bool {
-	return state.GetCodeHash(addr) == b20MarkerCodeHash
-}
-
-// b20InitializedMetered is b20Initialized charged as an account access, for
-// the in-frame existence query (isB20Initialized).
-//
-// It is NOT the factory's occupancy check: existence asks "is a B20 token
-// here", which only the sentinel answers, while occupancy asks "is this
-// address free", which any code denies. Use b20AddressOccupied for the latter.
 func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
 	ctx.chargeAccountAccess(addr)
-	return b20Initialized(ctx.StateDB, addr)
+	return ctx.StateDB.GetCodeHash(addr) == b20MarkerCodeHash
 }
 
 // b20AddressOccupied reports whether a derived address is already taken, by a
@@ -153,10 +145,23 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	return nil
 }
 
+// b20Precompile is what every B20 precompile satisfies. The two host interfaces
+// are independent — PrecompiledContract is {RequiredGas, Run, Name} and
+// StatefulPrecompiledContract is {RequiredGas, RunStateful} — and only the first
+// is enforced by flowing through evm.precompile. runPrecompile reaches the second
+// through a runtime type assertion, so a precompile missing RunStateful would
+// build, then answer every call with ErrB20StatelessDispatch. Naming both here
+// and returning this type from the resolvers moves that to compile time at the
+// point of use, with no separate list of assertions to keep in step.
+type b20Precompile interface {
+	PrecompiledContract
+	StatefulPrecompiledContract
+}
+
 // resolveB20Token routes a recognized variant without checking existence, so a
 // value-bearing call to an empty B20 address is refused rather than stranded. An
 // unrecognized variant is not routed at all (BEP-702 3.3).
-func resolveB20Token(addr common.Address) (PrecompiledContract, bool) {
+func resolveB20Token(addr common.Address) (b20Precompile, bool) {
 	switch addr[10] {
 	case b20VariantAsset:
 		return b20Asset, true
@@ -170,7 +175,7 @@ func resolveB20Token(addr common.Address) (PrecompiledContract, bool) {
 // resolveB20 is the "BerylLookup" equivalent: given an address, decide whether
 // it is a B20 precompile (fixed factory or a dynamic token) and return the
 // bound instance. Fork gating is the caller's responsibility.
-func resolveB20(addr common.Address) (PrecompiledContract, bool) {
+func resolveB20(addr common.Address) (b20Precompile, bool) {
 	switch addr {
 	case B20FactoryAddress:
 		return b20Factory, true
@@ -271,24 +276,3 @@ func runB20Token(ctx *PrecompileContext, input []byte,
 	ret, err := bind(ctx, input)
 	return finishB20Metered(ctx, ret, err)
 }
-
-// Every B20 precompile must satisfy both interfaces, and they are independent:
-// PrecompiledContract is {RequiredGas, Run, Name}, so it flows through
-// evm.precompile, while StatefulPrecompiledContract is {RequiredGas,
-// RunStateful}. The stateful half is the quiet one — runPrecompile type-asserts
-// for it, so a precompile that only satisfies the plain interface falls through
-// to Run and answers every call with ErrB20StatelessDispatch. Both are therefore
-// asserted for all five, here and nowhere else; add a new precompile to both
-// lists.
-var (
-	_ PrecompiledContract         = (*b20FactoryPrecompile)(nil)
-	_ PrecompiledContract         = (*b20AssetPrecompile)(nil)
-	_ PrecompiledContract         = (*b20StablecoinPrecompile)(nil)
-	_ PrecompiledContract         = (*b20PolicyPrecompile)(nil)
-	_ PrecompiledContract         = (*b20ActivationPrecompile)(nil)
-	_ StatefulPrecompiledContract = (*b20FactoryPrecompile)(nil)
-	_ StatefulPrecompiledContract = (*b20AssetPrecompile)(nil)
-	_ StatefulPrecompiledContract = (*b20StablecoinPrecompile)(nil)
-	_ StatefulPrecompiledContract = (*b20PolicyPrecompile)(nil)
-	_ StatefulPrecompiledContract = (*b20ActivationPrecompile)(nil)
-)

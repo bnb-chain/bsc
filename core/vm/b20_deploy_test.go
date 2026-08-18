@@ -98,7 +98,7 @@ func TestB20CreateRejectsForeignCode(t *testing.T) {
 	if _, _, _, err := evm.create(creator, deployStopCode, NewGasBudget(1_000_000), uint256.NewInt(0), target, CREATE2); err != nil {
 		t.Fatalf("planting foreign code: %v", err)
 	}
-	if b20Initialized(statedb, target) {
+	if b20InitializedMetered(&PrecompileContext{StateDB: statedb, gas: new(GasBudget)}, target) {
 		t.Fatal("foreign code must not satisfy the existence check")
 	}
 
