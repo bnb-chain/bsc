@@ -1,0 +1,140 @@
+{
+  "_comment": "Authoritative B20 storage layout. Consensus-critical: a slot number decides the state root, so two implementations that disagree here diverge on the first token operation. Hand-edit only when changing the layout deliberately — core/vm/b20_layout_pin_test.go checks every entry against the Go constants in both directions, and BEP-702's storage section is generated from this file by scripts/b20-layout-doc.py.",
+  "erc7201": "keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))",
+  "derivation": {
+    "fixed_field": "root + offset, as Solidity numbers consecutive fields",
+    "mapping_value_key": "keccak256(pad32(key) ++ slot)",
+    "mapping_string_key": "keccak256(bytes(key) ++ slot), the key hashed unpadded",
+    "nested_mapping": "the outer key is applied first: members[id][account] is keccak256(pad32(account) ++ keccak256(pad32(id) ++ slot))",
+    "string_short": "content in the high bytes, low byte holds 2*len, for len <= 31",
+    "string_long": "the slot holds 2*len+1 and the data begins at keccak256(slot)",
+    "string_malformed": "a length word no write could have produced reads as the empty string; an implementation MUST NOT fault on it",
+    "string_max_len": 16777216,
+    "dynamic_array": "the slot holds the element count and the data begins at keccak256(slot), as for a long string"
+  },
+  "namespaces": [
+    {
+      "name": "bsc.b20",
+      "held_by": "every token, both variants",
+      "root": "0xd7d17b10507583ccbb27e6049e378ddb3a23890fde1bf3d25a473c9817975c00",
+      "fields": [
+        {"slot": 0, "name": "name", "type": "string"},
+        {"slot": 1, "name": "symbol", "type": "string"},
+        {"slot": 2, "name": "contractURI", "type": "string"},
+        {"slot": 3, "name": "totalSupply", "type": "uint256"},
+        {"slot": 4, "name": "balances", "type": "mapping(address => uint256)"},
+        {"slot": 5, "name": "allowances", "type": "mapping(address => mapping(address => uint256))"},
+        {"slot": 6, "name": "roles", "type": "mapping(bytes32 => mapping(address => bool))"},
+        {"slot": 7, "name": "roleAdmins", "type": "mapping(bytes32 => bytes32)"},
+        {"slot": 8, "name": "adminCount", "type": "uint256"},
+        {"slot": 9, "name": "transferPolicies", "type": "packed 4x uint64"},
+        {"slot": 10, "name": "mintPolicy", "type": "packed 4x uint64"},
+        {"slot": 11, "name": "paused", "type": "uint256 bitmask"},
+        {"slot": 12, "name": "supplyCap", "type": "uint256"},
+        {"slot": 13, "name": "nonces", "type": "mapping(address => uint256)"},
+        {"slot": 14, "name": "seizePolicies", "type": "packed 4x uint64"}
+      ]
+    },
+    {
+      "name": "bsc.b20.asset",
+      "held_by": "the Asset variant",
+      "root": "0xbd7e2d89a2fdca3bc6bdfbef0d8ffdce85a7c64477784d85b13a60a9ff03b200",
+      "fields": [
+        {"slot": 0, "name": "decimals", "type": "uint8"},
+        {"slot": 1, "name": "multiplier", "type": "uint256"},
+        {"slot": 2, "name": "announcements", "type": "mapping(string => bool)"},
+        {"slot": 3, "name": "extraMetadata", "type": "mapping(string => string)"},
+        {"slot": 4, "name": "pendingMultiplier", "type": "packed uint128 | uint64"}
+      ]
+    },
+    {
+      "name": "bsc.b20.stablecoin",
+      "held_by": "the Stablecoin variant",
+      "root": "0xa255740e5778c5219db7c2fed675aee5760630ebae5750602b7ee4b5767b3100",
+      "fields": [
+        {"slot": 0, "name": "currency", "type": "string"}
+      ]
+    },
+    {
+      "name": "bsc.policy_registry",
+      "held_by": "the PolicyRegistry singleton",
+      "root": "0x2e7731329603a38e578303ba37c039549397ad42853922c474dfc3cb33d7b000",
+      "fields": [
+        {"slot": 0, "name": "policies", "type": "mapping(uint64 => packed word)"},
+        {"slot": 1, "name": "members", "type": "mapping(uint64 => mapping(address => bool))"},
+        {"slot": 2, "name": "pendingAdmins", "type": "mapping(uint64 => address)"},
+        {"slot": 3, "name": "counter", "type": "uint64"},
+        {"slot": 4, "name": "children", "type": "mapping(uint64 => uint64[])"}
+      ]
+    },
+    {
+      "name": "bsc.activation_registry",
+      "held_by": "the ActivationRegistry singleton",
+      "root": "0xa8970030726ea4c1e5fe64bf3ba11683da0b59f818265a7369e5570e9fc0bd00",
+      "fields": [
+        {"slot": 0, "name": "features", "type": "mapping(bytes32 => bool)"},
+        {"slot": 1, "name": "admin", "type": "address"}
+      ]
+    }
+  ],
+  "packed_words": [
+    {
+      "where": "bsc.b20 slot 9",
+      "lanes": [
+        {"byte_offset": 0, "name": "transferSenderPolicy"},
+        {"byte_offset": 8, "name": "transferReceiverPolicy"},
+        {"byte_offset": 16, "name": "transferExecutorPolicy"},
+        {"byte_offset": 24, "name": "reserved"}
+      ],
+      "note": "uint64 lanes, least significant first"
+    },
+    {
+      "where": "bsc.b20 slot 10",
+      "lanes": [
+        {"byte_offset": 0, "name": "mintReceiverPolicy"},
+        {"byte_offset": 8, "name": "reserved"},
+        {"byte_offset": 16, "name": "reserved"},
+        {"byte_offset": 24, "name": "reserved"}
+      ],
+      "note": "the free lanes belong to future mint-side policy types, which is why seize takes a slot of its own"
+    },
+    {
+      "where": "bsc.b20 slot 14",
+      "lanes": [
+        {"byte_offset": 0, "name": "seizeHolderPolicy"},
+        {"byte_offset": 8, "name": "seizeReceiverPolicy"},
+        {"byte_offset": 16, "name": "reserved"},
+        {"byte_offset": 24, "name": "reserved"}
+      ]
+    },
+    {
+      "where": "bsc.b20.asset slot 4",
+      "lanes": [
+        {"bit_offset": 0, "width": 128, "name": "pendingMultiplier"},
+        {"bit_offset": 128, "width": 64, "name": "effectiveAt"}
+      ],
+      "note": "a zero effectiveAt means no schedule is recorded"
+    },
+    {
+      "where": "bsc.policy_registry slot 0, the mapping value",
+      "lanes": [
+        {"bit_offset": 255, "width": 1, "name": "exists"},
+        {"bit_offset": 0, "width": 160, "name": "admin"}
+      ],
+      "note": "the exists bit survives renouncing, so a renounced policy stays distinguishable from one never created"
+    },
+    {
+      "where": "bsc.policy_registry slot 4, the array data words",
+      "lanes": [
+        {"bit_offset": 0, "width": 64, "name": "child[4k+0]"},
+        {"bit_offset": 64, "width": 64, "name": "child[4k+1]"},
+        {"bit_offset": 128, "width": 64, "name": "child[4k+2]"},
+        {"bit_offset": 192, "width": 64, "name": "child[4k+3]"}
+      ],
+      "note": "four uint64 lanes per word, least significant first; a shrink rewrites the whole word so orphaned lanes are zeroed"
+    }
+  ],
+  "not_storage": [
+    "adminRenounced — per-frame only, so a bootstrap bundle cannot renounce the last admin and then grant again (BEP-702 3.4)"
+  ]
+}
