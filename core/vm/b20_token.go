@@ -348,6 +348,18 @@ func readAddress(args []byte, i int) (common.Address, error) {
 // addressFromWord is the strict ABI reading of an address word: the twelve high
 // bytes must be zero. Truncating them instead would accept encodings another
 // client rejects, and address[] elements need the same rule as scalar arguments.
+// u64FromWord decodes a uint64 argument, refusing anything above the low eight
+// bytes — Solidity's external decoder rejects a dirty word rather than
+// truncating it.
+func u64FromWord(w common.Hash) (uint64, bool) {
+	for _, b := range w[:24] {
+		if b != 0 {
+			return 0, false
+		}
+	}
+	return new(uint256.Int).SetBytes(w.Bytes()).Uint64(), true
+}
+
 func addressFromWord(w common.Hash) (common.Address, bool) {
 	for _, b := range w[:12] {
 		if b != 0 {

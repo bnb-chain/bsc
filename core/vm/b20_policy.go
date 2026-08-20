@@ -480,7 +480,15 @@ func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 	}
 	out := make([]uint64, 0, len(kids))
 	for _, w := range kids {
-		id := new(uint256.Int).SetBytes(w.Bytes()).Uint64()
+		// Strictly decoded, as Solidity's external decoder does and as base-std's
+		// audit list requires ("dirty high bits rejected"): taking the low eight
+		// bytes of a 32-byte word would let a caller name one policy in the bytes
+		// that matter and anything at all in the rest, and we would act on the
+		// former where Base reverts.
+		id, ok := u64FromWord(w)
+		if !ok {
+			return nil, ErrExecutionReverted
+		}
 		if !reg.policyExists(id) {
 			return nil, revB20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
 		}
@@ -638,7 +646,13 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 
 	if withAccounts {
 		for _, a := range accounts {
-			reg.setMember(id, common.BytesToAddress(a.Bytes()), true)
+			// Same strictness as a single address argument: readAddress refuses a
+			// dirty word, and an element of an array must not be laxer.
+			addr, ok := addressFromWord(a)
+			if !ok {
+				return nil, ErrExecutionReverted
+			}
+			reg.setMember(id, addr, true)
 		}
 		// Emitted even for an empty batch: the call form is part of the record.
 		emitMembersUpdated(ctx, ptype, id, ctx.Caller, true, accounts)

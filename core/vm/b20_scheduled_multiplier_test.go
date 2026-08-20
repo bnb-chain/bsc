@@ -258,7 +258,8 @@ func TestB20AssetInterfaceIDs(t *testing.T) {
 		{"0xa60bf13d", true, "IScaledUIAmount"},
 		{"0x4bd27648", true, "IScaledUIAmountNewUIMultiplier"},
 		{"0xd890fd71", true, "IScaledUIAmountBalances"},
-		{"0x57854fc3", false, "IScaledUIAmountConversion, deliberately unadvertised"},
+		{"0x57854fc3", true, "IScaledUIAmountConversion — base-std's MockB20Asset claims " +
+			"all four, its comment recording that Conversion is claimed after the interface review"},
 		{"0xffffffff", false, "the ERC-165 invalid sentinel"},
 	} {
 		if got := supports(tc.id); got != tc.want {

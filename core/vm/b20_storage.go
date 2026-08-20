@@ -425,6 +425,11 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 	}
 	length := (encoded.Uint64() - 1) / 2
 	base := s.stringDataRoot(slot)
+	// Before the allocation, not after: the loop below checks each iteration, but
+	// make() runs once with the stored length whatever the budget says.
+	if s.ctx != nil && s.ctx.OutOfGas() {
+		return ""
+	}
 	out := make([]byte, 0, length)
 	for i := uint64(0); i < length; i += 32 {
 		if s.ctx != nil && s.ctx.OutOfGas() {

@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -196,5 +197,62 @@ func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 	if starved*3 > funded {
 		t.Errorf("a starved release took %v against %v for one that could pay — the "+
 			"old-tail loop is still running past exhaustion", starved, funded)
+	}
+}
+
+// TestB20UnaffordableCallDoesNoWork covers the DoS shape RequiredGas() == 0 opens.
+//
+// The interpreter charges nothing before a B20 handler runs, so without a check at
+// the entry a caller who cannot even afford the calldata charge still got the whole
+// handler's native work — ABI decoding, trie reads, keccak, permit's ecrecover —
+// for the price of a warm CALL. In a loop against already-expanded memory that
+// buys linear native work at roughly 100 gas a turn.
+//
+// The assertion is on state rather than on timing: a call that cannot pay must not
+// have touched the trie. A slot the handler would have read stays cold, which is
+// only observable if the read never happened.
+func TestB20UnaffordableCallDoesNoWork(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xdec0de")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x006"), creator, [][]byte{
+			b20Call(selGrantRole, roleMint, addrKey(creator)),
+			b20Call(selMint, addrKey(b20Alice), u256hash(100)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// A slot no earlier call touched, which balanceOf would warm.
+	slot := b20Storage{token: token}.balanceSlot(b20Carol)
+	if warmed(statedb, token, slot) {
+		t.Fatal("carol's slot is already warm; the fixture cannot show a skipped read")
+	}
+
+	// Driven without evm.Call's snapshot: it reverts on error, and the access list
+	// reverts with it, so through evm.Call the slot reads cold whether or not the
+	// handler touched it. Asserting the end state there would prove nothing.
+	p, ok := resolveB20(token)
+	if !ok {
+		t.Fatal("the token address does not resolve to a precompile")
+	}
+	// One gas: enough for the call frame, not for the calldata charge.
+	input := b20Call(selBalanceOf, addrKey(b20Carol))
+	out, left, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
+		creator, token, input, NewGasBudget(1), false, true, uint256.NewInt(0))
+	if !errors.Is(err, ErrOutOfGas) {
+		t.Errorf("an unaffordable call err = %v, want ErrOutOfGas", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("returndata = %x, want empty", out)
+	}
+	if left.RegularGas != 0 {
+		t.Errorf("gas left = %d, want 0", left.RegularGas)
+	}
+	if warmed(statedb, token, slot) {
+		t.Error("the handler read state it could not pay for: carol's slot is warm after a " +
+			"call that could not afford its calldata. RequiredGas is zero, so the entry check " +
+			"is the only thing standing between a ~100-gas CALL and a handler's worth of work")
 	}
 }

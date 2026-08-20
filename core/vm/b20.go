@@ -136,6 +136,15 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 		return revB20("NonPayable()", errSelNonPayable)
 	}
 	ctx.chargeCalldata(input)
+	// Fail here rather than at the exit. RequiredGas is zero, so the interpreter
+	// charges nothing before the handler runs, and a caller that cannot even
+	// afford the calldata charge would otherwise still get the whole handler's
+	// native work — decoding, trie reads, keccak, permit's ecrecover — for the
+	// cost of a warm CALL, repeatable in a loop against already-expanded memory.
+	// Every later charge is bounded by what this one proves the caller can pay.
+	if ctx.OutOfGas() {
+		return ErrOutOfGas
+	}
 	return nil
 }
 

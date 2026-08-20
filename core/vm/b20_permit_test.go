@@ -90,8 +90,10 @@ func TestB20Permit(t *testing.T) {
 
 	// happy path: valid signature sets the allowance and bumps the nonce.
 	v, r, s := sign(key, owner, spender, 777, 200, 0)
-	if ret, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); err != nil || !bytes.Equal(ret, encBool(true)) {
-		t.Fatalf("permit ret %x err %v", ret, err)
+	// Empty returndata, as base-std declares it: `permit(...) external` returns
+	// nothing, so a caller decoding a bool must fail here exactly as it does there.
+	if ret, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); err != nil || len(ret) != 0 {
+		t.Fatalf("permit ret %x err %v, want empty returndata", ret, err)
 	}
 	if got := view.allowance(owner, spender).Uint64(); got != 777 {
 		t.Fatalf("allowance = %d, want 777", got)

@@ -93,15 +93,18 @@ var (
 	b20TopicUIMultiplierCancelled = eventTopic("UIMultiplierUpdateCancelled(uint256,uint256)")
 )
 
-// The ERC-165 ids the Asset variant advertises: ERC-165 itself and three of the
-// four ERC-8056 interfaces. Conversion (0x57854fc3) is deliberately absent even
-// though toUIAmount and fromUIAmount are implemented, matching base-std — the
-// advertised set is part of the observable surface, not a summary of it.
+// The ERC-165 ids the Asset variant advertises: ERC-165 itself and all four
+// ERC-8056 interfaces, as base-std's MockB20Asset does — its own comment records
+// that Conversion "is claimed after the interface review", toUIAmount and
+// fromUIAmount being the canonical converters. The advertised set is observable
+// surface, so it has to match rather than merely be a subset of what is
+// implemented.
 var b20AssetInterfaceIDs = map[[4]byte]bool{
 	{0x01, 0xff, 0xc9, 0xa7}: true, // IERC165
 	{0xa6, 0x0b, 0xf1, 0x3d}: true, // IScaledUIAmount
 	{0x4b, 0xd2, 0x76, 0x48}: true, // IScaledUIAmountNewUIMultiplier
 	{0xd8, 0x90, 0xfd, 0x71}: true, // IScaledUIAmountBalances
+	{0x57, 0x85, 0x4f, 0xc3}: true, // IScaledUIAmountConversion
 }
 
 // assetExt is a gas-metered view over the Asset extension storage.

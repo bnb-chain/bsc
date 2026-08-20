@@ -255,7 +255,10 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	t.s.setNonce(owner, new(uint256.Int).AddUint64(nonce, 1))
 	t.s.setAllowance(owner, spender, value)
 	t.emit(b20TopicApproval, owner, spender, value)
-	return encBool(true), nil
+	// Empty returndata: base-std declares `permit(...) external` with no return
+	// value, as EIP-2612 does. Returning an ABI true would make a caller that
+	// decodes a bool succeed here and fail against Base.
+	return nil, nil
 }
 
 // ecrecoverAddress recovers the signer of an EIP-712 digest. It enforces
