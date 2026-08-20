@@ -344,20 +344,27 @@ func readAddress(args []byte, i int) (common.Address, error) {
 // u64FromWord decodes a uint64 argument, refusing anything above the low eight
 // bytes — Solidity's external decoder rejects a dirty word rather than
 // truncating it.
-func u64FromWord(w common.Hash) (uint64, bool) {
-	for _, b := range w[:24] {
+// wordFitsIn reports whether only the low n bytes of w are set, the check
+// Solidity's external decoder makes for every type narrower than a word.
+func wordFitsIn(w common.Hash, n int) bool {
+	for _, b := range w[:32-n] {
 		if b != 0 {
-			return 0, false
+			return false
 		}
+	}
+	return true
+}
+
+func u64FromWord(w common.Hash) (uint64, bool) {
+	if !wordFitsIn(w, 8) {
+		return 0, false
 	}
 	return new(uint256.Int).SetBytes(w.Bytes()).Uint64(), true
 }
 
 func addressFromWord(w common.Hash) (common.Address, bool) {
-	for _, b := range w[:12] {
-		if b != 0 {
-			return common.Address{}, false
-		}
+	if !wordFitsIn(w, 20) {
+		return common.Address{}, false
 	}
 	return common.BytesToAddress(w.Bytes()), true
 }

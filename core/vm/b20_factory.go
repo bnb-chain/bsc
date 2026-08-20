@@ -44,16 +44,10 @@ var (
 	selIsB20Initialized = selector("isB20Initialized(address)")
 )
 
-// b20VariantRecognized reports whether the active fork knows this variant. It
-// must accept exactly the set resolveB20Token routes, so variantOf can never
-// name a variant that would not reach a handler; TestB20VariantSetsAgree pins
-// the two together.
+// b20VariantRecognized reports whether this variant reaches a handler.
 func b20VariantRecognized(variant byte) bool {
-	switch variant {
-	case b20VariantAsset, b20VariantStablecoin:
-		return true
-	}
-	return false
+	_, ok := b20Variants[variant]
+	return ok
 }
 
 // b20MarkerCode marks an initialized token, keeps the account clear of EIP-161

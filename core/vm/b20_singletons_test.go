@@ -34,5 +34,4 @@ func TestB20SingletonAddresses(t *testing.T) {
 			t.Errorf("%s must fall outside the reserved token space", reg.Hex())
 		}
 	}
-
 }

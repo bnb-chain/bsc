@@ -79,19 +79,6 @@ func TestIsB20Address(t *testing.T) {
 	}
 }
 
-// TestB20VariantSetsAgree pins b20VariantRecognized to the set resolveB20Token
-// actually routes. They are separate switches, so a variant added to one and
-// not the other would let variantOf name a variant that reaches no handler.
-func TestB20VariantSetsAgree(t *testing.T) {
-	for v := 0; v < 256; v++ {
-		variant := byte(v)
-		_, routed := resolveB20Token(b20Addr(variant, 1))
-		if got := b20VariantRecognized(variant); got != routed {
-			t.Errorf("variant 0x%02x: b20VariantRecognized = %v, routed = %v", variant, got, routed)
-		}
-	}
-}
-
 func TestResolveB20(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 

@@ -222,11 +222,6 @@ func ensureFeatureActivated(ctx *PrecompileContext, feature common.Hash) error {
 }
 
 func variantFeature(variant byte) (common.Hash, bool) {
-	switch variant {
-	case b20VariantAsset:
-		return featureB20Asset, true
-	case b20VariantStablecoin:
-		return featureB20Stablecoin, true
-	}
-	return common.Hash{}, false
+	v, ok := b20Variants[variant]
+	return v.feature, ok
 }

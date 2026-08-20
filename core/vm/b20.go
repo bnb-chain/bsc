@@ -152,14 +152,19 @@ type b20Precompile interface {
 // value-bearing call to an empty B20 address is refused rather than stranded. An
 // unrecognized variant is not routed at all (BEP-702 3.3).
 func resolveB20Token(addr common.Address) (b20Precompile, bool) {
-	switch addr[10] {
-	case b20VariantAsset:
-		return b20Asset, true
-	case b20VariantStablecoin:
-		return b20Stablecoin, true
-	default:
-		return nil, false
-	}
+	v, ok := b20Variants[addr[10]]
+	return v.precompile, ok
+}
+
+// b20Variants is the variant table. One entry per ordinal, so the handler an
+// address routes to and the feature that gates it cannot disagree — they used to
+// be three separate switches with a test holding two of them together.
+var b20Variants = map[byte]struct {
+	precompile b20Precompile
+	feature    common.Hash
+}{
+	b20VariantAsset:      {b20Asset, featureB20Asset},
+	b20VariantStablecoin: {b20Stablecoin, featureB20Stablecoin},
 }
 
 // resolveB20 decides whether an address is a B20 precompile — a singleton or a

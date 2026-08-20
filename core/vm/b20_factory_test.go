@@ -443,6 +443,9 @@ func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 	}
 	// An empty one likewise outranks the duplicate salt.
 	ret, err = call(salt, "")
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("empty currency: err = %v, want a revert", err)
+	}
 	if len(ret) < 4 || [4]byte(ret[:4]) != errSelMissingField {
 		t.Fatalf("empty currency: selector = %x, want MissingRequiredField %x",
 			ret[:min(4, len(ret))], errSelMissingField)
@@ -450,6 +453,9 @@ func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 	// And with a valid currency the duplicate salt is what binds, so the cases
 	// above had two failing conditions rather than one.
 	ret, err = call(salt, "EUR")
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("valid currency, duplicate salt: err = %v, want a revert", err)
+	}
 	if len(ret) < 4 || [4]byte(ret[:4]) != errSelTokenExists {
 		t.Fatalf("valid currency, duplicate salt: selector = %x, want TokenAlreadyExists %x",
 			ret[:min(4, len(ret))], errSelTokenExists)

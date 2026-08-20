@@ -156,12 +156,7 @@ func idKey(id uint64) common.Hash { return common.Hash(uint256.NewInt(id).Bytes3
 // isEnumWord reports whether an ABI word strictly encodes an enum/bool value
 // in [0, max]: every byte above the last must be zero.
 func isEnumWord(w common.Hash, max byte) bool {
-	for _, b := range w[:31] {
-		if b != 0 {
-			return false
-		}
-	}
-	return w[31] <= max
+	return wordFitsIn(w, 1) && w[31] <= max
 }
 
 func (p policyReg) counter() uint64 {
@@ -427,7 +422,6 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 			words[i] = wU64(k)
 		}
 		return encodeTuple(abiWordArray(words)), nil
-
 	}
 
 	// Writes: unknown selector, then static frame, then inactive feature, before
