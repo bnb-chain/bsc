@@ -234,3 +234,63 @@ func TestB20PolicyWordReservedBits(t *testing.T) {
 		t.Error("packPolicy must set the existence bit")
 	}
 }
+
+// TestB20PolicyLanePositions checks every entry of b20PolicyLanes against the byte
+// the id actually lands on, for all six scopes.
+func TestB20PolicyLanePositions(t *testing.T) {
+	if len(b20PolicyLanes) != 6 {
+		t.Fatalf("b20PolicyLanes has %d entries, want the six scopes", len(b20PolicyLanes))
+	}
+	tok := b20Token{s: newTestStorage(t)}
+
+	// A distinct id per scope, so no pair can pass by coincidence.
+	ids := map[common.Hash]uint64{
+		scopeTransferSender:   0x11,
+		scopeTransferReceiver: 0x22,
+		scopeTransferExecutor: 0x33,
+		scopeMintReceiver:     0x44,
+		scopeSeizeHolder:      0x55,
+		scopeSeizeReceiver:    0x66,
+	}
+	if len(ids) != len(b20PolicyLanes) {
+		t.Fatalf("this test names %d scopes, the table has %d", len(ids), len(b20PolicyLanes))
+	}
+	seen := map[uint64]common.Hash{}
+	for scope, lane := range b20PolicyLanes {
+		id, named := ids[scope]
+		if !named {
+			t.Fatalf("the table holds a scope this test does not name: %s", scope.Hex())
+		}
+		tok.s.setPackedU64(lane.slot, lane.byteOff, id)
+		// Two scopes on the same byte of the same slot would overwrite each other.
+		key := lane.slot<<8 | uint64(lane.byteOff)
+		if other, dup := seen[key]; dup {
+			t.Errorf("%s and %s share slot %d byte %d", scope.Hex(), other.Hex(),
+				lane.slot, lane.byteOff)
+		}
+		seen[key] = scope
+	}
+
+	// Read back through the dispatcher's own path, then straight from the word, so
+	// a table entry that is wrong in a self-consistent way still fails.
+	for scope, want := range ids {
+		got, ok := tok.policyIdByScope(scope)
+		if !ok {
+			t.Errorf("policyIdByScope(%s) reports unknown", scope.Hex())
+			continue
+		}
+		if got != want {
+			t.Errorf("policyIdByScope(%s) = %#x, want %#x", scope.Hex(), got, want)
+		}
+		lane := b20PolicyLanes[scope]
+		word := tok.s.getU256At(slotAt(lane.slot)).Bytes32()
+		var raw uint64
+		for _, b := range word[32-int(lane.byteOff)-8 : 32-int(lane.byteOff)] {
+			raw = raw<<8 | uint64(b)
+		}
+		if raw != want {
+			t.Errorf("%s: slot %d byte %d holds %#x, want %#x", scope.Hex(),
+				lane.slot, lane.byteOff, raw, want)
+		}
+	}
+}

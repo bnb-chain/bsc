@@ -236,3 +236,77 @@ func TestB20AdminLastAdminProtection(t *testing.T) {
 		t.Fatal("grant after renounceLastAdmin should revert (ungovernable)")
 	}
 }
+
+// TestB20BurnChecksSupplyUnderflow covers the subtraction the balance check only
+// bounds while the balances sum to totalSupply.
+func TestB20BurnChecksSupplyUnderflow(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xdec0de")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0xbb"), creator, [][]byte{
+			b20Call(selGrantRole, roleMint, addrKey(creator)),
+			b20Call(selGrantRole, roleBurn, addrKey(creator)),
+			b20Call(selMint, addrKey(b20Alice), u256hash(100)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	view := newUnmeteredB20Storage(statedb, token)
+
+	if _, _, err := evm.Call(creator, token, b20Call(selGrantRole, roleBurn, addrKey(b20Alice)),
+		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
+		t.Fatalf("granting alice BURN_ROLE: %v", err)
+	}
+	// Break the invariant the way a bad state import or a future field could:
+	// alice holds more than the token has ever issued.
+	view.setBalance(b20Alice, uint256.NewInt(500))
+	if view.totalSupply().Uint64() != 100 {
+		t.Fatalf("totalSupply = %d, want 100 — the fixture is not set up", view.totalSupply().Uint64())
+	}
+
+	_, _, err = evm.Call(b20Alice, token, b20Call(selBurn, u256hash(300)),
+		NewGasBudget(1_000_000), uint256.NewInt(0))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("burning past totalSupply: err = %v, want a revert", err)
+	}
+	if got := view.totalSupply().Uint64(); got != 100 {
+		t.Errorf("totalSupply = %d after the refused burn, want 100. An unchecked Sub would "+
+			"have wrapped it to near 2^256", got)
+	}
+}
+
+// TestB20PauseDecodesBeforeAuthorizing pins the order Solidity's dispatcher has.
+func TestB20PauseDecodesBeforeAuthorizing(t *testing.T) {
+	_, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xdec0de")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0xba"), creator, nil),
+		NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// b20Bob holds no role, so both checks would refuse him. The malformed array
+	// has to be the one reported: a Solidity implementation decodes in the external
+	// dispatcher, before any modifier runs, so it answers the same way.
+	good := b20CallU8Array(selPause, byte(b20PauseTransfer))
+	out, _, err := evm.Call(b20Bob, token, good[:len(good)-1], NewGasBudget(1_000_000), uint256.NewInt(0))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("truncated pause args: err = %v, want a revert", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("returndata = %x, want empty. Malformed calldata reverts with no reason "+
+			"(BEP-702 3.2); a role error here means authorization ran first", out)
+	}
+
+	// And a well-formed array from the same caller still reports the role.
+	out, _, err = evm.Call(b20Bob, token, good, NewGasBudget(1_000_000), uint256.NewInt(0))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("unauthorized pause: err = %v, want a revert", err)
+	}
+	if len(out) < 4 || [4]byte(out[:4]) != errSelACUnauthorized {
+		t.Errorf("returndata = %x, want AccessControlUnauthorizedAccount", out)
+	}
+}

@@ -318,12 +318,6 @@ func (s b20Storage) transferExecutorPolicy() uint64 {
 func (s b20Storage) mintReceiverPolicy() uint64 {
 	return s.getPackedU64(b20SlotMintPolicy, b20OffMintReceiver)
 }
-func (s b20Storage) seizeHolderPolicy() uint64 {
-	return s.getPackedU64(b20SlotSeizePolicies, b20OffSeizeHolder)
-}
-func (s b20Storage) seizeReceiverPolicy() uint64 {
-	return s.getPackedU64(b20SlotSeizePolicies, b20OffSeizeReceiver)
-}
 func (s b20Storage) setTransferSenderPolicy(id uint64) {
 	s.setPackedU64(b20SlotTransferPolicies, b20OffTransferSender, id)
 }

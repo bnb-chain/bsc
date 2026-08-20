@@ -257,22 +257,31 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 	return nil, nil, false
 }
 
+// b20PolicyLanes maps each policy scope to the packed lane holding its id.
+//
+// One table, because policyId and updatePolicy used to map the same six scopes
+// through separate switches: a lane wired wrong in one showed up only if a test
+// happened to round-trip that scope, and a pair wired wrong the same way in both
+// round-tripped cleanly. TestB20PolicyLanePositions checks each entry against the
+// byte the id actually lands on.
+var b20PolicyLanes = map[common.Hash]struct {
+	slot    uint64
+	byteOff uint
+}{
+	scopeTransferSender:   {b20SlotTransferPolicies, b20OffTransferSender},
+	scopeTransferReceiver: {b20SlotTransferPolicies, b20OffTransferReceiver},
+	scopeTransferExecutor: {b20SlotTransferPolicies, b20OffTransferExecutor},
+	scopeMintReceiver:     {b20SlotMintPolicy, b20OffMintReceiver},
+	scopeSeizeHolder:      {b20SlotSeizePolicies, b20OffSeizeHolder},
+	scopeSeizeReceiver:    {b20SlotSeizePolicies, b20OffSeizeReceiver},
+}
+
 func (t b20Token) policyIdByScope(scope common.Hash) (uint64, bool) {
-	switch scope {
-	case scopeTransferSender:
-		return t.s.transferSenderPolicy(), true
-	case scopeTransferReceiver:
-		return t.s.transferReceiverPolicy(), true
-	case scopeTransferExecutor:
-		return t.s.transferExecutorPolicy(), true
-	case scopeMintReceiver:
-		return t.s.mintReceiverPolicy(), true
-	case scopeSeizeHolder:
-		return t.s.seizeHolderPolicy(), true
-	case scopeSeizeReceiver:
-		return t.s.seizeReceiverPolicy(), true
+	lane, ok := b20PolicyLanes[scope]
+	if !ok {
+		return 0, false
 	}
-	return 0, false
+	return t.s.getPackedU64(lane.slot, lane.byteOff), true
 }
 
 func readRoleAccount(args []byte) (common.Hash, common.Address, error) {
@@ -414,15 +423,20 @@ func (t b20Token) setPause(args []byte, on bool) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
+	// Decoded before the role check, because that is where Solidity does it: the
+	// external dispatcher decodes the argument before any modifier runs, so a
+	// malformed array is reported as malformed whether or not the caller is
+	// authorized. base-std's audit list treats strict decoding as a property
+	// independent of authorization for the same reason.
+	features, err := readUint8Array(args)
+	if err != nil {
+		return err
+	}
 	role := rolePause
 	if !on {
 		role = roleUnpause
 	}
 	if err := t.ensureRole(role); err != nil {
-		return err
-	}
-	features, err := readUint8Array(args)
-	if err != nil {
 		return err
 	}
 	if len(features) == 0 {
@@ -515,7 +529,15 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 			addrKey(from), wU256(bal), wU256(amount))
 	}
 	t.s.setU256At(fromSlot, new(uint256.Int).Sub(bal, amount))
-	t.s.setTotalSupply(new(uint256.Int).Sub(t.s.totalSupply(), amount))
+	// Checked, as mint checks its own direction and as Solidity's arithmetic would:
+	// the balance check above bounds this only while the balances sum to
+	// totalSupply, and an unchecked Sub would wrap that to near 2^256 rather than
+	// halting.
+	supply := t.s.totalSupply()
+	if supply.Lt(amount) {
+		return revPanic(0x11) // supply underflow
+	}
+	t.s.setTotalSupply(new(uint256.Int).Sub(supply, amount))
 	t.emit(b20TopicTransfer, from, common.Address{}, amount)
 	return nil
 }
@@ -587,7 +609,7 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	return nil
 }
 
-// updatePolicy binds a policy id to one of the token's four compliance scopes.
+// updatePolicy binds a policy id to one of the token's six compliance scopes.
 // The id must reference an existing registry policy (or a sentinel); binding a
 // never-created id is rejected so the read path's empty-set tolerance cannot be
 // exploited.
@@ -601,24 +623,13 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	// The scope is validated before the id, matching base-std: an unrecognized
 	// scope is reported as such whatever id accompanies it. Resolving it to its
 	// accessors first is what puts that check ahead of the registry lookup.
-	var read func() uint64
-	var write func(uint64)
-	switch scope {
-	case scopeTransferSender:
-		read, write = t.s.transferSenderPolicy, t.s.setTransferSenderPolicy
-	case scopeTransferReceiver:
-		read, write = t.s.transferReceiverPolicy, t.s.setTransferReceiverPolicy
-	case scopeTransferExecutor:
-		read, write = t.s.transferExecutorPolicy, t.s.setTransferExecutorPolicy
-	case scopeMintReceiver:
-		read, write = t.s.mintReceiverPolicy, t.s.setMintReceiverPolicy
-	case scopeSeizeHolder:
-		read, write = t.s.seizeHolderPolicy, t.s.setSeizeHolderPolicy
-	case scopeSeizeReceiver:
-		read, write = t.s.seizeReceiverPolicy, t.s.setSeizeReceiverPolicy
-	default:
+	lane, ok := b20PolicyLanes[scope]
+	if !ok {
 		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
 	}
+	read := func() uint64 { return t.s.getPackedU64(lane.slot, lane.byteOff) }
+	write := func(id uint64) { t.s.setPackedU64(lane.slot, lane.byteOff, id) }
+
 	// policyExists answers for the sentinels itself, so binding one needs no
 	// special case here (BEP-702 3.8).
 	if !newPolicyReg(t.ctx).policyExists(id) {
