@@ -96,22 +96,15 @@ func TestB20ActivationAdminIsConfigured(t *testing.T) {
 		return vm.B20ActivationAdmin(statedb)
 	}
 
-	// The public configs name their timelock, and it is what gets installed.
-	if params.BSCChainConfig.B20ActivationAdmin == nil {
-		t.Error("BSCChainConfig names no activation admin — B20 would ship inert on mainnet")
-	}
-	if got := seedWith(params.BSCChainConfig.B20ActivationAdmin); got != params.B20ActivationAdminPlaceholder {
-		t.Errorf("seeded admin = %s, want the configured placeholder %s", got.Hex(), params.B20ActivationAdminPlaceholder.Hex())
-	}
-
 	// A QA network can hold the switch with an ordinary account.
 	qa := common.HexToAddress("0x0ead11")
 	if got := seedWith(&qa); got != qa {
 		t.Errorf("seeded admin = %s, want the configured %s", got.Hex(), qa.Hex())
 	}
 
-	// And an unset setting ships the code with the switch shut, which is a valid
-	// choice rather than an error.
+	// An unset setting ships the code with the switch shut, which is a valid choice
+	// rather than an error. TestB20NotSeededWithAnUnusableAdmin covers the rest of
+	// that case: nothing at all is written, sentinels included.
 	if got := seedWith(nil); got != (common.Address{}) {
 		t.Errorf("seeded admin = %s, want zero when unconfigured", got.Hex())
 	}
@@ -135,13 +128,17 @@ func TestB20ActivationSeededAtFork(t *testing.T) {
 		}
 		return statedb
 	}
+	// A usable admin, because that is now half the gate: the built-in configs name
+	// the placeholder, which schedules nothing (ChainConfig.B20Scheduled).
+	wantAdmin := common.HexToAddress("0xb20ad3111")
 	bscConfig := func() *params.ChainConfig {
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
 		cfg.PasteurTime = &ft
+		admin := wantAdmin
+		cfg.B20ActivationAdmin = &admin
 		return &cfg
 	}
-	wantAdmin := params.B20ActivationAdminPlaceholder
 
 	// The block that crosses the fork time seeds; the one after it does not have
 	// to, and must not disturb what is already there.
@@ -191,5 +188,50 @@ func TestB20ActivationSeededAtFork(t *testing.T) {
 	TryUpdateBuildInSystemContract(bscConfig(), postLondon, forkTime-1, forkTime, statedb, false)
 	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
 		t.Errorf("block-end pass seeded an admin: %s", got.Hex())
+	}
+}
+
+// TestB20NotSeededWithAnUnusableAdmin is the state-side half of the release gate.
+//
+// Seeding is one-shot and setAdmin requires the current admin to call, so a
+// network that crosses the boundary with an admin nobody holds would carry
+// registry state for a switch that can never be thrown. It must write nothing at
+// all — not even the sentinels — so that shipping this code to a network whose
+// Pasteur has already passed changes no state root, and a fresh sync agrees with
+// nodes that ran the released client through that block.
+func TestB20NotSeededWithAnUnusableAdmin(t *testing.T) {
+	const forkTime = 1000
+	postLondon := big.NewInt(50_000_000)
+
+	for _, tc := range []struct {
+		name  string
+		admin *common.Address
+	}{
+		{"no admin", nil},
+		{"the zero address", &common.Address{}},
+		{"the placeholder", &params.B20ActivationAdminPlaceholder},
+	} {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := *params.BSCChainConfig
+		ft := uint64(forkTime)
+		cfg.PasteurTime = &ft
+		cfg.B20ActivationAdmin = tc.admin
+
+		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)
+
+		if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
+			t.Errorf("%s: an admin was seeded (%s)", tc.name, got.Hex())
+		}
+		for _, addr := range []common.Address{
+			vm.B20ActivationRegistryAddress, vm.B20PolicyRegistryAddress,
+		} {
+			if code := statedb.GetCode(addr); len(code) != 0 {
+				t.Errorf("%s: %s carries a sentinel. Crossing the boundary with an unusable "+
+					"admin must leave the state untouched", tc.name, addr.Hex())
+			}
+		}
 	}
 }

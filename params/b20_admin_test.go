@@ -49,6 +49,60 @@ func TestB20ActivationAdminIsReachable(t *testing.T) {
 	}
 }
 
+// TestB20IsNotScheduledWithAnUnusableAdmin is the release gate.
+//
+// Seeding is one-shot and setAdmin requires the current admin to call, so a
+// network that crosses the fork with an unusable admin can never open a feature
+// and can never replace the admin either. The tripwire below only says the
+// decision is still open; it passes precisely while the placeholder is in place,
+// so it cannot catch the case that matters — a scheduled fork paired with an
+// admin nobody holds.
+//
+// Chapel is why this exists: its PasteurTime is 2026-07-21, already in the past,
+// while its admin is still the placeholder. B20 is gated on Pasteur only as a
+// stand-in for a fork flag of its own, so without the B20Scheduled check that
+// config would route the whole reserved address space and seed a registry whose
+// switch nobody can ever touch — and, since the boundary has passed, a fresh sync
+// would write state that nodes running the released client never wrote.
+func TestB20IsNotScheduledWithAnUnusableAdmin(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  *ChainConfig
+	}{
+		{"bsc", BSCChainConfig},
+		{"chapel", ChapelChainConfig},
+		{"rialto", RialtoChainConfig},
+	} {
+		// The gate the EVM and the fork hook both consult.
+		if !tc.cfg.B20Scheduled() {
+			continue
+		}
+		admin := tc.cfg.B20ActivationAdmin
+		if admin == nil || *admin == (common.Address{}) || *admin == B20ActivationAdminPlaceholder {
+			t.Errorf("%s: B20Scheduled reports true with admin %v. B20Scheduled must refuse "+
+				"nil, the zero address and the placeholder, or a network can ship a switch "+
+				"nobody can ever throw", tc.name, admin)
+		}
+	}
+
+	// And the gate must actually be closed today, on every built-in config: the
+	// admin is undecided, so nothing may route or seed.
+	for _, tc := range []struct {
+		name string
+		cfg  *ChainConfig
+	}{
+		{"bsc", BSCChainConfig},
+		{"chapel", ChapelChainConfig},
+		{"rialto", RialtoChainConfig},
+	} {
+		if tc.cfg.B20Scheduled() {
+			t.Errorf("%s: B20 is scheduled. If the real admin has been chosen, delete "+
+				"TestB20ActivationAdminIsStillAPlaceholder and this loop, and verify the "+
+				"account can reach the ActivationRegistry first", tc.name)
+		}
+	}
+}
+
 // TestB20ActivationAdminIsStillAPlaceholder is a tripwire, not an invariant.
 //
 // The three built-in configs name B20ActivationAdminPlaceholder, which is not a

@@ -39,6 +39,11 @@ func b20TestChainConfig() *params.ChainConfig {
 	zero := uint64(0)
 	cfg.PasteurTime = &zero
 	cfg.Parlia = &params.ParliaConfig{}
+	// A usable admin is half the B20 gate (ChainConfig.B20Scheduled): the built-in
+	// networks still name the placeholder, so they route nothing, and a harness
+	// that left this unset would too.
+	admin := b20ActivationAdmin
+	cfg.B20ActivationAdmin = &admin
 	return &cfg
 }
 
@@ -353,5 +358,44 @@ func TestB20UninitializedExitReportsOutOfGas(t *testing.T) {
 	}
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("err = %v, want ErrExecutionReverted for an uninitialized token", err)
+	}
+}
+
+// TestB20RoutingNeedsAUsableAdmin pins the second half of the B20 gate.
+//
+// The fork alone is not enough: routing also requires ChainConfig.B20Scheduled,
+// so a network whose admin is still the placeholder answers at a B20 address the
+// way it did before the feature existed. Without this, Chapel — whose PasteurTime
+// is already in the past — would route the whole reserved space to handlers whose
+// registry nobody can ever open, and a fresh sync would write state that nodes
+// running the released client never wrote.
+func TestB20RoutingNeedsAUsableAdmin(t *testing.T) {
+	token := b20Addr(b20VariantAsset, 1)
+	for _, tc := range []struct {
+		name  string
+		admin *common.Address
+		want  bool
+	}{
+		{"a real admin", &b20ActivationAdmin, true},
+		{"no admin", nil, false},
+		{"the zero address", &common.Address{}, false},
+		{"the placeholder", &params.B20ActivationAdminPlaceholder, false},
+	} {
+		cfg := *b20TestChainConfig()
+		cfg.B20ActivationAdmin = tc.admin
+		evm := NewEVM(b20BlockContext(1), nil, &cfg, Config{})
+
+		if got := evm.b20Enabled(); got != tc.want {
+			t.Errorf("%s: b20Enabled = %v, want %v", tc.name, got, tc.want)
+		}
+		for _, addr := range []common.Address{token, B20FactoryAddress,
+			B20PolicyRegistryAddress, B20ActivationRegistryAddress} {
+			_, ok := evm.precompile(addr)
+			if ok != tc.want {
+				t.Errorf("%s: %s resolves to a precompile = %v, want %v. An unusable admin "+
+					"must leave the reserved space behaving as it did before B20 existed",
+					tc.name, addr.Hex(), ok, tc.want)
+			}
+		}
 	}
 }

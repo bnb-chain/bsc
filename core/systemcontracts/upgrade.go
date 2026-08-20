@@ -1124,15 +1124,19 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 		// feature; it only installs the switch that lets governance open one
 		// later, plus the sentinel that keeps the registry accounts from being
 		// reaped (BEP-702 3.15, 3.16).
-		if config.IsInBSC() && config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
+		//
+		// A usable admin is what schedules B20 (ChainConfig.B20Scheduled), so a
+		// network whose config still names the placeholder writes nothing here and
+		// routes nothing in the EVM. That is what lets this code ship while the
+		// real admin is undecided, and on a network whose Pasteur is already in the
+		// past it is what keeps a fresh sync from diverging from nodes that ran the
+		// released client through that block.
+		if config.IsInBSC() && config.B20Scheduled() &&
+			config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
 			// The admin comes from chain configuration rather than being fixed here
 			// (BEP-702 3.15), so a QA network can hold the switch with a key it
-			// controls while the public networks name their timelock. A nil setting
-			// seeds the sentinels and leaves the switch shut.
-			var admin common.Address
-			if config.B20ActivationAdmin != nil {
-				admin = *config.B20ActivationAdmin
-			}
+			// controls while the public networks name their multisig.
+			admin := *config.B20ActivationAdmin
 			vm.SeedB20Activation(statedb, admin)
 			log.Info("Seeded B20 activation registry", "blockNumber", blockNumber.Int64(),
 				"blockTime", blockTime, "activationAdmin", admin)

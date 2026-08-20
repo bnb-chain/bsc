@@ -840,6 +840,27 @@ func (c *ChainConfig) Description() string {
 	return banner
 }
 
+// sameAddress compares two optional addresses, nil included.
+func sameAddress(a, b *common.Address) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// B20Scheduled reports whether this network ships the B20 precompiles.
+//
+// A usable activation admin is what schedules them, rather than the fork alone.
+// Seeding is one-shot and setAdmin requires the current admin to call, so a
+// network that reached the fork with an unusable admin could never open a feature
+// and could never replace the admin either — it would carry seeded registry state
+// for a feature nothing can ever turn on. The placeholder is refused for the same
+// reason: it is nobody's account, so shipping it is the same as shipping none.
+func (c *ChainConfig) B20Scheduled() bool {
+	a := c.B20ActivationAdmin
+	return a != nil && *a != (common.Address{}) && *a != B20ActivationAdminPlaceholder
+}
+
 // String implements the fmt.Stringer interface.
 func (c *ChainConfig) String() string {
 	var engine interface{}
@@ -1821,6 +1842,13 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.PasteurTime, newcfg.PasteurTime, headTimestamp) {
 		return newTimestampCompatError("Pasteur fork timestamp", c.PasteurTime, newcfg.PasteurTime)
+	}
+	// The activation admin is seeded into state at the Pasteur boundary, so it is
+	// part of that block's state root. Editing it in a stored config without a
+	// rewind would leave a reorg or a re-execution across the boundary using a
+	// different admin than the chain was built with.
+	if c.IsPasteur(headNumber, headTimestamp) && !sameAddress(c.B20ActivationAdmin, newcfg.B20ActivationAdmin) {
+		return newTimestampCompatError("B20 activation admin", c.PasteurTime, newcfg.PasteurTime)
 	}
 	if isForkTimestampIncompatible(c.UBTTime, newcfg.UBTTime, headTimestamp) {
 		return newTimestampCompatError("UBT fork timestamp", c.UBTTime, newcfg.UBTTime)

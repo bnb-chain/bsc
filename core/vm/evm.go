@@ -74,7 +74,8 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 //
 // TODO: replace with a dedicated B20 fork flag on params.Rules.
 func (evm *EVM) b20Enabled() bool {
-	return evm.chainRules.IsInBSC && evm.chainRules.IsPasteur
+	return evm.chainRules.IsInBSC && evm.chainRules.IsPasteur &&
+		evm.chainConfig.B20Scheduled()
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles
