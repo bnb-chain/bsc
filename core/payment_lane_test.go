@@ -233,6 +233,46 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	}
 }
 
+// TestVerifyHeaderQuotaDirectly checks the blind-seal path's direct quota verdict against a real
+// parent post-state, before the child header is imported.
+func TestVerifyHeaderQuotaDirectly(t *testing.T) {
+	config, gspec, key := laneGenesis(t)
+	generalTxGas := laneRequiredTxGas(t, config, []byte{1, 2, 3, 4})
+	signer := types.LatestSigner(config)
+
+	nExpand := int(laneTestGasLimit*8_000/10_000/generalTxGas) + 1
+	var nonce uint64
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 4, func(i int, b *BlockGen) {
+		if i+1 != 3 {
+			return
+		}
+		for n := 0; n < nExpand; n++ {
+			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), generalTxGas, []byte{1, 2, 3, 4}))
+			nonce++
+		}
+	})
+
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+	_, err = chain.InsertChain(blocks[:3])
+	require.NoError(t, err)
+
+	parent := blocks[2].Header()
+	header := types.CopyHeader(blocks[3].Header())
+	parentState, err := chain.StateAt(parent)
+	require.NoError(t, err)
+
+	require.NoError(t, VerifyHeaderQuota(config, parent, header, parentState))
+
+	commitment, err := paymentlane.Decode(header.UncleHash)
+	require.NoError(t, err)
+	commitment.PaymentLaneQuota += 150_000
+	header.UncleHash = paymentlane.Encode(commitment)
+
+	require.ErrorIs(t, VerifyHeaderQuota(config, parent, header, parentState), paymentlane.ErrQuotaMismatch)
+}
+
 func TestPaymentLaneFastNodeSkipsImportClassificationReplay(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 	paymentTxGas := laneRequiredTxGas(t, config, nil)
