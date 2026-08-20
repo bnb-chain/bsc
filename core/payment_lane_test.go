@@ -31,15 +31,31 @@ const (
 	generalTxGas     = params.TxGas + laneTestData*params.TxDataNonZeroGasEIP2028
 )
 
-// laneGenesis builds the ethash-backed lane harness and preallocates 0x2007.
+// laneGenesis builds a faker-backed BSC lane harness and preallocates 0x2007.
 func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
 	t.Helper()
 	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
 	require.NoError(t, err)
 
-	config := *params.AllEthashProtocolChanges
+	config := *params.ParliaTestChainConfig
 	jennerTime := uint64(15)
+	config.HaberTime = new(uint64)
+	config.HaberFixTime = new(uint64)
+	config.BohrTime = new(uint64)
+	config.PascalTime = new(uint64)
+	config.PragueTime = new(uint64)
+	config.LorentzTime = new(uint64)
+	config.MaxwellTime = new(uint64)
+	config.FermiTime = new(uint64)
+	config.OsakaTime = new(uint64)
+	config.MendelTime = new(uint64)
+	config.PasteurTime = new(uint64)
 	config.JennerTime = &jennerTime
+	config.BlobScheduleConfig = &params.BlobScheduleConfig{
+		Cancun: params.DefaultCancunBlobConfig,
+		Prague: params.DefaultPragueBlobConfigBSC,
+		Osaka:  params.DefaultOsakaBlobConfigBSC,
+	}
 
 	key := newKey(t)
 	gspec := &Genesis{
@@ -53,9 +69,27 @@ func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
 	return &config, gspec, key
 }
 
+func laneRequiredTxGas(t testing.TB, config *params.ChainConfig, data []byte) uint64 {
+	t.Helper()
+	rules := config.Rules(common.Big1, false, 1)
+	cost, err := IntrinsicGas(data, nil, nil, false, rules.IsHomestead, rules.IsIstanbul, rules.IsShanghai, rules.IsAmsterdam)
+	require.NoError(t, err)
+	gas := cost.RegularGas
+	if rules.IsPrague {
+		floor, err := FloorDataGas(rules, data, nil)
+		require.NoError(t, err)
+		if floor > gas {
+			gas = floor
+		}
+	}
+	return gas
+}
+
 // TestPaymentLaneRoundTripsThroughAGeneratedChain checks write, replay, and quota evolution together.
 func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
+	paymentTxGas := laneRequiredTxGas(t, config, nil)
+	generalTxGas := laneRequiredTxGas(t, config, []byte{1, 2, 3, 4})
 
 	const (
 		wantFloor    = 2_000_000
@@ -84,7 +118,7 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 		}
 	}
 
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 6, func(i int, b *BlockGen) {
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 6, func(i int, b *BlockGen) {
 		switch i + 1 { // block number
 		case 3:
 			general(b, nExpand) // drives an expansion in block 4
@@ -118,7 +152,7 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 		require.Equal(t, tc.general, block.GasUsed()-got.PaymentGasUsed, "block %d", tc.number)
 	}
 
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), DefaultConfig())
 	require.NoError(t, err)
 	defer chain.Stop()
 	n, err := chain.InsertChain(blocks)
@@ -133,17 +167,18 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 // TestPaymentLaneImportRejectsATamperedCommitment checks importer-side commitment replay.
 func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
+	paymentTxGas := laneRequiredTxGas(t, config, nil)
 	signer := types.LatestSigner(config)
 
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 3, func(i int, b *BlockGen) {
 		if i+1 == 3 {
-			b.AddTx(key.sign(t, signer, 0, common.Address{0xbb}, big.NewInt(1), params.TxGas, nil))
+			b.AddTx(key.sign(t, signer, 0, common.Address{0xbb}, big.NewInt(1), paymentTxGas, nil))
 		}
 	})
 	honest := blocks[2]
 	sound, err := paymentlane.Decode(honest.UncleHash())
 	require.NoError(t, err)
-	require.EqualValues(t, params.TxGas, sound.PaymentGasUsed, "the tampering below is only meaningful if the block has payment gas")
+	require.EqualValues(t, paymentTxGas, sound.PaymentGasUsed, "the tampering below is only meaningful if the block has payment gas")
 
 	for _, tc := range []struct {
 		name    string
@@ -189,7 +224,7 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 			forged := types.NewBlockWithHeader(honest.Header()).WithBody(*honest.Body())
 			forged.SetUncleHash(tc.mutate(sound))
 
-			chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+			chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), DefaultConfig())
 			require.NoError(t, err)
 			defer chain.Stop()
 			_, err = chain.InsertChain(append(append(types.Blocks{}, blocks[:2]...), forged))
@@ -200,17 +235,18 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 
 func TestPaymentLaneFastNodeSkipsImportClassificationReplay(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
+	paymentTxGas := laneRequiredTxGas(t, config, nil)
 	signer := types.LatestSigner(config)
 
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 3, func(i int, b *BlockGen) {
 		if i+1 == 3 {
-			b.AddTx(key.sign(t, signer, 0, common.Address{0xbb}, big.NewInt(1), params.TxGas, nil))
+			b.AddTx(key.sign(t, signer, 0, common.Address{0xbb}, big.NewInt(1), paymentTxGas, nil))
 		}
 	})
 	honest := blocks[2]
 	sound, err := paymentlane.Decode(honest.UncleHash())
 	require.NoError(t, err)
-	require.EqualValues(t, params.TxGas, sound.PaymentGasUsed)
+	require.EqualValues(t, paymentTxGas, sound.PaymentGasUsed)
 
 	fastCfg := DefaultConfig()
 	fastCfg.NoTries = true
@@ -240,7 +276,7 @@ func TestPaymentLaneFastNodeSkipsImportClassificationReplay(t *testing.T) {
 			forged := types.NewBlockWithHeader(honest.Header()).WithBody(*honest.Body())
 			forged.SetUncleHash(tc.mutate(sound))
 
-			chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), fastCfg)
+			chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), fastCfg)
 			require.NoError(t, err)
 			defer chain.Stop()
 
@@ -269,7 +305,7 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 	created := crypto.CreateAddress(key.addr, 0)
 
 	var nonce uint64
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, func(i int, b *BlockGen) {
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 4, func(i int, b *BlockGen) {
 		switch i + 1 {
 		case 3:
 			deploy, err := types.SignNewTx(key.priv, signer, &types.LegacyTx{
@@ -301,7 +337,7 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 	require.Zero(t, nextBlock.PaymentGasUsed,
 		"and it stays general once the code is older than the block")
 
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), DefaultConfig())
 	require.NoError(t, err)
 	defer chain.Stop()
 	_, err = chain.InsertChain(blocks)
@@ -385,7 +421,7 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 
 	caught := func() (v any) {
 		defer func() { v = recover() }()
-		GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
+		GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 3, func(i int, b *BlockGen) {
 			if i+1 == 3 {
 				b.AddUncle(&types.Header{
 					ParentHash: b.PrevBlock(i - 2).Hash(),
@@ -398,7 +434,7 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 	require.NotNil(t, caught, "assembling a lane block with an uncle must fail, not silently drop one of the two")
 	require.Contains(t, fmt.Sprint(caught), "uncle hash slot")
 
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, nil)
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 3, nil)
 	_, err := paymentlane.Decode(blocks[2].UncleHash())
 	require.NoError(t, err, "the uncle-free chain must still carry a commitment")
 }
@@ -424,9 +460,10 @@ func (e *systemGasFaker) Finalize(chain consensus.ChainHeaderReader, header *typ
 // TestPaymentLaneSignalCountsSystemTransactionGas checks that the signal includes system gas.
 func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
+	generalTxGas := laneRequiredTxGas(t, config, []byte{1, 2, 3, 4})
 
 	const systemGas = 12_160_000
-	engine := &systemGasFaker{Engine: ethash.NewFaker(), systemGas: systemGas}
+	engine := &systemGasFaker{Engine: ethash.NewFullFaker(), systemGas: systemGas}
 
 	const wantGeneral = 33_000_000
 	nGeneral := int(wantGeneral / generalTxGas)
@@ -471,13 +508,14 @@ func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 	zero := uint64(0)
 	config.JennerTime = &zero
+	paymentTxGas := laneRequiredTxGas(t, config, nil)
 	require.True(t, config.IsJenner(common.Big0, gspec.Timestamp),
 		"the lane must bind from block 1, or the grandparent is never the genesis block")
 
 	signer := types.LatestSigner(config)
 	var nonce uint64
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
-		b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), params.TxGas, nil))
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 3, func(i int, b *BlockGen) {
+		b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), paymentTxGas, nil))
 		nonce++
 	})
 	require.Len(t, blocks, 3)
@@ -485,10 +523,10 @@ func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
 		c, err := paymentlane.Decode(b.UncleHash())
 		require.NoError(t, err, "block %d must carry a commitment", b.NumberU64())
 		require.EqualValues(t, 2_000_000, c.LaneSize, "block %d holds at the floor", b.NumberU64())
-		require.EqualValues(t, params.TxGas, c.PaymentGasUsed, "block %d", b.NumberU64())
+		require.EqualValues(t, paymentTxGas, c.PaymentGasUsed, "block %d", b.NumberU64())
 	}
 
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), DefaultConfig())
 	require.NoError(t, err)
 	defer chain.Stop()
 	_, err = chain.InsertChain(blocks)
@@ -499,6 +537,7 @@ func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
 // path. The governed MinGas proves the witness had real 0x2007 storage to serve.
 func TestPaymentLaneReadsReachTheWitness(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
+	paymentTxGas := laneRequiredTxGas(t, config, nil)
 
 	lane := gspec.Alloc[paymentlane.ContractAddress]
 	lane.Storage = map[common.Hash]common.Hash{
@@ -508,8 +547,8 @@ func TestPaymentLaneReadsReachTheWitness(t *testing.T) {
 
 	signer := types.LatestSigner(config)
 	var nonce uint64
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, func(i int, b *BlockGen) {
-		b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), params.TxGas, nil))
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 4, func(i int, b *BlockGen) {
+		b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), paymentTxGas, nil))
 		nonce++
 	})
 
@@ -520,7 +559,7 @@ func TestPaymentLaneReadsReachTheWitness(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.StatelessSelfValidation = true
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), cfg)
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), cfg)
 	require.NoError(t, err)
 	defer chain.Stop()
 

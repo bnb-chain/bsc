@@ -59,6 +59,17 @@ type PrecompiledContract interface {
 	Name() string
 }
 
+// BlockContextPrecompiledContract is an optional extension of
+// PrecompiledContract for precompiles that need read-only access to the
+// block context (e.g. the BEP-706 millisecond-timestamp precompile).
+// RunPrecompiledContract dispatches to RunWithBlockContext whenever a
+// precompile implements this interface, so Run is never reached on the
+// real call paths (Call/CallCode/DelegateCall/StaticCall).
+type BlockContextPrecompiledContract interface {
+	PrecompiledContract
+	RunWithBlockContext(blockCtx BlockContext, input []byte) ([]byte, error)
+}
+
 // PrecompiledContracts contains the precompiled contracts supported at the given fork.
 type PrecompiledContracts map[common.Address]PrecompiledContract
 
@@ -412,6 +423,43 @@ var PrecompiledContractsPasteur = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
 
+// PrecompiledContractsJenner contains the set of pre-compiled BSC contracts
+// used in the Jenner release. Built as a fresh map literal repeating every
+// entry of the prior fork's map — it must NOT alias another fork's map
+// (maps are reference types; an alias would leak 0x70 into the older fork
+// and activate it early).
+var PrecompiledContractsJenner = PrecompiledContracts{
+	common.BytesToAddress([]byte{0x01}): &ecrecover{},
+	common.BytesToAddress([]byte{0x02}): &sha256hash{},
+	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}): &dataCopy{},
+	common.BytesToAddress([]byte{0x05}): &bigModExp{eip2565: true, eip7823: true, eip7883: true},
+	common.BytesToAddress([]byte{0x06}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}): &blake2F{},
+	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}): &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}): &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
+	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
+
+	common.BytesToAddress([]byte{0x64}): &tmHeaderValidateDeprecated{},
+	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidateDeprecated{},
+	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
+	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidatePasteur{},
+	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+
+	// BEP-706: millisecond-precision block timestamp, new in Jenner.
+	common.BytesToAddress([]byte{0x70}): &milliTimestamp{},
+
+	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
+}
+
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
 // contract specified in EIP-7212. This is exported for testing purposes.
 var PrecompiledContractsP256Verify = PrecompiledContracts{
@@ -419,6 +467,7 @@ var PrecompiledContractsP256Verify = PrecompiledContracts{
 }
 
 var (
+	PrecompiledAddressesJenner         []common.Address
 	PrecompiledAddressesPasteur        []common.Address
 	PrecompiledAddressesOsakaForBSC    []common.Address
 	PrecompiledAddressesPragueForBSC   []common.Address
@@ -491,6 +540,9 @@ func init() {
 	for k := range PrecompiledContractsOsakaForBSC {
 		PrecompiledAddressesOsakaForBSC = append(PrecompiledAddressesOsakaForBSC, k)
 	}
+	for k := range PrecompiledContractsJenner {
+		PrecompiledAddressesJenner = append(PrecompiledAddressesJenner, k)
+	}
 	for k := range PrecompiledContractsPasteur {
 		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
 	}
@@ -510,8 +562,14 @@ func init() {
 
 func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	switch {
+	// UBT (binary-tree devnet experiment) deliberately stays above Jenner:
+	// it already shadows every BSC fork's precompile set (see IsPasteur
+	// below), and Jenner keeps that pre-existing precedence instead of
+	// silently swapping an active UBT set for a Pasteur-derived one.
 	case rules.IsUBT:
 		return PrecompiledContractsVerkle
+	case rules.IsJenner:
+		return PrecompiledContractsJenner
 	case rules.IsPasteur:
 		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
@@ -567,6 +625,8 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsJenner:
+		return PrecompiledAddressesJenner
 	case rules.IsPasteur:
 		return PrecompiledAddressesPasteur
 	case rules.IsOsaka:
@@ -619,7 +679,7 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 // - the returned bytes,
 // - the remaining gas budget,
 // - any error that occurred
-func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules) (ret []byte, remaining GasBudget, err error) {
+func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules, blockCtx BlockContext) (ret []byte, remaining GasBudget, err error) {
 	gasCost := p.RequiredGas(input)
 	prior, ok := gas.Charge(GasCosts{RegularGas: gasCost})
 	if !ok {
@@ -633,6 +693,13 @@ func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address comm
 	// fork is activated.
 	if rules.IsAmsterdam {
 		stateDB.Touch(address)
+	}
+	// Precompiles that need the block context implement the optional
+	// BlockContextPrecompiledContract interface and are dispatched here;
+	// every other precompile keeps the plain Run(input) path.
+	if bp, ok := p.(BlockContextPrecompiledContract); ok {
+		output, err := bp.RunWithBlockContext(blockCtx, input)
+		return output, gas, err
 	}
 	output, err := p.Run(input)
 	return output, gas, err

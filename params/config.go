@@ -1468,9 +1468,16 @@ func (c *ChainConfig) IsOnPasteur(currentBlockNumber *big.Int, lastBlockTime uin
 	return !c.IsPasteur(lastBlockNumber, lastBlockTime) && c.IsPasteur(currentBlockNumber, currentBlockTime)
 }
 
-// IsJenner returns whether time is either equal to the Jenner fork time or greater.
+// IsJenner returns whether time is either equal to the Jenner fork time or
+// greater. Jenner (BEP-706) is BSC-only, so this is gated on IsInBSC() —
+// unlike IsPasteur/IsMendel/IsFermi, which have no such gate today. Those
+// are BSC-only in practice only because nothing sets their *Time field on
+// a non-Parlia config; for Jenner we make that guarantee explicit instead
+// of relying on convention, so a non-Parlia/non-BSC config can never
+// accidentally activate this BSC-only precompile even if some future code
+// path sets JennerTime on it.
 func (c *ChainConfig) IsJenner(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.JennerTime, time)
+	return c.IsInBSC() && c.IsLondon(num) && isTimestampForked(c.JennerTime, time)
 }
 
 // IsOnJenner returns whether currentBlockTime is either equal to the Jenner fork time or greater firstly.
@@ -1600,7 +1607,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "osakaTime", timestamp: c.OsakaTime},
 		{name: "mendelTime", timestamp: c.MendelTime},
 		{name: "pasteurTime", timestamp: c.PasteurTime},
-		{name: "jennerTime", timestamp: c.JennerTime},
+		{name: "jennerTime", timestamp: c.JennerTime, optional: true},
 		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
 		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
 		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
@@ -1888,6 +1895,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.BPO2
 	case c.IsBPO1(london, time):
 		return forks.BPO1
+	// Jenner (BEP-706) is the BSC fork right after Pasteur, before the
+	// (far-future, upstream) BPO/Amsterdam forks.
 	case c.IsJenner(london, time):
 		return forks.Jenner
 	case c.IsPasteur(london, time):
@@ -2154,7 +2163,8 @@ type Rules struct {
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
-	IsPasteur, IsJenner, IsAmsterdam, IsUBT                 bool
+	IsPasteur, IsAmsterdam, IsUBT                           bool
+	IsJenner                                                bool
 	// IsInBSC is true when Parlia is configured (BSC chains). core/vm uses it to
 	// select the BSC precompile set (…ForBSC); non-BSC chains (e.g. the standard
 	// state / execution-spec tests) get the standard upstream set.
@@ -2200,10 +2210,13 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsOsaka:          (isMerge || c.IsInBSC()) && c.IsOsaka(num, timestamp),
 		IsMendel:         c.IsMendel(num, timestamp),
 		IsPasteur:        c.IsPasteur(num, timestamp),
-		IsJenner:         c.IsJenner(num, timestamp),
 		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
-		IsUBT:            isUBT,
-		IsEIP4762:        isUBT,
-		IsInBSC:          c.IsInBSC(),
+		// IsJenner needs no (isMerge || IsInBSC()) prefix: unlike Amsterdam etc.
+		// (fork names shared with upstream ethereum), Jenner is a BSC-only fork
+		// and IsJenner() itself embeds the IsInBSC() gate.
+		IsJenner:  c.IsJenner(num, timestamp),
+		IsUBT:     isUBT,
+		IsEIP4762: isUBT,
+		IsInBSC:   c.IsInBSC(),
 	}
 }

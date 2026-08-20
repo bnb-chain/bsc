@@ -105,8 +105,10 @@ func payloadVersion(config *params.ChainConfig, time uint64) engine.PayloadVersi
 	switch config.LatestFork(time) {
 	case forks.Amsterdam:
 		return engine.PayloadV4
-	case forks.BPO5, forks.BPO4, forks.BPO3, forks.BPO2, forks.BPO1, forks.Jenner, forks.Pasteur, forks.Mendel,
-		forks.Osaka, forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague, forks.Cancun:
+	// Jenner (BEP-706) does not change the Engine payload version; it is a V3
+	// fork sitting right after Pasteur.
+	case forks.BPO5, forks.BPO4, forks.BPO3, forks.BPO2, forks.BPO1, forks.Jenner, forks.Pasteur, forks.Mendel, forks.Osaka,
+		forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague, forks.Cancun:
 		return engine.PayloadV3
 	case forks.Paris, forks.Shanghai:
 		return engine.PayloadV2
