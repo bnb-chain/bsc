@@ -471,3 +471,51 @@ func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 			ret[:min(4, len(ret))], errSelTokenExists)
 	}
 }
+
+// TestB20OutOfEnumVariantPanics covers the variant word no enum member claims.
+//
+// Nothing tested it, which is how createB20 came to answer InvalidVariant() where
+// base-std's own factory journey asserts a decode failure for variant 2
+// ("out-of-range variant -> ABI decode failure", changelog-adjacent factory.py).
+// A Solidity caller cannot send it — the encoder refuses B20Variant(2) — so the
+// only way in is a raw call, which is the only way a precompile is ever called.
+//
+// getB20Address answered Panic(0x21) all along, so the two entry points disagreed
+// about the same argument. They must not: prediction is only meaningful if it
+// decodes the input the way creation does.
+func TestB20OutOfEnumVariantPanics(t *testing.T) {
+	_, evm := newB20EVM(t)
+	caller := common.HexToAddress("0xca11e4")
+	wantData, _ := finishB20(nil, revPanic(0x21))
+
+	for _, tc := range []struct {
+		name  string
+		input []byte
+	}{
+		{"createB20", encodeCreateB20WithParams(0x02, common.HexToHash("0xbv"),
+			b20AssetParams("T", "T", caller, 18), nil)},
+		{"getB20Address", b20Call(selGetB20Address, u256hash(2), addrKey(caller), common.Hash{})},
+	} {
+		ret, _, err := evm.Call(caller, B20FactoryAddress, tc.input,
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s with variant 2: err = %v, want a revert", tc.name, err)
+		}
+		if !bytes.Equal(ret, wantData) {
+			t.Errorf("%s with variant 2: returndata = %x, want Panic(0x21) = %x. Both entry "+
+				"points must decode the variant identically", tc.name, ret, wantData)
+		}
+	}
+
+	// And a word inside the enum still routes, so the bound is not simply refusing
+	// everything.
+	ret, _, err := evm.Call(caller, B20FactoryAddress,
+		b20Call(selGetB20Address, u256hash(uint64(b20VariantStablecoin)), addrKey(caller), common.Hash{}),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("getB20Address for the stablecoin variant: %v", err)
+	}
+	if want := addrKey(b20DeriveAddress(b20VariantStablecoin, caller, common.Hash{})); !bytes.Equal(ret, want.Bytes()) {
+		t.Errorf("getB20Address = %x, want %x", ret, want)
+	}
+}

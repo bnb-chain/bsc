@@ -108,7 +108,7 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		// only meaningful if the two agree on what the input means: truncating
 		// variant[31] answered for encodings creation rejects, and named
 		// addresses in unroutable variant spaces.
-		if !isEnumWord(variant, b20VariantStablecoin) {
+		if !isEnumWord(variant, b20VariantMax) {
 			return nil, revPanic(0x21)
 		}
 		ctx.chargeKeccak(64)
@@ -166,11 +166,20 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Order follows BEP-702 section 3.4, and base-std: the variant is resolved
-	// and its feature gate applied before the variant-specific params blob is
-	// decoded, so a closed feature is reported as such whatever the payload.
-	if !isEnumWord(variantWord, b20VariantStablecoin) {
-		return nil, revB20("InvalidVariant()", errSelInvalidVariant)
+	// Order follows BEP-702 3.4 and base-std: the variant is resolved and its
+	// feature gate applied before the variant-specific params blob is decoded, so
+	// a closed feature is reported as such whatever the payload.
+	//
+	// A word outside the enum is the decoder's failure, not the body's, and gets
+	// Panic(0x21) — what Solidity raises converting an out-of-range value, and
+	// what base-std's own factory journey asserts for variant 2
+	// ("out-of-range variant -> ABI decode failure"). Its IB20Factory natspec
+	// says InvalidVariant instead; the executable artifact wins, and reading
+	// InvalidVariant as the in-enum-but-unclaimed case reconciles the two. That
+	// case is unreachable while every ordinal has a handler, and is the branch a
+	// third variant would arrive through.
+	if !isEnumWord(variantWord, b20VariantMax) {
+		return nil, revPanic(0x21)
 	}
 	variant := variantWord[31]
 	feature, ok := variantFeature(variant)
@@ -184,10 +193,11 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Every field is validated before the address is derived, matching base-std:
-	// a malformed currency is reported as such even when the salt is also taken.
-	// validateCurrency reads no storage, so there was never a reason to defer it
-	// to initialization.
+	// Every field is validated before the address is derived, so a malformed
+	// currency is reported as such even when the salt is also taken. base-std's
+	// natspec lists the field errors ahead of TokenAlreadyExists, which is the
+	// only evidence either way — its factory journey tests the two cases with
+	// separate salts, so it does not pin the precedence.
 	if variant == b20VariantStablecoin {
 		if err := validateCurrency(create.currency); err != nil {
 			return nil, err
@@ -321,8 +331,13 @@ func decodeCreateParams(variant byte, params []byte) (b20CreateParams, error) {
 	return out, nil
 }
 
-// validateCurrency is the Stablecoin content check, applied at initialization
-// so that a duplicate salt reports TokenAlreadyExists ahead of it, as on Base.
+// validateCurrency is the Stablecoin content check. Its caller runs it before
+// deriving the address, so it reports ahead of TokenAlreadyExists.
+//
+// No length bound: base-std publishes none (B20Constants has MAX_ASSET_DECIMALS
+// and MAX_SUPPLY_CAP, nothing for the currency), and the string arrives as
+// calldata the caller has already paid for, then costs a slot per word to store
+// (BEP-702 3.14).
 func validateCurrency(code string) error {
 	if code == "" {
 		return revB20Bytes("MissingRequiredField(string)", errSelMissingField, []byte("currency"))

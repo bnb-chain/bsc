@@ -41,6 +41,11 @@ var b20MarkerPrefix = [2]byte{0x20, 0xb0}
 const (
 	b20VariantAsset      = 0x00
 	b20VariantStablecoin = 0x01
+
+	// b20VariantMax is the highest ordinal the variant enum defines. A word above
+	// it is outside the enum, which is a different failure from a word inside it
+	// that no handler claims — see createB20.
+	b20VariantMax = b20VariantStablecoin
 )
 
 // The three singletons (BEP-702 §3.1). The factory's second byte is 0xBF where
