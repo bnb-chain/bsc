@@ -1,5 +1,5 @@
 {
-  "_comment": "Authoritative B20 storage layout. Consensus-critical: a slot number decides the state root, so two implementations that disagree here diverge on the first token operation. Hand-edit only when changing the layout deliberately \u2014 core/vm/b20_layout_pin_test.go checks every entry against the Go constants in both directions, and BEP-702's storage section is generated from this file by scripts/b20-layout-doc.py.",
+  "_comment": "Authoritative B20 storage layout, and consensus-critical: a slot number decides the state root, so two implementations that disagree here diverge on the first token operation that touches it. TestB20LayoutFixtureFollowsTheCode holds every namespace, root and slot against the Go constants in both directions, so this file cannot drift from the implementation. BEP-702 3.17 is rendered from it \u2014 the namespace table, the field table, the derivation rules, the packed-word lanes and the not-persisted list, in that order \u2014 so a change here has to be carried into that section in the same commit.",
   "erc7201": "keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))",
   "derivation": {
     "fixed_field": "root + offset",

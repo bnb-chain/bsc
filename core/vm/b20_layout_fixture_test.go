@@ -81,8 +81,7 @@ func TestB20LayoutFixtureFollowsTheCode(t *testing.T) {
 		t.Fatalf("parse the layout fixture: %v", err)
 	}
 
-	const regen = "regenerate it, and BEP-702 3.17 with it:\n" +
-		"    python3 scripts/b20-layout-doc.py --write <BEPs>/BEPs/BEP-702.md"
+	const regen = "update the fixture, and BEP-702 3.17 with it"
 
 	seenNS := map[string]bool{}
 	for _, ns := range ref.Namespaces {
