@@ -1117,7 +1117,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/df4615d95427a91ed00ae3df008c97b6bf06a3e8",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/aaa092b3542d3f28ec58b85bdfaf6aa604f120eb",
 				Code:         jenner.MainnetPaymentLaneContract,
 			},
 		},
@@ -1128,7 +1128,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/df4615d95427a91ed00ae3df008c97b6bf06a3e8",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/aaa092b3542d3f28ec58b85bdfaf6aa604f120eb",
 				Code:         jenner.ChapelPaymentLaneContract,
 			},
 		},
@@ -1139,7 +1139,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(PaymentLaneContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/df4615d95427a91ed00ae3df008c97b6bf06a3e8",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/aaa092b3542d3f28ec58b85bdfaf6aa604f120eb",
 				Code:         jenner.RialtoPaymentLaneContract,
 			},
 		},
