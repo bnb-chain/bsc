@@ -410,7 +410,7 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() &&
-		!(allowBEP703UncleHash(backend.Chain(), ann.Block.Header()) && hash == types.EmptyUncleHash && ann.Block.Header().BEP703CommitsNoUncles()) {
+		!(hash == types.EmptyUncleHash && ann.Block.Header().BEP703CommitsNoUncles() && allowBEP703UncleHash(backend.Chain(), ann.Block.Header())) {
 		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
