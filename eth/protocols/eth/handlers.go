@@ -385,6 +385,18 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	return backend.Handle(peer, ann)
 }
 
+func allowBEP703UncleHash(chain *core.BlockChain, header *types.Header) bool {
+	config := chain.Config()
+	if !config.IsInBSC() {
+		return false
+	}
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent != nil {
+		return config.IsJenner(parent.Number, parent.Time)
+	}
+	return config.IsJenner(header.Number, header.Time)
+}
+
 func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	// Retrieve and decode the propagated block
 	ann := new(NewBlockPacket)
@@ -397,7 +409,8 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	if hash := types.CalcUncleHash(ann.Block.Uncles()); !ann.Block.Header().UncleHashMatches(hash) {
+	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() &&
+		!(allowBEP703UncleHash(backend.Chain(), ann.Block.Header()) && hash == types.EmptyUncleHash && ann.Block.Header().BEP703CommitsNoUncles()) {
 		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}

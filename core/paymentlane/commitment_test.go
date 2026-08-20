@@ -36,7 +36,8 @@ func TestTheAllZeroCommitmentIsLegal(t *testing.T) {
 	got, err := Decode(common.Hash{})
 	require.NoError(t, err, "the all-zero commitment must decode, not fail")
 	require.Equal(t, Commitment{}, got)
-	require.True(t, (&types.Header{}).IsEmptyUncleHash(), "and it must be tagged as a commitment")
+	require.False(t, (&types.Header{}).IsEmptyUncleHash(), "the default uncle-root helpers stay exact")
+	require.True(t, (&types.Header{}).BEP703CommitsNoUncles(), "BEP-703 explicitly treats the all-zero commitment as no uncles")
 
 	// Zero quota still has to match the derived quota.
 	p := defaultGovernanceParams()
@@ -68,8 +69,8 @@ func TestDecodeRejectsMalformed(t *testing.T) {
 	})
 }
 
-// Keep types.Header.IsEmptyUncleHash and Decode on the same framing rule.
-func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
+// Keep the BEP-703 tag in step with Decode. EmptyUncleHash stays the separate legacy encoding.
+func TestBEP703CommitmentTagAgreesWithDecode(t *testing.T) {
 	// Check both directions across reserved bytes and random payloads.
 	var h common.Hash
 	rng := rand.New(rand.NewSource(1))
@@ -82,7 +83,7 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 				}
 				h[i] = b
 				_, err := Decode(h)
-				require.Equal(t, err == nil, (&types.Header{UncleHash: h}).IsEmptyUncleHash(),
+				require.Equal(t, err == nil, (&types.Header{UncleHash: h}).BEP703CommitsNoUncles(),
 					"reserved byte %d = %#x on payload %x", i, b, h[:16])
 			}
 		}
@@ -96,19 +97,21 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 		{PaymentLaneQuota: math.MaxUint64, PaymentGasUsed: math.MaxUint64},
 	} {
 		encoded := Encode(c)
-		require.True(t, (&types.Header{UncleHash: encoded}).IsEmptyUncleHash(), "%x", encoded)
+		header := &types.Header{UncleHash: encoded}
+		require.False(t, header.IsEmptyUncleHash(), "%x", encoded)
+		require.True(t, header.BEP703CommitsNoUncles(), "%x", encoded)
 	}
 
 	// EmptyUncleHash stays tagged as "no uncles", not a lane commitment.
 	_, err := Decode(types.EmptyUncleHash)
 	require.ErrorIs(t, err, ErrBadCommitment)
 	require.True(t, (&types.Header{UncleHash: types.EmptyUncleHash}).IsEmptyUncleHash())
+	require.True(t, (&types.Header{UncleHash: types.EmptyUncleHash}).BEP703CommitsNoUncles())
 
 	// A real uncle hash is neither.
 	uncles := types.CalcUncleHash([]*types.Header{{Number: common.Big1}})
 	require.False(t, (&types.Header{UncleHash: uncles}).IsEmptyUncleHash())
-	require.False(t, (&types.Header{UncleHash: Encode(Commitment{PaymentLaneQuota: 1})}).UncleHashMatches(uncles))
-	require.True(t, (&types.Header{UncleHash: uncles}).UncleHashMatches(uncles))
+	require.False(t, (&types.Header{UncleHash: uncles}).BEP703CommitsNoUncles())
 }
 
 // Accept producer-reachable commitments and reject only forged ones.

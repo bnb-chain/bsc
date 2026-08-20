@@ -749,7 +749,8 @@ func (f *BlockFetcher) loop() {
 						if uncleHash == (common.Hash{}) {
 							uncleHash = types.CalcUncleHash(task.uncles[i])
 						}
-						if !announce.header.UncleHashMatches(uncleHash) {
+						if uncleHash != announce.header.UncleHash &&
+							!(uncleHash == types.EmptyUncleHash && announce.header.BEP703CommitsNoUncles()) {
 							continue
 						}
 						if txnHash == (common.Hash{}) {

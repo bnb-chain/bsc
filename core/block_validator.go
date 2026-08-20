@@ -46,6 +46,17 @@ func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain) *Bloc
 	return validator
 }
 
+func (v *BlockValidator) allowBEP703UncleHash(block *types.Block) bool {
+	if !v.config.IsInBSC() {
+		return false
+	}
+	parent := v.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+	if parent != nil {
+		return v.config.IsJenner(parent.Number, parent.Time)
+	}
+	return v.config.IsJenner(block.Number(), block.Time())
+}
+
 // ValidateBody validates the given block's uncles and verifies the block
 // header's transaction and uncle roots. The headers are assumed to be already
 // validated at this point.
@@ -64,7 +75,8 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if err := v.bc.engine.VerifyUncles(v.bc, block); err != nil {
 		return err
 	}
-	if hash := types.CalcUncleHash(block.Uncles()); !header.UncleHashMatches(hash) {
+	if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash &&
+		!(v.allowBEP703UncleHash(block) && hash == types.EmptyUncleHash && header.BEP703CommitsNoUncles()) {
 		return fmt.Errorf("uncle root hash mismatch (header value %x, calculated %x)", header.UncleHash, hash)
 	}
 
