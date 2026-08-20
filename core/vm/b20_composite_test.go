@@ -194,13 +194,6 @@ func TestB20CompositeRevertOrder(t *testing.T) {
 // TestB20CompositeChildStorageLayout pins the child array's encoding, which is
 // the port's correctness argument: a Solidity reference contract must produce the
 // same slots byte for byte, so the state roots agree and not merely the reads.
-//
-// Solidity stores a uint64[] in a mapping as a length word at the mapping slot
-// with the elements packed four per 32-byte word, LSB-first, from keccak256(slot).
-// The shrink case is the one that can diverge while reads still agree: an
-// implementation that only rewrote the words the new length needs would leave the
-// old lanes behind, and the root would differ from the reference even though
-// compositePolicyChildIds returned the right answer.
 func TestB20CompositeChildStorageLayout(t *testing.T) {
 	statedb, _ := newB20EVM(t)
 	reg := policyReg{s: b20Storage{state: statedb, token: B20PolicyRegistryAddress}}

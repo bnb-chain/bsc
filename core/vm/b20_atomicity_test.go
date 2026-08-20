@@ -12,9 +12,6 @@ import (
 // EVM.Call holds; the failure lands partway through, so a rollback that missed
 // any of it would leave a half-built token at a deterministic address that
 // b20AddressOccupied would then refuse to create properly.
-//
-// Asserts on the state root, not hand-picked slots, which would miss whichever
-// slot a regression happened to write.
 func TestB20CreateIsAtomic(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")

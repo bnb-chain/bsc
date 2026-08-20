@@ -10,12 +10,6 @@ import (
 
 // TestB20AddressArrayDecodesStrictly pins that an address[] element is read as
 // strictly as a scalar address argument.
-//
-// batchMint truncated its recipient words to the low twenty bytes. A word with
-// dirty high bytes minted to the truncated address where mint with the same word
-// reverts, so the two paths disagreed about what the calldata said. A client that
-// decoded strictly would revert where this one mints — the state roots differ, and
-// nothing in the surface's own tests would show it.
 func TestB20AddressArrayDecodesStrictly(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")

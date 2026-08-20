@@ -25,31 +25,10 @@ import (
 // state access is never cheaper than the same work through bytecode. Opcode,
 // memory and call overhead have no counterpart here and are not synthesized.
 
-// EIP-2929 warm/cold policy, in one place because it is consensus and no price
-// table states it. TestB20AddressesAreNotPrewarmed and the rest of
-// b20_warming_test.go hold each clause.
-//
-//   - No B20 address is warm at the start of a transaction. state.Prepare seeds
-//     the access list from ActivePrecompiles, and B20 is dispatched from
-//     evm.precompile's dynamic fallback rather than the address map, so a first
-//     CALL to a token, the factory or a registry pays the cold account
-//     surcharge like any other account. The token space is a prefix rather than
-//     an enumerable set and could not be listed anyway; listing only the three
-//     singletons would split the family for no benefit an access list cannot buy.
-//   - A transaction access list works normally. The slots metered here are the
-//     token's real storage keys, so naming (token, slot) in an EIP-2930 list
-//     pre-pays the cold surcharge and the read charges warm.
-//   - Warming is keyed on (address, slot), never on who asked. Two tokens gating
-//     on the same policy pay the registry's cold surcharge once between them.
-//   - A foreign slot read warms the foreign address too. AddSlotToAccessList adds
-//     both, and its comment calls the address branch unreachable because nothing
-//     can touch an address's storage without entering its frame — which a B20
-//     token does, reading the registries for its own gating. So a CALL to a
-//     registry is warm afterwards. Kept rather than worked around: it follows
-//     from the same primitive the interpreter uses, and suppressing it would mean
-//     a warm slot under a cold address, a state no EVM operation can produce.
-//   - Everything above reverts with the frame, through the StateDB journal, as
-//     EIP-2929 requires of both access sets.
+// The EIP-2929 warm/cold policy is normative and lives in BEP-702 3.17: no B20
+// address starts warm, a transaction access list applies, warmth is keyed on
+// (address, slot), and a foreign slot read warms the foreign address too.
+// b20_warming_test.go holds each clause.
 
 // b20CalldataWordGas is the per-word part of bringing calldata into memory:
 // CALLDATACOPY's copy cost plus the linear part of the memory expansion that

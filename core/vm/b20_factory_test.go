@@ -331,17 +331,6 @@ func TestB20CreatedEvent(t *testing.T) {
 // it. The other tests build their input with the same helper the expected
 // output uses, so a shared mistake in that helper would pass unnoticed; this
 // vector is independent of it.
-//
-// Layout of abi.encode(struct{uint8,string,string,address,uint8}):
-//
-//	w0  0x20   offset to the struct (single-value encoding wraps it)
-//	w1  0x01   version
-//	w2  0xa0   offset to name, relative to the struct start (5 head words)
-//	w3  0xe0   offset to symbol
-//	w4  admin
-//	w5  0x12   decimals (18)
-//	w6  0x01   name length,   w7 "A"
-//	w8  0x01   symbol length, w9 "B"
 func TestB20CreateParamsCanonicalEncoding(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad3111")
@@ -429,11 +418,6 @@ func TestB20CreateParamsRejectsMalformed(t *testing.T) {
 // taken, because every field is validated before the address is derived
 // (IB20Factory.createB20's documented order puts MissingRequiredField and
 // InvalidCurrency ahead of TokenAlreadyExists).
-//
-// This test asserted the opposite, and said it was "the precedence Base has".
-// Nobody had read base-std, which was public the whole time; the order came from
-// the implementation, and the spec was then written to match the implementation.
-// validateCurrency reads no storage, so there was never a reason to defer it.
 func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdup)")
@@ -473,16 +457,6 @@ func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 }
 
 // TestB20OutOfEnumVariantPanics covers the variant word no enum member claims.
-//
-// Nothing tested it, which is how createB20 came to answer InvalidVariant() where
-// base-std's own factory journey asserts a decode failure for variant 2
-// ("out-of-range variant -> ABI decode failure", changelog-adjacent factory.py).
-// A Solidity caller cannot send it — the encoder refuses B20Variant(2) — so the
-// only way in is a raw call, which is the only way a precompile is ever called.
-//
-// getB20Address answered Panic(0x21) all along, so the two entry points disagreed
-// about the same argument. They must not: prediction is only meaningful if it
-// decodes the input the way creation does.
 func TestB20OutOfEnumVariantPanics(t *testing.T) {
 	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xca11e4")

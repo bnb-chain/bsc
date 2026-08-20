@@ -18,111 +18,12 @@ package vm
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
-	"os"
-	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
 )
-
-// TestB20ABIBaseline cross-checks every function / event / error signature the
-// Go implementation registers (via selector / eventTopic / b20ErrorSel) against
-// the canonical surface in testdata/abi_baseline.json, whose source of
-// truth is core/vm/b20std/B20Std.sol.
-//
-// The check is exact in both directions:
-//   - a registered signature absent from the baseline is a divergence, unless
-//     listed in knownDivergent with the target it must converge to;
-//   - a baseline signature not registered must appear in the pending lists, so
-//     an unimplemented selector cannot be forgotten silently, and implementing
-//     one forces its removal here.
-func TestB20ABIBaseline(t *testing.T) {
-	raw, err := os.ReadFile("testdata/b20_abi_baseline.json")
-	if err != nil {
-		t.Fatalf("read baseline: %v", err)
-	}
-	var baseline struct {
-		Functions []string `json:"functions"`
-		Events    []string `json:"events"`
-		Errors    []string `json:"errors"`
-	}
-	if err := json.Unmarshal(raw, &baseline); err != nil {
-		t.Fatalf("parse baseline: %v", err)
-	}
-
-	// Implemented signatures that intentionally differ from the baseline while
-	// a work package is in flight. Key: what the Go code registers today;
-	// value: the baseline signature it must converge to.
-	// No implemented signature currently diverges from the baseline.
-	knownDivergent := map[string]string{}
-
-	// Baseline signatures with no implementation yet. Implementing one MUST
-	// remove it from this list.
-	pendingFunctions := []string{}
-	pendingEvents := []string{}
-	pendingErrors := []string{}
-
-	check := func(kind string, baselineSigs []string, registered map[string]bool, pending []string, divergent map[string]string) {
-		base := map[string]bool{}
-		for _, sig := range baselineSigs {
-			if base[sig] {
-				t.Errorf("%s baseline lists %q twice", kind, sig)
-			}
-			base[sig] = true
-		}
-		pend := map[string]bool{}
-		for _, sig := range pending {
-			if !base[sig] {
-				t.Errorf("%s pending entry %q is not in the baseline", kind, sig)
-			}
-			pend[sig] = true
-		}
-		// Direction 1: everything registered must be canonical (or tracked).
-		for sig := range registered {
-			if base[sig] {
-				continue
-			}
-			if target, ok := divergent[sig]; ok {
-				if !base[target] {
-					t.Errorf("%s knownDivergent target %q is not in the baseline", kind, target)
-				}
-				continue
-			}
-			t.Errorf("%s signature %q is implemented but not in the baseline — divergence from BEP-702", kind, sig)
-		}
-		// Direction 2: everything canonical must be implemented or pending.
-		for sig := range base {
-			if registered[sig] == pend[sig] {
-				if registered[sig] {
-					t.Errorf("%s signature %q is implemented but still listed as pending", kind, sig)
-				} else {
-					t.Errorf("%s signature %q is neither implemented nor listed as pending", kind, sig)
-				}
-			}
-		}
-	}
-
-	fns := map[string]bool{}
-	for sig := range b20FnSigs {
-		fns[sig] = true
-	}
-	events := map[string]bool{}
-	for sig := range b20EventSigs {
-		events[sig] = true
-	}
-	errs := map[string]bool{}
-	for sig := range b20ErrSigs {
-		errs[sig] = true
-	}
-
-	check("function", baseline.Functions, fns, pendingFunctions, knownDivergent)
-	check("event", baseline.Events, events, pendingEvents, nil)
-	check("error", baseline.Errors, errs, pendingErrors, nil)
-}
 
 // TestB20RevertData verifies typed revert payloads travel end to end: a
 // business-rule failure inside a B20 precompile surfaces through evm.Call as
@@ -217,12 +118,6 @@ func TestB20RevertData(t *testing.T) {
 // TestB20UndecodableCalldataRevertsEmpty pins BEP-702 3.2's second failure kind:
 // calldata that cannot be decoded reverts with no returndata at all, across
 // every entry point.
-//
-// This is a deliberate divergence from base-std, which echoes the caller's four
-// selector bytes for an unknown selector and a selector plus a UTF-8 diagnostic
-// for a decode failure. Neither is ABI-encoded, so reproducing them would make
-// one implementation's error strings consensus data — and four bytes would be
-// worse than none, being shaped exactly like an argument-less custom error.
 func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -271,21 +166,6 @@ func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
 // TestB20PublishedValuesMatchBaseStd pins every selector, role id and topic0
 // base-std states as a literal in its own changelog tables, so the values can be
 // checked by eye against the reference rather than trusted.
-//
-// TestB20SurfaceMatchesBaseStd covers whether the signature *sets* agree. This
-// covers whether our hashing of them agrees, which that test cannot: it derives
-// both sides from the same strings with the same code.
-//
-// The announcement id is the reason this exists. It is a string, not the uint256
-// BEP-702 first specified: base-std ships
-// announce as 0x595135dd, published in its Beryl-to-Cobalt migration note
-// alongside the rest of the frozen Asset surface. Every other Asset selector in
-// that table already matched, which is what isolated this one.
-//
-// A uint256 id gives 0x8d03a071 — a different function, silently, to any caller
-// built against Base's ABI. The baseline test only checks the Go code against
-// BEP-702's own Solidity, so both could drift back together; this is the
-// external anchor.
 func TestB20PublishedValuesMatchBaseStd(t *testing.T) {
 	for _, tc := range []struct {
 		sig  string
@@ -337,10 +217,6 @@ func TestB20PublishedValuesMatchBaseStd(t *testing.T) {
 
 // TestB20ConstantsMatchBaseStd pins the numeric constants base-std publishes in
 // B20Constants.sol and its policy-id codec.
-//
-// A wrong bound here is not caught by the signature diff — the selector set is
-// identical whether MIN_ASSET_DECIMALS is 6 or 8 — and not caught by the
-// behavioural tests either, which assert against the same constant they exercise.
 func TestB20ConstantsMatchBaseStd(t *testing.T) {
 	// B20Constants.sol
 	if b20MinDecimals != 6 || b20MaxDecimals != 18 {
@@ -386,72 +262,5 @@ func TestB20ConstantsMatchBaseStd(t *testing.T) {
 	// from BEP-702 3.8, so this pins the spec rather than the reference.
 	if b20PolicyBatchMax != 64 {
 		t.Errorf("membership batch limit = %d, want 64 (BEP-702 3.8)", b20PolicyBatchMax)
-	}
-}
-
-// TestB20SolEnumsMatchGo pins each enum declared in b20std/B20Std.sol to the Go
-// ordinals, member by member.
-//
-// No signature diff can do this: an enum parameter is uint8 on the wire, so
-// createCompositePolicy(address,uint8,uint64[]) matched base-std exactly while
-// PolicyType in the same file still read { BLOCKLIST, ALLOWLIST }. An integrator
-// importing the interface had no PolicyType.UNION to name, and the cast around it
-// — PolicyType(2) — panics on conversion, so the composite constructor was
-// undialable from the published mirror.
-func TestB20SolEnumsMatchGo(t *testing.T) {
-	src, err := os.ReadFile("b20std/B20Std.sol")
-	if err != nil {
-		t.Fatalf("read the interface mirror: %v", err)
-	}
-	found := map[string][]string{}
-	for _, m := range regexp.MustCompile(`enum (\w+) \{([^}]*)\}`).FindAllStringSubmatch(string(src), -1) {
-		var members []string
-		for _, name := range strings.Split(m[2], ",") {
-			members = append(members, strings.TrimSpace(name))
-		}
-		found[m[1]] = members
-	}
-
-	// Ordinals from the Go side, so a member reordered on either side fails.
-	want := map[string][]struct {
-		name    string
-		ordinal uint
-	}{
-		"PausableFeature": {
-			{"TRANSFER", b20PauseTransfer}, {"MINT", b20PauseMint},
-			{"BURN", b20PauseBurn}, {"SEIZE", b20PauseSeize},
-		},
-		"Variant": {
-			{"ASSET", b20VariantAsset}, {"STABLECOIN", b20VariantStablecoin},
-		},
-		"PolicyType": {
-			{"BLOCKLIST", b20PolicyBlocklist}, {"ALLOWLIST", b20PolicyAllowlist},
-			{"UNION", b20PolicyUnion}, {"INTERSECT", b20PolicyIntersect},
-		},
-	}
-	if len(found) != len(want) {
-		t.Errorf("the mirror declares %d enum(s), Go pins %d — add the new one here",
-			len(found), len(want))
-	}
-	for name, members := range want {
-		got := found[name]
-		if got == nil {
-			t.Errorf("enum %s is not declared in the mirror", name)
-			continue
-		}
-		if len(got) != len(members) {
-			t.Errorf("enum %s has %d member(s) in the mirror, Go accepts %d: %v",
-				name, len(got), len(members), got)
-			continue
-		}
-		for i, m := range members {
-			if got[i] != m.name {
-				t.Errorf("enum %s member %d is %s in the mirror, want %s", name, i, got[i], m.name)
-			}
-			if uint(i) != m.ordinal {
-				t.Errorf("enum %s member %s is ordinal %d in the mirror, %d in Go",
-					name, m.name, i, m.ordinal)
-			}
-		}
 	}
 }

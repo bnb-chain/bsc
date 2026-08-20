@@ -21,10 +21,6 @@ import (
 
 // TestB20DomainSeparatorChargesItsHashes pins the name keccak by the only term
 // that varies with it: one more word of name costs exactly one more keccak word.
-//
-// Isolated this way rather than by totalling the call, because the total also
-// carries the string's SLOADs — a figure that would have to be re-derived here
-// and would then be asserting our own arithmetic twice.
 func TestB20DomainSeparatorChargesItsHashes(t *testing.T) {
 	gasFor := func(name string) uint64 {
 		t.Helper()
@@ -75,10 +71,6 @@ func TestB20DomainSeparatorChargesItsHashes(t *testing.T) {
 // TestB20PermitChargesRecovery pins everything permit does after the deadline
 // check. The expired path returns before any of it, so the difference between the
 // two is exactly the hashing, the two cold reads and ECRECOVER's flat fee.
-//
-// Written as a lower bound first, which was useless: the other terms already
-// exceed 3000, so deleting the ECRECOVER charge left the bound satisfied. Every
-// term is enumerated now, which is the only way the fee itself is load-bearing.
 func TestB20PermitChargesRecovery(t *testing.T) {
 	const name = "Test Token" // what encodeCreateB20 sets
 

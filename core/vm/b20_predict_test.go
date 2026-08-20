@@ -13,10 +13,6 @@ import (
 // read their shared first argument the same way. getB20Address answers, before
 // creation, what address createB20 will use (BEP-702 3.3), which only means
 // something if both accept the same encodings.
-//
-// base-std reverts on an unknown variant and on a word with dirty high bytes;
-// verified against Base mainnet, where getB20Address(2, …) reverts while variants
-// 0 and 1 differ only in byte 10.
 func TestB20GetAddressDecodesVariantStrictly(t *testing.T) {
 	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xc4ea70")

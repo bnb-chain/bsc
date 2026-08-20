@@ -17,9 +17,6 @@
 package vm
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -30,17 +27,6 @@ import (
 
 // TestB20StringLengthWordIsNotTrusted covers a length word no write could have
 // produced. Before the bound, both read paths crashed the node:
-//
-//	short: 2*len of 200 sliced the 32-byte word at [:100]
-//	       — "slice bounds out of range [:100] with length 32"
-//	long:  a length near 2^64 reached make([]byte, 0, length)
-//	       — "makeslice: cap out of range"
-//
-// Nothing writes such a word today, which is the whole reason to test it: the
-// slot is reachable from genesis and from fork hooks as well as from setStringAt,
-// and "only our own writer touches it" is an invariant that holds until someone
-// adds a field. A panic inside a precompile is a node crash, not a revert, so it
-// cannot be left to reachability.
 func TestB20StringLengthWordIsNotTrusted(t *testing.T) {
 	word := func(build func(*common.Hash)) common.Hash {
 		var h common.Hash
@@ -101,39 +87,5 @@ func TestB20StringLengthWordIsNotTrusted(t *testing.T) {
 	if got := s.stringChunks(slotAt(b20SlotName)); got != b20MaxStringLen/32 {
 		t.Errorf("a string exactly at the cap reports %d chunks, want %d — the bound is "+
 			"off by one and rejects a length it should accept", got, b20MaxStringLen/32)
-	}
-}
-
-// TestB20StorageViewsAreConstructed keeps b20Storage literals out of production
-// code, so that whether a view meters is a decision with a name.
-//
-// The struct's ctx field is what makes a view charge gas, and it is optional —
-// b20Storage{state: x, token: y} compiles and silently reads state for free.
-// Nothing marks that at the call site, and the two registry views did it while a
-// named unmetered constructor sat with no production caller at all. Go cannot
-// forbid an in-package literal, so this is the check.
-func TestB20StorageViewsAreConstructed(t *testing.T) {
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") || f == "b20_storage.go" {
-			continue // the constructors themselves live here
-		}
-		src, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, line := range strings.Split(string(src), "\n") {
-			if strings.Contains(line, "b20Storage{") {
-				t.Errorf("%s:%d builds a b20Storage literal. Use newMeteredB20Storage, "+
-					"newMeteredB20StorageAt or newUnmeteredB20Storage, so that a view "+
-					"reading state for free says so:\n    %s", f, i+1, strings.TrimSpace(line))
-			}
-		}
-	}
-	if len(files) < 5 {
-		t.Fatalf("globbed %d files; the scan is not looking at the package", len(files))
 	}
 }

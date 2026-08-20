@@ -7,11 +7,6 @@ import (
 )
 
 // TestB20MultiplierRoundTripNeverGains pins the direction the rounding must go.
-//
-// Both conversions truncate, so raw -> scaled -> raw can only lose. That is the
-// safe direction: the opposite would let a holder mint value out of a rebase by
-// converting back and forth. Nothing asserted this, and it is not visible from the
-// two functions in isolation — each looks like an ordinary fixed-point multiply.
 func TestB20MultiplierRoundTripNeverGains(t *testing.T) {
 	wad := b20WAD
 	muls := []*uint256.Int{
@@ -53,13 +48,6 @@ func TestB20MultiplierRoundTripNeverGains(t *testing.T) {
 
 // TestB20MultiplierOverflowBoundary locates where the products actually overflow,
 // which is not where the bounds suggest.
-//
-// A raw balance and the multiplier are each bounded by type(uint128).max, and
-// (2^128-1)^2 is below 2^256 — so applyMultiplier cannot overflow from any state
-// the token can hold, and uint128.max * WAD is only 3.4e56 against a 1.16e77
-// ceiling. The reachable case is the other direction: toRawBalance takes a uint256
-// from the caller, and scaled * WAD overflows above about 1.16e59. It must revert
-// there rather than wrap into an unrelated balance.
 func TestB20MultiplierOverflowBoundary(t *testing.T) {
 	u128Max := new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 

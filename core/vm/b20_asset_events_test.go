@@ -14,15 +14,6 @@ import (
 )
 
 // TestB20AssetEventPayloads pins the two Asset events that carried empty data.
-//
-// Both emitted only topics: ExtraMetadataUpdated dropped its key and value,
-// Announcement its description and uri. base-std declares them as non-indexed
-// arguments, so an indexer following that ABI decoded nothing. Filling them in
-// also changes the gas — log data is charged per byte — so this test asserts the
-// bytes and the next one the price.
-//
-// The expectation comes from go-ethereum's own ABI packer rather than from
-// encodeTuple, which is the encoder under test.
 func TestB20AssetEventPayloads(t *testing.T) {
 	mustType := func(s string) abi.Type {
 		t.Helper()
@@ -77,13 +68,6 @@ func TestB20AssetEventPayloads(t *testing.T) {
 }
 
 // TestB20AnnouncementPayload pins the other half, and the price the data carries.
-//
-// Announcement carries three strings, not two: base-std indexes only the caller
-// and leaves the id in the data, so the id is part of the payload this checks.
-//
-// The gas delta is derived from params.LogDataGas rather than measured against
-// another B20 call: comparing two B20 shapes would hold under any per-byte rate,
-// which is how the calldata charge went wrong earlier in this work.
 func TestB20AnnouncementPayload(t *testing.T) {
 	mustType := func(s string) abi.Type {
 		t.Helper()

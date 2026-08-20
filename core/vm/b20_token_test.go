@@ -192,12 +192,6 @@ func TestB20EndToEndTransfer(t *testing.T) {
 
 // TestB20CalldataStrictnessProfile pins which malformed encodings are refused and
 // which are not, so the profile is a decision rather than an accident.
-//
-// base-std's audit checklist names three: truncated args, dirty high bits above an
-// address, and an out-of-range enum. It does not name trailing data — and a
-// Solidity dispatcher ignores extra calldata after a static argument list, so
-// refusing it here would make a native token refuse input the contract it replaces
-// accepts. That asymmetry is the whole content of this test.
 func TestB20CalldataStrictnessProfile(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -243,17 +237,6 @@ func TestB20CalldataStrictnessProfile(t *testing.T) {
 
 // TestB20TransferFromSelfSkipsAllowanceAndExecutor pins the spender == from
 // shortcut, which nothing covered.
-//
-// The owner moving their own balance through transferFrom spends no allowance and
-// is not checked against TRANSFER_EXECUTOR_POLICY. Neither half is pinned by
-// base-std: its asset journey only exercises the delegated path.
-//
-// The executor half is consistent — transfer() consults no executor policy either,
-// so the shortcut opens no path that transfer() does not already offer. The
-// allowance half is a real divergence from OpenZeppelin, whose _spendAllowance
-// makes no exception for the owner, so transferFrom(self, ...) there needs a
-// self-approval. Worth confirming with Base before mainnet; this test states what
-// we do so the answer changes a test rather than surfacing in production.
 func TestB20TransferFromSelfSkipsAllowanceAndExecutor(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	admin := b20ActivationAdmin
@@ -308,8 +291,6 @@ func TestB20TransferFromSelfSkipsAllowanceAndExecutor(t *testing.T) {
 		b20Call(selTransferFrom, addrKey(admin), addrKey(b20Bob), u256hash(1)),
 		NewGasBudget(1_000_000), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
-		t.Errorf("a delegated transfer under a deny-all executor policy err = %v, want a "+
-			"revert; if this passes, the executor policy is not being consulted at all and "+
-			"the self-shortcut above proves nothing", err)
+		t.Errorf("a delegated transfer under a deny-all executor policy err = %v, want a revert; if this passes, the executor policy is not being consulted at all and", err)
 	}
 }

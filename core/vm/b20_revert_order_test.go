@@ -173,11 +173,6 @@ func TestB20UpdatePolicyRevertOrder(t *testing.T) {
 // ContractPaused(TRANSFER), InvalidReceiver, InvalidSender, InsufficientAllowance,
 // PolicyForbids(TRANSFER_EXECUTOR), then the sender/receiver policies and the
 // balance.
-//
-// Two of these were wrong. The zero-address checks lived in move(), which runs
-// after the allowance is spent, and the executor policy was consulted before the
-// allowance rather than after — so a transfer to the zero address, or an
-// unauthorized executor with too little allowance, named the wrong failure.
 func TestB20TransferFromRevertOrder(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")

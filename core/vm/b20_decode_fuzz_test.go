@@ -5,16 +5,6 @@ import (
 )
 
 // FuzzB20Decoders drives every calldata decoder over arbitrary bytes.
-//
-// These sit at the entry of a precompile, so a panic is not a test failure but a
-// node crash on a block anyone can craft. The decoders compute positions before
-// bounds-checking them — readBytesArray forms arrDataeg + elemOff, which wraps
-// uint64 for a large offset word — and the guards that follow are what make that
-// safe. This is the check that they do.
-//
-// Nothing is asserted about the returned values; malformed input is allowed to
-// produce an error, and well-formed input its content. Only crashing is a defect,
-// plus any slice the decoder hands back that is not inside its input.
 func FuzzB20Decoders(f *testing.F) {
 	f.Add([]byte{})
 	f.Add(make([]byte, 32))

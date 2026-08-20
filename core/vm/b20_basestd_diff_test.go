@@ -10,24 +10,6 @@ import (
 
 // TestB20SurfaceMatchesBaseStd diffs our whole registered ABI against base-std's,
 // the B20 reference implementation's published interfaces.
-//
-// This exists because TestB20ABIBaseline cannot do it. That check is exhaustive
-// in both directions and still could not have caught a single one of the
-// divergences found on 2026-08-17 — a uint256 announcement id where base-std
-// uses a string, and four events missing the actor and previous value — because
-// the three things it compares (the Go code, b20std/B20Std.sol, BEP-702) are all
-// ours. A passing consistency check reads like ABI verification and is not.
-//
-// Alignment was previously done by point query: probing a selector on Base
-// mainnet, or reading its docs. That can only verify a signature someone already
-// suspected, which is why the PolicyRegistry's events were corrected while the
-// identical omission on IB20's went untouched. base-std is public and MIT, so the
-// check can be a set difference instead of a hunch.
-//
-// The fixture is generated — see scripts/b20-basestd-surface.py — and carries the
-// commit it came from. Selectors are not stored in it: hashing there would derive
-// the same values from the same strings. TestB20PublishedValuesMatchBaseStd anchors
-// the hashing separately, against literals base-std publishes itself.
 func TestB20SurfaceMatchesBaseStd(t *testing.T) {
 	raw, err := os.ReadFile("testdata/basestd_surface.json")
 	if err != nil {

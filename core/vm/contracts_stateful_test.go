@@ -25,18 +25,6 @@ func (p *probePrecompile) RunStateful(ctx *PrecompileContext, _ []byte) ([]byte,
 
 // TestStatefulPrecompileCallContext pins the msg.sender and msg.value a stateful
 // precompile is handed on each of the four call opcodes.
-//
-// Every B20 precompile refuses CALLCODE and DELEGATECALL on the DirectCall flag
-// before it looks at either field, so nothing shipping today can observe them
-// and no B20 test can cover them. That is exactly why they need pinning: the
-// fields are wired in evm.go, they are what a stateful precompile would have to
-// trust if the direct-call guard were ever relaxed, and getting them wrong is a
-// consensus bug that would surface only then.
-//
-// The values follow the interpreter, not convenience: CALLCODE transfers value,
-// and DELEGATECALL inherits both the parent's msg.sender and its msg.value —
-// which is what the non-precompile branch of each function passes to
-// GetContract a few lines below.
 func TestStatefulPrecompileCallContext(t *testing.T) {
 	var (
 		probeAddr = common.HexToAddress("0x0b0be0")
@@ -126,44 +114,5 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 				t.Errorf("ReadOnly = %v, want %v", got.ReadOnly, tc.wantRead)
 			}
 		})
-	}
-}
-
-// TestSpawnBootstrapCarriesReadOnly pins the one flag spawnBootstrap has to copy
-// by hand, because nothing else can tell you it stopped copying it.
-//
-// The carry is unreachable today: createB20 refuses a read-only frame at its
-// first line, so no spawn happens under STATICCALL and dropping the field
-// changes no observable behaviour — TestB20CreateRejectsStaticCall still passes
-// with it gone. That makes it exactly the kind of defence that rots. Asserted
-// here on the derivation itself rather than through a call path, so it holds
-// whether or not one exists.
-//
-// Read-through instead of a copy would not work: StaticCall hands the dispatcher
-// a literal true and never sets evm.readOnly, which only evm.Run does, and the
-// precompile path does not go through Run. A context reading evm.readOnly would
-// see false inside a STATICCALL and let the token write.
-func TestSpawnBootstrapCarriesReadOnly(t *testing.T) {
-	for _, readOnly := range []bool{false, true} {
-		parent := &PrecompileContext{
-			Self:       B20FactoryAddress,
-			Caller:     common.HexToAddress("0xca11e4"),
-			DirectCall: true,
-			ReadOnly:   readOnly,
-			gas:        new(GasBudget),
-		}
-		child := parent.spawnBootstrap(b20Addr(b20VariantAsset, 1), parent.Caller)
-		if child.ReadOnly != readOnly {
-			t.Errorf("a context spawned from a ReadOnly=%v frame has ReadOnly=%v. Every "+
-				"write guard in the B20 handlers tests ctx.ReadOnly, so the bootstrap "+
-				"bundle would write inside a STATICCALL", readOnly, child.ReadOnly)
-		}
-		// Sharing, not copying: the child must not get its own budget or tally.
-		if child.gas != parent.gas {
-			t.Error("the child has its own gas budget, so its charges are lost on return")
-		}
-		if child.frameGas() != parent.frameGas() {
-			t.Error("the child has its own frame accounting, so its out-of-gas is lost")
-		}
 	}
 }

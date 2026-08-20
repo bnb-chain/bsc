@@ -12,10 +12,6 @@ import (
 // the reference implementation rather than from our own code. Every other
 // derivation test calls b20DeriveAddress for its expectation and so stays green
 // under any preimage, including a wrong one.
-//
-// The vector is what getB20Address(ASSET, creator, salt) returns on Base mainnet
-// and Sepolia. Only the nine fingerprint bytes are portable — Base's prefix is
-// 0xB200… — so the surrounding bytes are not compared.
 func TestB20DeriveAddressMatchesBaseStd(t *testing.T) {
 	var (
 		creator = common.HexToAddress("0x04d63aBCd2b9b1baa327f2Dda0f873F197ccd186")

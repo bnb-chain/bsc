@@ -347,17 +347,6 @@ func TestB20ExtraMetadata(t *testing.T) {
 
 // TestB20AnnounceEncoderIsCanonical checks the hand-rolled encoder above against
 // go-ethereum's ABI packer.
-//
-// encodeAnnounceWith feeds the decoder under test (readBytesArray, readStringArg).
-// A mistake shared by both — a head offset counted from the wrong base, a tail
-// padded the wrong way — leaves every announce test passing while the precompile
-// disagrees with every real ABI encoder in existence. Nothing else in the suite
-// distinguishes those two worlds.
-//
-// The cases exercise the shapes where the two encoders could part company: an
-// all-empty call, a bytes[] element that is an exact multiple of 32 (so its tail
-// needs no padding), an empty element inside a non-empty array, and a long id
-// that pushes the later tails past one word.
 func TestB20AnnounceEncoderIsCanonical(t *testing.T) {
 	mustType := func(s string) abi.Type {
 		t.Helper()
@@ -416,12 +405,6 @@ func TestB20AnnounceEncoderIsCanonical(t *testing.T) {
 }
 
 // TestB20AnnouncementIDShapes covers the id lengths the fixed test ids do not.
-//
-// Announcement ids became strings, so their slot comes from keccak over the raw
-// key bytes rather than a padded word. Every other announce test uses one
-// 11-character id, which cannot tell that rule apart from a mistaken one for
-// keys at or past a word boundary. The prefix pair is the point of the last
-// check: keccak(key . base) must not let "x" and "xz" reach the same slot.
 func TestB20AnnouncementIDShapes(t *testing.T) {
 	for _, id := range []string{
 		"",

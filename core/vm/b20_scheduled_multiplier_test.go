@@ -41,11 +41,6 @@ func newScheduledAssetToken(t *testing.T, born uint64) (common.Address, func(uin
 // TestB20ScheduledMultiplierFlipsWithoutAnEvent is the property that made adopting
 // ERC-8056 a decision rather than an addition: multiplier() stops being a pure
 // function of state written by transactions.
-//
-// Once a schedule matures the value changes on read, with no transaction and no
-// log at the flip. An indexer rebuilding balances from the event stream alone
-// diverges from the chain at that instant, which is why BEP-702 3.12 says so
-// explicitly rather than leaving it to be discovered.
 func TestB20ScheduledMultiplierFlipsWithoutAnEvent(t *testing.T) {
 	const born, flip = uint64(100), uint64(500)
 	token, at, operator := newScheduledAssetToken(t, born)
@@ -270,17 +265,6 @@ func TestB20AssetInterfaceIDs(t *testing.T) {
 
 // TestB20MaturedScheduleIsSettledBeforeReplacement covers the one path where the
 // lazy effective-multiplier model can lose a value.
-//
-// Reads compute the effective multiplier and cannot write, so a matured schedule
-// lives on in the pending slot rather than in the stored one. Replacing it with a
-// new schedule therefore has to fold it into storage first. Without that the token
-// silently drops back to its pre-maturity multiplier for the whole gap until the
-// new schedule arrives — measured before the fix: 3x reverted to 1x for 400
-// seconds and then jumped to 5x, revaluing every holder's balance twice with no
-// event either time.
-//
-// Reachable with two ordinary successful calls, which is why it is worth its own
-// test rather than a note.
 func TestB20MaturedScheduleIsSettledBeforeReplacement(t *testing.T) {
 	token, at, operator := newScheduledAssetToken(t, 100)
 	mul := func(now uint64) uint64 {

@@ -77,22 +77,13 @@ type PrecompileContext struct {
 	gas *GasBudget
 
 	// adminRenounced records that a token gave up its last admin during this
-	// frame. adminCount reaching zero freezes role mutation, but the factory's
-	// privileged bootstrap skips that freeze — so without this marker a bundle
-	// could renounce and then grant again, undoing a transition the token has
-	// already advertised as permanent (BEP-702 3.4). An ownerless token also
-	// starts at zero admins and must still accept grants, which is why the freeze
-	// cannot simply stop being skippable.
-	//
-	// Per-frame rather than stored: outside the bootstrap window the zero count
-	// freezes on its own, so the marker only has to outlive the initCalls loop,
-	// which shares this context.
+	// frame, so a bootstrap bundle cannot renounce and then grant again (BEP-702
+	// 3.4). Per-frame rather than stored: outside the bootstrap window the zero
+	// admin count freezes role mutation on its own.
 	adminRenounced bool
 
-	// frame holds the accounting that belongs to the EVM frame rather than to
-	// this context. A spawned context is the same frame with a different Self —
-	// it shares the gas budget — so exhaustion and the state-gas tally have to be
-	// shared with it too. Allocated lazily by frameGas(); nil until first use.
+	// frame holds accounting shared by every context in this EVM frame, so a
+	// spawned child's exhaustion and charges are not lost. Lazily allocated.
 	frame *frameAccounting
 }
 
@@ -164,15 +155,9 @@ func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
 // stateGasUsed returns the gas attributed to state operations across the frame,
-// a bootstrap child's charges included.
-//
-// Only the metering tests read it today, which is why it is unexported rather
-// than deleted: it is the accounting half of the state-gas dimension this tree
-// already carries as GasCosts.StateGas / GasBudget.StateGas ("the state gas
-// reservoir"). Should BSC adopt a separate dimension (EIP-8037 / EIP-8038), the
-// charges chargeStateGas already separates are what feeds it, and BEP-702 3.14
-// commits to inheriting it with no amendment. Deleting the tally as unused would
-// have to be undone at that point.
+// a bootstrap child's charges included. Read only by the metering tests today; it
+// is the accounting half of GasBudget.StateGas, which BEP-702 3.14 commits to
+// inheriting if BSC adopts EIP-8037/8038.
 func (ctx *PrecompileContext) stateGasUsed() uint64 {
 	if ctx.frame == nil {
 		return 0
@@ -180,8 +165,7 @@ func (ctx *PrecompileContext) stateGasUsed() uint64 {
 	return ctx.frame.stateGasUsed
 }
 
-// gasLeft reports the regular gas remaining in the budget. Unexported for the
-// same reason as stateGasUsed; in-tree callers that need it read ctx.gas.
+// gasLeft reports the regular gas remaining in the budget.
 func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.RegularGas }
 
 // BlockTime returns the timestamp of the block being executed (used e.g. by

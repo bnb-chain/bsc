@@ -10,18 +10,6 @@ import (
 
 // TestB20SlotsNeverCollide walks the whole slot space B20 addresses and asserts
 // no two distinct locations land on the same slot.
-//
-// Every field of every namespace, and every mapping entry, is derived by
-// arithmetic or keccak over a shared root. A collision would alias two pieces of
-// state — a balance over a role, one namespace over another — with no symptom
-// except wrong answers, and the per-field tests cannot see it because each checks
-// its own location in isolation.
-//
-// The five roots are 32 bytes apart at most by luck; what makes them safe is
-// ERC-7201's low-byte clearing, which leaves 255 free slots under each. Fixed
-// fields use only the low numbers, so the check that matters is that no fixed
-// field of one namespace reaches into another's, and that no mapping entry lands
-// on a fixed field.
 func TestB20SlotsNeverCollide(t *testing.T) {
 	seen := map[common.Hash]string{}
 	claim := func(slot common.Hash, what string) {

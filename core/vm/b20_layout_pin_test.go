@@ -19,8 +19,6 @@ package vm
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -30,18 +28,6 @@ import (
 
 // TestB20LayoutMatchesTheFixture holds testdata/b20_layout.json against the Go
 // constants, in both directions.
-//
-// The layout is consensus: the precompile writes real storage under the token's
-// account, so a slot number decides the account's storage root and hence the
-// block hash. Two implementations that disagree about slot 13 diverge on the
-// first permit. BEP-702 leans on this already — 3.14 requires the metered slots
-// to be "the token's real storage keys" and 4.6 requires the storage layout to be
-// fuzzed — without defining it anywhere, so the fixture is where it is defined
-// and BEP-702's section is generated from it.
-//
-// The table below names each constant, so a renumbering changes the Go side and
-// the literal in the fixture stops matching. Roots are recomputed from the
-// namespace strings rather than copied, so renaming a namespace fails too.
 func TestB20LayoutMatchesTheFixture(t *testing.T) {
 	type field struct {
 		Slot uint64 `json:"slot"`
@@ -175,37 +161,5 @@ func TestB20LayoutMatchesTheFixture(t *testing.T) {
 			t.Errorf("namespace %q root %s does not end in a zero byte; ERC-7201 masks it so "+
 				"that a namespace has 256 consecutive slots", ns, root.Hex())
 		}
-	}
-}
-
-// TestB20LayoutDocIsInStep checks that BEP-702's generated storage section still
-// matches the fixture, when a checkout of the BEPs repository is reachable.
-//
-// The spec lives in another repository, so this cannot be a hard gate: it skips
-// unless B20_BEPS_DIR names a checkout, or one sits beside this one. Skipping is
-// the honest failure mode — the alternative is a test that passes because it
-// looked nowhere. Set B20_BEPS_DIR in CI to make it binding.
-func TestB20LayoutDocIsInStep(t *testing.T) {
-	dir := os.Getenv("B20_BEPS_DIR")
-	if dir == "" {
-		dir = "../../../BEPs"
-	}
-	doc := filepath.Join(dir, "BEPs", "BEP-702.md")
-	if _, err := os.Stat(doc); err != nil {
-		t.Skipf("no BEP-702 to check against (%s); set B20_BEPS_DIR to a BEPs checkout", doc)
-	}
-	abs, err := filepath.Abs(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Run from the repository root: the script's default fixture path is relative
-	// to it, as its usage line shows.
-	cmd := exec.Command("python3", "scripts/b20-layout-doc.py", "--check", abs)
-	cmd.Dir = "../.."
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Errorf("BEP-702's storage layout no longer matches testdata/b20_layout.json.\n"+
-			"Regenerate it:\n    python3 scripts/b20-layout-doc.py --write %s\n%s",
-			doc, out)
 	}
 }

@@ -110,9 +110,6 @@ func TestB20AdminCountGuards(t *testing.T) {
 // operator MINT_ROLE too and bundles only updateMultiplier, which needs the same
 // role the outer check already required, so nothing there distinguished "roles
 // still apply" from "roles are skipped".
-//
-// The positive control is load-bearing: without it the negative assertion holds
-// whenever the announcement fails for any reason at all.
 func TestB20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")

@@ -14,27 +14,6 @@ import (
 // the frame out of gas and returns, leaving the caller to continue. Every
 // individual charge was correct, and the dispatcher failed the call at the end, so
 // the state was always discarded — but the node had already done all the work.
-//
-// Measured before the loop guards: a 2000-recipient batchMint given 25,000 gas ran
-// in the same wall-clock as one given 200,000,000, because gas ran out during the
-// calldata charge and all 2000 mints proceeded anyway. At 8000 recipients that was
-// 17ms bought for 25,000 gas. BEP-702 3.14 names worst-case execution time as a
-// property to bound, and a chain targeting sub-second blocks cannot price work it
-// then performs for free.
-//
-// Timing is the only way to see this: the state is reverted either way, so no
-// storage assertion can tell the two apart. The threshold is deliberately loose —
-// the point is order of magnitude, not a benchmark.
-//
-// The ABI decoders are deliberately left unguarded, and measured rather than
-// assumed. They also run after exhaustion, but their work is linear in the
-// calldata while the cost of delivering that calldata is quadratic in it — memory
-// expansion carries a words^2/512 term, and a transaction pays 16 gas per byte.
-// Measured on a starved budget: 1KB of calldata buys 3.2us of decoding for 107
-// gas of memory, 512KB buys 1.44ms for 573,641. The ratio worsens with size,
-// where batchMint's did the opposite: the same 574k bought 17ms there, because
-// each recipient triggered trie work rather than a byte copy. Guarding the
-// decoders would cost a branch per word to remove nothing.
 func TestB20ExhaustedBudgetStopsWork(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -135,12 +114,6 @@ func TestB20BootstrapStopsOnExhaustion(t *testing.T) {
 // from state rather than from the call's own calldata: replacing a long stored
 // string with a short one releases the old tail, and the old length is whatever a
 // previous caller paid to store.
-//
-// That makes it the only case here with sustained amplification. The others cost
-// the attacker more as they grow — a bigger payload costs quadratically more to
-// deliver than the work it buys. This one is paid for once and re-bought at
-// out-of-gas prices indefinitely, because an exhausted frame reverts and leaves
-// the long string in place for the next attempt.
 func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -201,16 +174,6 @@ func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 }
 
 // TestB20UnaffordableCallDoesNoWork covers the DoS shape RequiredGas() == 0 opens.
-//
-// The interpreter charges nothing before a B20 handler runs, so without a check at
-// the entry a caller who cannot even afford the calldata charge still got the whole
-// handler's native work — ABI decoding, trie reads, keccak, permit's ecrecover —
-// for the price of a warm CALL. In a loop against already-expanded memory that
-// buys linear native work at roughly 100 gas a turn.
-//
-// The assertion is on state rather than on timing: a call that cannot pay must not
-// have touched the trie. A slot the handler would have read stays cold, which is
-// only observable if the read never happened.
 func TestB20UnaffordableCallDoesNoWork(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")

@@ -41,16 +41,6 @@ func warmed(db *state.StateDB, addr common.Address, slot common.Hash) bool {
 
 // TestB20AddressesAreNotPrewarmed pins the policy choice: a B20 address is warm
 // only once something touches it, exactly like an ordinary account.
-//
-// Every classic precompile is warm from the first instruction of a transaction,
-// because state.Prepare seeds the access list with ActivePrecompiles. B20 is
-// dispatched from evm.precompile's dynamic fallback rather than from the address
-// map, so none of its addresses appear in that list, and a first CALL to a token,
-// the factory or a registry pays the 2600-gas cold surcharge.
-//
-// The token space could not be pre-warmed even in principle — it is a prefix, not
-// an enumerable set — so listing only the three singletons would make the family
-// inconsistent with itself for no benefit a transaction access list cannot buy.
 func TestB20AddressesAreNotPrewarmed(t *testing.T) {
 	rules := b20TestChainConfig().Rules(common.Big1, false, 1)
 	if !rules.IsJenner || !rules.IsInBSC {
@@ -77,9 +67,7 @@ func TestB20AddressesAreNotPrewarmed(t *testing.T) {
 		{"a token", b20Addr(b20VariantAsset, 1)},
 	} {
 		if inList[tc.addr] {
-			t.Errorf("%s (%s) is in ActivePrecompiles, so every transaction would find it "+
-				"warm. That is a consensus change: update BEP-702 3.14 and every "+
-				"reimplementation, do not let it arrive as a side effect", tc.name, tc.addr.Hex())
+			t.Errorf("%s (%s) is in ActivePrecompiles, so every transaction would find it warm. That is a consensus change: update BEP-702 3.14 and every", tc.name, tc.addr.Hex())
 		}
 	}
 
@@ -104,11 +92,6 @@ func TestB20AddressesAreNotPrewarmed(t *testing.T) {
 
 // TestB20HonoursTransactionAccessList checks that an EIP-2930 access list buys
 // the discount it is supposed to buy.
-//
-// The slots the precompile meters are the token's real storage keys, so a caller
-// can name them in a transaction access list and pre-pay for the cold access.
-// Nothing would break if the precompile ignored the list — it would just
-// overcharge — which is why this needs a test rather than an argument.
 func TestB20HonoursTransactionAccessList(t *testing.T) {
 	rules := b20TestChainConfig().Rules(common.Big1, false, 1)
 	token := b20Addr(b20VariantAsset, 1)
@@ -139,9 +122,7 @@ func TestB20HonoursTransactionAccessList(t *testing.T) {
 		t.Errorf("unlisted read charged %d, want %d (keccak + cold)", cold, want)
 	}
 	if want := b20Keccak64 + params.WarmStorageReadCostEIP2929; warm != want {
-		t.Errorf("read of a slot named in the access list charged %d, want %d (keccak + warm). "+
-			"The precompile is ignoring the transaction's access list, so a caller who "+
-			"pre-paid for the slot pays the cold surcharge twice", warm, want)
+		t.Errorf("read of a slot named in the access list charged %d, want %d (keccak + warm). The precompile is ignoring the transaction's access list, so a caller who", warm, want)
 	}
 	// The keccak is charged either way, so the whole difference is the surcharge.
 	if got, want := cold-warm, params.ColdSloadCostEIP2929-params.WarmStorageReadCostEIP2929; got != want {
@@ -151,18 +132,6 @@ func TestB20HonoursTransactionAccessList(t *testing.T) {
 
 // TestB20ForeignSlotReadWarmsTheForeignAddress records a side effect that has no
 // counterpart in bytecode, so no reimplementation can infer it.
-//
-// A token consults the registries for its own gating (BEP-702 3.14: a foreign
-// storage read is charged as storage, with no account-access surcharge). Warming
-// a slot warms its address too — StateDB.AddSlotToAccessList adds both, and its
-// comment calls the address branch unreachable "since there is no way to enter
-// the scope of 'address' without having the 'address' become already added". A
-// B20 token is that way: it reads the registry's storage without ever entering
-// the registry's frame.
-//
-// So the registry address is warm afterwards, and a later CALL to it costs 100
-// rather than 2600. That is a real discount reachable by ordering calls, and it
-// is load-bearing for consensus: it must be identical in every implementation.
 func TestB20ForeignSlotReadWarmsTheForeignAddress(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -182,9 +151,7 @@ func TestB20ForeignSlotReadWarmsTheForeignAddress(t *testing.T) {
 
 	// Storage price only: no account-access surcharge for the foreign account.
 	if want := params.ColdSloadCostEIP2929; charged != want {
-		t.Errorf("a cold foreign slot read charged %d, want %d — the storage cost alone. "+
-			"An account-access surcharge here would make a token's own gating cost more "+
-			"than the same slot in its own account (BEP-702 3.14)", charged, want)
+		t.Errorf("a cold foreign slot read charged %d, want %d — the storage cost alone. An account-access surcharge here would make a token's own gating cost more", charged, want)
 	}
 	if !warmed(statedb, B20PolicyRegistryAddress, slot) {
 		t.Error("the slot is not warm after being read, so the next read pays cold again")
@@ -225,12 +192,6 @@ func TestB20WarmthIsSharedAcrossTokens(t *testing.T) {
 }
 
 // TestB20WarmingRevertsWithTheFrame pins that a reverted call leaves nothing warm.
-//
-// EIP-2929 reverts accessed_addresses and accessed_storage_keys along with the
-// rest of the state. A B20 token warms slots through StateDB rather than by
-// executing SLOAD, so it inherits that only because the journal records each
-// addition — worth an assertion, since a cache that outlived the revert would
-// make the next call cheaper than the same call in a fresh transaction.
 func TestB20WarmingRevertsWithTheFrame(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")

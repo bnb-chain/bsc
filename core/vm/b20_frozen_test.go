@@ -82,13 +82,6 @@ func TestB20RequiredGasIsZero(t *testing.T) {
 // LastAdminRenounced is emitted for exactly that — but the window skips the
 // zero-admin freeze so a later call in the same bundle could grant the role
 // again. adminCount went 1 -> 0 -> 1 and a new admin held it.
-//
-// base-std keys the freeze on having been "transitioned to admin-less via
-// renounceLastAdmin" (IB20.grantRole's natspec), not on the count alone, which is
-// what distinguishes this from an ownerless token: that one also starts at zero
-// admins and must still accept role grants inside the window. Both directions are
-// checked here, because a fix that simply stopped skipping the freeze would break
-// the second.
 func TestB20BootstrapIsNotAWayBack(t *testing.T) {
 	creator := common.HexToAddress("0xc4ea70")
 	newToken := func(t *testing.T, admin common.Address, calls [][]byte) (*EVM, common.Address, error) {

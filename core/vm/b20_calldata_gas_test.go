@@ -12,10 +12,6 @@ import (
 // interpreter's cost for the operation it mirrors, computed here from the
 // interpreter's own pieces so no step passes back through the function under
 // test.
-//
-// TestB20GasNeverCheaperThanBytecode cannot catch an error here: it compares B20
-// against B20, and its exact assertions hold between transfer shapes that all
-// carry 68 bytes of calldata, so any scaling of chargeCalldata keeps them equal.
 func TestB20CalldataGasMirrorsCalldatacopy(t *testing.T) {
 	// interpreterCost is what bytecode pays to copy n bytes of its own calldata
 	// into empty memory.
@@ -69,12 +65,6 @@ func TestB20CalldataGasMirrorsCalldatacopy(t *testing.T) {
 
 // TestB20StringKeyGasScalesWithKey pins the keccak charge for a string-keyed
 // mapping against KECCAK256's own price for the same preimage.
-//
-// The value-keyed mapSlot hashes a fixed 64 bytes, so a constant covered it.
-// A string key does not: the preimage is the caller's bytes plus the base slot,
-// and charging a constant would hand out an unbounded hash for a fixed fee.
-// Both string-keyed mappings — extraMetadata and announcement ids — take their
-// key straight from calldata.
 func TestB20StringKeyGasScalesWithKey(t *testing.T) {
 	charged := func(key string) uint64 {
 		budget := NewGasBudget(100_000_000)

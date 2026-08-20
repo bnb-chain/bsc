@@ -376,11 +376,6 @@ func mustBalance(t *testing.T, c *b20Chain, token, who common.Address, want int6
 
 // TestB20E2EForkAndActivation walks what base-std calls the activation preflight,
 // but from one block earlier than a live chain can: the fork itself.
-//
-// Before Jenner the reserved addresses are ordinary accounts. The fork seeds the
-// registries and installs the configured admin — and opens nothing. A feature
-// then has to be activated by that admin, by transaction, before the factory will
-// build anything.
 func TestB20E2EForkAndActivation(t *testing.T) {
 	c := newB20Chain(t)
 	featureAsset := b20Topic("bsc.b20_asset")
