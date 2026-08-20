@@ -29,13 +29,6 @@ import (
 // native precompiles; a token deploys no executable bytecode, only the one-byte
 // sentinel. It is identified by its address, routed by the address prefix, and
 // isolated by the state stored under that address (BEP-702 §3.3).
-//
-// Address layout (20 bytes):
-//
-//	byte[0:2]      0x20B0             marker
-//	byte[2:10]     0x00 (8 bytes)     namespace padding
-//	byte[10]       variant            0x00 = Asset, 0x01 = Stablecoin
-//	byte[11:20]    keccak256(creator,salt)[:9]  identity fingerprint
 var b20MarkerPrefix = [2]byte{0x20, 0xb0}
 
 const (
@@ -91,9 +84,6 @@ var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 
 // b20InitializedMetered reports whether a B20 token exists at addr, charged as an
 // account access. Exact-hash, not non-empty: foreign code is not a token.
-//
-// Not the factory's occupancy check — that asks whether the address is free,
-// which any code denies. See b20AddressOccupied.
 func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
 	ctx.chargeAccountAccess(addr)
 	return ctx.StateDB.GetCodeHash(addr) == b20MarkerCodeHash

@@ -781,10 +781,6 @@ func requireCustomPolicy(reg policyReg, id uint64) error {
 }
 
 // requirePolicyAdmin reverts unless the policy exists and caller is its admin.
-//
-// The zero-admin guard is stricter than base-std, which relies on the caller
-// never being the zero address to keep a renounced policy frozen. Both refuse
-// every reachable call; this way the freeze does not depend on that assumption.
 func requirePolicyAdmin(reg policyReg, id uint64, caller common.Address) error {
 	if err := requireCustomPolicy(reg, id); err != nil {
 		return err

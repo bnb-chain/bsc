@@ -24,30 +24,6 @@ import (
 )
 
 // B20 core storage layout.
-//
-// A token's state lives in the account storage trie at the token's own
-// address, using an ERC-7201 namespaced root and Solidity-identical slot math
-// (fixed offsets, keccak-derived mapping slots, in-slot packing). This makes
-// the layout byte-for-byte reproducible by a reference Solidity contract, so
-// the golden tests can cross-check the native precompile against base-std.
-//
-// Layout mirrors B20CoreStorage (namespace "bsc.b20"):
-//
-//	slot 0   name (string)
-//	slot 1   symbol (string)
-//	slot 2   contractURI (string)
-//	slot 3   totalSupply (uint256)
-//	slot 4   balances    mapping(address => uint256)
-//	slot 5   allowances  mapping(address => mapping(address => uint256))
-//	slot 6   roles       mapping(bytes32 => mapping(address => bool))
-//	slot 7   roleAdmins  mapping(bytes32 => bytes32)
-//	slot 8   adminCount (uint256)
-//	slot 9   packed: transferSender|transferReceiver|transferExecutor|reserved (4×u64)
-//	slot 10  packed: mintReceiver|reserved (4×u64)
-//	slot 11  paused (uint256 bitmask)
-//	slot 12  supplyCap (uint256)
-//	slot 13  nonces      mapping(address => uint256)
-//	slot 14  packed: seizeHolder|seizeReceiver|reserved (4×u64)
 const b20Namespace = "bsc.b20"
 
 const (
@@ -86,8 +62,6 @@ const (
 var b20CoreRoot = erc7201Root(b20Namespace)
 
 // erc7201Root computes the ERC-7201 storage root of a namespace:
-//
-//	keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))
 func erc7201Root(namespace string) common.Hash {
 	inner := new(uint256.Int).SetBytes(crypto.Keccak256([]byte(namespace)))
 	inner.SubUint64(inner, 1)
@@ -153,9 +127,6 @@ func (s b20Storage) strMapSlot(base common.Hash, key string) common.Hash {
 // that have no frame to charge — the fork seeding hook and the state queries
 // behind it — and for tests. Everything reached from a precompile call must use
 // newMeteredB20Storage, or its state access is free.
-//
-// Named rather than written as a b20Storage literal so that the choice is
-// visible at the call site; TestB20StorageViewsAreConstructed holds that.
 func newUnmeteredB20Storage(state StateDB, token common.Address) b20Storage {
 	return b20Storage{state: state, token: token}
 }
@@ -391,23 +362,10 @@ func (s b20Storage) stringDataRoot(slot common.Hash) *uint256.Int {
 }
 
 // b20MaxStringLen bounds a string read against a malformed length word.
-//
-// Only setStringAt writes these slots, so no longer value can exist: 16 MiB
-// occupies 2^19 slots and creating them costs SstoreSet each, about 1.0e10 gas —
-// two orders of magnitude past any block limit. So the cap cannot refuse a value
-// the chain could hold, while a corrupt word cannot make a read allocate or loop
-// without bound.
 const b20MaxStringLen = 1 << 24
 
 // getStringAt / setStringAt read and write a Solidity string at an arbitrary
 // slot (used for fixed fields and for string-keyed mapping values).
-//
-// A length word that no write could have produced reads as the empty string. The
-// slot is only reachable through setStringAt today, but a read must not depend on
-// that: state also arrives from genesis and from fork hooks, and an unvalidated
-// length word panics the node — 2*len over 62 slices past the end of the word,
-// and a long length overflows makeslice. The empty string is the answer a
-// reimplementation has to give too, since a panic is not a consensus outcome.
 func (s b20Storage) getStringAt(slot common.Hash) string {
 	word := s.getWord(slot)
 	if word[31]&1 == 0 {
@@ -443,11 +401,6 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 }
 
 // setStringAt writes a string, releasing whatever the previous value held.
-//
-// Solidity's string assignment zeroes the tail slots the old value occupied and
-// no longer needs. Skipping that would leave the state root diverging from a
-// Solidity reference implementation and forfeit the clearing refunds — which
-// only became reachable once name, symbol and contractURI turned mutable.
 func (s b20Storage) setStringAt(slot common.Hash, str string) {
 	b := []byte(str)
 	oldChunks := s.stringChunks(slot)

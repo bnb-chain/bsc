@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/holiman/uint256"
 )
 
@@ -174,6 +175,12 @@ func TestB20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 }
 
 // TestB20UnaffordableCallDoesNoWork covers the DoS shape RequiredGas() == 0 opens.
+// warmed reports whether an (address, slot) pair is in the access list.
+func warmed(db *state.StateDB, addr common.Address, slot common.Hash) bool {
+	_, ok := db.SlotInAccessList(addr, slot)
+	return ok
+}
+
 func TestB20UnaffordableCallDoesNoWork(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")

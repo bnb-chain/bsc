@@ -341,10 +341,6 @@ func (t b20Token) renounceLastAdmin() error {
 	// admin role as unauthorized and reserves NotSoleAdmin for one who does hold
 	// it but is not the last. Collapsing them told a stranger they were "not the
 	// sole admin", which is true but says the wrong thing.
-	//
-	// hasRole directly rather than ensureRole, because this guard is not
-	// skippable inside the privileged bootstrap: it is the anti-resurrection
-	// check BEP-702 3.4 says is never skipped.
 	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) {
 		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), roleDefaultAdmin)

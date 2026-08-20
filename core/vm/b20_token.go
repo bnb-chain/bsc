@@ -266,13 +266,6 @@ func (t b20Token) policyAllows(id uint64, account common.Address) bool {
 }
 
 // move debits from and credits to, reverting on insufficient balance.
-//
-// The credit is an unchecked Add because the supply cap bounds it: updateSupplyCap
-// refuses a cap above type(uint128).max and mint refuses to exceed the cap
-// (BEP-702 3.10), so totalSupply — and therefore any single balance, since the
-// balances sum to it — stays below 2^128. Adding two such values cannot reach
-// 2^256. The premise is the cap, not an invariant this function checks: a token
-// whose balances were seeded past it by other means would wrap here.
 func (t b20Token) move(from, to common.Address, amount *uint256.Int) error {
 	if to == (common.Address{}) {
 		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))

@@ -105,9 +105,6 @@ func (ctx *PrecompileContext) sstoreSentry() bool {
 // interpreter applies, including EIP-3529 refunds. It mirrors
 // makeGasSStoreFunc; the arms are kept in the same order and with the same
 // clause numbers so the two can be diffed.
-//
-// Reports false when the reentrancy sentry refuses the write, in which case the
-// caller must fail the call with out-of-gas and perform no write.
 func (s b20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 	if s.ctx == nil {
 		return true

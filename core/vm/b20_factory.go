@@ -66,13 +66,6 @@ var b20NoSupplyCap = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1)
 
 // b20DeriveAddress computes a token's deterministic address:
 // 0x20B0 ++ 8×0x00 ++ variant ++ keccak256(abi.encode(creator, salt))[:9].
-//
-// The preimage is abi.encode, not packed concatenation: the creator is
-// left-padded to a full word, so the hash is over 64 bytes rather than 52. That
-// is what base-std's precompile does — verified by calling getB20Address on Base
-// mainnet and Sepolia, which both return the abi.encode fingerprint
-// (TestB20DeriveAddressMatchesBaseStd pins the vector). base-std's own docs write
-// it as `keccak256(deployer, salt)`, which is ambiguous between the two.
 func b20DeriveAddress(variant byte, creator common.Address, salt common.Hash) common.Address {
 	h := crypto.Keccak256(common.LeftPadBytes(creator.Bytes(), 32), salt.Bytes())
 	var a common.Address
@@ -169,15 +162,6 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	// Order follows BEP-702 3.4 and base-std: the variant is resolved and its
 	// feature gate applied before the variant-specific params blob is decoded, so
 	// a closed feature is reported as such whatever the payload.
-	//
-	// A word outside the enum is the decoder's failure, not the body's, and gets
-	// Panic(0x21) — what Solidity raises converting an out-of-range value, and
-	// what base-std's own factory journey asserts for variant 2
-	// ("out-of-range variant -> ABI decode failure"). Its IB20Factory natspec
-	// says InvalidVariant instead; the executable artifact wins, and reading
-	// InvalidVariant as the in-enum-but-unclaimed case reconciles the two. That
-	// case is unreachable while every ordinal has a handler, and is the branch a
-	// third variant would arrive through.
 	if !isEnumWord(variantWord, b20VariantMax) {
 		return nil, revPanic(0x21)
 	}
@@ -333,11 +317,6 @@ func decodeCreateParams(variant byte, params []byte) (b20CreateParams, error) {
 
 // validateCurrency is the Stablecoin content check. Its caller runs it before
 // deriving the address, so it reports ahead of TokenAlreadyExists.
-//
-// No length bound: base-std publishes none (B20Constants has MAX_ASSET_DECIMALS
-// and MAX_SUPPLY_CAP, nothing for the currency), and the string arrives as
-// calldata the caller has already paid for, then costs a slot per word to store
-// (BEP-702 3.14).
 func validateCurrency(code string) error {
 	if code == "" {
 		return revB20Bytes("MissingRequiredField(string)", errSelMissingField, []byte("currency"))
