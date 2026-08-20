@@ -2,6 +2,7 @@ package paymentlanemeta
 
 import (
 	"encoding/hex"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -117,6 +118,30 @@ func TestLoadMetaReusesCachedMeta(t *testing.T) {
 	got2, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_001), statedb)
 	require.NoError(t, err)
 	require.Same(t, got1, got2)
+}
+
+func TestLoadMetaRejectsListedSetAboveContractLimit(t *testing.T) {
+	loadMetaCache = metaCache{}
+	statedb := deployedContractState(t)
+	statedb.SetState(paymentlane.ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(maxListedContracts+1))
+
+	_, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
+	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
+	require.Contains(t, err.Error(), "exceeds limit")
+}
+
+func TestAppendPageRejectsPageLargerThanPageSize(t *testing.T) {
+	page := make([]common.Address, pageSize+1)
+	err := appendPage(make(map[common.Address]struct{}), 0, page, uint64(len(page)))
+	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
+	require.Contains(t, err.Error(), "returned 129 entries")
+}
+
+func TestAppendPageRejectsOverflowingPageLength(t *testing.T) {
+	page := make([]common.Address, 2)
+	err := appendPage(make(map[common.Address]struct{}), math.MaxUint64-1, page, math.MaxUint64)
+	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
+	require.Contains(t, err.Error(), "length 2 exceeds totalLength")
 }
 
 func TestLoadGovernanceParamsForQuotaStaysOnParentRoot(t *testing.T) {

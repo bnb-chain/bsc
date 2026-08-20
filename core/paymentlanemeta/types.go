@@ -5,7 +5,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 )
 
-const pageSize uint64 = 128
+const (
+	pageSize           uint64 = 128
+	maxListedContracts uint64 = 100_000
+)
 
 // Meta is the parent-derived lane metadata needed before the block executes.
 // Once loaded, it is shared as read-only cache data.

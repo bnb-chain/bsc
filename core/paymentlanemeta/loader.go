@@ -1,6 +1,7 @@
 package paymentlanemeta
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,15 +19,26 @@ var loadMetaCache metaCache
 // miss. The cache key is 0x2007's account in the supplied StateDB, so callers MUST pass a block
 // state still opened on the parent root and not yet advanced by execution.
 func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
+	cacheable := canCacheMeta(statedb)
 	if err := statedb.Error(); err != nil {
-		return nil, fmt.Errorf("%w: payment lane state read: %w", paymentlane.ErrStateUnavailable, err)
+		err = fmt.Errorf("%w: payment lane state read: %w", paymentlane.ErrStateUnavailable, err)
+		logMetaLoadFailure(header, statedb, cacheable, nil, err)
+		return nil, err
 	}
-	if !canCacheMeta(statedb) {
-		return loadMetaFromStateDB(config, header, statedb)
+	if !cacheable {
+		meta, err := loadMetaFromStateDB(config, header, statedb)
+		if err != nil {
+			logMetaLoadFailure(header, statedb, false, nil, err)
+		}
+		return meta, err
 	}
 	key := metaCacheKeyFromStateDB(statedb)
 	return loadMetaCache.loadOrStore(key, func() (*Meta, error) {
-		return loadMetaFromStateDB(config, header, statedb)
+		meta, err := loadMetaFromStateDB(config, header, statedb)
+		if err != nil {
+			logMetaLoadFailure(header, statedb, true, &key, err)
+		}
+		return meta, err
 	})
 }
 
@@ -45,7 +57,7 @@ func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, state
 	return &Meta{governanceParams: governanceParams, listed: listed}, nil
 }
 
-// LoadGovernanceParamsForQuota reads only the governance params needed for lane-size verification
+// LoadGovernanceParamsForQuota reads only the governance params needed for lane-quota verification
 // from a StateDB that is already opened on the parent post-state root.
 func LoadGovernanceParamsForQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (paymentlane.GovernanceParams, error) {
 	return loadGovernanceParamsFromParentState(config, parent, header, statedb)
@@ -75,6 +87,9 @@ func loadListedFromStateDB(config *params.ChainConfig, header *types.Header, sta
 	page, total, err := unpackGetPaymentContracts(ret)
 	if err != nil {
 		return nil, err
+	}
+	if total > maxListedContracts {
+		return nil, fmt.Errorf("%w: getPaymentContracts totalLength %d exceeds limit %d", paymentlane.ErrCorruptConfig, total, maxListedContracts)
 	}
 	if total == 0 {
 		return nil, nil
@@ -113,10 +128,13 @@ func loadListedFromStateDB(config *params.ChainConfig, header *types.Header, sta
 }
 
 func appendPage(listed map[common.Address]struct{}, offset uint64, page []common.Address, total uint64) error {
+	if uint64(len(page)) > pageSize {
+		return fmt.Errorf("%w: getPaymentContracts page at offset %d returned %d entries, limit %d", paymentlane.ErrCorruptConfig, offset, len(page), pageSize)
+	}
 	if offset > total {
 		return fmt.Errorf("%w: page offset %d exceeds totalLength %d", paymentlane.ErrCorruptConfig, offset, total)
 	}
-	if offset+uint64(len(page)) > total {
+	if uint64(len(page)) > total-offset {
 		return fmt.Errorf("%w: page offset %d length %d exceeds totalLength %d", paymentlane.ErrCorruptConfig, offset, len(page), total)
 	}
 	for i, addr := range page {
@@ -126,4 +144,33 @@ func appendPage(listed map[common.Address]struct{}, offset uint64, page []common
 		listed[addr] = struct{}{}
 	}
 	return nil
+}
+
+func logMetaLoadFailure(header *types.Header, statedb *state.StateDB, cacheable bool, key *metaCacheKey, err error) {
+	scheme := "mpt"
+	if statedb.Database().Type().Is(state.TypeUBT) {
+		scheme = "ubt"
+	}
+	category := "unexpected"
+	switch {
+	case errors.Is(err, paymentlane.ErrStateUnavailable):
+		category = "stateUnavailable"
+	case errors.Is(err, paymentlane.ErrCorruptConfig):
+		category = "corruptConfig"
+	}
+	ctx := []any{
+		"number", header.Number,
+		"time", header.Time,
+		"gasLimit", header.GasLimit,
+		"cacheable", cacheable,
+		"stateScheme", scheme,
+		"noTries", statedb.NoTries(),
+		"hasWitness", statedb.Witness() != nil,
+		"category", category,
+		"err", err,
+	}
+	if key != nil {
+		ctx = append(ctx, "codeHash", key.codeHash, "storageRoot", key.storageRoot)
+	}
+	log.Error("Payment lane metadata load failed", ctx...)
 }
