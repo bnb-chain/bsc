@@ -37,7 +37,7 @@ import (
 func b20TestChainConfig() *params.ChainConfig {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.PasteurTime = &zero
+	cfg.JennerTime = &zero
 	cfg.Parlia = &params.ParliaConfig{}
 	// A usable admin is half the B20 gate (ChainConfig.B20Scheduled): the built-in
 	// networks still name the placeholder, so they route nothing, and a harness
@@ -270,11 +270,14 @@ func TestB20UninitializedAddressBehavior(t *testing.T) {
 }
 
 // TestB20GateIsBSCOnly pins that the B20 address space is routed only on BSC.
-// The fork flag alone is not enough: IsPasteur asks only for London, so any
-// non-BSC config that set pasteurTime would otherwise hijack the reserved space
-// — and its registries would never be seeded, since that runs from a BSC-gated
-// fork hook. Reserved addresses would stop behaving like ordinary accounts on a
-// chain where no token can ever be created.
+//
+// Jenner carries this itself — IsJenner embeds IsInBSC — so a non-BSC config that
+// set jennerTime does not even get the fork flag, let alone the address space.
+// That is stronger than the arrangement it replaced, where the gate was Pasteur
+// (which asks only for London) and the BSC check had to be spelled out beside it.
+// The property still needs pinning: a non-BSC chain that hijacked the reserved
+// space would stop treating those addresses as ordinary accounts while its
+// registries stayed unseeded, since seeding runs from a BSC-gated fork hook.
 func TestB20GateIsBSCOnly(t *testing.T) {
 	newEVM := func(cfg *params.ChainConfig) *EVM {
 		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -292,23 +295,24 @@ func TestB20GateIsBSCOnly(t *testing.T) {
 	}
 
 	bsc := newEVM(b20TestChainConfig())
-	if !bsc.chainRules.IsPasteur || !bsc.chainRules.IsInBSC {
+	if !bsc.chainRules.IsJenner || !bsc.chainRules.IsInBSC {
 		t.Fatal("the BSC harness must have both the B20 fork flag and IsInBSC")
 	}
 	if !bsc.b20Enabled() {
 		t.Error("B20 must be enabled on a BSC chain past the fork")
 	}
 
-	// Same fork time, no Parlia: the fork flag still resolves, so this is exactly
-	// the configuration the gate has to exclude.
+	// Same fork time, no Parlia. IsJenner is where the BSC gate now lives, so the
+	// flag itself must be false — that is the property, not just the routing.
 	nonBSCCfg := *b20TestChainConfig()
 	nonBSCCfg.Parlia = nil
 	nonBSC := newEVM(&nonBSCCfg)
-	if !nonBSC.chainRules.IsPasteur {
-		t.Fatal("expected the fork flag to still hold without Parlia")
-	}
 	if nonBSC.chainRules.IsInBSC {
 		t.Fatal("a config without Parlia must not report IsInBSC")
+	}
+	if nonBSC.chainRules.IsJenner {
+		t.Error("IsJenner must embed the IsInBSC gate, so a non-BSC config with jennerTime " +
+			"set does not reach the fork at all")
 	}
 	if nonBSC.b20Enabled() {
 		t.Error("B20 must not be enabled off BSC, even past the fork")
@@ -365,10 +369,9 @@ func TestB20UninitializedExitReportsOutOfGas(t *testing.T) {
 //
 // The fork alone is not enough: routing also requires ChainConfig.B20Scheduled,
 // so a network whose admin is still the placeholder answers at a B20 address the
-// way it did before the feature existed. Without this, Chapel — whose PasteurTime
-// is already in the past — would route the whole reserved space to handlers whose
-// registry nobody can ever open, and a fresh sync would write state that nodes
-// running the released client never wrote.
+// way it did before the feature existed. It mattered acutely while the gate was
+// Pasteur, which Chapel had already passed; Jenner is nil everywhere, so the two
+// halves now agree, and this holds the one that does not depend on scheduling.
 func TestB20RoutingNeedsAUsableAdmin(t *testing.T) {
 	token := b20Addr(b20VariantAsset, 1)
 	for _, tc := range []struct {

@@ -309,6 +309,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		}
 		cfg.Eth.OverrideB20ActivationAdmin = &v
 	}
+	if ctx.IsSet(utils.OverrideJenner.Name) {
+		v := ctx.Uint64(utils.OverrideJenner.Name)
+		cfg.Eth.OverrideJenner = &v
+	}
 	if ctx.IsSet(utils.OverrideBPO1.Name) {
 		v := ctx.Uint64(utils.OverrideBPO1.Name)
 		cfg.Eth.OverrideBPO1 = &v

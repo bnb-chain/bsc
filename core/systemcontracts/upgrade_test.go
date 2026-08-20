@@ -90,7 +90,7 @@ func TestB20ActivationAdminIsConfigured(t *testing.T) {
 		}
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
-		cfg.PasteurTime = &ft
+		cfg.JennerTime = &ft
 		cfg.B20ActivationAdmin = admin
 		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)
 		return vm.B20ActivationAdmin(statedb)
@@ -134,7 +134,7 @@ func TestB20ActivationSeededAtFork(t *testing.T) {
 	bscConfig := func() *params.ChainConfig {
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
-		cfg.PasteurTime = &ft
+		cfg.JennerTime = &ft
 		admin := wantAdmin
 		cfg.B20ActivationAdmin = &admin
 		return &cfg
@@ -176,7 +176,7 @@ func TestB20ActivationSeededAtFork(t *testing.T) {
 	statedb = newState()
 	nonBSC := *params.BSCChainConfig
 	ft := uint64(forkTime)
-	nonBSC.PasteurTime = &ft
+	nonBSC.JennerTime = &ft
 	nonBSC.Parlia = nil
 	TryUpdateBuildInSystemContract(&nonBSC, postLondon, forkTime-1, forkTime, statedb, true)
 	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
@@ -217,7 +217,7 @@ func TestB20NotSeededWithAnUnusableAdmin(t *testing.T) {
 		}
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
-		cfg.PasteurTime = &ft
+		cfg.JennerTime = &ft
 		cfg.B20ActivationAdmin = tc.admin
 
 		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)

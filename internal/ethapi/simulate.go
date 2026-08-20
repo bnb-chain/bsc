@@ -300,6 +300,11 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		}
 		header.ExcessBlobGas = &excess
 	}
+	// NewEVMBlockContext already derives MilliTimestamp from
+	// header.MilliTimestamp() (BEP-520/BEP-706): on BSC the synthetic header's
+	// MixDigest is the millisecond remainder — zero, or a prevRandao override
+	// validated to be < 1000 in sanitizeChain — so the BEP-706 precompile reads
+	// the exact millisecond timestamp with no extra fix-up here.
 	blockContext := core.NewEVMBlockContext(header, sim.newSimulatedChainContext(ctx, headers), nil)
 	if block.BlockOverrides.BlobBaseFee != nil {
 		blockContext.BlobBaseFee = block.BlockOverrides.BlobBaseFee.ToInt()
@@ -444,7 +449,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
 
 	// Assemble the block
-	b, _, err := core.AssembleBlock(sim.b.Engine(), chainHeadReader, header, sim.state, blockBody, receipts)
+	b, err := sim.FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -511,6 +516,14 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 		if block.BlockOverrides.Number == nil {
 			n := new(big.Int).Add(prevNumber, big.NewInt(1))
 			block.BlockOverrides.Number = (*hexutil.Big)(n)
+		}
+		// A prevRandao override lands in the header's MixDigest, which on BSC
+		// carries the millisecond remainder of the block timestamp (BEP-520):
+		// enforce the same bound consensus applies to real headers.
+		if block.BlockOverrides.PrevRandao != nil {
+			if _, err := override.BSCMilliRemainder(block.BlockOverrides.PrevRandao); err != nil {
+				return nil, err
+			}
 		}
 		if block.BlockOverrides.Withdrawals == nil {
 			block.BlockOverrides.Withdrawals = &types.Withdrawals{}

@@ -127,11 +127,16 @@ func (diff *StateOverride) Apply(statedb *state.StateDB, precompiles vm.Precompi
 
 // BlockOverrides is a set of header fields to override.
 type BlockOverrides struct {
-	Number        *hexutil.Big
-	Difficulty    *hexutil.Big // No-op if we're simulating post-merge calls.
-	Time          *hexutil.Uint64
-	GasLimit      *hexutil.Uint64
-	FeeRecipient  *common.Address
+	Number       *hexutil.Big
+	Difficulty   *hexutil.Big // No-op if we're simulating post-merge calls.
+	Time         *hexutil.Uint64
+	GasLimit     *hexutil.Uint64
+	FeeRecipient *common.Address
+	// PrevRandao maps to the header's MixDigest, which BSC repurposes as the
+	// millisecond remainder of the block timestamp (BEP-520): the value must
+	// be less than 1000 and is assembled into the millisecond timestamp
+	// reported by the BEP-706 precompile (time*1000 + prevRandao). Do NOT
+	// pass arbitrary random values on this client.
 	PrevRandao    *common.Hash
 	BaseFeePerGas *hexutil.Big
 	BlobBaseFee   *hexutil.Big
@@ -139,7 +144,42 @@ type BlockOverrides struct {
 	Withdrawals   *types.Withdrawals
 }
 
+// MaxBSCMilliRemainder bounds the value accepted for the "prevRandao" block
+// override: on BSC the underlying header field (MixDigest) carries the
+// sub-second millisecond remainder of the block timestamp (BEP-520) instead
+// of a randomness beacon. Consensus enforces the same bound on real headers
+// (MilliTimestamp()/1000 must equal Time).
+const MaxBSCMilliRemainder = 1000
+
+// BSCMilliRemainder interprets a "prevRandao" override the BSC way: the
+// 32-byte value is the millisecond remainder and must be below
+// MaxBSCMilliRemainder, exactly like the MixDigest of a real BSC header.
+func BSCMilliRemainder(prevRandao *common.Hash) (uint64, error) {
+	// prevRandao is a 32-byte value, so parse it as big.Int first and reject
+	// anything that does not fit in uint64 before truncating. The actual bound
+	// check is then done in uint64, matching how parlia compares the header's
+	// millisecond timestamp (MilliTimestamp()/1000 vs Time).
+	v := new(big.Int).SetBytes(prevRandao[:])
+	if !v.IsUint64() {
+		return 0, fmt.Errorf(`block override "prevRandao" on BSC carries the millisecond remainder of the block timestamp (BEP-520/BEP-706) and must be less than %d, got %s`, MaxBSCMilliRemainder, v)
+	}
+	ms := v.Uint64()
+	if ms >= MaxBSCMilliRemainder {
+		return 0, fmt.Errorf(`block override "prevRandao" on BSC carries the millisecond remainder of the block timestamp (BEP-520/BEP-706) and must be less than %d, got %d`, MaxBSCMilliRemainder, ms)
+	}
+	return ms, nil
+}
+
 // Apply overrides the given header fields into the given block context.
+//
+// This is the BSC client, so the "prevRandao" override follows the BSC
+// header semantics unconditionally: BSC headers repurpose MixDigest as the
+// millisecond remainder of the block timestamp (BEP-520), so the override is
+// assembled into the millisecond timestamp consumed by the BEP-706
+// precompile — time*1000 + prevRandao — and rejected when it is not a valid
+// remainder (>= 1000, mirroring the consensus rule on real headers). The
+// value still replaces blockCtx.Random as well. Callers must NOT pass
+// arbitrary random values for this field on this client.
 func (o *BlockOverrides) Apply(blockCtx *vm.BlockContext) error {
 	if o == nil {
 		return nil
@@ -158,6 +198,11 @@ func (o *BlockOverrides) Apply(blockCtx *vm.BlockContext) error {
 	}
 	if o.Time != nil {
 		blockCtx.Time = uint64(*o.Time)
+		// Keep the millisecond timestamp (consumed by the BEP-706 precompile
+		// on BSC) consistent with the overridden time. The remainder starts
+		// at .000 and can be set through the prevRandao override below.
+		// The field is inert on non-BSC chains, so no gate is needed.
+		blockCtx.MilliTimestamp = uint64(*o.Time) * 1000
 	}
 	if o.GasLimit != nil {
 		blockCtx.GasLimit = uint64(*o.GasLimit)
@@ -166,6 +211,14 @@ func (o *BlockOverrides) Apply(blockCtx *vm.BlockContext) error {
 		blockCtx.Coinbase = *o.FeeRecipient
 	}
 	if o.PrevRandao != nil {
+		// prevRandao is the millisecond remainder on BSC — validate it and
+		// assemble it into the millisecond timestamp on top of the (possibly
+		// overridden) seconds.
+		ms, err := BSCMilliRemainder(o.PrevRandao)
+		if err != nil {
+			return err
+		}
+		blockCtx.MilliTimestamp = blockCtx.Time*1000 + ms
 		blockCtx.Random = o.PrevRandao
 	}
 	if o.BaseFeePerGas != nil {
@@ -194,6 +247,14 @@ func (o *BlockOverrides) MakeHeader(header *types.Header) *types.Header {
 	}
 	if o.Time != nil {
 		h.Time = uint64(*o.Time)
+		// Mirror Apply: overriding the time resets the sub-second remainder to
+		// .000 unless the caller also overrides prevRandao. On BSC MixDigest is
+		// that millisecond remainder (BEP-520/BEP-706), so a stale remainder
+		// carried over from the copied header would no longer match the new
+		// time; zero it here so MakeHeader and Apply agree.
+		if o.PrevRandao == nil {
+			h.MixDigest = common.Hash{}
+		}
 	}
 	if o.GasLimit != nil {
 		h.GasLimit = uint64(*o.GasLimit)

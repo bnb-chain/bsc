@@ -74,6 +74,7 @@ var (
 		utils.OverrideMendel,
 		utils.OverridePasteur,
 		utils.OverrideB20ActivationAdmin,
+		utils.OverrideJenner,
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
 		utils.OverrideUBT,

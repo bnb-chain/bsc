@@ -261,6 +261,8 @@ type Config struct {
 	// hash as the Rialto hash, so LoadChainConfig hands it RialtoChainConfig and
 	// its genesis JSON cannot express a different admin.
 	OverrideB20ActivationAdmin *common.Address `toml:",omitempty"`
+	// OverrideJenner (TODO: remove after the fork)
+	OverrideJenner *uint64 `toml:",omitempty"`
 
 	// OverrideBPO1 (TODO: remove after the fork)
 	OverrideBPO1 *uint64 `toml:",omitempty"`

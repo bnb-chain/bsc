@@ -293,6 +293,7 @@ type ChainOverrides struct {
 	OverrideOsaka              *uint64
 	OverrideMendel             *uint64
 	OverridePasteur            *uint64
+	OverrideJenner             *uint64
 	OverrideB20ActivationAdmin *common.Address
 	OverrideBPO1               *uint64
 	OverrideBPO2               *uint64
@@ -336,6 +337,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideB20ActivationAdmin != nil {
 		cfg.B20ActivationAdmin = o.OverrideB20ActivationAdmin
+	}
+	if o.OverrideJenner != nil {
+		cfg.JennerTime = o.OverrideJenner
 	}
 	if o.OverrideBPO1 != nil {
 		cfg.BPO1Time = o.OverrideBPO1

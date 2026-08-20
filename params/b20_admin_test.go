@@ -58,12 +58,14 @@ func TestB20ActivationAdminIsReachable(t *testing.T) {
 // so it cannot catch the case that matters — a scheduled fork paired with an
 // admin nobody holds.
 //
-// Chapel is why this exists: its PasteurTime is 2026-07-21, already in the past,
-// while its admin is still the placeholder. B20 is gated on Pasteur only as a
-// stand-in for a fork flag of its own, so without the B20Scheduled check that
-// config would route the whole reserved address space and seed a registry whose
-// switch nobody can ever touch — and, since the boundary has passed, a fresh sync
-// would write state that nodes running the released client never wrote.
+// Chapel is why this exists. While B20 was gated on Pasteur as a stand-in, Chapel
+// had already passed that fork (2026-07-21) with the placeholder still configured,
+// so the reserved address space would have been routed to a registry whose switch
+// nobody can ever touch — and, the boundary being in the past, a fresh sync would
+// have written state that nodes running the released client never wrote. B20 is
+// now gated on Jenner (BEP-706), which is nil on every built-in config, so the
+// two halves of the gate agree. This one is the half that does not depend on
+// scheduling, and it is what makes naming an admin a deliberate act.
 func TestB20IsNotScheduledWithAnUnusableAdmin(t *testing.T) {
 	for _, tc := range []struct {
 		name string

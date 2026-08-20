@@ -59,23 +59,16 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 // b20Enabled reports whether the B20 native token family is active for the
 // current block.
 //
-// BSC-only, and not merely because B20 is a BSC feature: IsPasteur only requires
-// London, so any non-BSC config that set pasteurTime would otherwise route the
-// whole reserved address space to B20 handlers. Its registries would never be
-// seeded either — that runs from the BSC-gated fork hook — leaving reserved
-// addresses that no longer behave like ordinary accounts and where no token can
-// ever be created.
+// Jenner (BEP-706) is the fork that ships it. IsJenner embeds the IsInBSC gate,
+// so no separate check is needed: a non-BSC config that set jennerTime would
+// still not route the reserved address space, and its registries would never be
+// seeded either.
 //
-// Pasteur is a placeholder for a dedicated B20 fork, not a shipping decision:
-// Pasteur is already past on Chapel, so on that network the seeding hook can no
-// longer fire and B20 would be permanently inert. Amsterdam is not an option
-// either — it schedules EIP-7928 on this tree, whose header field is only
-// scaffolded here, so activating it halts block production at the fork block.
-//
-// TODO: replace with a dedicated B20 fork flag on params.Rules.
+// A usable activation admin is the other half (ChainConfig.B20Scheduled): while a
+// network names the placeholder, the reserved space behaves as it did before the
+// feature existed and the fork hook writes nothing.
 func (evm *EVM) b20Enabled() bool {
-	return evm.chainRules.IsInBSC && evm.chainRules.IsPasteur &&
-		evm.chainConfig.B20Scheduled()
+	return evm.chainRules.IsJenner && evm.chainConfig.B20Scheduled()
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles
@@ -88,7 +81,7 @@ func (evm *EVM) runPrecompile(p PrecompiledContract, caller, self common.Address
 	if sp, ok := p.(StatefulPrecompiledContract); ok {
 		return runStatefulPrecompiledContract(evm, sp, caller, self, input, gas, readOnly, directCall, value)
 	}
-	return RunPrecompiledContract(evm.StateDB, p, self, input, gas, evm.Config.Tracer, evm.chainRules)
+	return RunPrecompiledContract(evm.StateDB, p, self, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
 }
 
 // BlockContext provides the EVM with auxiliary information. Once provided
@@ -112,6 +105,11 @@ type BlockContext struct {
 	BlobBaseFee *big.Int       // Provides information for BLOBBASEFEE (0 if vm runs with NoBaseFee flag and 0 blob gas price)
 	Random      *common.Hash   // Provides information for PREVRANDAO
 	SlotNum     uint64         // Provides information for SLOTNUM
+	// MilliTimestamp is the block timestamp in milliseconds (BEP-520), i.e.
+	// Header.MilliTimestamp(). It is consumed by the BEP-706 milliTimestamp
+	// precompile (Jenner fork). Constructors that bypass NewEVMBlockContext
+	// may leave it zero; consumers fall back to Time*1000 in that case.
+	MilliTimestamp uint64
 }
 
 // TxContext provides the EVM with information about a transaction.

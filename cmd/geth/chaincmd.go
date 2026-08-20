@@ -77,6 +77,7 @@ var (
 			utils.OverrideMendel,
 			utils.OverridePasteur,
 			utils.OverrideB20ActivationAdmin,
+			utils.OverrideJenner,
 			utils.OverrideBPO1,
 			utils.OverrideBPO2,
 			utils.OverrideUBT,
@@ -377,6 +378,10 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverrideB20ActivationAdmin.Name) {
 		v := common.HexToAddress(ctx.String(utils.OverrideB20ActivationAdmin.Name))
 		overrides.OverrideB20ActivationAdmin = &v
+	}
+	if ctx.IsSet(utils.OverrideJenner.Name) {
+		v := ctx.Uint64(utils.OverrideJenner.Name)
+		overrides.OverrideJenner = &v
 	}
 	if ctx.IsSet(utils.OverrideBPO1.Name) {
 		v := ctx.Uint64(utils.OverrideBPO1.Name)

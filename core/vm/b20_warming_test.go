@@ -53,7 +53,7 @@ func warmed(db *state.StateDB, addr common.Address, slot common.Hash) bool {
 // inconsistent with itself for no benefit a transaction access list cannot buy.
 func TestB20AddressesAreNotPrewarmed(t *testing.T) {
 	rules := b20TestChainConfig().Rules(common.Big1, false, 1)
-	if !rules.IsPasteur || !rules.IsInBSC {
+	if !rules.IsJenner || !rules.IsInBSC {
 		t.Fatal("the harness must have B20 active, or this proves nothing")
 	}
 	active := ActivePrecompiles(rules)

@@ -182,6 +182,8 @@ const (
 
 	P256VerifyGas uint64 = 6900 // secp256r1 elliptic curve signature verifier gas price
 
+	MilliTimestampGas uint64 = 20 // Gas cost of the BEP-706 millisecond-timestamp precompile
+
 	// The Refund Quotient is the cap on how much of the used gas can be refunded. Before EIP-3529,
 	// up to half the consumed gas could be refunded. Redefined as 1/5th in EIP-3529
 	RefundQuotient        uint64 = 2

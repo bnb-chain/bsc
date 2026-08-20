@@ -1131,8 +1131,7 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 		// real admin is undecided, and on a network whose Pasteur is already in the
 		// past it is what keeps a fresh sync from diverging from nodes that ran the
 		// released client through that block.
-		if config.IsInBSC() && config.B20Scheduled() &&
-			config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
+		if config.B20Scheduled() && config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
 			// The admin comes from chain configuration rather than being fixed here
 			// (BEP-702 3.15), so a QA network can hold the switch with a key it
 			// controls while the public networks name their multisig.

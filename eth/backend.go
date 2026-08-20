@@ -270,6 +270,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.B20ActivationAdmin = config.OverrideB20ActivationAdmin
 		overrides.OverrideB20ActivationAdmin = config.OverrideB20ActivationAdmin
 	}
+	if config.OverrideJenner != nil {
+		chainConfig.JennerTime = config.OverrideJenner
+		overrides.OverrideJenner = config.OverrideJenner
+	}
 	if config.OverrideBPO1 != nil {
 		chainConfig.BPO1Time = config.OverrideBPO1
 		overrides.OverrideBPO1 = config.OverrideBPO1

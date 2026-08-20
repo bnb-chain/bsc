@@ -90,6 +90,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TxSyncMaxTimeout           time.Duration   `toml:",omitempty"`
 		RangeLimit                 uint64          `toml:",omitempty"`
 		BlobExtraReserve           uint64
+		OverrideJenner             *uint64 `toml:",omitempty"`
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -157,6 +158,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideMendel = c.OverrideMendel
 	enc.OverridePasteur = c.OverridePasteur
 	enc.OverrideB20ActivationAdmin = c.OverrideB20ActivationAdmin
+	enc.OverrideJenner = c.OverrideJenner
 	enc.OverrideBPO1 = c.OverrideBPO1
 	enc.OverrideBPO2 = c.OverrideBPO2
 	enc.OverrideUBT = c.OverrideUBT
@@ -242,6 +244,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TxSyncMaxTimeout           *time.Duration  `toml:",omitempty"`
 		RangeLimit                 *uint64         `toml:",omitempty"`
 		BlobExtraReserve           *uint64
+		OverrideJenner             *uint64 `toml:",omitempty"`
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -441,6 +444,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideB20ActivationAdmin != nil {
 		c.OverrideB20ActivationAdmin = dec.OverrideB20ActivationAdmin
+	}
+	if dec.OverrideJenner != nil {
+		c.OverrideJenner = dec.OverrideJenner
 	}
 	if dec.OverrideBPO1 != nil {
 		c.OverrideBPO1 = dec.OverrideBPO1
