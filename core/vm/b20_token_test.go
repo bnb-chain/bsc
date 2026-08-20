@@ -189,3 +189,127 @@ func TestB20EndToEndTransfer(t *testing.T) {
 		t.Errorf("Transfer topics from/to mismatch")
 	}
 }
+
+// TestB20CalldataStrictnessProfile pins which malformed encodings are refused and
+// which are not, so the profile is a decision rather than an accident.
+//
+// base-std's audit checklist names three: truncated args, dirty high bits above an
+// address, and an out-of-range enum. It does not name trailing data — and a
+// Solidity dispatcher ignores extra calldata after a static argument list, so
+// refusing it here would make a native token refuse input the contract it replaces
+// accepts. That asymmetry is the whole content of this test.
+func TestB20CalldataStrictnessProfile(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xdec0de")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x57"), creator, [][]byte{
+			b20Call(selGrantRole, roleMint, addrKey(creator)),
+			b20Call(selMint, addrKey(b20Alice), u256hash(1000)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	call := func(caller common.Address, input []byte) ([]byte, error) {
+		r, _, e := evm.Call(caller, token, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		return r, e
+	}
+
+	// Refused: one byte short of the second argument.
+	short := b20Call(selTransfer, addrKey(b20Bob), u256hash(1))
+	if _, err := call(b20Alice, short[:len(short)-1]); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("truncated transfer args: err = %v, want a revert", err)
+	}
+	// Refused: an address word with bits above the low 20 bytes.
+	dirty := addrKey(b20Bob)
+	dirty[0] = 0x01
+	if _, err := call(b20Alice, b20Call(selTransfer, dirty, u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("dirty address high bits: err = %v, want a revert", err)
+	}
+
+	// Accepted: a whole extra word after a complete argument list, as Solidity
+	// accepts it. The transfer must go through, not merely fail to revert.
+	before := newUnmeteredB20Storage(statedb, token).balanceOf(b20Bob).Uint64()
+	trailing := append(b20Call(selTransfer, addrKey(b20Bob), u256hash(7)), u256hash(0xdead).Bytes()...)
+	if r, err := call(b20Alice, trailing); err != nil || !bytes.Equal(r, encBool(true)) {
+		t.Fatalf("transfer with trailing data: ret %x err %v, want success — Solidity ignores "+
+			"extra calldata, so refusing it would diverge from the contract this replaces", r, err)
+	}
+	if got := newUnmeteredB20Storage(statedb, token).balanceOf(b20Bob).Uint64(); got != before+7 {
+		t.Errorf("bob's balance = %d, want %d; the trailing word changed how the args decoded",
+			got, before+7)
+	}
+}
+
+// TestB20TransferFromSelfSkipsAllowanceAndExecutor pins the spender == from
+// shortcut, which nothing covered.
+//
+// The owner moving their own balance through transferFrom spends no allowance and
+// is not checked against TRANSFER_EXECUTOR_POLICY. Neither half is pinned by
+// base-std: its asset journey only exercises the delegated path.
+//
+// The executor half is consistent — transfer() consults no executor policy either,
+// so the shortcut opens no path that transfer() does not already offer. The
+// allowance half is a real divergence from OpenZeppelin, whose _spendAllowance
+// makes no exception for the owner, so transferFrom(self, ...) there needs a
+// self-approval. Worth confirming with Base before mainnet; this test states what
+// we do so the answer changes a test rather than surfacing in production.
+func TestB20TransferFromSelfSkipsAllowanceAndExecutor(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	admin := b20ActivationAdmin
+
+	// A policy that authorizes nobody, bound as the executor scope.
+	ret, _, err := evm.Call(admin, B20PolicyRegistryAddress,
+		b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyAllowlist)),
+		NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	empty := new(uint256.Int).SetBytes(ret).Uint64()
+
+	ret, _, err = evm.Call(admin, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x5e1f"), admin, [][]byte{
+			b20Call(selGrantRole, roleMint, addrKey(admin)),
+			b20Call(selMint, addrKey(b20Alice), u256hash(1000)),
+			b20Call(selUpdatePolicy, scopeTransferExecutor, wU64(empty)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	view := newUnmeteredB20Storage(statedb, token)
+
+	// Alice has approved nobody, and the executor policy authorizes nobody.
+	if got := view.allowance(b20Alice, b20Alice).Uint64(); got != 0 {
+		t.Fatalf("alice's self-allowance = %d, want 0 — the shortcut would be untested", got)
+	}
+	r, _, err := evm.Call(b20Alice, token,
+		b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(40)),
+		NewGasBudget(1_000_000), uint256.NewInt(0))
+	if err != nil || !bytes.Equal(r, encBool(true)) {
+		t.Fatalf("transferFrom(self): ret %x err %v, want success", r, err)
+	}
+	if got := view.allowance(b20Alice, b20Alice).Uint64(); got != 0 {
+		t.Errorf("self-allowance after the transfer = %d, want 0 — it must not have been "+
+			"written, let alone decremented below zero", got)
+	}
+	if got := view.balanceOf(b20Bob).Uint64(); got != 40 {
+		t.Errorf("bob's balance = %d, want 40", got)
+	}
+
+	// And the contrast that makes the shortcut visible: a third party with a full
+	// allowance is still refused by the same executor policy.
+	if _, _, err := evm.Call(admin, token,
+		b20Call(selApprove, addrKey(b20Carol), u256hash(100)),
+		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	_, _, err = evm.Call(b20Carol, token,
+		b20Call(selTransferFrom, addrKey(admin), addrKey(b20Bob), u256hash(1)),
+		NewGasBudget(1_000_000), uint256.NewInt(0))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("a delegated transfer under a deny-all executor policy err = %v, want a "+
+			"revert; if this passes, the executor policy is not being consulted at all and "+
+			"the self-shortcut above proves nothing", err)
+	}
+}

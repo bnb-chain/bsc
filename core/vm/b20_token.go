@@ -184,7 +184,12 @@ func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([
 	if spender == (common.Address{}) {
 		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
 	}
-	// approve is intentionally not gated by pause or policy.
+	// Not gated by pause or policy, and that follows from the published lists
+	// rather than from intent: PausableFeature is { TRANSFER, MINT, BURN, SEIZE }
+	// (BEP-702 3.9) and the six policy scopes cover transfer sender/receiver/
+	// executor, mint receiver and seize holder/receiver (3.8). Neither names
+	// approve, so there is nothing to consult. A paused token still accepts
+	// approvals; the transfer they authorize is what the pause stops.
 	t.s.setAllowance(owner, spender, amount)
 	t.emit(b20TopicApproval, owner, spender, amount)
 	return encBool(true), nil
@@ -260,9 +265,14 @@ func (t b20Token) policyAllows(id uint64, account common.Address) bool {
 	return newPolicyReg(t.ctx).isAuthorized(id, account)
 }
 
-// move debits from and credits to, reverting on insufficient balance. In a
-// consistent token the balance sum equals totalSupply, so the credit cannot
-// overflow.
+// move debits from and credits to, reverting on insufficient balance.
+//
+// The credit is an unchecked Add because the supply cap bounds it: updateSupplyCap
+// refuses a cap above type(uint128).max and mint refuses to exceed the cap
+// (BEP-702 3.10), so totalSupply — and therefore any single balance, since the
+// balances sum to it — stays below 2^128. Adding two such values cannot reach
+// 2^256. The premise is the cap, not an invariant this function checks: a token
+// whose balances were seeded past it by other means would wrap here.
 func (t b20Token) move(from, to common.Address, amount *uint256.Int) error {
 	if to == (common.Address{}) {
 		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
