@@ -9,9 +9,9 @@ import (
 // ContractAddress is the PaymentLane system contract, installed by the Jenner fork.
 var ContractAddress = common.HexToAddress("0x0000000000000000000000000000000000002007")
 
-// Params is the eight governable values of BEP-703 section 3.6.1 as one decoded tuple.
-// The first six are parts per RatioDenom, MinGas and MaxGas absolute gas.
-type Params struct {
+// GovernanceParams bundles the eight governable values from BEP-703 section 3.6.1.
+// The first six are ratios in parts per RatioDenom; MinGas and MaxGas are absolute gas amounts.
+type GovernanceParams struct {
 	MinRatio      uint64
 	MaxRatio      uint64
 	ExpandTrigger uint64
@@ -22,7 +22,7 @@ type Params struct {
 	MaxGas        uint64
 }
 
-func (p Params) String() string {
+func (p GovernanceParams) String() string {
 	return fmt.Sprintf("minRatio %d maxRatio %d expandTrigger %d shrinkTrigger %d expandStep %d shrinkStep %d minGas %d maxGas %d",
 		p.MinRatio, p.MaxRatio, p.ExpandTrigger, p.ShrinkTrigger, p.ExpandStep, p.ShrinkStep, p.MinGas, p.MaxGas)
 }

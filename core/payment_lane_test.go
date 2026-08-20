@@ -130,11 +130,11 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 	})
 
 	for _, tc := range []struct {
-		number   int
-		laneSize uint64
-		general  uint64
-		payment  uint64
-		regime   string
+		number    int
+		laneQuota uint64
+		general   uint64
+		payment   uint64
+		regime    string
 	}{
 		{3, wantFloor, uint64(nExpand) * generalTxGas, 0, "bootstrap: the zero signal maps to the floor"},
 		{4, wantExpanded, uint64(nHold) * generalTxGas, 0, "expand, unclamped - so it is not the ceiling"},
@@ -146,8 +146,8 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 		got, err := paymentlane.Decode(block.UncleHash())
 		require.NoError(t, err, "block %d (%s) carries no commitment", tc.number, tc.regime)
 		require.Equal(t, paymentlane.Commitment{
-			LaneSize:       tc.laneSize,
-			PaymentGasUsed: tc.payment,
+			PaymentLaneQuota: tc.laneQuota,
+			PaymentGasUsed:   tc.payment,
 		}, got, "block %d (%s)", tc.number, tc.regime)
 		require.Equal(t, tc.general, block.GasUsed()-got.PaymentGasUsed, "block %d", tc.number)
 	}
@@ -188,7 +188,7 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 		{
 			name: "swapped fields",
 			mutate: func(c paymentlane.Commitment) common.Hash {
-				c.LaneSize, c.PaymentGasUsed = c.PaymentGasUsed, c.LaneSize
+				c.PaymentLaneQuota, c.PaymentGasUsed = c.PaymentGasUsed, c.PaymentLaneQuota
 				return paymentlane.Encode(c)
 			},
 			wantErr: paymentlane.ErrQuotaMismatch,
@@ -204,7 +204,7 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 		{
 			name: "quota above the derivation",
 			mutate: func(c paymentlane.Commitment) common.Hash {
-				c.LaneSize += 150_000
+				c.PaymentLaneQuota += 150_000
 				return paymentlane.Encode(c)
 			},
 			wantErr: paymentlane.ErrQuotaMismatch,
@@ -266,7 +266,7 @@ func TestPaymentLaneFastNodeSkipsImportClassificationReplay(t *testing.T) {
 		{
 			name: "quota above derivation",
 			mutate: func(c paymentlane.Commitment) common.Hash {
-				c.LaneSize += 150_000
+				c.PaymentLaneQuota += 150_000
 				return paymentlane.Encode(c)
 			},
 			wantErr: paymentlane.ErrQuotaMismatch,
@@ -347,29 +347,29 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 // The bid path's only lane verdict on a re-executed environment: whatever the quota still holds
 // idle must fit in what the pool has left.
 func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
-	ls := &LaneState{class: paymentlane.NewClassifier(liveState{}, nil), state: liveState{}}
+	ls := &LaneState{classifier: paymentlane.NewClassifier(liveState{}, nil), state: liveState{}}
 
-	ls.Budget.LaneSize = 100
+	ls.Budget.PaymentLaneQuota = 100
 	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
 	require.ErrorIs(t, ls.VerifyPackedBid(99), paymentlane.ErrViolated,
 		"a bid that leaves less than the idle quota must be rejected")
 
-	ls.Budget.PaymentUsed = 40
+	ls.Budget.PaymentLaneUsed = 40
 	require.NoError(t, ls.VerifyPackedBid(60), "payment gas already booked shrinks the idle quota one for one")
 }
 
-// TestPaymentLaneReportsAFailedReadAsLocal pins the error CLASS, not the rejection: a failed read
+// TestPaymentLaneReportsAFailedReadAsLocal pins the error category, not the rejection: a failed read
 // classifies as payment, so the verdict would otherwise be that the block lied - and peers pay.
 func TestPaymentLaneReportsAFailedReadAsLocal(t *testing.T) {
 	broken := errors.New("missing trie node")
 	live := liveState{err: broken}
 	ls := &LaneState{
-		class:    paymentlane.NewClassifier(live, nil),
-		state:    live,
-		gasLimit: laneTestGasLimit,
+		classifier: paymentlane.NewClassifier(live, nil),
+		state:      live,
+		gasLimit:   laneTestGasLimit,
 	}
 	// The flip itself: the block booked this gas as general, the failed read books it as payment.
-	ls.Budget.PaymentUsed = paymentTxGas
+	ls.Budget.PaymentLaneUsed = paymentTxGas
 
 	err := ls.VerifyImported(paymentTxGas, paymentTxGas, paymentlane.Commitment{})
 	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable, "a failed read is this node's fault, not the block's")
@@ -489,11 +489,11 @@ func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 
 	c3, err := paymentlane.Decode(block3.UncleHash())
 	require.NoError(t, err)
-	require.EqualValues(t, 2_000_000, c3.LaneSize, "block 3 is the bootstrap floor")
+	require.EqualValues(t, 2_000_000, c3.PaymentLaneQuota, "block 3 is the bootstrap floor")
 
 	c4, err := paymentlane.Decode(block4.UncleHash())
 	require.NoError(t, err)
-	require.EqualValues(t, 3_100_000, c4.LaneSize,
+	require.EqualValues(t, 3_100_000, c4.PaymentLaneQuota,
 		"signal must count system gas too: user general alone is %d", general)
 
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, DefaultConfig())
@@ -522,7 +522,7 @@ func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
 	for _, b := range blocks {
 		c, err := paymentlane.Decode(b.UncleHash())
 		require.NoError(t, err, "block %d must carry a commitment", b.NumberU64())
-		require.EqualValues(t, 2_000_000, c.LaneSize, "block %d holds at the floor", b.NumberU64())
+		require.EqualValues(t, 2_000_000, c.PaymentLaneQuota, "block %d holds at the floor", b.NumberU64())
 		require.EqualValues(t, paymentTxGas, c.PaymentGasUsed, "block %d", b.NumberU64())
 	}
 
@@ -554,7 +554,7 @@ func TestPaymentLaneReadsReachTheWitness(t *testing.T) {
 
 	c, err := paymentlane.Decode(blocks[3].UncleHash())
 	require.NoError(t, err)
-	require.EqualValues(t, 3_000_000, c.LaneSize,
+	require.EqualValues(t, 3_000_000, c.PaymentLaneQuota,
 		"the lane floor must reflect the governed storage under test")
 
 	cfg := DefaultConfig()

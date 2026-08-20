@@ -104,36 +104,37 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
 			return nil, laneReject(err)
 		}
-		var laneParams paymentlane.Params
+		var laneGovernanceParams paymentlane.GovernanceParams
 		if replayLaneClassification {
 			lane, err = ResolveLaneState(config, lastBlock, header, statedb)
 			if err != nil {
 				return nil, laneReject(err)
 			}
-			if err = lane.CheckQuota(laneCommitted.LaneSize); err != nil {
+			if err = lane.CheckQuota(laneCommitted.PaymentLaneQuota); err != nil {
 				return nil, laneReject(err)
 			}
-			laneParams = lane.Params()
+			laneGovernanceParams = lane.GovernanceParams()
 		} else {
 			// The committed quota is still checked exactly; only classification is skipped, so
 			// the listed set is never needed and is not loaded.
-			if laneParams, err = paymentlanemeta.LoadParamsForQuota(config, lastBlock, header, statedb); err != nil {
+			if laneGovernanceParams, err = paymentlanemeta.LoadGovernanceParamsForQuota(config, lastBlock, header, statedb); err != nil {
 				return nil, laneReject(err)
 			}
 			signal, err := paymentlane.NewSignalFromParent(lastBlock)
 			if err != nil {
 				return nil, laneReject(err)
 			}
-			if err := signal.CheckNextLaneSize(laneCommitted.LaneSize, laneParams, header.GasLimit); err != nil {
+			if err := signal.CheckNextLaneQuota(laneCommitted.PaymentLaneQuota, laneGovernanceParams, header.GasLimit); err != nil {
 				return nil, laneReject(err)
 			}
 		}
 		// activation+1, the only block whose parent carries no commitment, and the only place the
 		// parameters this node read are put on record.
 		if lastBlock.UncleHash == types.EmptyUncleHash {
-			floor, ceiling, safetyCap := paymentlane.Bounds(laneParams, header.GasLimit)
-			log.Info("Payment lane activated", "number", header.Number, "quota", laneCommitted.LaneSize,
-				"floor", floor, "ceiling", ceiling, "safetyCap", safetyCap, "params", laneParams)
+			floor, ceiling, safetyCap := paymentlane.Bounds(laneGovernanceParams, header.GasLimit)
+			log.Info("Payment lane activated", "number", header.Number, "paymentLaneQuota", laneCommitted.PaymentLaneQuota,
+				"paymentLaneFloor", floor, "paymentLaneCeiling", ceiling, "paymentLaneSafetyCap", safetyCap,
+				"governanceParams", laneGovernanceParams)
 		}
 	}
 
@@ -193,9 +194,9 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		}
 		// System transactions never reach here. Classified after every earlier transaction has
 		// run and before this one does - the point the producer classified at too.
-		class := paymentlane.ClassGeneral
+		laneType := paymentlane.GeneralLane
 		if replayLaneClassification {
-			class = lane.Classify(tx)
+			laneType = lane.Classify(tx)
 		}
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
@@ -210,7 +211,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		if replayLaneClassification {
-			lane.RecordUsedFrom(class, gp, usedBefore)
+			lane.RecordUsedFrom(laneType, gp, usedBefore)
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)

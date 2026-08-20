@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// laneMinerChain builds the ethash-backed lane harness and preallocates 0x2007.
+// laneMinerChain builds an Ethash-driven BSC lane harness and preallocates 0x2007.
 func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainConfig, *types.Header, *types.Header, *ecdsa.PrivateKey) {
 	t.Helper()
 
@@ -28,9 +28,25 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	config := *params.AllEthashProtocolChanges
+	config := *params.ParliaTestChainConfig
 	jennerTime := uint64(15)
+	config.HaberTime = new(uint64)
+	config.HaberFixTime = new(uint64)
+	config.BohrTime = new(uint64)
+	config.PascalTime = new(uint64)
+	config.PragueTime = new(uint64)
+	config.LorentzTime = new(uint64)
+	config.MaxwellTime = new(uint64)
+	config.FermiTime = new(uint64)
+	config.OsakaTime = new(uint64)
+	config.MendelTime = new(uint64)
+	config.PasteurTime = new(uint64)
 	config.JennerTime = &jennerTime
+	config.BlobScheduleConfig = &params.BlobScheduleConfig{
+		Cancun: params.DefaultCancunBlobConfig,
+		Prague: params.DefaultPragueBlobConfigBSC,
+		Osaka:  params.DefaultOsakaBlobConfigBSC,
+	}
 
 	lane := types.Account{Code: code, Balance: common.Big0}
 	if corruptParams {
@@ -44,8 +60,8 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 			crypto.PubkeyToAddress(key.PublicKey): {Balance: new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e6))},
 		},
 	}
-	db, blocks, _ := core.GenerateChainWithGenesis(gspec, ethash.NewFaker(), 2, nil)
-	chain, err := core.NewBlockChain(db, gspec, ethash.NewFaker(), core.DefaultConfig())
+	db, blocks, _ := core.GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 2, nil)
+	chain, err := core.NewBlockChain(db, gspec, ethash.NewFullFaker(), core.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(chain.Stop)
 	_, err = chain.InsertChain(blocks)
@@ -65,7 +81,7 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 	}, key
 }
 
-// laneBidBlockHarness adds the local validator environment and expected quota.
+// laneBidBlockHarness returns the local validator environment and expected quota.
 func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, uint64) {
 	t.Helper()
 
@@ -77,8 +93,8 @@ func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, ui
 
 	local := &environment{header: types.CopyHeader(header), state: parentState}
 
-	const wantLaneSize = 2_000_000
-	return w, header, local, wantLaneSize
+	const wantLaneQuota = 2_000_000
+	return w, header, local, wantLaneQuota
 }
 
 // bidBlockWith wraps a bare header as admission would leave it: no transactions, so no trailing
@@ -90,7 +106,7 @@ func bidBlockWith(header *types.Header) *buildertypes.DecodedBidBlock {
 // verifyBidBlockLaneQuota reads only the header, so every case here is a header the validator
 // either accepts or refuses before blind-signing.
 func TestVerifyBidBlockLaneQuota(t *testing.T) {
-	w, header, local, laneSize := laneBidBlockHarness(t)
+	w, header, local, laneQuota := laneBidBlockHarness(t)
 
 	for _, tc := range []struct {
 		name       string
@@ -99,7 +115,7 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 	}{
 		{
 			name:       "a truthful commitment is accepted",
-			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: params.TxGas}),
+			commitment: paymentlane.Encode(paymentlane.Commitment{PaymentLaneQuota: laneQuota, PaymentGasUsed: params.TxGas}),
 		},
 		{
 			name:       "an unstamped uncle slot is refused",
@@ -108,12 +124,12 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 		},
 		{
 			name:       "a quota the recursion does not derive is refused",
-			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize - 1}),
+			commitment: paymentlane.Encode(paymentlane.Commitment{PaymentLaneQuota: laneQuota - 1}),
 			wantErr:    paymentlane.ErrQuotaMismatch,
 		},
 		{
 			name:       "paymentGasUsed is not examined here, however wrong it is",
-			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: laneSize}),
+			commitment: paymentlane.Encode(paymentlane.Commitment{PaymentLaneQuota: laneQuota, PaymentGasUsed: laneQuota}),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

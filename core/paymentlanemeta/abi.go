@@ -59,48 +59,48 @@ func packGetPaymentContracts(offset, limit uint64) []byte {
 	return mustPack(getPaymentContractsMethod, new(big.Int).SetUint64(offset), new(big.Int).SetUint64(limit))
 }
 
-func unpackGetPaymentLaneParams(ret []byte) (paymentlane.Params, error) {
+func unpackGetPaymentLaneParams(ret []byte) (paymentlane.GovernanceParams, error) {
 	values, err := paymentLaneMetaABI.Unpack(getPaymentLaneParamsMethod, ret)
 	if err != nil {
-		return paymentlane.Params{}, fmt.Errorf("%w: %s: %v", paymentlane.ErrCorruptConfig, getPaymentLaneParamsMethod, err)
+		return paymentlane.GovernanceParams{}, fmt.Errorf("%w: %s: %v", paymentlane.ErrCorruptConfig, getPaymentLaneParamsMethod, err)
 	}
 	if len(values) != 1 {
-		return paymentlane.Params{}, unexpectedOutputCount(getPaymentLaneParamsMethod, len(values), 1)
+		return paymentlane.GovernanceParams{}, unexpectedOutputCount(getPaymentLaneParamsMethod, len(values), 1)
 	}
-	params := *abi.ConvertType(values[0], new(paymentLaneMetaParams)).(*paymentLaneMetaParams)
-	minRatio, err := parseUint64("getPaymentLaneParams.paymentLaneMinRatio", params.PaymentLaneMinRatio)
+	governanceParams := *abi.ConvertType(values[0], new(paymentLaneMetaParams)).(*paymentLaneMetaParams)
+	minRatio, err := parseUint64("getPaymentLaneParams.paymentLaneMinRatio", governanceParams.PaymentLaneMinRatio)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	maxRatio, err := parseUint64("getPaymentLaneParams.paymentLaneMaxRatio", params.PaymentLaneMaxRatio)
+	maxRatio, err := parseUint64("getPaymentLaneParams.paymentLaneMaxRatio", governanceParams.PaymentLaneMaxRatio)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	expandTrigger, err := parseUint64("getPaymentLaneParams.expandTriggerRatio", params.ExpandTriggerRatio)
+	expandTrigger, err := parseUint64("getPaymentLaneParams.expandTriggerRatio", governanceParams.ExpandTriggerRatio)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	shrinkTrigger, err := parseUint64("getPaymentLaneParams.shrinkTriggerRatio", params.ShrinkTriggerRatio)
+	shrinkTrigger, err := parseUint64("getPaymentLaneParams.shrinkTriggerRatio", governanceParams.ShrinkTriggerRatio)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	expandStep, err := parseUint64("getPaymentLaneParams.expandStepRatio", params.ExpandStepRatio)
+	expandStep, err := parseUint64("getPaymentLaneParams.expandStepRatio", governanceParams.ExpandStepRatio)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	shrinkStep, err := parseUint64("getPaymentLaneParams.shrinkStepRatio", params.ShrinkStepRatio)
+	shrinkStep, err := parseUint64("getPaymentLaneParams.shrinkStepRatio", governanceParams.ShrinkStepRatio)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	minGas, err := parseUint64("getPaymentLaneParams.paymentLaneMin", params.PaymentLaneMin)
+	minGas, err := parseUint64("getPaymentLaneParams.paymentLaneMin", governanceParams.PaymentLaneMin)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	maxGas, err := parseUint64("getPaymentLaneParams.paymentLaneMax", params.PaymentLaneMax)
+	maxGas, err := parseUint64("getPaymentLaneParams.paymentLaneMax", governanceParams.PaymentLaneMax)
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
-	return paymentlane.Params{
+	return paymentlane.GovernanceParams{
 		MinRatio:      minRatio,
 		MaxRatio:      maxRatio,
 		ExpandTrigger: expandTrigger,

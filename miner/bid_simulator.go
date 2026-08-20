@@ -1380,14 +1380,14 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
-	class := env.lane.Classify(tx)
+	laneType := env.lane.Classify(tx)
 	usedBefore := env.gasPool.Used()
 
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, core.NewReceiptBloomGenerator())
 	if err != nil {
 		return err
 	}
-	env.lane.RecordUsedFrom(class, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
 	if unRevertible && receipt.Status == types.ReceiptStatusFailed {
 		return errors.New("no revertible transaction failed")
 	}

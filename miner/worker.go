@@ -90,15 +90,15 @@ var (
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side. The two
 	// disagreeing means the block was not packed here.
-	laneSizeGauge              = metrics.NewRegisteredGauge("paymentlane/laneSize", nil)         // gas, at seal
-	laneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/idleLane", nil)         // gas wasted, at seal
-	laneYieldCounter           = metrics.NewRegisteredCounter("paymentlane/generalYielded", nil) // txs dropped for the quota
-	laneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
-	laneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
-	// The clamp bounds, so a flat laneSize can be attributed to one of them.
-	laneFloorGauge   = metrics.NewRegisteredGauge("paymentlane/laneMin", nil)
-	laneCeilingGauge = metrics.NewRegisteredGauge("paymentlane/laneMax", nil)
-	laneCapGauge     = metrics.NewRegisteredGauge("paymentlane/laneCap", nil)
+	paymentLaneQuotaGauge             = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
+	paymentLaneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
+	generalLaneYieldedCounter         = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
+	paymentLaneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
+	// The clamp bounds, so a flat payment-lane quota can be attributed to one of them.
+	paymentLaneFloorGauge   = metrics.NewRegisteredGauge("paymentlane/paymentLaneFloor", nil)
+	paymentLaneCeilingGauge = metrics.NewRegisteredGauge("paymentlane/paymentLaneCeiling", nil)
+	paymentLaneCapGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneCap", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -150,9 +150,9 @@ type environment struct {
 
 	// lane is this block's BEP-703 state, resolved from the parent in makeEnv.
 	lane *core.LaneState
-	// laneYielded counts drops this env made for the quota, so the seal log reports it once; the
-	// laneYieldCounter metric accumulates across discarded envs and cannot be read per block.
-	laneYielded int
+	// generalLaneYielded counts drops this env made for the quota, so the seal log reports it
+	// once; the counter metric accumulates across discarded envs and cannot be read per block.
+	generalLaneYielded int
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -817,7 +817,7 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
 	// The authoritative classification, at the point replaying importers take it. Nothing between
 	// commitTransactions' advisory call and this one touches state - keep it that way.
-	class := env.lane.Classify(tx)
+	laneType := env.lane.Classify(tx)
 	var (
 		snap       = env.state.Snapshot()
 		gp         = env.gasPool.Snapshot()
@@ -830,7 +830,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		env.gasPool.Set(gp)
 	}
 	env.header.GasUsed = env.gasPool.Used()
-	env.lane.RecordUsedFrom(class, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
 	return receipt, err
 }
 
@@ -955,11 +955,11 @@ LOOP:
 		prefetchCurr.Store(tx)
 
 		// Advisory, to size the budget below; applyTransaction re-asks authoritatively.
-		class := env.lane.Classify(tx)
-		if !env.lane.Admits(env.gasPool.Gas(), class, tx.Gas()) {
-			laneYieldCounter.Inc(1)
-			env.laneYielded++
-			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "idle", env.lane.Budget.IdleLane())
+		laneType := env.lane.Classify(tx)
+		if !env.lane.Admits(env.gasPool.Gas(), laneType, tx.Gas()) {
+			generalLaneYieldedCounter.Inc(1)
+			env.generalLaneYielded++
+			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "paymentLaneIdle", env.lane.Budget.IdleLane())
 			txs.Pop()
 			continue
 		}
@@ -1291,7 +1291,7 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 		return &newPayloadResult{err: err}
 	}
 	if err := work.lane.WriteCommitmentAndVerify(block, work.gasPool.Used()); err != nil {
-		laneDeclineCounter.Inc(1)
+		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
 	}
@@ -1570,7 +1570,7 @@ LOOP:
 			log.Error("BidBlock rejected by the payment lane, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)
-			laneBidBlockDeclineCounter.Inc(1)
+			paymentLaneBidBlockDeclineCounter.Inc(1)
 			bidBlockFallback = true
 		} else if task, err := w.prepareBidBlockTask(bestBidBlock, start); err != nil {
 			log.Error("Failed to prepare bid block, fallback",
@@ -1668,17 +1668,17 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
 		if err := env.lane.WriteCommitmentAndVerify(block, env.gasPool.Used()); err != nil {
-			laneDeclineCounter.Inc(1)
+			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
 		if env.lane.On() {
 			floor, ceiling, safetyCap := env.lane.Bounds()
-			laneSizeGauge.Update(int64(env.lane.Budget.LaneSize))
-			laneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
-			laneFloorGauge.Update(int64(floor))
-			laneCeilingGauge.Update(int64(ceiling))
-			laneCapGauge.Update(int64(safetyCap))
+			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
+			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+			paymentLaneFloorGauge.Update(int64(floor))
+			paymentLaneCeilingGauge.Update(int64(ceiling))
+			paymentLaneCapGauge.Update(int64(safetyCap))
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.
@@ -1690,8 +1690,8 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "lane", env.lane.Budget.LaneSize,
-				"laneIdle", env.lane.Budget.IdleLane(), "laneYielded", env.laneYielded,
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
+				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
 				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:

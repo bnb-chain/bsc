@@ -123,14 +123,14 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
-	class := b.lane.Classify(tx)
+	laneType := b.lane.Classify(tx)
 	usedBefore := b.gasPool.Used()
 	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx, NewReceiptBloomGenerator())
 	if err != nil {
 		panic(err)
 	}
 	b.header.GasUsed = b.gasPool.Used()
-	b.lane.RecordUsedFrom(class, b.gasPool, usedBefore)
+	b.lane.RecordUsedFrom(laneType, b.gasPool, usedBefore)
 
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.
@@ -469,7 +469,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		}
 
 		// The same stamp and self-check the miner runs. A nil pool means addTx never ran, so
-		// PaymentUsed is zero too and a zero poolUsed is exact rather than merely safe.
+		// PaymentLaneUsed is zero too and a zero poolUsed is exact rather than merely safe.
 		var poolUsed uint64
 		if b.gasPool != nil {
 			poolUsed = b.gasPool.Used()

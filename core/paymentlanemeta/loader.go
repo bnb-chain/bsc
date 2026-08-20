@@ -33,7 +33,7 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
 	start := time.Now()
 
-	params, err := loadParamsFromStateDB(config, header, statedb)
+	governanceParams, err := loadGovernanceParamsFromStateDB(config, header, statedb)
 	if err != nil {
 		return nil, err
 	}
@@ -42,27 +42,27 @@ func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, state
 		return nil, err
 	}
 	log.Info("Loaded payment lane metadata", "elapsed", time.Since(start), "listed", len(listed))
-	return &Meta{params: params, listed: listed}, nil
+	return &Meta{governanceParams: governanceParams, listed: listed}, nil
 }
 
-// LoadParamsForQuota reads only the params needed for lane-size verification from a StateDB
-// that is already opened on the parent post-state root.
-func LoadParamsForQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (paymentlane.Params, error) {
-	return loadParamsFromParentState(config, parent, header, statedb)
+// LoadGovernanceParamsForQuota reads only the governance params needed for lane-size verification
+// from a StateDB that is already opened on the parent post-state root.
+func LoadGovernanceParamsForQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (paymentlane.GovernanceParams, error) {
+	return loadGovernanceParamsFromParentState(config, parent, header, statedb)
 }
 
-func loadParamsFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (paymentlane.Params, error) {
+func loadGovernanceParamsFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (paymentlane.GovernanceParams, error) {
 	ret, err := callFromStateDB(config, header, statedb, packGetPaymentLaneParams())
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
 	return unpackGetPaymentLaneParams(ret)
 }
 
-func loadParamsFromParentState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (paymentlane.Params, error) {
+func loadGovernanceParamsFromParentState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (paymentlane.GovernanceParams, error) {
 	ret, err := callFromParentState(config, parent, header, statedb, packGetPaymentLaneParams())
 	if err != nil {
-		return paymentlane.Params{}, err
+		return paymentlane.GovernanceParams{}, err
 	}
 	return unpackGetPaymentLaneParams(ret)
 }

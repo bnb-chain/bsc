@@ -39,7 +39,7 @@ var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
 // verifyCascadingFields has already settled that the commitment decodes and that the block rule
 // holds over its values.
 //
-// laneSize only, and exactly - it is a pure function of the parent and 0x2007's parameters over
+// laneQuota only, and exactly - it is a pure function of the parent and 0x2007's parameters over
 // a gas limit preSealVerifyBidBlock has already pinned, so a mismatch is never a false positive.
 // paymentGasUsed needs the live state of the builder's block, which this node does not have;
 // import settles it via Budget.VerifyCommitment.

@@ -137,11 +137,11 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 				t.Fatal("the lane must apply to this block, or this test asserts nothing")
 			}
 			lane.SetQuota()
-			if want := uint64(2_000_000); lane.Budget.LaneSize != want {
+			if want := uint64(2_000_000); lane.Budget.PaymentLaneQuota != want {
 				t.Fatalf("bootstrap quota: got %d, want the floor %d at a %d gas limit",
-					lane.Budget.LaneSize, want, laneGasLimit)
+					lane.Budget.PaymentLaneQuota, want, laneGasLimit)
 			}
-			lane.Budget.PaymentUsed = paymentUsed
+			lane.Budget.PaymentLaneUsed = paymentUsed
 			header.GasUsed = paymentUsed
 
 			block, err := tc.assemble(engine, chain, header, stateDB)
@@ -158,7 +158,7 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the commitment does not decode after a parlia assembly: %v (uncle slot %x)", err, block.UncleHash())
 			}
-			want := paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: paymentUsed}
+			want := paymentlane.Commitment{PaymentLaneQuota: 2_000_000, PaymentGasUsed: paymentUsed}
 			if got != want {
 				t.Fatalf("commitment: got %+v, want %+v", got, want)
 			}
@@ -242,7 +242,7 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 			name:      "a truthful commitment passes",
 			parent:    postJenner,
 			gasUsed:   1_000_000,
-			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: 500_000}),
+			uncleHash: paymentlane.Encode(paymentlane.Commitment{PaymentLaneQuota: 2_000_000, PaymentGasUsed: 500_000}),
 		},
 		{
 			name:      "an unstamped uncle slot is refused",
@@ -254,7 +254,7 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 			name:      "a commitment that breaks the block rule is refused",
 			parent:    postJenner,
 			gasUsed:   1_000_000,
-			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneGasLimit + 1}),
+			uncleHash: paymentlane.Encode(paymentlane.Commitment{PaymentLaneQuota: laneGasLimit + 1}),
 			wantErr:   paymentlane.ErrViolated,
 		},
 		{
@@ -266,7 +266,7 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 		{
 			name:      "a commitment before activation is refused",
 			parent:    preJenner,
-			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: 2_000_000}),
+			uncleHash: paymentlane.Encode(paymentlane.Commitment{PaymentLaneQuota: 2_000_000}),
 			wantErr:   errInvalidUncleHash,
 		},
 	} {

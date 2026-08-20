@@ -12,10 +12,10 @@ type CodeReader interface {
 	GetCodeHash(addr common.Address) common.Hash
 }
 
-// Classifier answers "payment or general" for one block's transactions, over two state views.
-// listed is derived from the PARENT post-state and only ever decides ClassPayment, stopping
-// there; everything past it is decided by code against the LIVE state - so no transaction's
-// class rests on both. Membership must be settled before the block runs, or whoever orders it
+// Classifier answers "payment lane or general lane" for one block's transactions, over two state
+// views. listed is derived from the PARENT post-state and only ever decides PaymentLane, stopping
+// there; everything past it is decided by code against the LIVE state - so no transaction's lane
+// type rests on both. Membership must be settled before the block runs, or whoever orders it
 // decides who is on the list.
 type Classifier struct {
 	code   CodeReader
@@ -26,36 +26,36 @@ func NewClassifier(code CodeReader, listed map[common.Address]struct{}) *Classif
 	return &Classifier{code: code, listed: listed}
 }
 
-// Classify returns the lane class of a user transaction (never a Parlia system one): the
+// Classify returns the lane type of a user transaction (never a Parlia system one): the
 // BEP-703 section 3.2 gates in order, arranged to touch state last. Nothing is executed to
 // decide it, and nothing is memoised - the code gate's answer changes within the block, which
 // is the point.
-func (c *Classifier) Classify(tx *types.Transaction) Class {
+func (c *Classifier) Classify(tx *types.Transaction) LaneType {
 	to := tx.To()
 	if to == nil {
-		return ClassGeneral
+		return GeneralLane
 	}
 	switch tx.Type() {
 	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType:
 	default:
-		return ClassGeneral
+		return GeneralLane
 	}
 	if len(tx.AccessList()) != 0 {
-		return ClassGeneral
+		return GeneralLane
 	}
 	if _, ok := c.listed[*to]; ok {
-		return ClassPayment
+		return PaymentLane
 	}
 	if len(tx.Data()) != 0 {
-		return ClassGeneral
+		return GeneralLane
 	}
 	if tx.Value().Sign() == 0 {
-		return ClassGeneral
+		return GeneralLane
 	}
 	if hasCode(c.code.GetCodeHash(*to)) {
-		return ClassGeneral
+		return GeneralLane
 	}
-	return ClassPayment
+	return PaymentLane
 }
 
 // hasCode reports whether a code hash denotes an account that holds code. The zero hash is the

@@ -9,13 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// RatioDenom mirrors PaymentLane.RATIO_DENOM: Params' first six fields are parts per this.
+// RatioDenom is the denominator for the first six governance fields.
 const RatioDenom = 10_000
 
-// Signal records how congested the parent was, which is all NextLaneSize needs. Build it with
+// Signal records how congested the parent was, which is all NextLaneQuota needs. Build it with
 // NewSignalFromParent; the zero value means bootstrap.
 type Signal struct {
-	parentLaneSize      uint64
+	parentLaneQuota     uint64
 	parentSignalGasUsed uint64
 	parentGasLimit      uint64
 }
@@ -44,18 +44,18 @@ func NewSignalFromParent(parent *types.Header) (Signal, error) {
 func newSignal(parentCommitment Commitment, parentGasUsed, parentGasLimit uint64) Signal {
 	// Cannot carry: the terms sum to at most max(parentGasUsed, PaymentGasUsed).
 	return Signal{
-		parentLaneSize: parentCommitment.LaneSize,
+		parentLaneQuota: parentCommitment.PaymentLaneQuota,
 		parentSignalGasUsed: satSub(parentGasUsed, parentCommitment.PaymentGasUsed) + // all general gas
-			satSub(parentCommitment.PaymentGasUsed, parentCommitment.LaneSize), // payment beyond the quota
+			satSub(parentCommitment.PaymentGasUsed, parentCommitment.PaymentLaneQuota), // payment beyond the quota
 		parentGasLimit: parentGasLimit,
 	}
 }
 
-// NextLaneSize steps the accumulator: the quota for the block after the one this Signal
+// NextLaneQuota steps the accumulator: the quota for the block after the one this Signal
 // describes, which is both the producer's packing budget and the value it commits. gasLimit is
 // that block's.
-func (s Signal) NextLaneSize(p Params, gasLimit uint64) uint64 {
-	next := s.parentLaneSize
+func (s Signal) NextLaneQuota(p GovernanceParams, gasLimit uint64) uint64 {
+	next := s.parentLaneQuota
 
 	// A zero parentGasLimit is the bootstrap seed, not a quiet parent: no signal, so no step.
 	if s.parentGasLimit != 0 {
@@ -70,9 +70,9 @@ func (s Signal) NextLaneSize(p Params, gasLimit uint64) uint64 {
 
 	// Clamp every block, not only when a step fires (BEP 3.4.4).
 	ceiling := laneCeiling(p, gasLimit)
-	size := min(max(next, laneFloor(p, gasLimit)), ceiling)
+	quota := min(max(next, laneFloor(p, gasLimit)), ceiling)
 
-	return min(size, reserveCap(gasLimit))
+	return min(quota, reserveCap(gasLimit))
 }
 
 // reserveCap is BEP 3.4.4's laneCap, applied LAST and deliberately able to push the quota below
@@ -87,28 +87,28 @@ func (s Signal) congestionAtLeast(triggerRatio uint64) bool {
 	return gte128(s.parentSignalGasUsed, RatioDenom, triggerRatio, s.parentGasLimit)
 }
 
-// CheckNextLaneSize adjudicates a committed quota exactly: it is a pure function of the headers
+// CheckNextLaneQuota adjudicates a committed quota exactly: it is a pure function of the headers
 // and the parent post-state, so it settles before any transaction executes - on import and on
 // the MEV pre-seal path alike. The payment total is the half needing replay; that is
 // Budget.VerifyCommitment's job.
-func (s Signal) CheckNextLaneSize(committed uint64, p Params, gasLimit uint64) error {
-	if want := s.NextLaneSize(p, gasLimit); committed != want {
+func (s Signal) CheckNextLaneQuota(committed uint64, p GovernanceParams, gasLimit uint64) error {
+	if want := s.NextLaneQuota(p, gasLimit); committed != want {
 		return fmt.Errorf("%w: committed %d, derived %d", ErrQuotaMismatch, committed, want)
 	}
 	return nil
 }
 
-func laneCeiling(p Params, gasLimit uint64) uint64 {
+func laneCeiling(p GovernanceParams, gasLimit uint64) uint64 {
 	return min(mulDivFloor(p.MaxRatio, gasLimit, RatioDenom), p.MaxGas)
 }
 
-// laneFloor is NOT a lower bound on NextLaneSize's result - reserveCap may push below it.
-func laneFloor(p Params, gasLimit uint64) uint64 {
+// laneFloor is NOT a lower bound on NextLaneQuota's result - reserveCap may push below it.
+func laneFloor(p GovernanceParams, gasLimit uint64) uint64 {
 	return min(max(mulDivFloor(p.MinRatio, gasLimit, RatioDenom), p.MinGas), laneCeiling(p, gasLimit))
 }
 
-// Bounds reports the three clamps NextLaneSize applies, for metrics rather than consensus.
-func Bounds(p Params, gasLimit uint64) (floor, ceiling, safetyCap uint64) {
+// Bounds reports the three clamps NextLaneQuota applies, for metrics rather than consensus.
+func Bounds(p GovernanceParams, gasLimit uint64) (floor, ceiling, safetyCap uint64) {
 	return laneFloor(p, gasLimit), laneCeiling(p, gasLimit), reserveCap(gasLimit)
 }
 

@@ -60,7 +60,7 @@ func TestLoadMetaReadsDefaults(t *testing.T) {
 
 	got, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.NoError(t, err)
-	require.Equal(t, paymentlane.Params{
+	require.Equal(t, paymentlane.GovernanceParams{
 		MinRatio:      200,
 		MaxRatio:      800,
 		ExpandTrigger: 8_000,
@@ -69,14 +69,14 @@ func TestLoadMetaReadsDefaults(t *testing.T) {
 		ShrinkStep:    50,
 		MinGas:        2_000_000,
 		MaxGas:        8_000_000,
-	}, got.Params())
+	}, got.GovernanceParams())
 	require.Nil(t, got.listed)
 }
 
 func TestLoadMetaPagesLongListsAndReadsGovernedParams(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
-	wantParams := paymentlane.Params{
+	wantGovernanceParams := paymentlane.GovernanceParams{
 		MinRatio:      150,
 		MaxRatio:      900,
 		ExpandTrigger: 9_000,
@@ -87,8 +87,8 @@ func TestLoadMetaPagesLongListsAndReadsGovernedParams(t *testing.T) {
 		MaxGas:        9_000_000,
 	}
 	for i, v := range []uint64{
-		wantParams.MinRatio, wantParams.MaxRatio, wantParams.ExpandTrigger, wantParams.ShrinkTrigger,
-		wantParams.ExpandStep, wantParams.ShrinkStep, wantParams.MinGas, wantParams.MaxGas,
+		wantGovernanceParams.MinRatio, wantGovernanceParams.MaxRatio, wantGovernanceParams.ExpandTrigger, wantGovernanceParams.ShrinkTrigger,
+		wantGovernanceParams.ExpandStep, wantGovernanceParams.ShrinkStep, wantGovernanceParams.MinGas, wantGovernanceParams.MaxGas,
 	} {
 		statedb.SetState(paymentlane.ContractAddress, paramSlot(i), word(v))
 	}
@@ -101,7 +101,7 @@ func TestLoadMetaPagesLongListsAndReadsGovernedParams(t *testing.T) {
 
 	got, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.NoError(t, err)
-	require.Equal(t, wantParams, got.Params())
+	require.Equal(t, wantGovernanceParams, got.GovernanceParams())
 	require.Len(t, got.listed, len(listed))
 	for _, addr := range listed {
 		require.Contains(t, got.listed, addr)
@@ -119,7 +119,7 @@ func TestLoadMetaReusesCachedMeta(t *testing.T) {
 	require.Same(t, got1, got2)
 }
 
-func TestLoadParamsForQuotaStaysOnParentRoot(t *testing.T) {
+func TestLoadGovernanceParamsForQuotaStaysOnParentRoot(t *testing.T) {
 	db := state.NewDatabaseForTesting()
 	statedb, err := state.New(types.EmptyRootHash, db)
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestLoadParamsForQuotaStaysOnParentRoot(t *testing.T) {
 	parent.Root = root
 	header := laneHeader(60_000_001)
 
-	got, err := LoadParamsForQuota(params.BSCChainConfig, parent, header, live)
+	got, err := LoadGovernanceParamsForQuota(params.BSCChainConfig, parent, header, live)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3_000_000), got.MinGas)
 }

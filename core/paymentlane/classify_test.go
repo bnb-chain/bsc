@@ -91,7 +91,7 @@ func makeTx(t *testing.T, o txOpts) *types.Transaction {
 	}
 }
 
-// Walk the static gates and assert both class and whether state was read.
+// Walk the static gates and assert both lane type and whether state was read.
 func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	oneEntryAccessList := types.AccessList{{Address: plainDest}}
 	// ContractAddress is listed on purpose: membership alone decides.
@@ -136,21 +136,21 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 						wantRead := dest.addr != nil && typeOK && !withAL &&
 							!isListed && !withData && withValue
 
-						var wantClass Class
+						var wantLaneType LaneType
 						switch {
 						case dest.addr == nil, !typeOK, withAL:
-							wantClass = ClassGeneral
+							wantLaneType = GeneralLane
 						case isListed:
-							wantClass = ClassPayment
+							wantLaneType = PaymentLane
 						case withData, !withValue:
-							wantClass = ClassGeneral
+							wantLaneType = GeneralLane
 						default:
-							wantClass = ClassPayment // reaches the code gate; the account is absent below
+							wantLaneType = PaymentLane // reaches the code gate; the account is absent below
 						}
 
 						reader := absentAccounts()
 						got := NewClassifier(reader, listed).Classify(tx)
-						require.Equal(t, wantClass, got,
+						require.Equal(t, wantLaneType, got,
 							"type=%d dest=%s accessList=%v data=%v value=%v", txType, dest.name, withAL, withData, withValue)
 						require.Equal(t, wantRead, len(reader.reads) == 1,
 							"state read expectation: type=%d dest=%s accessList=%v data=%v value=%v",
@@ -179,9 +179,9 @@ func TestCodeGateFollowsTheLiveState(t *testing.T) {
 	c := NewClassifier(r, nil)
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 
-	require.Equal(t, ClassPayment, c.Classify(tx), "no code yet, so a plain transfer")
+	require.Equal(t, PaymentLane, c.Classify(tx), "no code yet, so a plain transfer")
 	delegated = true
-	require.Equal(t, ClassGeneral, c.Classify(tx),
+	require.Equal(t, GeneralLane, c.Classify(tx),
 		"the destination now holds code, so the transfer would execute it - not a payment")
 	require.Len(t, r.reads, 2, "the code gate must be re-read every time; a memo here caches a stale answer")
 }
@@ -194,14 +194,14 @@ func TestCodeHashBoundaryCases(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		codeHash common.Hash
-		want     Class
+		want     LaneType
 	}{
 		// The trap: an account that does not exist reads as the ZERO hash, not EmptyCodeHash.
-		{"absent account (zero hash)", common.Hash{}, ClassPayment},
-		{"existing account, no code", types.EmptyCodeHash, ClassPayment},
-		{"contract code hash", common.HexToHash("0xbeef"), ClassGeneral},
+		{"absent account (zero hash)", common.Hash{}, PaymentLane},
+		{"existing account, no code", types.EmptyCodeHash, PaymentLane},
+		{"contract code hash", common.HexToHash("0xbeef"), GeneralLane},
 		// EIP-7702 designators are code, so a delegated account is not a lane destination.
-		{"eip-7702 designator", common.BytesToHash(crypto.Keccak256(designator)), ClassGeneral},
+		{"eip-7702 designator", common.BytesToHash(crypto.Keccak256(designator)), GeneralLane},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &codeFn{fn: func(common.Address) common.Hash { return tc.codeHash }}
@@ -220,7 +220,7 @@ func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 	for _, txType := range []byte{types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, data: calldata})
 		got := NewClassifier(forbidReads(t), listedSet(listedDest)).Classify(tx)
-		require.Equal(t, ClassPayment, got, "tx type %d", txType)
+		require.Equal(t, PaymentLane, got, "tx type %d", txType)
 	}
 }
 
@@ -229,6 +229,6 @@ func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	for _, txType := range []byte{types.BlobTxType, types.SetCodeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, value: big.NewInt(1)})
 		got := NewClassifier(forbidReads(t), listedSet(listedDest)).Classify(tx)
-		require.Equal(t, ClassGeneral, got, "tx type %d", txType)
+		require.Equal(t, GeneralLane, got, "tx type %d", txType)
 	}
 }

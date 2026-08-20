@@ -1642,7 +1642,7 @@ func addPaymentLaneFields(fields map[string]interface{}, header *types.Header) {
 	if err != nil {
 		return
 	}
-	fields["paymentLaneSize"] = hexutil.Uint64(c.LaneSize)
+	fields["paymentLaneQuota"] = hexutil.Uint64(c.PaymentLaneQuota)
 	fields["paymentGasUsed"] = hexutil.Uint64(c.PaymentGasUsed)
 }
 

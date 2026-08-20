@@ -9,27 +9,27 @@ import (
 )
 
 type txSpec struct {
-	class  Class
-	limit  uint64 // gas limit, what admission is decided on
-	actual uint64 // gas actually burned, what is accounted (<= limit, models a refund)
+	laneType LaneType
+	limit    uint64 // gas limit, what admission is decided on
+	actual   uint64 // gas actually burned, what is accounted (<= limit, models a refund)
 }
 
 // laneRun simulates admission over a synthetic sequence; reserve models bid-path gas reservation.
-func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]int, Budget, uint64) {
+func laneRun(t *testing.T, capacity, laneQuota, reserve uint64, seq []txSpec) ([]int, Budget, uint64) {
 	t.Helper()
-	b := Budget{LaneSize: laneSize}
+	b := Budget{PaymentLaneQuota: laneQuota}
 	var generalUsed uint64
-	poolUsed := func() uint64 { return b.PaymentUsed + generalUsed }
+	poolUsed := func() uint64 { return b.PaymentLaneUsed + generalUsed }
 	shared := func() uint64 { return satSub(capacity, poolUsed()+reserve) }
 
-	prev := map[Class]uint64{ClassGeneral: math.MaxUint64, ClassPayment: math.MaxUint64}
+	prev := map[LaneType]uint64{GeneralLane: math.MaxUint64, PaymentLane: math.MaxUint64}
 	var taken []int
 	for i, tx := range seq {
-		if !b.Admits(shared(), tx.class, tx.limit) {
+		if !b.Admits(shared(), tx.laneType, tx.limit) {
 			continue
 		}
-		b.RecordUsed(tx.class, tx.actual)
-		if tx.class == ClassGeneral {
+		b.RecordUsed(tx.laneType, tx.actual)
+		if tx.laneType == GeneralLane {
 			generalUsed += tx.actual
 		}
 		taken = append(taken, i)
@@ -37,25 +37,25 @@ func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]
 		// Accounting must match the pool.
 		require.Equalf(t, capacity-reserve-shared(), poolUsed(),
 			"tx %d: accounting disagrees with the pool: payment=%d general=%d shared=%d",
-			i, b.PaymentUsed, generalUsed, shared())
+			i, b.PaymentLaneUsed, generalUsed, shared())
 
 		// Every accepted prefix must stay valid when the quota fits.
-		if laneSize+reserve <= capacity {
-			require.NoErrorf(t, CheckInequality(capacity, poolUsed(), b.PaymentUsed, laneSize),
+		if laneQuota+reserve <= capacity {
+			require.NoErrorf(t, CheckInequality(capacity, poolUsed(), b.PaymentLaneUsed, laneQuota),
 				"tx %d: prefix is not a valid block", i)
 		}
 
 		// MaxAvailableGas must never increase.
-		for _, c := range []Class{ClassGeneral, ClassPayment} {
+		for _, c := range []LaneType{GeneralLane, PaymentLane} {
 			m := b.MaxAvailableGas(shared(), c)
 			require.LessOrEqualf(t, m, prev[c],
-				"tx %d: MaxAvailableGas for class %s rose %d -> %d, Pop() no longer holds",
+				"tx %d: MaxAvailableGas for lane type %s rose %d -> %d, Pop() no longer holds",
 				i, c, prev[c], m)
 			prev[c] = m
 		}
 
 		// General traffic must not consume idle lane space.
-		if laneSize+reserve <= capacity {
+		if laneQuota+reserve <= capacity {
 			require.GreaterOrEqualf(t, shared(), b.IdleLane(),
 				"tx %d: shared(%d) < IdleLane(%d), lane space was taken over",
 				i, shared(), b.IdleLane())
@@ -69,44 +69,44 @@ func TestAdmissionInvariants(t *testing.T) {
 	const capacity = 1000
 	for seed := int64(0); seed < 3000; seed++ {
 		rng := rand.New(rand.NewSource(seed))
-		laneSize := uint64(rng.Intn(capacity + 1))
+		laneQuota := uint64(rng.Intn(capacity + 1))
 		seq := make([]txSpec, 200)
 		for i := range seq {
 			limit := uint64(1 + rng.Intn(300))
 			seq[i] = txSpec{
-				class:  Class(rng.Intn(2)),
-				limit:  limit,
-				actual: uint64(rng.Intn(int(limit) + 1)),
+				laneType: LaneType(rng.Intn(2)),
+				limit:    limit,
+				actual:   uint64(rng.Intn(int(limit) + 1)),
 			}
 		}
-		laneRun(t, capacity, laneSize, 0, seq)
+		laneRun(t, capacity, laneQuota, 0, seq)
 	}
 }
 
 // TestAdmissionIsExactlyTight checks that Admits matches post-transaction validity exactly.
 func TestAdmissionIsExactlyTight(t *testing.T) {
 	const capacity = 40
-	for laneSize := uint64(0); laneSize <= capacity; laneSize += 7 {
+	for laneQuota := uint64(0); laneQuota <= capacity; laneQuota += 7 {
 		for pu := uint64(0); pu <= capacity; pu += 3 {
 			for gu := uint64(0); gu+pu <= capacity; gu += 3 {
-				b := Budget{LaneSize: laneSize, PaymentUsed: pu}
+				b := Budget{PaymentLaneQuota: laneQuota, PaymentLaneUsed: pu}
 				// Skip unreachable states.
-				if CheckInequality(capacity, gu+pu, pu, laneSize) != nil {
+				if CheckInequality(capacity, gu+pu, pu, laneQuota) != nil {
 					continue
 				}
 				shared := capacity - pu - gu
-				for _, class := range []Class{ClassGeneral, ClassPayment} {
+				for _, laneType := range []LaneType{GeneralLane, PaymentLane} {
 					for g := uint64(0); g <= capacity; g++ {
 						after, afterGeneral := b, gu
-						after.RecordUsed(class, g)
-						if class == ClassGeneral {
+						after.RecordUsed(laneType, g)
+						if laneType == GeneralLane {
 							afterGeneral += g
 						}
 						legal := CheckInequality(capacity,
-							afterGeneral+after.PaymentUsed, after.PaymentUsed, laneSize) == nil
-						if got := b.Admits(shared, class, g); got != legal {
-							t.Fatalf("L=%d pu=%d gu=%d class=%s g=%d: Admits=%v but valid-after-full-burn=%v",
-								laneSize, pu, gu, class, g, got, legal)
+							afterGeneral+after.PaymentLaneUsed, after.PaymentLaneUsed, laneQuota) == nil
+						if got := b.Admits(shared, laneType, g); got != legal {
+							t.Fatalf("L=%d pu=%d gu=%d laneType=%s g=%d: Admits=%v but valid-after-full-burn=%v",
+								laneQuota, pu, gu, laneType, g, got, legal)
 						}
 					}
 				}
@@ -115,20 +115,20 @@ func TestAdmissionIsExactlyTight(t *testing.T) {
 	}
 }
 
-// TestLaneSizeExceedsCapacity checks the over-capacity quota behavior.
-func TestLaneSizeExceedsCapacity(t *testing.T) {
+// TestLaneQuotaExceedsCapacity checks the over-capacity quota behavior.
+func TestLaneQuotaExceedsCapacity(t *testing.T) {
 	const capacity = 1000
 	taken, b, poolUsed := laneRun(t, capacity, capacity+1, 0, []txSpec{
-		{ClassGeneral, 1, 1},
-		{ClassPayment, 500, 500},
-		{ClassGeneral, 1, 1},
+		{laneType: GeneralLane, limit: 1, actual: 1},
+		{laneType: PaymentLane, limit: 500, actual: 500},
+		{laneType: GeneralLane, limit: 1, actual: 1},
 	})
 	require.Equal(t, []int{1}, taken, "only the payment transaction should have been admitted")
 
 	require.ErrorIs(t, b.Verify(capacity, poolUsed, poolUsed), ErrViolated,
 		"a quota larger than capacity must make the self-check report ErrViolated")
 
-	require.NoError(t, (Budget{LaneSize: capacity}).Verify(capacity, 0, 0),
+	require.NoError(t, (Budget{PaymentLaneQuota: capacity}).Verify(capacity, 0, 0),
 		"with the quota exactly equal to capacity the empty block must be valid")
 }
 
@@ -137,20 +137,24 @@ func TestPayBidTxAlwaysFitsAfterLaneAdmission(t *testing.T) {
 	const capacity, payBidTxGas = 1000, 25
 	for seed := int64(0); seed < 2000; seed++ {
 		rng := rand.New(rand.NewSource(seed))
-		laneSize := uint64(rng.Intn(capacity - payBidTxGas + 1))
+		laneQuota := uint64(rng.Intn(capacity - payBidTxGas + 1))
 		seq := make([]txSpec, 100)
 		for i := range seq {
 			limit := uint64(1 + rng.Intn(200))
-			seq[i] = txSpec{Class(rng.Intn(2)), limit, uint64(rng.Intn(int(limit) + 1))}
+			seq[i] = txSpec{
+				laneType: LaneType(rng.Intn(2)),
+				limit:    limit,
+				actual:   uint64(rng.Intn(int(limit) + 1)),
+			}
 		}
-		_, b, poolUsed := laneRun(t, capacity, laneSize, payBidTxGas, seq)
+		_, b, poolUsed := laneRun(t, capacity, laneQuota, payBidTxGas, seq)
 
 		shared := capacity - poolUsed
-		require.GreaterOrEqualf(t, b.MaxAvailableGas(shared, ClassGeneral), uint64(payBidTxGas),
-			"seed %d: payBidTx no longer fits at L=%d", seed, laneSize)
+		require.GreaterOrEqualf(t, b.MaxAvailableGas(shared, GeneralLane), uint64(payBidTxGas),
+			"seed %d: payBidTx no longer fits at L=%d", seed, laneQuota)
 	}
-	b := Budget{LaneSize: capacity - payBidTxGas + 1}
-	require.Less(t, b.MaxAvailableGas(capacity, ClassGeneral), uint64(payBidTxGas),
+	b := Budget{PaymentLaneQuota: capacity - payBidTxGas + 1}
+	require.Less(t, b.MaxAvailableGas(capacity, GeneralLane), uint64(payBidTxGas),
 		"past a quota of capacity-payBidTxGas, payBidTx is supposed to stop fitting")
 }
 
@@ -205,11 +209,11 @@ func TestVerifyFailureTriggers(t *testing.T) {
 		gasUsed, poolUsed uint64
 		wantErr           error
 	}{
-		{"consistent and valid", Budget{LaneSize: 20, PaymentUsed: 20}, 80, 80, nil},
-		{"payment booked beyond the pool total", Budget{LaneSize: 20, PaymentUsed: 81}, 80, 80, ErrPaymentExceedsPool},
-		{"accounting consistent but the quota does not fit this block", Budget{LaneSize: 200}, 0, 0, ErrViolated},
-		{"system gas overran the reservation and burst the block", Budget{LaneSize: 20, PaymentUsed: 20}, 101, 80, ErrViolated},
-		{"when both fail, the pool bound is reported first (it names the cause)", Budget{LaneSize: 200, PaymentUsed: 100}, 99, 99, ErrPaymentExceedsPool},
+		{"consistent and valid", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}, 80, 80, nil},
+		{"payment booked beyond the pool total", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 81}, 80, 80, ErrPaymentExceedsPool},
+		{"accounting consistent but the quota does not fit this block", Budget{PaymentLaneQuota: 200}, 0, 0, ErrViolated},
+		{"system gas overran the reservation and burst the block", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}, 101, 80, ErrViolated},
+		{"when both fail, the pool bound is reported first (it names the cause)", Budget{PaymentLaneQuota: 200, PaymentLaneUsed: 100}, 99, 99, ErrPaymentExceedsPool},
 	} {
 		err := tc.b.Verify(100, tc.gasUsed, tc.poolUsed)
 		if tc.wantErr == nil {
@@ -222,19 +226,19 @@ func TestVerifyFailureTriggers(t *testing.T) {
 
 // TestVerifyCommitmentComparesThePaymentFigure checks the committed payment total.
 func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
-	b := Budget{LaneSize: 20, PaymentUsed: 20}
+	b := Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}
 	const gasLimit, gasUsed, pool = 100, 80, 80
 
-	require.NoError(t, b.VerifyCommitment(gasLimit, gasUsed, pool, Commitment{LaneSize: 20, PaymentGasUsed: 20}))
+	require.NoError(t, b.VerifyCommitment(gasLimit, gasUsed, pool, Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 20}))
 
 	for _, tc := range []struct {
 		name string
 		lie  Commitment
 	}{
-		{"payment understated", Commitment{LaneSize: 20, PaymentGasUsed: 19}},
-		{"payment overstated", Commitment{LaneSize: 20, PaymentGasUsed: 21}},
-		{"payment claimed as the whole block", Commitment{LaneSize: 20, PaymentGasUsed: 80}},
-		{"payment claimed as zero", Commitment{LaneSize: 20}},
+		{"payment understated", Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 19}},
+		{"payment overstated", Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 21}},
+		{"payment claimed as the whole block", Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 80}},
+		{"payment claimed as zero", Commitment{PaymentLaneQuota: 20}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.ErrorIs(t, b.VerifyCommitment(gasLimit, gasUsed, pool, tc.lie), ErrUntruthy)
