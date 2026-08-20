@@ -499,3 +499,65 @@ func TestB20OutOfEnumVariantPanics(t *testing.T) {
 		t.Errorf("getB20Address = %x, want %x", ret, want)
 	}
 }
+
+// TestB20BootstrapReachesTheVariant covers the six Asset write selectors that the
+// bootstrap could not reach.
+func TestB20BootstrapReachesTheVariant(t *testing.T) {
+	_, evm := newB20EVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	call := func(input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(creator, common.Address{}, input, NewGasBudget(9_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	_ = call
+
+	at := func(to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(creator, to, input, NewGasBudget(9_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	u := func(ret []byte, err error) uint64 {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("call: %v", err)
+		}
+		return new(uint256.Int).SetBytes(ret).Uint64()
+	}
+
+	const oneAndAHalf = 1_500_000_000_000_000_000
+	ret, err := at(B20FactoryAddress, encodeCreateB20(b20VariantAsset,
+		common.HexToHash("0xb007"), creator, [][]byte{
+			b20Call(selGrantRole, roleMint, addrKey(creator)),
+			b20Call(selGrantRole, roleOperator, addrKey(creator)),
+			b20Call(selGrantRole, roleMetadata, addrKey(creator)),
+			// Asset-only, every one an unknown selector before this fix.
+			b20Call(selUpdateMultiplier, u256hash(oneAndAHalf)),
+			encodeBatchMint([]common.Address{b20Alice, b20Bob}, []uint64{10, 20}),
+			encodeStringCall(selUpdateExtraMetadata, "issuer", "acme"),
+		}))
+	if err != nil {
+		t.Fatalf("createB20 with Asset-only initCalls: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	if got := u(at(token, b20Call(selMultiplier))); got != oneAndAHalf {
+		t.Errorf("multiplier = %d, want %d — updateMultiplier did not run", got, oneAndAHalf)
+	}
+	// Raw balances from batchMint, and the scaled views the multiplier drives.
+	if got := u(at(token, b20Call(selBalanceOf, addrKey(b20Alice)))); got != 10 {
+		t.Errorf("balanceOf(alice) = %d, want 10 — batchMint did not run", got)
+	}
+	if got := u(at(token, b20Call(selScaledBalanceOf, addrKey(b20Bob)))); got != 30 {
+		t.Errorf("scaledBalanceOf(bob) = %d, want 30 (raw 20 at 1.5x)", got)
+	}
+	if got, err := at(token, encodeStringCall(selExtraMetadata, "issuer")); err != nil {
+		t.Errorf("extraMetadata: %v", err)
+	} else if s := decodeString(t, got); s != "acme" {
+		t.Errorf("extraMetadata(issuer) = %q, want %q", s, "acme")
+	}
+
+	// The shared surface still reaches the same way, so the variant dispatcher's
+	// fallback is intact rather than having replaced it.
+	if got := u(at(token, b20Call(selTotalSupply))); got != 30 {
+		t.Errorf("totalSupply = %d, want 30", got)
+	}
+}

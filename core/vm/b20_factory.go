@@ -213,6 +213,16 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		tokenCtx.AddLog([]common.Hash{b20TopicRoleGranted, roleDefaultAdmin, addrKey(initialAdmin), addrKey(creator)}, nil)
 	}
 
+	// Each entry runs on the variant's full dispatcher, not the shared half: an
+	// Asset token has to be able to set its multiplier or batch its first
+	// distribution at creation, as base-std's token.call(initCalls[i]) allows. The
+	// bootstrap dispatched tok.dispatch directly from the commit that introduced
+	// it, when no variant layer existed yet, and was not revisited when one did.
+	dispatch := func(call []byte) ([]byte, error) { return stablecoinDispatch(tok, newStablecoinExt(tokenCtx), call) }
+	if variant == b20VariantAsset {
+		dispatch = func(call []byte) ([]byte, error) { return assetDispatch(tok, newAssetExt(tokenCtx), call) }
+	}
+
 	// Privileged bootstrap: any initCall failure reverts the whole creation.
 	for i, call := range initCalls {
 		// Same shape as announce's bundle: each entry dispatches a full token
@@ -223,7 +233,7 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		if len(call) < 4 {
 			return nil, revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, call)
 		}
-		if _, err := tok.dispatch(call); err != nil {
+		if _, err := dispatch(call); err != nil {
 			if _, isRev := err.(*b20RevertError); !isRev && err != ErrExecutionReverted {
 				return nil, err // out-of-gas / write-protection propagate as-is
 			}
