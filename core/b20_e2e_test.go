@@ -45,8 +45,8 @@ const (
 
 	// The fork lands on the block at this timestamp. Genesis is at 0 and each
 	// block advances by b20E2EBlockTime, so blocks 1..2 are pre-fork.
-	b20E2EPasteurTime = 30
-	b20E2EBlockTime   = 10
+	b20E2EJennerTime = 30
+	b20E2EBlockTime  = 10
 )
 
 // --- ABI plumbing -----------------------------------------------------------
@@ -187,15 +187,15 @@ type b20Chain struct {
 func newB20Chain(t *testing.T) *b20Chain {
 	t.Helper()
 
-	// Every fork before Pasteur is active from genesis, and Pasteur alone lands
-	// mid-chain. NewBlockChain validates the ordering, so each one between Cancun
-	// (where TestChainConfig stops) and Pasteur has to be named.
-	// ParliaTestChainConfig carries Parlia — what IsInBSC keys on, and what B20
-	// is gated on alongside IsPasteur — plus every BSC fork through Cancun. The
-	// engine is a faker; only the config's shape matters. NewBlockChain rejects a
-	// config that enables one fork while an earlier one is off, so every fork
-	// between Cancun and Pasteur has to be named, and the chain has to be
-	// post-merge for the beacon engine to seal it.
+	// Every fork before Jenner is active from genesis, and Jenner alone lands
+	// mid-chain, so the seeding boundary is crossed inside the test rather than at
+	// genesis. ParliaTestChainConfig carries Parlia — what IsInBSC keys on, and
+	// what IsJenner embeds — plus every BSC fork through Cancun. The engine is a
+	// faker; only the config's shape matters. NewBlockChain rejects a config that
+	// enables one fork while an earlier one is off, so every fork between Cancun
+	// and Jenner has to be named — Pasteur included, which is why it is in the
+	// list below rather than left nil — and the chain has to be post-merge for the
+	// beacon engine to seal it.
 	cfg := *params.ParliaTestChainConfig
 	cfg.ChainID = big.NewInt(714)
 	cfg.TerminalTotalDifficulty = common.Big0
@@ -203,7 +203,7 @@ func newB20Chain(t *testing.T) *b20Chain {
 	for _, at := range []**uint64{
 		&cfg.HaberTime, &cfg.HaberFixTime, &cfg.BohrTime, &cfg.PascalTime,
 		&cfg.PragueTime, &cfg.LorentzTime, &cfg.MaxwellTime, &cfg.FermiTime,
-		&cfg.OsakaTime, &cfg.MendelTime,
+		&cfg.OsakaTime, &cfg.MendelTime, &cfg.PasteurTime,
 	} {
 		*at = &zero
 	}
@@ -212,8 +212,8 @@ func newB20Chain(t *testing.T) *b20Chain {
 		Prague: params.DefaultPragueBlobConfig,
 		Osaka:  params.DefaultOsakaBlobConfig,
 	}
-	pasteur := uint64(b20E2EPasteurTime)
-	cfg.PasteurTime = &pasteur
+	jenner := uint64(b20E2EJennerTime)
+	cfg.JennerTime = &jenner
 	cfg.B20ActivationAdmin = &b20E2EAdmin
 
 	gspec := &Genesis{
@@ -377,7 +377,7 @@ func mustBalance(t *testing.T, c *b20Chain, token, who common.Address, want int6
 // TestB20E2EForkAndActivation walks what base-std calls the activation preflight,
 // but from one block earlier than a live chain can: the fork itself.
 //
-// Before Pasteur the reserved addresses are ordinary accounts. The fork seeds the
+// Before Jenner the reserved addresses are ordinary accounts. The fork seeds the
 // registries and installs the configured admin — and opens nothing. A feature
 // then has to be activated by that admin, by transaction, before the factory will
 // build anything.
@@ -391,7 +391,7 @@ func TestB20E2EForkAndActivation(t *testing.T) {
 	// Pre-fork: the factory address holds no code and dispatches to nothing, so
 	// a call to it is a plain value-less call to an empty account and succeeds.
 	c.mineEmpty(1)
-	if c.bc.CurrentBlock().Time >= b20E2EPasteurTime {
+	if c.bc.CurrentBlock().Time >= b20E2EJennerTime {
 		t.Fatalf("block %d is already past the fork; the pre-fork half tests nothing",
 			c.bc.CurrentBlock().Number)
 	}
@@ -406,7 +406,7 @@ func TestB20E2EForkAndActivation(t *testing.T) {
 
 	// Cross the fork. The hook seeds both registry sentinels and the admin.
 	c.mineEmpty(3)
-	if c.bc.CurrentBlock().Time < b20E2EPasteurTime {
+	if c.bc.CurrentBlock().Time < b20E2EJennerTime {
 		t.Fatalf("chain never reached the fork (head time %d)", c.bc.CurrentBlock().Time)
 	}
 	if admin := vm.B20ActivationAdmin(c.state()); admin != b20E2EAdmin {
@@ -728,10 +728,10 @@ func b20E2EWad(n int64) *big.Int {
 	return new(big.Int).Mul(big.NewInt(n), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 }
 
-// b20E2EReachFork advances past Pasteur so the registries are seeded.
+// b20E2EReachFork advances past Jenner so the registries are seeded.
 func b20E2EReachFork(t *testing.T, c *b20Chain) {
 	t.Helper()
-	for c.bc.CurrentBlock().Time < b20E2EPasteurTime {
+	for c.bc.CurrentBlock().Time < b20E2EJennerTime {
 		c.mineEmpty(1)
 	}
 	if admin := vm.B20ActivationAdmin(c.state()); admin != b20E2EAdmin {
