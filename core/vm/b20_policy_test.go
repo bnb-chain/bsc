@@ -790,3 +790,44 @@ func encodeCreatePolicyWithAccountsRaw(admin, ptype common.Hash, accounts []comm
 	}
 	return out
 }
+
+// TestB20SentinelErrorDoesNotDependOnInitialization covers the sentinels before
+// any policy exists, when ensureInitialized has never run.
+func TestB20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
+	_, evm := newB20EVM(t)
+	caller := common.HexToAddress("0xca11e4")
+	call := func(input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, B20PolicyRegistryAddress, input,
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	// The registry is untouched: nothing has been created, so the sentinels' words
+	// are unwritten. Administering one must still fail as unauthorized, not as
+	// missing — reading the raw exists bit gave PolicyNotFound here and
+	// Unauthorized after the first unrelated creation.
+	want := func(input []byte, sel [4]byte, what string) {
+		t.Helper()
+		ret, err := call(input)
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Fatalf("%s: err = %v, want a revert", what, err)
+		}
+		if len(ret) < 4 || [4]byte(ret[:4]) != sel {
+			t.Errorf("%s: revert = %x, want %x", what, ret[:min(4, len(ret))], sel)
+		}
+	}
+	for _, id := range []uint64{b20PolicyAlwaysAllow, b20PolicyAlwaysBlock} {
+		want(b20Call(selStageUpdateAdmin, wU64(id), addrKey(caller)),
+			errSelUnauthorized, "stageUpdateAdmin on a sentinel before initialization")
+	}
+
+	// Create something unrelated, which is what runs ensureInitialized, and the
+	// answer must not change.
+	if _, err := call(b20Call(selCreatePolicy, addrKey(caller), u256hash(b20PolicyAllowlist))); err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	for _, id := range []uint64{b20PolicyAlwaysAllow, b20PolicyAlwaysBlock} {
+		want(b20Call(selStageUpdateAdmin, wU64(id), addrKey(caller)),
+			errSelUnauthorized, "stageUpdateAdmin on a sentinel after initialization")
+	}
+}

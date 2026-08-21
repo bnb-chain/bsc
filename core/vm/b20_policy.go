@@ -675,7 +675,7 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	}
 	// Order matters: it is observable through which error the caller receives, so
 	// it follows base-std's canonical existence -> type -> admin -> batch.
-	if err := requireCustomPolicy(reg, pid); err != nil {
+	if err := requirePolicyExists(reg, pid); err != nil {
 		return err
 	}
 	if polIDType(pid) != wantType {
@@ -738,7 +738,7 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	if err != nil {
 		return err
 	}
-	if err := requireCustomPolicy(reg, pid); err != nil {
+	if err := requirePolicyExists(reg, pid); err != nil {
 		return err
 	}
 	pending := reg.pending(pid)
@@ -775,11 +775,17 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	return nil
 }
 
-// requireCustomPolicy reverts PolicyNotFound unless the policy has been written.
-// The sentinels pass: they are seeded with the exists bit set, and it is their
-// zero admin that keeps them un-administrable.
-func requireCustomPolicy(reg policyReg, id uint64) error {
-	if !polIDWellFormed(id) || !reg.exists(id) {
+// requirePolicyExists reverts PolicyNotFound unless the policy exists.
+//
+// It asks policyExists, not the raw exists bit: the sentinels are seeded lazily
+// by ensureInitialized, which only the create paths call, so before the first
+// policy on a network their word is still unwritten. Reading the bit directly made
+// a sentinel report PolicyNotFound until someone created something and
+// Unauthorized afterwards — the same call answering differently on unrelated
+// history. The sentinels always exist; it is their zero admin that keeps them
+// un-administrable.
+func requirePolicyExists(reg policyReg, id uint64) error {
+	if !reg.policyExists(id) {
 		return revB20("PolicyNotFound()", errSelPolicyNotFound)
 	}
 	return nil
@@ -787,7 +793,7 @@ func requireCustomPolicy(reg policyReg, id uint64) error {
 
 // requirePolicyAdmin reverts unless the policy exists and caller is its admin.
 func requirePolicyAdmin(reg policyReg, id uint64, caller common.Address) error {
-	if err := requireCustomPolicy(reg, id); err != nil {
+	if err := requirePolicyExists(reg, id); err != nil {
 		return err
 	}
 	if admin := reg.admin(id); admin == (common.Address{}) || admin != caller {
