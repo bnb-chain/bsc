@@ -75,6 +75,12 @@ var CONTENT = {
       desc: "Réseau privé et confidentialité en ligne. En développement."
     },
     {
+      name: "BOSA Omni AI",
+      category: "Intelligence artificielle",
+      status: "building",
+      desc: "Un lieu de travail, pas un modèle de plus : étudiants, entrepreneurs, marketeurs, créateurs, développeurs. Chacun apporte ses propres clés, tout s'exécute sur sa machine. En construction."
+    },
+    {
       name: "Neobanq",
       category: "Banque",
       status: "building",

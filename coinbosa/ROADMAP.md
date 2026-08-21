@@ -43,6 +43,7 @@ La chaîne sert des produits, elle n'est pas une fin en soi.
 | **bite-fast** | place d'échange crypto externe | existante |
 | **Neobanq** | plateforme bancaire | existante |
 | **Coinbosa VPN** | service d'abonnement | en cours |
+| **BOSA Omni AI** | atelier d'IA local, multi-métiers — clés et exécution chez l'utilisateur | en construction |
 
 Aucun de ces produits n'est raccordé à la chaîne à ce jour. Chaque raccordement sera annoncé
 lorsqu'il fonctionnera, et pas avant.
@@ -149,7 +150,7 @@ six langues sans chaîne non traduite.
 
 ### Jalon 7 — L'écosystème est branché
 
-- Paiement en BOSA sur Coinbosa Academy et Coinbosa VPN
+- Paiement en BOSA sur Coinbosa Academy, Coinbosa VPN et BOSA Omni AI
 - Cotation du BOSA sur NextFuture, au comptant puis à terme
 - Coinbosa Card adossée au solde on-chain
 - Passerelle avec bite-fast

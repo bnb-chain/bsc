@@ -104,6 +104,7 @@ pas une fin en soi : elle existe pour servir ces produits.
 | **[bite-fast](https://bite-fast.com)** | place d'échange crypto | externe, existante |
 | **Neobanq** | plateforme bancaire | existante |
 | **[Coinbosa VPN](https://bosavpn.com)** | service d'abonnement | en cours |
+| **BOSA Omni AI** | atelier d'IA local — le lieu où étudiants, entrepreneurs, marketeurs, créateurs et développeurs travaillent avec les modèles de leur choix, avec leurs propres clés | en construction |
 
 **Aucun de ces produits n'est raccordé à la chaîne à la date de ce document.** Chaque
 raccordement — paiement en BOSA, cotation, adossement de la carte — sera annoncé lorsqu'il
