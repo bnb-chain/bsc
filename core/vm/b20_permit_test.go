@@ -62,7 +62,10 @@ func TestB20Permit(t *testing.T) {
 
 	// Build the token used only to compute the domain separator (same EVM cfg).
 	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, b20TestChainConfig(), Config{})
-	gas := NewGasBudget(1)
+	// A real budget: this token only computes the domain separator, but a read whose
+	// charge fails now returns zero rather than the stored value, so a 1-gas context
+	// would hash an empty name and sign against the wrong domain.
+	gas := NewGasBudget(2_000_000)
 	domTok := newB20Token(&PrecompileContext{evm: evm, StateDB: statedb, Self: token, gas: &gas}, 18)
 
 	sign := func(key *ecdsa.PrivateKey, owner, spender common.Address, value, deadline, nonce uint64) (byte, common.Hash, common.Hash) {

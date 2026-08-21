@@ -141,12 +141,23 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 // one it was spawned from — observes it, because they hold the same accounting.
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
-func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
+// chargeStateGas charges cost and reports whether the frame may continue.
+//
+// False means stop: the caller must return before the operation this charge pays
+// for, the way the interpreter checks UseGas before executing an opcode rather
+// than after. A charge that cannot be covered marks the frame, and an already
+// marked frame refuses every later charge, so one failure ends the call rather
+// than letting the rest of the handler run on an exhausted budget.
+func (ctx *PrecompileContext) chargeStateGas(cost uint64) bool {
+	if ctx.OutOfGas() {
+		return false
+	}
 	if !ctx.UseGas(GasCosts{RegularGas: cost}) {
 		ctx.markOutOfGas()
-		return
+		return false
 	}
 	ctx.frameGas().stateGasUsed += cost
+	return true
 }
 
 // OutOfGas reports whether a charge has failed during this call. The

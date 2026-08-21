@@ -147,20 +147,25 @@ func newMeteredB20StorageAt(ctx *PrecompileContext, token common.Address) b20Sto
 
 // chargeRead meters an SLOAD-equivalent at EIP-2929 prices: warm always, plus
 // the cold surcharge on the first touch of the slot in this transaction.
-func (s b20Storage) chargeRead(slot common.Hash) {
+func (s b20Storage) chargeRead(slot common.Hash) bool {
 	if s.ctx == nil {
-		return
+		return true
 	}
 	if _, warm := s.state.SlotInAccessList(s.token, slot); warm {
-		s.ctx.chargeStateGas(params.WarmStorageReadCostEIP2929)
-		return
+		return s.ctx.chargeStateGas(params.WarmStorageReadCostEIP2929)
 	}
 	s.state.AddSlotToAccessList(s.token, slot)
-	s.ctx.chargeStateGas(params.ColdSloadCostEIP2929)
+	return s.ctx.chargeStateGas(params.ColdSloadCostEIP2929)
 }
 
+// getWord reads a slot after charging for it. The second result is false when the
+// charge could not be covered, in which case nothing was read and the caller must
+// stop — the value is meaningless, and acting on a zero is how a frame out of gas
+// took a fail-open branch.
 func (s b20Storage) getWord(slot common.Hash) common.Hash {
-	s.chargeRead(slot)
+	if !s.chargeRead(slot) {
+		return common.Hash{}
+	}
 	return s.state.GetState(s.token, slot)
 }
 
@@ -168,11 +173,17 @@ func (s b20Storage) getWord(slot common.Hash) common.Hash {
 // EIP-3529 refunds (see chargeStorageWrite). A write refused by the reentrancy
 // sentry does not happen at all; the context is marked out of gas and the
 // dispatcher fails the call.
-func (s b20Storage) setWord(slot, val common.Hash) {
+// setWord writes a slot after charging for it, and reports whether the write
+// happened. False covers both an unaffordable charge and the EIP-2200 reentrancy
+// sentry, which refuses the write without going through chargeStateGas at all —
+// dropping this result is how a refused write let a handler carry on into its
+// event.
+func (s b20Storage) setWord(slot, val common.Hash) bool {
 	if !s.chargeStorageWrite(slot, val) {
-		return
+		return false
 	}
 	s.state.SetState(s.token, slot, val)
+	return true
 }
 
 // --- fixed uint256 fields ---------------------------------------------------
