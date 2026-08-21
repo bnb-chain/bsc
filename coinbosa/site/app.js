@@ -85,17 +85,8 @@ var CONTENT = {
       category: "Banque",
       status: "building",
       desc: "Plateforme bancaire de microfinance. Projet distinct, en développement."
-    },
-    {
-      name: "bite-fast",
-      category: "Bourse externe",
-      status: "external",
-      // url retirée : le domaine ne répond plus (délai dépassé sur 443 et 80),
-      // le produit est en maintenance. À rétablir quand le site revient.
-      // url: "https://bite-fast.com",
-      desc: "Bourse tierce, opérée en dehors de Coinbosa. Partenaire externe."
     }
-  ],
+    ],
 
   // Le socle. Ces faits sont vérifiables — ne rien inventer.
   network: {

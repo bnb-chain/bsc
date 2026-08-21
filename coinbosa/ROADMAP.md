@@ -40,7 +40,6 @@ La chaîne sert des produits, elle n'est pas une fin en soi.
 | **Coinbosa Academy** | école de formation — forex, actions, puis crypto | en production |
 | **NextFuture** | place d'échange crypto — marché au comptant et contrats à terme | en construction |
 | **Coinbosa Card** | carte crypto prépayée et virtuelle, dépôts en crypto, dépense à l'international | à venir |
-| **bite-fast** | place d'échange crypto externe | existante |
 | **Neobanq** | plateforme bancaire | existante |
 | **Coinbosa VPN** | service d'abonnement | en cours |
 | **BOSA Omni AI** | atelier d'IA local, multi-métiers — clés et exécution chez l'utilisateur | en construction |
@@ -153,7 +152,6 @@ six langues sans chaîne non traduite.
 - Paiement en BOSA sur Coinbosa Academy, Coinbosa VPN et BOSA Omni AI
 - Cotation du BOSA sur NextFuture, au comptant puis à terme
 - Coinbosa Card adossée au solde on-chain
-- Passerelle avec bite-fast
 
 **Le point de blocage à lever en premier**, avant tout développement : les processeurs de
 paiement et les rampes fiat ne référencent en général que les chaînes majeures. Qu'un prestataire

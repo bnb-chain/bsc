@@ -104,7 +104,7 @@ Une fois la pull request fusionnée, et sans que personne n'ait à installer quo
 
 ## Les jetons BRC20, c'est un registre différent
 
-Ce dossier concerne le **coin natif** BOSA. Pour qu'un jeton BRC20 (celui de Bite Fast, par
+Ce dossier concerne le **coin natif** BOSA. Pour qu'un jeton BRC20 (par
 exemple) s'affiche avec SON logo, il faut une liste de jetons distincte, au format
 [Uniswap Token List](https://tokenlists.org) — à héberger sur `coinbosa.com`. À faire quand
 un premier jeton sera réellement déployé, pas avant : une liste qui référence un jeton

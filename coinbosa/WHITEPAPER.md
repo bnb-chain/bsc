@@ -101,7 +101,6 @@ pas une fin en soi : elle existe pour servir ces produits.
 | **[Coinbosa Academy](https://coinbosa-academy.com)** | école de formation au trading — forex, actions, puis crypto | en production |
 | **[NextFuture](https://nexfutur.com)** | place d'échange crypto — marché au comptant et contrats à terme | en service |
 | **[Coinbosa Card](https://coinbosa.cards)** | carte prépayée et virtuelle, dépôts en crypto, dépense à l'international | à venir |
-| **[bite-fast](https://bite-fast.com)** | place d'échange crypto | externe, existante |
 | **Neobanq** | plateforme bancaire | existante |
 | **[Coinbosa VPN](https://bosavpn.com)** | service d'abonnement | en cours |
 | **BOSA Omni AI** | atelier d'IA local — le lieu où étudiants, entrepreneurs, marketeurs, créateurs et développeurs travaillent avec les modèles de leur choix, avec leurs propres clés | en construction |
