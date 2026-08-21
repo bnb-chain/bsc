@@ -70,7 +70,7 @@ var polExistsBit = new(uint256.Int).Lsh(uint256.NewInt(1), 255)
 
 func packPolicy(admin common.Address) common.Hash {
 	w := new(uint256.Int).SetBytes(admin.Bytes())
-	return common.Hash(w.Or(w, polExistsBit).Bytes32())
+	return w.Or(w, polExistsBit).Bytes32()
 }
 
 func polWordExists(w common.Hash) bool          { return w[0]&0x80 != 0 }
@@ -151,7 +151,7 @@ func newPolicyReg(ctx *PrecompileContext) policyReg {
 
 func polSlot(offset uint64) common.Hash { return offsetSlot(b20PolicyRoot, offset) }
 
-func idKey(id uint64) common.Hash { return common.Hash(uint256.NewInt(id).Bytes32()) }
+func idKey(id uint64) common.Hash { return uint256.NewInt(id).Bytes32() }
 
 // isEnumWord reports whether an ABI word strictly encodes an enum/bool value
 // in [0, max]: every byte above the last must be zero.
@@ -163,7 +163,7 @@ func (p policyReg) counter() uint64 {
 	return new(uint256.Int).SetBytes(p.s.getWord(polSlot(polSlotCounter)).Bytes()).Uint64()
 }
 func (p policyReg) setCounter(v uint64) {
-	p.s.setWord(polSlot(polSlotCounter), common.Hash(uint256.NewInt(v).Bytes32()))
+	p.s.setWord(polSlot(polSlotCounter), uint256.NewInt(v).Bytes32())
 }
 
 func (p policyReg) policyWord(id uint64) common.Hash {
@@ -268,7 +268,7 @@ func (p policyReg) children(id uint64) []uint64 {
 		if p.s.ctx != nil && p.s.ctx.OutOfGas() {
 			return nil
 		}
-		w := p.s.getWord(common.Hash(new(uint256.Int).AddUint64(base, i/4).Bytes32()))
+		w := p.s.getWord(new(uint256.Int).AddUint64(base, i/4).Bytes32())
 		// Four uint64 lanes per word, LSB-first as Solidity packs them.
 		lane := uint((i % 4) * 8)
 		out = append(out, new(uint256.Int).Rsh(new(uint256.Int).SetBytes(w.Bytes()), lane*8).Uint64())
@@ -278,7 +278,7 @@ func (p policyReg) children(id uint64) []uint64 {
 
 func (p policyReg) setChildren(id uint64, kids []uint64) {
 	slot := p.childrenSlot(id)
-	p.s.setWord(slot, common.Hash(uint256.NewInt(uint64(len(kids))).Bytes32()))
+	p.s.setWord(slot, uint256.NewInt(uint64(len(kids))).Bytes32())
 	base := p.s.stringDataRoot(slot)
 	// Each word is built from scratch and written whole, so lanes past the new
 	// length are zeroed rather than left behind. The loop then runs to the word
@@ -293,7 +293,7 @@ func (p policyReg) setChildren(id uint64, kids []uint64) {
 		for lane := 0; lane < 4 && w*4+lane < len(kids); lane++ {
 			packed.Or(packed, new(uint256.Int).Lsh(uint256.NewInt(kids[w*4+lane]), uint(lane)*64))
 		}
-		slotW := common.Hash(new(uint256.Int).AddUint64(base, uint64(w)).Bytes32())
+		slotW := new(uint256.Int).AddUint64(base, uint64(w)).Bytes32()
 		if packed.IsZero() && w*4 >= len(kids) {
 			// Nothing to store here; only write if something is already there, so a
 			// fresh composite does not pay for clearing empty slots.
@@ -301,7 +301,7 @@ func (p policyReg) setChildren(id uint64, kids []uint64) {
 				continue
 			}
 		}
-		p.s.setWord(slotW, common.Hash(packed.Bytes32()))
+		p.s.setWord(slotW, packed.Bytes32())
 	}
 }
 
@@ -687,9 +687,20 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	if len(accounts) > b20PolicyBatchMax {
 		return revB20("BatchSizeTooLarge(uint256)", errSelBatchTooLarge, wU64(b20PolicyBatchMax))
 	}
-	in := inWord[31] != 0
+	// Both strictly decoded, as Solidity's external decoder does. bool accepts
+	// only 0 or 1, and an address element must not drop its high padding — this
+	// path is the routine one, so a dirty word would add or remove a different
+	// account than the encoding names.
+	if !isEnumWord(inWord, 1) {
+		return ErrExecutionReverted
+	}
+	in := inWord[31] == 1
 	for _, a := range accounts {
-		reg.setMember(pid, common.BytesToAddress(a.Bytes()), in)
+		addr, ok := addressFromWord(a)
+		if !ok {
+			return ErrExecutionReverted
+		}
+		reg.setMember(pid, addr, in)
 	}
 	emitMembersUpdated(ctx, wantType, pid, ctx.Caller, in, accounts)
 	return nil

@@ -717,3 +717,76 @@ func encodeCreatePolicyWithAccounts(admin common.Address, ptype byte, accounts [
 	}
 	return out
 }
+
+// TestB20MembershipArgsDecodeStrictly covers the two membership paths' narrow
+// arguments: an address element must not drop its high padding and a bool must be
+// 0 or 1, as Solidity's external decoder requires.
+func TestB20MembershipArgsDecodeStrictly(t *testing.T) {
+	_, evm := newB20EVM(t)
+	admin := b20ActivationAdmin
+	call := func(input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(admin, B20PolicyRegistryAddress, input,
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	ret, err := call(b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyAllowlist)))
+	if err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	id := new(uint256.Int).SetBytes(ret).Uint64()
+
+	dirty := addrKey(b20Alice)
+	dirty[0] = 0x01 // a byte above the low twenty
+
+	// updateAllowlist: the routine path, where a dirty element would add an
+	// account other than the one the encoding names.
+	if _, err := call(encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(1), []common.Hash{dirty})); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("updateAllowlist with a dirty address element: err = %v, want a revert", err)
+	}
+	// The bool argument, likewise: 2 is neither true nor false.
+	if _, err := call(encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(2), []common.Hash{addrKey(b20Alice)})); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("updateAllowlist with allowed = 2: err = %v, want a revert", err)
+	}
+	// And the clean form still works, so the guards are not refusing everything.
+	if _, err := call(encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(1), []common.Hash{addrKey(b20Alice)})); err != nil {
+		t.Fatalf("updateAllowlist with clean args: %v", err)
+	}
+	if got, err := call(b20Call(selIsAuthorized, wU64(id), addrKey(b20Alice))); err != nil {
+		t.Fatalf("isAuthorized: %v", err)
+	} else if !bytes.Equal(got, encBool(true)) {
+		t.Error("alice was not added by the clean call")
+	}
+
+	// createPolicyWithAccounts, the other path onto the same setter.
+	if _, err := call(encodeCreatePolicyWithAccountsRaw(addrKey(admin),
+		u256hash(b20PolicyAllowlist), []common.Hash{dirty})); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("createPolicyWithAccounts with a dirty element: err = %v, want a revert", err)
+	}
+}
+
+// encodeUpdateListRaw is encodeUpdateList with the words passed through
+// unchanged, so a test can hand it an encoding Solidity would not produce.
+func encodeUpdateListRaw(sel [4]byte, id uint64, flag common.Hash, accounts []common.Hash) []byte {
+	out := append([]byte{}, sel[:]...)
+	out = append(out, wU64(id).Bytes()...)
+	out = append(out, flag.Bytes()...)
+	out = append(out, u256hash(0x60).Bytes()...)
+	out = append(out, u256hash(uint64(len(accounts))).Bytes()...)
+	for _, a := range accounts {
+		out = append(out, a.Bytes()...)
+	}
+	return out
+}
+
+func encodeCreatePolicyWithAccountsRaw(admin, ptype common.Hash, accounts []common.Hash) []byte {
+	out := append([]byte{}, selCreatePolicyWithAccounts[:]...)
+	out = append(out, admin.Bytes()...)
+	out = append(out, ptype.Bytes()...)
+	out = append(out, u256hash(0x60).Bytes()...)
+	out = append(out, u256hash(uint64(len(accounts))).Bytes()...)
+	for _, a := range accounts {
+		out = append(out, a.Bytes()...)
+	}
+	return out
+}

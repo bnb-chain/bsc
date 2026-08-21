@@ -118,13 +118,13 @@ func (e assetExt) decimals() uint8 {
 	return uint8(new(uint256.Int).SetBytes(e.s.getWord(assetSlot(b20AssetSlotDecimals)).Bytes()).Uint64())
 }
 func (e assetExt) setDecimals(d uint8) {
-	e.s.setWord(assetSlot(b20AssetSlotDecimals), common.Hash(uint256.NewInt(uint64(d)).Bytes32()))
+	e.s.setWord(assetSlot(b20AssetSlotDecimals), uint256.NewInt(uint64(d)).Bytes32())
 }
 func (e assetExt) multiplier() *uint256.Int {
 	return new(uint256.Int).SetBytes(e.s.getWord(assetSlot(b20AssetSlotMultiplier)).Bytes())
 }
 func (e assetExt) setMultiplier(m *uint256.Int) {
-	e.s.setWord(assetSlot(b20AssetSlotMultiplier), common.Hash(m.Bytes32()))
+	e.s.setWord(assetSlot(b20AssetSlotMultiplier), m.Bytes32())
 }
 
 // --- ERC-8056 scheduled multiplier (Cobalt) ---------------------------------
@@ -150,7 +150,7 @@ func (e assetExt) pending() (mul *uint256.Int, effectiveAt uint64) {
 func (e assetExt) setPending(mul *uint256.Int, effectiveAt uint64) {
 	packed := new(uint256.Int).And(mul, b20U128Mask)
 	packed.Or(packed, new(uint256.Int).Lsh(uint256.NewInt(effectiveAt), b20PendingWhenBits))
-	e.s.setWord(e.pendingSlot(), common.Hash(packed.Bytes32()))
+	e.s.setWord(e.pendingSlot(), packed.Bytes32())
 }
 
 func (e assetExt) clearPending() { e.s.setWord(e.pendingSlot(), common.Hash{}) }

@@ -117,8 +117,8 @@ func revB20Bytes(sig string, sel [4]byte, payload []byte) error {
 	return &b20RevertError{sig: sig, data: append(sel[:], encodeTuple(abiBytes(payload))...)}
 }
 
-func wU256(v *uint256.Int) common.Hash { return common.Hash(v.Bytes32()) }
-func wU64(v uint64) common.Hash        { return common.Hash(uint256.NewInt(v).Bytes32()) }
+func wU256(v *uint256.Int) common.Hash { return v.Bytes32() }
+func wU64(v uint64) common.Hash        { return uint256.NewInt(v).Bytes32() }
 func wU8(v byte) common.Hash           { var h common.Hash; h[31] = v; return h }
 
 // Registered error selectors (BEP-702 error surface, aligned with base-std).

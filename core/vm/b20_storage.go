@@ -76,7 +76,7 @@ func erc7201Root(namespace string) common.Hash {
 func slotAt(offset uint64) common.Hash {
 	s := new(uint256.Int).SetBytes(b20CoreRoot.Bytes())
 	s.AddUint64(s, offset)
-	return common.Hash(s.Bytes32())
+	return s.Bytes32()
 }
 
 // offsetSlot returns the slot at root+offset, the fixed-field addressing every
@@ -84,7 +84,7 @@ func slotAt(offset uint64) common.Hash {
 func offsetSlot(root common.Hash, offset uint64) common.Hash {
 	x := new(uint256.Int).SetBytes(root.Bytes())
 	x.AddUint64(x, offset)
-	return common.Hash(x.Bytes32())
+	return x.Bytes32()
 }
 
 // mappingSlot returns the Solidity storage slot of mapping[key] where the
@@ -182,7 +182,7 @@ func (s b20Storage) getU256(offset uint64) *uint256.Int {
 }
 
 func (s b20Storage) setU256(offset uint64, v *uint256.Int) {
-	s.setWord(slotAt(offset), common.Hash(v.Bytes32()))
+	s.setWord(slotAt(offset), v.Bytes32())
 }
 
 func (s b20Storage) totalSupply() *uint256.Int     { return s.getU256(b20SlotTotalSupply) }
@@ -215,7 +215,7 @@ func (s b20Storage) getU256At(slot common.Hash) *uint256.Int {
 }
 
 func (s b20Storage) setU256At(slot common.Hash, v *uint256.Int) {
-	s.setWord(slot, common.Hash(v.Bytes32()))
+	s.setWord(slot, v.Bytes32())
 }
 
 func (s b20Storage) balanceOf(a common.Address) *uint256.Int {
@@ -241,7 +241,7 @@ func (s b20Storage) nonce(owner common.Address) *uint256.Int {
 
 func (s b20Storage) setNonce(owner common.Address, v *uint256.Int) {
 	slot := s.mapSlot(slotAt(b20SlotNonces), addrKey(owner))
-	s.setWord(slot, common.Hash(v.Bytes32()))
+	s.setWord(slot, v.Bytes32())
 }
 
 // --- roles ------------------------------------------------------------------
@@ -284,7 +284,7 @@ func (s b20Storage) setPackedU64(offset uint64, byteOff uint, v uint64) {
 	lane := new(uint256.Int).Lsh(uint256.NewInt(0xffffffffffffffff), byteOff*8)
 	word.And(word, lane.Not(lane))
 	word.Or(word, new(uint256.Int).Lsh(uint256.NewInt(v), byteOff*8))
-	s.setWord(slot, common.Hash(word.Bytes32()))
+	s.setWord(slot, word.Bytes32())
 }
 
 // transferPolicies reads all three transfer-side ids with one storage access:
@@ -387,7 +387,7 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 		if s.ctx != nil && s.ctx.OutOfGas() {
 			return ""
 		}
-		chunkSlot := common.Hash(new(uint256.Int).AddUint64(base, i/32).Bytes32())
+		chunkSlot := new(uint256.Int).AddUint64(base, i/32).Bytes32()
 		chunk := s.getWord(chunkSlot)
 		out = append(out, chunk[:]...)
 	}
@@ -409,7 +409,7 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 		word[31] = byte(len(b) * 2)
 		s.setWord(slot, word)
 	} else {
-		s.setWord(slot, common.Hash(uint256.NewInt(uint64(len(b)*2+1)).Bytes32()))
+		s.setWord(slot, uint256.NewInt(uint64(len(b)*2+1)).Bytes32())
 	}
 	if newChunks == 0 && oldChunks == 0 {
 		return // wholly inline, before and after: no data region exists
@@ -423,7 +423,7 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 		}
 		var chunk common.Hash
 		copy(chunk[:], b[i*32:])
-		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), chunk)
+		s.setWord(new(uint256.Int).AddUint64(base, i).Bytes32(), chunk)
 	}
 	// The release loop needs its own guard, and for a different reason than the
 	// write loop above: oldChunks comes from state, not from this call's calldata.
@@ -436,7 +436,7 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 		if s.ctx != nil && s.ctx.OutOfGas() {
 			return
 		}
-		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), common.Hash{})
+		s.setWord(new(uint256.Int).AddUint64(base, i).Bytes32(), common.Hash{})
 	}
 }
 
