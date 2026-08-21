@@ -83,6 +83,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideMendel             *uint64         `toml:",omitempty"`
 		OverridePasteur            *uint64         `toml:",omitempty"`
 		OverrideB20ActivationAdmin *common.Address `toml:",omitempty"`
+		OverrideJenner             *uint64         `toml:",omitempty"`
 		OverrideBPO1               *uint64         `toml:",omitempty"`
 		OverrideBPO2               *uint64         `toml:",omitempty"`
 		OverrideUBT                *uint64         `toml:",omitempty"`
@@ -90,7 +91,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TxSyncMaxTimeout           time.Duration   `toml:",omitempty"`
 		RangeLimit                 uint64          `toml:",omitempty"`
 		BlobExtraReserve           uint64
-		OverrideJenner             *uint64 `toml:",omitempty"`
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -237,6 +237,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideMendel             *uint64         `toml:",omitempty"`
 		OverridePasteur            *uint64         `toml:",omitempty"`
 		OverrideB20ActivationAdmin *common.Address `toml:",omitempty"`
+		OverrideJenner             *uint64         `toml:",omitempty"`
 		OverrideBPO1               *uint64         `toml:",omitempty"`
 		OverrideBPO2               *uint64         `toml:",omitempty"`
 		OverrideUBT                *uint64         `toml:",omitempty"`
@@ -244,7 +245,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TxSyncMaxTimeout           *time.Duration  `toml:",omitempty"`
 		RangeLimit                 *uint64         `toml:",omitempty"`
 		BlobExtraReserve           *uint64
-		OverrideJenner             *uint64 `toml:",omitempty"`
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
