@@ -8,6 +8,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -224,5 +226,34 @@ func TestB20UnaffordableCallDoesNoWork(t *testing.T) {
 		t.Error("the handler read state it could not pay for: carol's slot is warm after a " +
 			"call that could not afford its calldata. RequiredGas is zero, so the entry check " +
 			"is the only thing standing between a ~100-gas CALL and a handler's worth of work")
+	}
+}
+
+// TestB20CalldataGasMatchesTheBEP pins the calldata charge to BEP-702 3.14's
+// formula: G_copy + G_memory per 32-byte word, and nothing else.
+func TestB20CalldataGasMatchesTheBEP(t *testing.T) {
+	charged := func(words int) uint64 {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		if err != nil {
+			t.Fatal(err)
+		}
+		gas := NewGasBudget(10_000_000)
+		ctx := &PrecompileContext{StateDB: statedb, Self: b20Addr(b20VariantAsset, 1), gas: &gas}
+		before := gas.RegularGas
+		ctx.chargeCalldata(make([]byte, words*32))
+		return before - gas.RegularGas
+	}
+	for _, words := range []int{0, 1, 2, 10, 1000} {
+		want := uint64(words) * (params.CopyGas + params.MemoryGas)
+		if got := charged(words); got != want {
+			t.Errorf("%d words charged %d, want %d — the table in BEP-702 3.14 is exhaustive "+
+				"and forbids synthesizing opcode or memory-expansion overhead", words, got, want)
+		}
+	}
+	// Linear, so the difference between sizes is the per-word price. A quadratic
+	// term would show up here even if the absolute values were adjusted to match.
+	if d := charged(1000) - charged(999); d != params.CopyGas+params.MemoryGas {
+		t.Errorf("the 1000th word costs %d, want %d — the charge is not linear",
+			d, params.CopyGas+params.MemoryGas)
 	}
 }

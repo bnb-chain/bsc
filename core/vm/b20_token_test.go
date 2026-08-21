@@ -235,13 +235,15 @@ func TestB20CalldataStrictnessProfile(t *testing.T) {
 	}
 }
 
-// TestB20TransferFromSelfSkipsAllowanceAndExecutor pins the spender == from
-// shortcut, which nothing covered.
-func TestB20TransferFromSelfSkipsAllowanceAndExecutor(t *testing.T) {
+// TestB20TransferFromSelfSpendsAllowance covers the owner moving their own balance
+// through transferFrom: the allowance is spent, the executor policy is not
+// consulted.
+func TestB20TransferFromSelfSpendsAllowance(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	admin := b20ActivationAdmin
 
-	// A policy that authorizes nobody, bound as the executor scope.
+	// A policy authorizing nobody, bound as the executor scope, so the shortcut is
+	// observable: without it the self transfer would be refused too.
 	ret, _, err := evm.Call(admin, B20PolicyRegistryAddress,
 		b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyAllowlist)),
 		NewGasBudget(9_000_000), uint256.NewInt(0))
@@ -261,36 +263,43 @@ func TestB20TransferFromSelfSkipsAllowanceAndExecutor(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 	view := newUnmeteredB20Storage(statedb, token)
+	send := func(caller common.Address, input []byte) ([]byte, error) {
+		r, _, e := evm.Call(caller, token, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		return r, e
+	}
 
-	// Alice has approved nobody, and the executor policy authorizes nobody.
-	if got := view.allowance(b20Alice, b20Alice).Uint64(); got != 0 {
-		t.Fatalf("alice's self-allowance = %d, want 0 — the shortcut would be untested", got)
+	// No self-approval yet: base-std consumes the allowance unconditionally, so
+	// this is InsufficientAllowance and not a free pass.
+	out, err := send(b20Alice, b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(40)))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("self transferFrom without an approval: err = %v, want a revert", err)
 	}
-	r, _, err := evm.Call(b20Alice, token,
-		b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(40)),
-		NewGasBudget(1_000_000), uint256.NewInt(0))
-	if err != nil || !bytes.Equal(r, encBool(true)) {
-		t.Fatalf("transferFrom(self): ret %x err %v, want success", r, err)
+	if len(out) < 4 || [4]byte(out[:4]) != errSelInsufficientAllow {
+		t.Errorf("revert = %x, want InsufficientAllowance", out[:min(4, len(out))])
 	}
-	if got := view.allowance(b20Alice, b20Alice).Uint64(); got != 0 {
-		t.Errorf("self-allowance after the transfer = %d, want 0 — it must not have been "+
-			"written, let alone decremented below zero", got)
+
+	// With one, it goes through and the allowance decrements — the executor policy
+	// authorizes nobody, so reaching the transfer at all is the self shortcut.
+	if _, err := send(b20Alice, b20Call(selApprove, addrKey(b20Alice), u256hash(100))); err != nil {
+		t.Fatalf("self approve: %v", err)
+	}
+	if out, err := send(b20Alice, b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(40))); err != nil ||
+		!bytes.Equal(out, encBool(true)) {
+		t.Fatalf("self transferFrom with an approval: ret %x err %v", out, err)
+	}
+	if got := view.allowance(b20Alice, b20Alice).Uint64(); got != 60 {
+		t.Errorf("self-allowance = %d, want 60 — it must be spent like any other", got)
 	}
 	if got := view.balanceOf(b20Bob).Uint64(); got != 40 {
 		t.Errorf("bob's balance = %d, want 40", got)
 	}
 
-	// And the contrast that makes the shortcut visible: a third party with a full
-	// allowance is still refused by the same executor policy.
-	if _, _, err := evm.Call(admin, token,
-		b20Call(selApprove, addrKey(b20Carol), u256hash(100)),
-		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
-		t.Fatalf("approve: %v", err)
+	// And the contrast: a third party with a full allowance is still refused by the
+	// executor policy, so the shortcut above is the executor check and nothing else.
+	if _, err := send(admin, b20Call(selApprove, addrKey(b20Carol), u256hash(100))); err != nil {
+		t.Fatalf("approve carol: %v", err)
 	}
-	_, _, err = evm.Call(b20Carol, token,
-		b20Call(selTransferFrom, addrKey(admin), addrKey(b20Bob), u256hash(1)),
-		NewGasBudget(1_000_000), uint256.NewInt(0))
-	if !errors.Is(err, ErrExecutionReverted) {
-		t.Errorf("a delegated transfer under a deny-all executor policy err = %v, want a revert; if this passes, the executor policy is not being consulted at all and", err)
+	if _, err := send(b20Carol, b20Call(selTransferFrom, addrKey(admin), addrKey(b20Bob), u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("a delegated transfer under a deny-all executor policy err = %v, want a revert", err)
 	}
 }

@@ -35,17 +35,18 @@ import (
 // receives it (3 + 3).
 const b20CalldataWordGas = params.CopyGas + params.MemoryGas
 
-// chargeCalldata charges CALLDATACOPY's base, copy, linear-memory and
-// quadratic-memory costs. Internal Go redispatches read no calldata and are not
-// charged again (BEP-702 3.14).
+// chargeCalldata charges G_copy + G_memory per 32-byte word, which is what
+// BEP-702 3.14 specifies and all of it: the table there is exhaustive and forbids
+// synthesizing opcode or memory-expansion overhead. It used to add CALLDATACOPY's
+// base step and a quadratic memory term, making the implementation and the
+// specification two different consensus sources. Internal Go redispatches read no
+// calldata and are not charged again.
 func (ctx *PrecompileContext) chargeCalldata(input []byte) {
 	words := (uint64(len(input)) + 31) / 32
 	if words == 0 {
 		return
 	}
-	ctx.chargeStateGas(GasFastestStep +
-		words*b20CalldataWordGas +
-		words*words/params.QuadCoeffDiv)
+	ctx.chargeStateGas(words * b20CalldataWordGas)
 }
 
 // chargeKeccak meters a keccak256 over size bytes: the same base plus per-word

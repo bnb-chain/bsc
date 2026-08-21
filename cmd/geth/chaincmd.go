@@ -376,8 +376,7 @@ func initGenesis(ctx *cli.Context) error {
 		overrides.OverridePasteur = &v
 	}
 	if ctx.IsSet(utils.OverrideB20ActivationAdmin.Name) {
-		v := common.HexToAddress(ctx.String(utils.OverrideB20ActivationAdmin.Name))
-		overrides.OverrideB20ActivationAdmin = &v
+		overrides.OverrideB20ActivationAdmin = mustB20ActivationAdmin(ctx)
 	}
 	if ctx.IsSet(utils.OverrideJenner.Name) {
 		v := ctx.Uint64(utils.OverrideJenner.Name)

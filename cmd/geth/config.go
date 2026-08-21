@@ -292,22 +292,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		cfg.Eth.OverridePasteur = &v
 	}
 	if ctx.IsSet(utils.OverrideB20ActivationAdmin.Name) {
-		// Parsed strictly: HexToAddress pads and truncates silently, and this value
-		// is seeded into consensus state once and can never be replaced by a
-		// transaction, so a typo has to stop the node rather than name a different
-		// account. The zero address is refused for the same reason — it cannot
-		// originate a call, so it would leave the switch permanently shut.
-		raw := ctx.String(utils.OverrideB20ActivationAdmin.Name)
-		if !common.IsHexAddress(raw) {
-			utils.Fatalf("Invalid --%s: %q is not a 20-byte hex address",
-				utils.OverrideB20ActivationAdmin.Name, raw)
-		}
-		v := common.HexToAddress(raw)
-		if v == (common.Address{}) {
-			utils.Fatalf("Invalid --%s: the zero address cannot call the registry, so the B20 "+
-				"activation switch could never be opened", utils.OverrideB20ActivationAdmin.Name)
-		}
-		cfg.Eth.OverrideB20ActivationAdmin = &v
+		cfg.Eth.OverrideB20ActivationAdmin = mustB20ActivationAdmin(ctx)
 	}
 	if ctx.IsSet(utils.OverrideJenner.Name) {
 		v := ctx.Uint64(utils.OverrideJenner.Name)
@@ -429,6 +414,28 @@ func dumpConfig(ctx *cli.Context) error {
 	dump.Write(out)
 
 	return nil
+}
+
+// mustB20ActivationAdmin parses the activation-admin override strictly, for both
+// the node path and geth init.
+//
+// HexToAddress pads and truncates in silence, and this value is seeded into
+// consensus state once and can never be replaced by a transaction, so a typo has
+// to stop the node rather than name a different account. The zero address is
+// refused for the same reason: it cannot originate a call, so it would leave the
+// switch permanently shut.
+func mustB20ActivationAdmin(ctx *cli.Context) *common.Address {
+	raw := ctx.String(utils.OverrideB20ActivationAdmin.Name)
+	if !common.IsHexAddress(raw) {
+		utils.Fatalf("Invalid --%s: %q is not a 20-byte hex address",
+			utils.OverrideB20ActivationAdmin.Name, raw)
+	}
+	v := common.HexToAddress(raw)
+	if v == (common.Address{}) {
+		utils.Fatalf("Invalid --%s: the zero address cannot call the registry, so the B20 "+
+			"activation switch could never be opened", utils.OverrideB20ActivationAdmin.Name)
+	}
+	return &v
 }
 
 func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
