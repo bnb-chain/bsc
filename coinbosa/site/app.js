@@ -61,7 +61,7 @@ var CONTENT = {
       category: "Paiements",
       status: "soon",
       url: "https://coinbosa.cards",
-      desc: "Carte de paiement virtuelle et physique. Site en ligne ; paiements pas encore actifs."
+      desc: "Carte de paiement virtuelle et physique, adossée à un prestataire agréé. Site en ligne ; paiements pas encore actifs."
     },
     {
       name: "Coinbosa VPN",

@@ -100,7 +100,7 @@ pas une fin en soi : elle existe pour servir ces produits.
 |---|---|---|
 | **[Coinbosa Academy](https://coinbosa-academy.com)** | école de formation au trading — forex, actions, puis crypto | en production |
 | **[NextFuture](https://nexfutur.com)** | place d'échange crypto — marché au comptant et contrats à terme | en service |
-| **[Coinbosa Card](https://coinbosa.cards)** | carte prépayée et virtuelle, dépôts en crypto, dépense à l'international | à venir |
+| **[Coinbosa Card](https://coinbosa.cards)** | carte adossée à un prestataire agréé, dépense depuis le portefeuille, virtuelle et physique | à venir |
 | **Neobanq** | plateforme bancaire | existante |
 | **[Coinbosa VPN](https://bosavpn.com)** | service d'abonnement | en cours |
 | **BOSA Omni AI** | atelier d'IA local — le lieu où étudiants, entrepreneurs, marketeurs, créateurs et développeurs travaillent avec les modèles de leur choix, avec leurs propres clés | en construction |
@@ -333,54 +333,71 @@ ici sans complaisance.
 ### La thèse
 
 BOSA est l'actif de sécurité, de gas et de gouvernance de la chaîne. **L'acceptation d'un
-paiement chez un commerçant, quand elle viendra, se fera en monnaie locale ou en stablecoin, pas
-en BOSA directement.** C'est ainsi que fonctionnent, sans exception, les grands acteurs du
-paiement : le client peut payer en crypto, le commerçant est réglé dans sa monnaie, et l'actif de
-règlement intermédiaire est un stablecoin sur une chaîne majeure.
+paiement chez un commerçant, quand elle viendra, se fera en monnaie locale, pas en BOSA
+directement.** Le client choisit l'actif qu'il dépense ; le commerçant est réglé dans sa
+monnaie ; la conversion se fait entre les deux, chez un prestataire dont c'est le métier.
 
-### Pourquoi la volatilité est absorbée en amont
+### Pourquoi la conversion se fait à l'autorisation
 
-Entre le moment où une carte est autorisée et celui où le commerçant est réglé, il s'écoule un à
-trois jours. Un actif volatil peut varier fortement dans cet intervalle, et quelqu'un doit
-absorber l'écart. C'est pourquoi les programmes de carte convertissent **au moment de
+Entre le moment où une carte est autorisée et celui où le commerçant est réglé, il s'écoule
+un à trois jours. Un actif volatil peut varier fortement dans cet intervalle, et quelqu'un
+doit absorber l'écart. C'est pourquoi les programmes de carte convertissent **au moment de
 l'autorisation**, et non au règlement.
 
-Dans ce montage, le stablecoin n'est pas un concurrent de BOSA : c'est la couche qui absorbe la
-volatilité et rend un actif dépensable chez un commerçant qui ne veut connaître que sa monnaie.
+Les modèles les plus récents vont plus loin : le transfert est déclenché **à l'instant du
+paiement**, depuis le portefeuille de l'utilisateur, et le règlement part en monnaie locale
+sur les rails de la carte. Les fonds ne quittent pas le porteur avant l'achat.
 
 ### Coinbosa Card
 
-Une carte crypto n'est pas un objet crypto : c'est une carte de débit classique sur les réseaux
-Visa ou Mastercard, adossée à une conversion en amont. Elle suppose une chaîne d'acteurs — réseau,
-banque émettrice, processeur, gestionnaire de programme — dont chacun porte une part du risque
-réglementaire et prélève une part de la valeur.
+Une carte crypto n'est pas un objet crypto : c'est une carte classique sur les réseaux Visa
+ou Mastercard, adossée à une conversion en amont. Elle suppose une chaîne d'acteurs — réseau,
+parrain de BIN, émetteur-processeur, gestionnaire de programme — dont chacun porte une part
+du risque réglementaire et prélève une part de la valeur.
 
-**Coinbosa Card sera adossée à un stablecoin, et découplée de BOSA.** C'est une décision de
-conception, pas une facilité : coupler la carte au jeton ferait dépendre le produit finançable
-du chantier le plus long et le plus incertain. La carte doit pouvoir vivre même si BOSA n'obtient
-jamais de cotation. Le raccordement à BOSA, s'il a lieu, viendra par-dessus un produit déjà
-opérationnel.
+**Coinbosa Card sera une intégration, pas une émission.** Le projet ne créera pas de
+stablecoin propriétaire et ne détiendra pas de réserve : la carte s'adossera à un
+prestataire déjà agréé, qui apporte le parrainage de BIN, la licence et le moteur de
+conversion. C'est le modèle qu'emploient les portefeuilles grand public, qui n'émettent pas
+de carte mais s'intègrent à un fournisseur.
 
-Cette voie a un coût et un calendrier propres — plusieurs mois, un capital de mise en place
-significatif, la due diligence d'une banque émettrice, et un second émetteur de secours dès le
-départ, car l'histoire récente du secteur montre qu'un émetteur peut perdre son agrément du jour
-au lendemain.
+Ce choix remplace une version antérieure de ce document, qui prévoyait une carte adossée à
+un **stablecoin propriétaire**. Cette voie supposait cinq chantiers distincts — une entité
+émettrice, une réserve en fiat, un audit de réserve, une licence de monnaie électronique et
+un teneur de marché pour maintenir la parité — dont l'ensemble dépasse en charge la
+construction de la chaîne elle-même. Elle est abandonnée.
+
+**La carte reste découplée de BOSA**, et pour la même raison qu'auparavant : coupler la
+carte au jeton ferait dépendre le produit finançable du chantier le plus incertain. Un
+prestataire convertit ce qui a un cours de marché ; BOSA n'en a pas. La carte doit pouvoir
+vivre même si BOSA n'obtient jamais de cotation.
+
+### Ce que ce choix coûte
+
+L'intégration allège le calendrier et le capital, mais elle déplace le pouvoir. Le
+prestataire décide des actifs dépensables, des pays servis et des conditions tarifaires. S'il
+cesse son activité, change ses règles ou se retire d'une zone, le produit s'arrête. Un
+second prestataire doit donc être identifié dès le départ, et la dépendance assumée plutôt
+que découverte.
 
 ### Le point de blocage à lever en premier
 
-Les processeurs de paiement et les rampes fiat ne référencent, en règle générale, que les chaînes
-majeures. Qu'un prestataire prenne en charge un actif vivant sur une chaîne souveraine n'a rien
-d'acquis. C'est l'obstacle le plus probable de tout l'édifice, et il doit être levé avant tout
-développement. S'il ne peut l'être, l'acceptation en paiement passera par un stablecoin
-indépendant de BOSA, ce que la thèse ci-dessus assume déjà.
+En zone UEMOA, la décision n°31 de GIM-UEMOA impose depuis le 31 mars 2026 que toute
+transaction faite avec une carte émise dans la zone soit routée et compensée via la
+plateforme régionale GIM-Switch, en monnaie locale, y compris lorsqu'elle transite par les
+réseaux internationaux. **La conformité du prestataire à ce routage est le premier critère de
+sélection**, avant le prix et avant les fonctionnalités : un fournisseur non conforme ne peut
+pas servir d'utilisateurs de la zone.
+
+Aucun prestataire n'est retenu à la date de ce document.
 
 ### Ce qui suppose une licence
 
-Détenir des fonds de clients, opérer une rampe fiat, transmettre de la valeur ou émettre un
-stablecoin sont des activités réglementées, qui supposent des agréments que l'éditeur ne détient
-pas à ce jour. Elles ne peuvent être menées que sous la licence d'un partenaire agréé, ou après
-obtention des agréments correspondants — un processus qui se compte en mois et en capital, pas en
-semaines.
+Détenir des fonds de clients, opérer une rampe fiat ou transmettre de la valeur sont des
+activités réglementées, qui supposent des agréments que l'éditeur ne détient pas à ce jour.
+Le recours à un prestataire agréé est précisément ce qui permet d'en faire l'économie : c'est
+lui qui porte la licence, la relation bancaire et la conformité. En contrepartie, il en porte
+aussi le contrôle.
 
 ---
 
