@@ -57,6 +57,17 @@
       "expire_le": "2026-10-06"
     },
     {
+      "avis": "GO-2026-6099",
+      "module": "github.com/quic-go/webtransport-go",
+      "present": "v0.8.1-0.20241018022711-4ac2c9250e66",
+      "corrige_dans": "v0.11.1",
+      "classe": "épuisement mémoire par mise en tampon de capsules inconnues (déni de service)",
+      "pourquoi": "Avis publié le 2026-08-18, donc absent du scan du 2026-08-06 : c'est la barrière qui l'a arrêté au premier push suivant, comme prévu. Même module et même condition d'exposition que GO-2026-4488, 4485 et 4483. Condition RE-VÉRIFIÉE sur le serveur le 2026-08-23 avant d'écrire cette dérogation : les deux processus geth (nœud RPC pid 820639, validateur pid 821035) portent --nodiscover, et `ss -lunp` ne montre AUCUN socket UDP en écoute — la pile QUIC n'a aucun point d'entrée joignable. La dérogation ne vaut que tant que cela reste vrai.",
+      "a_reexaminer": "v0.11.1 corrige aussi GO-2026-4488, 4485 et 4483 : une seule remontée de webtransport-go solde quatre des neuf failles. BLOQUANT avant d'ouvrir la découverte de pairs.",
+      "ajoute_le": "2026-08-23",
+      "expire_le": "2026-10-06"
+    },
+    {
       "avis": "GO-2026-4485",
       "module": "github.com/quic-go/webtransport-go",
       "present": "v0.8.1-0.20241018022711-4ac2c9250e66",
