@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://explorer.coinbosa.com/sitemap.xml

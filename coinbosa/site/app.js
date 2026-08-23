@@ -84,7 +84,7 @@ var CONTENT = {
       name: "Neobanq",
       category: "Banque",
       status: "building",
-      desc: "Plateforme bancaire de microfinance. Projet distinct, en développement."
+      desc: "Comptes et IBAN émis sous la licence d'un partenaire agréé, avec des contrôles appliqués selon les règles de chaque territoire servi. Projet distinct, en développement."
     }
     ],
 

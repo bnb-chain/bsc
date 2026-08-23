@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Coinbosa Chain — Livre blanc</title>
 <meta name="description" content="Livre blanc de Coinbosa Chain : réseau EVM souverain, coin natif BOSA (offre fixe 700 000 000), consensus Parlia, tokenomics et feuille de route.">
@@ -340,6 +341,7 @@
     <section id="sec-3">
       <div class="sec-head"><span class="sec-num">03</span><h2>Le projet et son écosystème</h2></div>
       <p>Coinbosa Chain est le socle d'un ensemble de produits financiers et éducatifs. La chaîne n'est pas une fin en soi : elle existe pour servir ces produits.</p>
+      <p><strong>Le marché visé est international.</strong> Aucun produit de l'écosystème n'est conçu pour une seule zone géographique. Cette portée a une conséquence directe et assumée : les activités réglementées — comptes, cartes, conversion vers la monnaie ayant cours légal — se déploient <strong>territoire par territoire</strong>, chacun sous la licence d'un partenaire agréé localement, et non par un lancement mondial simultané.</p>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Produit</th><th>Nature</th><th>État</th></tr></thead>
@@ -347,7 +349,7 @@
             <tr><td><a href="https://coinbosa-academy.com" rel="noopener">Coinbosa Academy</a></td><td>école de formation au trading — forex, actions, puis crypto</td><td><span class="st st--ok">en production</span></td></tr>
             <tr><td><a href="https://nexfutur.com" rel="noopener">NextFuture</a></td><td>place d'échange crypto — marché au comptant et contrats à terme</td><td><span class="st st--ok">en service</span></td></tr>
             <tr><td><a href="https://coinbosa.cards" rel="noopener">Coinbosa Card</a></td><td>carte adossée à un prestataire agréé, dépense depuis le portefeuille, virtuelle et physique</td><td><span class="st st--soon">à venir</span></td></tr>
-            <tr><td>Neobanq</td><td>plateforme bancaire</td><td><span class="st st--ext">existante</span></td></tr>
+            <tr><td>Neobanq</td><td>plateforme bancaire — comptes et IBAN émis sous la licence d'un partenaire agréé</td><td><span class="st st--work">en construction</span></td></tr>
             <tr><td><a href="https://bosavpn.com" rel="noopener">Coinbosa VPN</a></td><td>service d'abonnement</td><td><span class="st st--work">en cours</span></td></tr>
             <tr><td>BOSA Omni AI</td><td>atelier d'IA local — le lieu où étudiants, entrepreneurs, marketeurs, créateurs et développeurs travaillent avec les modèles de leur choix, avec leurs propres clés</td><td><span class="st st--work">en construction</span></td></tr>
           </tbody>
@@ -472,8 +474,19 @@
       <h3>Ce que ce choix coûte</h3>
       <p>L'intégration allège le calendrier et le capital, mais elle déplace le pouvoir. Le prestataire décide des actifs dépensables, des pays servis et des conditions tarifaires. S'il cesse son activité, change ses règles ou se retire d'une zone, le produit s'arrête. Un second prestataire doit donc être identifié dès le départ, et la dépendance assumée plutôt que découverte.</p>
       <h3>Le point de blocage à lever en premier</h3>
-      <p>En zone UEMOA, la décision n°31 de GIM-UEMOA impose depuis le 31 mars 2026 que toute transaction faite avec une carte émise dans la zone soit routée et compensée via la plateforme régionale GIM-Switch, en monnaie locale, y compris lorsqu'elle transite par les réseaux internationaux. <strong>La conformité du prestataire à ce routage est le premier critère de sélection</strong>, avant le prix et avant les fonctionnalités : un fournisseur non conforme ne peut pas servir d'utilisateurs de la zone.</p>
+      <p>Le marché visé est international. Il n'existe donc pas un obstacle réglementaire, mais autant d'obstacles que de zones servies — et <strong>aucun prestataire unique ne couvre le monde</strong>. Les néobanques établies ne le font pas non plus : elles opèrent par entités distinctes, sous une licence par région.</p>
+      <p>Le critère de sélection d'un prestataire est donc toujours le même, mais il s'évalue <strong>zone par zone</strong> : est-il agréé, et conforme aux règles locales de routage et de compensation, sur le territoire que l'on veut servir ?</p>
+      <p>Un exemple concret de ce que cela recouvre : en zone UEMOA, la décision n°31 de GIM-UEMOA impose depuis le 31 mars 2026 que toute transaction faite avec une carte émise dans la zone soit routée et compensée via la plateforme régionale GIM-Switch, en monnaie locale, y compris lorsqu'elle transite par les réseaux internationaux. Un prestataire non conforme à ce routage ne peut pas servir d'utilisateurs de cette zone — quels que soient ses tarifs ou ses fonctionnalités. D'autres zones ont leurs propres exigences, de nature différente.</p>
+      <p>La conséquence pratique est un déploiement <strong>par territoire</strong>, dans l'ordre où les partenariats se concluent, et non un lancement mondial simultané.</p>
       <p>Aucun prestataire n'est retenu à la date de ce document.</p>
+
+      <h3>Neobanq</h3>
+      <p>Neobanq est la plateforme bancaire de l'écosystème. Son modèle est celui des néobanques : <strong>l'agrément appartient à un partenaire, la relation client appartient à Neobanq.</strong> Obtenir une licence bancaire en propre se compte en années et en capital réglementaire ; s'affilier à un établissement déjà agréé et ouvert aux activités liées aux actifs numériques permet d'émettre des comptes et des IBAN sans détenir soi-même la licence.</p>
+      <p>Ce montage a deux conséquences qu'il faut énoncer plutôt que découvrir.</p>
+      <p><strong>L'IBAN n'est pas universel.</strong> Un IBAN européen s'émet sous une licence européenne ; un compte ouvert dans une autre juridiction relève d'une autre autorité, d'un autre partenaire et d'un autre processus. Servir plusieurs régions suppose plusieurs partenariats, pas un seul contrat.</p>
+      <p><strong>La ressource rare n'est pas la technique, c'est le partenaire.</strong> Un établissement à la fois agréé, réellement ouvert aux actifs numériques et disposé à parrainer un nouvel entrant est peu fréquent, et il sélectionne. C'est donc le partenariat qui détermine le calendrier et les territoires, pas le développement.</p>
+      <p>Les contrôles d'identification et de surveillance des opérations s'appliquent selon les règles de chaque territoire servi, aux standards du partenaire qui porte la licence. Ce n'est pas une contrainte subie : c'est la condition pour qu'un partenaire accepte le dossier.</p>
+      <p>Aucun partenaire n'est retenu à la date de ce document.</p>
       <h3>Ce qui suppose une licence</h3>
       <p>Détenir des fonds de clients, opérer une rampe fiat ou transmettre de la valeur sont des activités réglementées, qui supposent des agréments que l'éditeur ne détient pas à ce jour. Le recours à un prestataire agréé est précisément ce qui permet d'en faire l'économie : c'est lui qui porte la licence, la relation bancaire et la conformité. En contrepartie, il en porte aussi le contrôle.</p>
     </section>

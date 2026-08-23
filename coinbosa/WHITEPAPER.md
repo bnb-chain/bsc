@@ -96,12 +96,18 @@ argument technique.
 Coinbosa Chain est le socle d'un ensemble de produits financiers et éducatifs. La chaîne n'est
 pas une fin en soi : elle existe pour servir ces produits.
 
+**Le marché visé est international.** Aucun produit de l'écosystème n'est conçu pour une seule
+zone géographique. Cette portée a une conséquence directe et assumée : les activités réglementées
+— comptes, cartes, conversion vers la monnaie ayant cours légal — se déploient **territoire par
+territoire**, chacun sous la licence d'un partenaire agréé localement, et non par un lancement
+mondial simultané.
+
 | Produit | Nature | État |
 |---|---|---|
 | **[Coinbosa Academy](https://coinbosa-academy.com)** | école de formation au trading — forex, actions, puis crypto | en production |
 | **[NextFuture](https://nexfutur.com)** | place d'échange crypto — marché au comptant et contrats à terme | en service |
 | **[Coinbosa Card](https://coinbosa.cards)** | carte adossée à un prestataire agréé, dépense depuis le portefeuille, virtuelle et physique | à venir |
-| **Neobanq** | plateforme bancaire | existante |
+| **Neobanq** | plateforme bancaire — comptes et IBAN émis sous la licence d'un partenaire agréé | en construction |
 | **[Coinbosa VPN](https://bosavpn.com)** | service d'abonnement | en cours |
 | **BOSA Omni AI** | atelier d'IA local — le lieu où étudiants, entrepreneurs, marketeurs, créateurs et développeurs travaillent avec les modèles de leur choix, avec leurs propres clés | en construction |
 
@@ -382,14 +388,54 @@ que découverte.
 
 ### Le point de blocage à lever en premier
 
-En zone UEMOA, la décision n°31 de GIM-UEMOA impose depuis le 31 mars 2026 que toute
-transaction faite avec une carte émise dans la zone soit routée et compensée via la
-plateforme régionale GIM-Switch, en monnaie locale, y compris lorsqu'elle transite par les
-réseaux internationaux. **La conformité du prestataire à ce routage est le premier critère de
-sélection**, avant le prix et avant les fonctionnalités : un fournisseur non conforme ne peut
-pas servir d'utilisateurs de la zone.
+Le marché visé est international. Il n'existe donc pas un obstacle réglementaire, mais
+autant d'obstacles que de zones servies — et **aucun prestataire unique ne couvre le
+monde**. Les néobanques établies ne le font pas non plus : elles opèrent par entités
+distinctes, sous une licence par région.
+
+Le critère de sélection d'un prestataire est donc toujours le même, mais il s'évalue
+**zone par zone** : est-il agréé, et conforme aux règles locales de routage et de
+compensation, sur le territoire que l'on veut servir ?
+
+Un exemple concret de ce que cela recouvre : en zone UEMOA, la décision n°31 de
+GIM-UEMOA impose depuis le 31 mars 2026 que toute transaction faite avec une carte émise
+dans la zone soit routée et compensée via la plateforme régionale GIM-Switch, en monnaie
+locale, y compris lorsqu'elle transite par les réseaux internationaux. Un prestataire non
+conforme à ce routage ne peut pas servir d'utilisateurs de cette zone — quels que soient
+ses tarifs ou ses fonctionnalités. D'autres zones ont leurs propres exigences, de nature
+différente.
+
+La conséquence pratique est un déploiement **par territoire**, dans l'ordre où les
+partenariats se concluent, et non un lancement mondial simultané.
 
 Aucun prestataire n'est retenu à la date de ce document.
+
+### Neobanq
+
+Neobanq est la plateforme bancaire de l'écosystème. Son modèle est celui des néobanques :
+**l'agrément appartient à un partenaire, la relation client appartient à Neobanq.** Obtenir
+une licence bancaire en propre se compte en années et en capital réglementaire ; s'affilier
+à un établissement déjà agréé et ouvert aux activités liées aux actifs numériques permet
+d'émettre des comptes et des IBAN sans détenir soi-même la licence.
+
+Ce montage a deux conséquences qu'il faut énoncer plutôt que découvrir.
+
+**L'IBAN n'est pas universel.** Un IBAN européen s'émet sous une licence européenne ; un
+compte ouvert dans une autre juridiction relève d'une autre autorité, d'un autre partenaire
+et d'un autre processus. Servir plusieurs régions suppose plusieurs partenariats, pas un
+seul contrat.
+
+**La ressource rare n'est pas la technique, c'est le partenaire.** Un établissement à la
+fois agréé, réellement ouvert aux actifs numériques et disposé à parrainer un nouvel
+entrant est peu fréquent, et il sélectionne. C'est donc le partenariat qui détermine le
+calendrier et les territoires, pas le développement.
+
+Les contrôles d'identification et de surveillance des opérations s'appliquent selon les
+règles de chaque territoire servi, aux standards du partenaire qui porte la licence. Ce
+n'est pas une contrainte subie : c'est la condition pour qu'un partenaire accepte le
+dossier.
+
+Aucun partenaire n'est retenu à la date de ce document.
 
 ### Ce qui suppose une licence
 

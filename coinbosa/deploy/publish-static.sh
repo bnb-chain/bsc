@@ -6,6 +6,11 @@
 #   SERVER=root@203.0.113.10 bash publish-static.sh
 #
 # Relance-le à chaque mise à jour du site / explorateur / livre blanc.
+#
+# Le site fait cinq pages qui partagent une coque, une feuille de style et deux
+# scripts. Publier page par page a déjà failli casser la production : une page
+# neuve réclamait un app.js resté ancien. Ce script MIROITE donc les dossiers
+# entiers, il ne choisit pas les fichiers un par un.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -19,24 +24,47 @@ RSYNC_PATH="${SUDO:+sudo }rsync"
 # racine du dossier coinbosa/ (parent de deploy/)
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Le JavaScript vit dans des fichiers .js séparés (la CSP interdit le script en ligne).
-# Si un app.js n'est pas publié, la page se charge SANS son script : contrôle bloquant.
-for f in site/index.html site/app.js \
+# ---------------------------------------------------------------------------
+# Contrôle avant envoi. Le JavaScript vit dans des fichiers .js séparés (la CSP
+# interdit le script en ligne) : un .js manquant charge la page SANS son script.
+# ---------------------------------------------------------------------------
+for f in site/index.html site/ecosysteme.html site/chaine.html \
+         site/developpeurs.html site/a-propos.html \
+         site/app.js site/assets/style.css site/assets/scene.js \
+         site/robots.txt site/sitemap.xml site/version.json \
          explorer/index.html explorer/app.js \
          whitepaper/index.html whitepaper/app.js; do
-  if [ ! -f "$BASE/$f" ]; then
-    echo "Introuvable : $BASE/$f" >&2
-    exit 1
-  fi
+  [ -f "$BASE/$f" ] || { echo "Introuvable : $BASE/$f" >&2; exit 1; }
 done
 
+# Les empreintes de cache inscrites dans les pages doivent correspondre aux
+# fichiers réellement envoyés, sinon le visiteur reçoit une page neuve avec un
+# style ancien. coque.py le vérifie ; on refuse de publier s'il proteste.
+if command -v python3 >/dev/null 2>&1; then
+  echo "==> Contrôle de la coque et des empreintes"
+  ( cd "$BASE/site" && python3 coque.py --verifier ) || {
+    echo "Le site est incohérent — publication refusée. Lance : python3 coque.py" >&2
+    exit 1
+  }
+fi
+
+# ---------------------------------------------------------------------------
+# Envoi. --delete pour que la suppression d'une page ici la supprime là-bas.
+# Les exclusions protègent ce qui vit sur le serveur sans venir de ce dossier :
+#   .well-known/  security.txt, installé plus bas
+#   og-image.jpg  copié depuis assets/coinbosa-logo.jpg, plus bas
+#   favicon/apple copiés depuis deploy/static/, plus bas
+#   coque.py      outil de construction : n'a rien à faire en ligne
+# ---------------------------------------------------------------------------
+COMMUN=(-avz --delete --rsync-path="$RSYNC_PATH"
+        --exclude '.well-known/' --exclude 'og-image.jpg'
+        --exclude 'favicon-32.png' --exclude 'apple-touch-icon.png'
+        --exclude 'coque.py' --exclude '.DS_Store')
+
 echo "==> Envoi des fichiers vers $SERVER"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/site/index.html"       "$SERVER:/var/www/coinbosa/site/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/site/app.js"           "$SERVER:/var/www/coinbosa/site/app.js"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/explorer/app.js"       "$SERVER:/var/www/coinbosa/explorer/app.js"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/whitepaper/app.js"     "$SERVER:/var/www/coinbosa/whitepaper/app.js"
+rsync "${COMMUN[@]}" "$BASE/site/"       "$SERVER:/var/www/coinbosa/site/"
+rsync "${COMMUN[@]}" "$BASE/explorer/"   "$SERVER:/var/www/coinbosa/explorer/"
+rsync "${COMMUN[@]}" "$BASE/whitepaper/" "$SERVER:/var/www/coinbosa/whitepaper/"
 
 # Favicons — générés depuis le LOGO OFFICIEL (assets/coinbosa-logo.jpg), jamais un dessin.
 # Régénération si besoin :
@@ -47,11 +75,8 @@ for d in site explorer whitepaper; do
   rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/apple-touch-icon.png" "$SERVER:/var/www/coinbosa/$d/apple-touch-icon.png"
 done
 
-# Assets SEO / partage servis à la racine
+# Image de partage servie à la racine du site
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/assets/coinbosa-logo.jpg" "$SERVER:/var/www/coinbosa/site/og-image.jpg"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/site/robots.txt"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/sitemap.xml" "$SERVER:/var/www/coinbosa/site/sitemap.xml"
-rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/explorer/robots.txt"
 
 # security.txt (RFC 9116) — il déclare le canal de signalement de faille. Il doit être
 # servi à l'emplacement normalisé /.well-known/, sinon personne ne le trouve.
