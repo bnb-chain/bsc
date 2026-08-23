@@ -15,20 +15,22 @@
   "use strict";
 
   var canvas = document.getElementById('node-net');
-  // Ce fichier est chargé par TOUTES les pages du site, mais les canvas
-  // n'existent que sur l'accueil. Sans cette garde, les quatre autres pages
-  // lèvent une exception au chargement — et une exception non rattrapée
+  // Garde délibérée. Seule l'accueil porte les canvas, et seule l'accueil charge
+  // ce fichier aujourd'hui — mais il a déjà été référencé depuis la coque
+  // commune, et il le sera peut-être à nouveau. Sans cette ligne, toute page
+  // sans canvas lève une exception au chargement, et une exception non rattrapée
   // interrompt le script entier, y compris ce qui vient après.
   if (!canvas) return;
   var gl = canvas.getContext('webgl', { alpha: false, antialias: false, powerPreference: 'high-performance' })
         || canvas.getContext('experimental-webgl', { alpha: false, antialias: false });
 
   if (!gl) {
-    document.getElementById('secours').classList.add('on');
+    // Repli. #secours et #panneau appartenaient au site en une page : ils
+    // n'existent plus ni dans le HTML ni dans la CSS, et les appeler ici levait
+    // « Cannot read properties of null » — au moment exact où le repli sert.
+    // On cache le canvas : .hero::before pose deja son degrade dessous, donc le
+    // heros reste complet, simplement sans la scene animee.
     canvas.style.display = 'none';
-    // Chemin de repli : il ne doit surtout pas lever d'exception, sinon on
-    // perd le repli au moment exact où il sert.
-    var _p = document.getElementById('panneau'); if (_p) _p.style.display = 'none';
     return;
   }
 
@@ -316,11 +318,12 @@
   var vs = compiler(gl.VERTEX_SHADER, VS);
   var fs = compiler(gl.FRAGMENT_SHADER, FS);
   if (!vs || !fs) {
-    document.getElementById('secours').classList.add('on');
+    // Repli. #secours et #panneau appartenaient au site en une page : ils
+    // n'existent plus ni dans le HTML ni dans la CSS, et les appeler ici levait
+    // « Cannot read properties of null » — au moment exact où le repli sert.
+    // On cache le canvas : .hero::before pose deja son degrade dessous, donc le
+    // heros reste complet, simplement sans la scene animee.
     canvas.style.display = 'none';
-    // Chemin de repli : il ne doit surtout pas lever d'exception, sinon on
-    // perd le repli au moment exact où il sert.
-    var _p = document.getElementById('panneau'); if (_p) _p.style.display = 'none';
     return;
   }
 
@@ -421,9 +424,10 @@
   "use strict";
 
   var canvas = document.getElementById('anneaux');
-  // Ce fichier est chargé par TOUTES les pages du site, mais les canvas
-  // n'existent que sur l'accueil. Sans cette garde, les quatre autres pages
-  // lèvent une exception au chargement — et une exception non rattrapée
+  // Garde délibérée. Seule l'accueil porte les canvas, et seule l'accueil charge
+  // ce fichier aujourd'hui — mais il a déjà été référencé depuis la coque
+  // commune, et il le sera peut-être à nouveau. Sans cette ligne, toute page
+  // sans canvas lève une exception au chargement, et une exception non rattrapée
   // interrompt le script entier, y compris ce qui vient après.
   if (!canvas) return;
   var gl = canvas.getContext('webgl', { alpha: false, antialias: false, powerPreference: 'high-performance' })
