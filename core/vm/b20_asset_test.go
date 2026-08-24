@@ -454,3 +454,50 @@ func TestB20AnnouncementIDShapes(t *testing.T) {
 		}
 	}
 }
+
+// TestB20MultiplierCeilingIsOneConstant pins the ceiling both setters enforce to
+// the one MAX_UI_MULTIPLIER() advertises. Nothing tested either bound, so the
+// instant setter had been expressing it with the supply-cap sentinel — the same
+// number today, and a silent divergence the moment that sentinel changes.
+func TestB20MultiplierCeilingIsOneConstant(t *testing.T) {
+	_, evm := newB20EVM(t)
+	operator := common.HexToAddress("0x09e7a70a")
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	ret, err := call(b20ActivationAdmin, B20FactoryAddress, encodeCreateB20(
+		b20VariantAsset, common.HexToHash("0xce11"), b20ActivationAdmin,
+		[][]byte{b20Call(selGrantRole, roleOperator, addrKey(operator))}))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	advertised, err := call(operator, token, b20Call(selMaxUIMultiplier))
+	if err != nil {
+		t.Fatalf("MAX_UI_MULTIPLIER: %v", err)
+	}
+	ceiling := new(uint256.Int).SetBytes(advertised)
+	over := new(uint256.Int).AddUint64(ceiling, 1)
+	future := u256hash(uint64(evm.Context.Time) + 3600)
+
+	for _, tc := range []struct {
+		name  string
+		input []byte
+		want  bool // accepted
+	}{
+		{"updateMultiplier at the ceiling", b20Call(selUpdateMultiplier, ceiling.Bytes32()), true},
+		{"updateMultiplier above it", b20Call(selUpdateMultiplier, over.Bytes32()), false},
+		{"updateUIMultiplier at the ceiling", b20Call(selUpdateUIMultiplier, ceiling.Bytes32(), future), true},
+		{"updateUIMultiplier above it", b20Call(selUpdateUIMultiplier, over.Bytes32(), future), false},
+	} {
+		_, err := call(operator, token, tc.input)
+		if tc.want && err != nil {
+			t.Errorf("%s: err = %v, want accepted — the setter is stricter than the value it advertises", tc.name, err)
+		}
+		if !tc.want && !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want a revert — the setter accepts more than it advertises", tc.name, err)
+		}
+	}
+}

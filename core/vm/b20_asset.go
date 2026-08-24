@@ -184,10 +184,10 @@ func (e assetExt) announcementUsed(id string) (bool, bool) {
 	w, ok := e.s.getWordChecked(e.announcementSlot(id))
 	return w != (common.Hash{}), ok
 }
-func (e assetExt) markAnnouncement(id string) {
+func (e assetExt) markAnnouncement(id string) bool {
 	var one common.Hash
 	one[31] = 1
-	e.s.setWord(e.announcementSlot(id), one)
+	return e.s.setWord(e.announcementSlot(id), one)
 }
 
 func (e assetExt) extraMetaSlot(key string) common.Hash {
@@ -424,8 +424,9 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	if err != nil {
 		return err
 	}
-	// Decoded here rather than at the point of use so a malformed payload reverts
-	// before the id is consumed: markAnnouncement is one-way.
+	// All three strings are decoded before the id is looked up, so a malformed
+	// payload is reported as malformed rather than as AnnouncementIdAlreadyUsed.
+	// The order is observable through which error the caller receives.
 	id, err := readStringArg(args, 1)
 	if err != nil {
 		return err
@@ -445,7 +446,9 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	if used {
 		return revB20Bytes("AnnouncementIdAlreadyUsed(string)", errSelAnnounceIdUsed, []byte(id))
 	}
-	ext.markAnnouncement(id) // marked before execution
+	if !ext.markAnnouncement(id) { // marked before execution
+		return ErrOutOfGas
+	}
 	if !tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller)},
 		encodeTuple(abiString(id), abiString(description), abiString(uri))) {
 		return ErrOutOfGas
@@ -537,7 +540,7 @@ func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
 	}
-	if newMul.IsZero() || newMul.Gt(b20NoSupplyCap) { // (0, type(uint128).max]
+	if newMul.IsZero() || newMul.Gt(b20U128Mask) { // (0, type(uint128).max]
 		return revB20("InvalidMultiplier()", errSelInvalidMultiplier)
 	}
 	// The instant setter is the failsafe, so it overrides any schedule. A live one

@@ -186,14 +186,17 @@ func (s b20Storage) getWord(slot common.Hash) common.Hash {
 }
 
 // setWord writes a slot after metering it under EIP-2200 net metering with
-// EIP-3529 refunds (see chargeStorageWrite). A write refused by the reentrancy
-// sentry does not happen at all; the context is marked out of gas and the
-// dispatcher fails the call.
-// setWord writes a slot after charging for it, and reports whether the write
-// happened. False covers both an unaffordable charge and the EIP-2200 reentrancy
-// sentry, which refuses the write without going through chargeStateGas at all —
-// dropping this result is how a refused write let a handler carry on into its
-// event.
+// EIP-3529 refunds (see chargeStorageWrite), and reports whether the write
+// happened. False covers both an unaffordable charge and the reentrancy sentry,
+// which refuses the write without going through chargeStateGas at all.
+//
+// Honour the result before doing any work proportional to what the caller sent —
+// hashing a caller-supplied key, encoding a caller-supplied string, walking a
+// caller-supplied array. The fixed-size wrappers below drop it deliberately: the
+// out-of-gas flag is sticky, so no later charge can succeed either, and
+// finishB20Metered turns it into ErrOutOfGas whatever the handler returned. What
+// dropping it cannot do is bound the work, which is why the string writers and
+// the metered reads report instead.
 func (s b20Storage) setWord(slot, val common.Hash) bool {
 	if !s.chargeStorageWrite(slot, val) {
 		return false
