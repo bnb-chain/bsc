@@ -237,8 +237,8 @@ func TestB20StorageGas(t *testing.T) {
 	}
 	_ = reset
 
-	if got, want := ctx.stateGasUsed(), 4*keccak64+cold+set+warm+warm+warm; got != want {
-		t.Errorf("stateGasUsed = %d, want %d", got, want)
+	if got, want := ctx.meteredGasUsed(), 4*keccak64+cold+set+warm+warm+warm; got != want {
+		t.Errorf("meteredGasUsed = %d, want %d", got, want)
 	}
 	if ctx.OutOfGas() {
 		t.Error("should not be out of gas")
@@ -506,10 +506,10 @@ func TestB20SpawnedContextSharesStateGasTally(t *testing.T) {
 	parent.chargeStateGas(700)
 	child.chargeStateGas(300)
 
-	if got := parent.stateGasUsed(); got != 1000 {
+	if got := parent.meteredGasUsed(); got != 1000 {
 		t.Errorf("spawner StateGasUsed = %d, want 1000 — the child's charges are missing", got)
 	}
-	if got := child.stateGasUsed(); got != 1000 {
+	if got := child.meteredGasUsed(); got != 1000 {
 		t.Errorf("child StateGasUsed = %d, want 1000 — the tally is not frame-wide", got)
 	}
 }

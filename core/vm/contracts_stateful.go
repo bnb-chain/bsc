@@ -94,7 +94,7 @@ type frameAccounting struct {
 	// checks it and returns ErrOutOfGas.
 	outOfGas bool
 
-	stateGasUsed uint64
+	meteredGasUsed uint64
 }
 
 // UseGas charges cost against the remaining budget. It returns false and
@@ -156,7 +156,7 @@ func (ctx *PrecompileContext) chargeStateGas(cost uint64) bool {
 		ctx.markOutOfGas()
 		return false
 	}
-	ctx.frameGas().stateGasUsed += cost
+	ctx.frameGas().meteredGasUsed += cost
 	return true
 }
 
@@ -165,15 +165,20 @@ func (ctx *PrecompileContext) chargeStateGas(cost uint64) bool {
 // ErrOutOfGas so the frame reverts.
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
-// stateGasUsed returns the gas attributed to state operations across the frame,
-// a bootstrap child's charges included. Read only by the metering tests today; it
-// is the accounting half of GasBudget.StateGas, which BEP-702 3.14 commits to
-// inheriting if BSC adopts EIP-8037/8038.
-func (ctx *PrecompileContext) stateGasUsed() uint64 {
+// meteredGasUsed returns every charge this frame levied, a bootstrap child's
+// included: storage and account access, and equally the calldata copy, the
+// keccaks, the logs and permit's ecrecover. Read only by the metering tests.
+//
+// It is not GasCosts.StateGas. That is a separate dimension in the
+// multidimensional paradigm, and half of what is counted here is computation
+// rather than state. BEP-702 3.14 commits to inheriting the split if BSC adopts
+// EIP-8037/8038; whoever does that has to divide these charges by dimension
+// first, which is a question about the EIP's boundary and not a rename.
+func (ctx *PrecompileContext) meteredGasUsed() uint64 {
 	if ctx.frame == nil {
 		return 0
 	}
-	return ctx.frame.stateGasUsed
+	return ctx.frame.meteredGasUsed
 }
 
 // gasLeft reports the regular gas remaining in the budget.

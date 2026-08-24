@@ -53,7 +53,10 @@ var (
 func (t b20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
 	case selDomainSeparator:
-		d := t.domainSeparator()
+		d, ok := t.domainSeparator()
+		if !ok {
+			return nil, ErrOutOfGas, true
+		}
 		return d.Bytes(), nil, true
 	case selNonces:
 		owner, err := readAddress(args, 0)
@@ -166,12 +169,12 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 // on the way could not be covered — the caller stops on an out-of-gas frame, and
 // hashing a stored name it could not pay to read is work bounded by state rather
 // than by the caller's gas.
-func (t b20Token) domainSeparator() common.Hash {
+func (t b20Token) domainSeparator() (common.Hash, bool) {
 	name := t.s.name()
 	if !t.ctx.chargeKeccak(len(name)) ||
 		!t.ctx.chargeKeccak(len(b20EIP712Version)) ||
 		!t.ctx.chargeKeccak(160) {
-		return common.Hash{}
+		return common.Hash{}, false
 	}
 	nameHash := crypto.Keccak256Hash([]byte(name))
 	versionHash := crypto.Keccak256Hash([]byte(b20EIP712Version))
@@ -183,7 +186,7 @@ func (t b20Token) domainSeparator() common.Hash {
 	enc = append(enc, versionHash.Bytes()...)
 	enc = append(enc, chainID[:]...)
 	enc = append(enc, addrKey(t.ctx.Self).Bytes()...)
-	return crypto.Keccak256Hash(enc)
+	return crypto.Keccak256Hash(enc), true
 }
 
 func (t b20Token) decodePermit(args []byte) ([]byte, error) {
@@ -244,7 +247,10 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	db := deadline.Bytes32()
 	structHash = append(structHash, db[:]...)
 
-	dom := t.domainSeparator()
+	dom, paid := t.domainSeparator()
+	if !paid {
+		return nil, ErrOutOfGas
+	}
 	// The struct hash, the final digest, and the signature recovery. ECRECOVER is
 	// its own precompile at a flat 3000 gas; a native permit doing the same
 	// secp256k1 work owes the same, and owes it whether or not the signature turns
@@ -262,9 +268,12 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 			addrKey(signer), addrKey(owner))
 	}
 
-	// Checked after recovery: a signature over a zero spender is a valid signature
-	// for an approval that must still be refused, and without this permit would set
-	// an allowance approve() rejects.
+	// A signature over the zero spender is a valid signature for an approval that
+	// must still be refused; without this check permit would set an allowance
+	// approve() rejects. Its position decides which error a request that is wrong
+	// twice receives: a bad signature naming the zero spender is reported as
+	// InvalidSigner, and the caller pays the two keccaks and the ecrecover before
+	// the free comparison runs.
 	if spender == (common.Address{}) {
 		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
 	}

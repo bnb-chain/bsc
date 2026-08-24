@@ -75,7 +75,11 @@ func TestB20Permit(t *testing.T) {
 		sh = append(sh, u256hash(value).Bytes()...)
 		sh = append(sh, u256hash(nonce).Bytes()...)
 		sh = append(sh, u256hash(deadline).Bytes()...)
-		digest := crypto.Keccak256([]byte{0x19, 0x01}, domTok.domainSeparator().Bytes(), crypto.Keccak256(sh))
+		dom, paid := domTok.domainSeparator()
+		if !paid {
+			t.Fatal("the reference domain separator could not be paid for")
+		}
+		digest := crypto.Keccak256([]byte{0x19, 0x01}, dom.Bytes(), crypto.Keccak256(sh))
 		sig, err := crypto.Sign(digest, key)
 		if err != nil {
 			t.Fatal(err)
@@ -124,7 +128,11 @@ func TestB20Permit(t *testing.T) {
 	}
 
 	// DOMAIN_SEPARATOR() and nonces() views.
-	if ret, err := run(relayer, b20Call(selDomainSeparator)); err != nil || !bytes.Equal(ret, domTok.domainSeparator().Bytes()) {
+	want, paid := domTok.domainSeparator()
+	if !paid {
+		t.Fatal("the reference domain separator could not be paid for")
+	}
+	if ret, err := run(relayer, b20Call(selDomainSeparator)); err != nil || !bytes.Equal(ret, want.Bytes()) {
 		t.Fatalf("DOMAIN_SEPARATOR mismatch: %x err %v", ret, err)
 	}
 	if ret, _ := run(relayer, b20Call(selNonces, addrKey(owner))); new(uint256.Int).SetBytes(ret).Uint64() != 1 {
