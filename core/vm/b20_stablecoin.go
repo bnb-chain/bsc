@@ -42,7 +42,7 @@ func stablecoinSlot(offset uint64) common.Hash {
 	return offsetSlot(b20StablecoinRoot, offset)
 }
 
-func (e stablecoinExt) currency() string {
+func (e stablecoinExt) currency() (string, bool) {
 	return e.s.getStringAt(stablecoinSlot(b20StablecoinSlotCurrency))
 }
 
@@ -57,7 +57,11 @@ func stablecoinDispatch(tok b20Token, ext stablecoinExt, input []byte) ([]byte, 
 		var sel [4]byte
 		copy(sel[:], input[:4])
 		if sel == selCurrency {
-			return encString(ext.currency()), nil
+			v, ok := ext.currency()
+			if !ok {
+				return nil, ErrOutOfGas
+			}
+			return encString(v), nil
 		}
 	}
 	return tok.dispatch(input)

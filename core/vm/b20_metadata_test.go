@@ -77,7 +77,7 @@ func TestB20MetadataUpdates(t *testing.T) {
 			t.Fatalf("unauthorized metadata write err = %v, want revert", err)
 		}
 	}
-	if got := view.name(); got != "Test Token" {
+	if got := strOf(view.name()); got != "Test Token" {
 		t.Fatalf("name after refused update = %q, want unchanged", got)
 	}
 
@@ -101,10 +101,10 @@ func TestB20MetadataUpdates(t *testing.T) {
 		t.Fatalf("updateContractURI: %v", err)
 	}
 
-	if got := view.name(); got != "Renamed Token" {
+	if got := strOf(view.name()); got != "Renamed Token" {
 		t.Errorf("name = %q, want Renamed Token", got)
 	}
-	if got := view.symbol(); got != "RNT" {
+	if got := strOf(view.symbol()); got != "RNT" {
 		t.Errorf("symbol = %q, want RNT", got)
 	}
 	ret, err := run(editor, b20Call(selContractURI))
@@ -157,7 +157,7 @@ func TestB20MetadataDuringBootstrap(t *testing.T) {
 	token := common.BytesToAddress(ret)
 
 	view := newUnmeteredB20Storage(statedb, token)
-	if got := view.name(); got != "Configured" {
+	if got := strOf(view.name()); got != "Configured" {
 		t.Errorf("name = %q, want Configured", got)
 	}
 	// The bypass is the bootstrap window only: it must not outlive creation.

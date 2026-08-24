@@ -380,7 +380,7 @@ func (s b20Storage) setSeizeReceiverPolicy(id uint64) {
 
 // --- strings (Solidity storage encoding) ------------------------------------
 
-func (s b20Storage) getString(offset uint64) string { return s.getStringAt(slotAt(offset)) }
+func (s b20Storage) getString(offset uint64) (string, bool) { return s.getStringAt(slotAt(offset)) }
 func (s b20Storage) setString(offset uint64, str string) bool {
 	return s.setStringAt(slotAt(offset), str)
 }
@@ -401,38 +401,41 @@ const b20MaxStringLen = 1 << 24
 
 // getStringAt / setStringAt read and write a Solidity string at an arbitrary
 // slot (used for fixed fields and for string-keyed mapping values).
-func (s b20Storage) getStringAt(slot common.Hash) string {
-	word := s.getWord(slot)
+func (s b20Storage) getStringAt(slot common.Hash) (string, bool) {
+	word, ok := s.getWordChecked(slot)
+	if !ok {
+		return "", false
+	}
 	if word[31]&1 == 0 {
 		// short string: content in the high bytes, low byte holds 2*len.
 		n := int(word[31]) / 2
 		if n > 31 {
-			return ""
+			return "", true
 		}
-		return string(word[:n])
+		return string(word[:n]), true
 	}
 	// long string: slot holds 2*len+1; content starts at keccak256(slot).
 	encoded := new(uint256.Int).SetBytes(word.Bytes())
 	if encoded.Gt(uint256.NewInt(2*b20MaxStringLen + 1)) {
-		return ""
+		return "", true
 	}
 	length := (encoded.Uint64() - 1) / 2
 	base := s.stringDataRoot(slot)
 	// Before the allocation, not after: the loop below checks each iteration, but
 	// make() runs once with the stored length whatever the budget says.
 	if s.ctx != nil && s.ctx.OutOfGas() {
-		return ""
+		return "", false
 	}
 	out := make([]byte, 0, length)
 	for i := uint64(0); i < length; i += 32 {
-		if s.ctx != nil && s.ctx.OutOfGas() {
-			return ""
-		}
 		chunkSlot := new(uint256.Int).AddUint64(base, i/32).Bytes32()
-		chunk := s.getWord(chunkSlot)
+		chunk, ok := s.getWordChecked(chunkSlot)
+		if !ok {
+			return "", false
+		}
 		out = append(out, chunk[:]...)
 	}
-	return string(out[:length])
+	return string(out[:length]), true
 }
 
 // setStringAt writes a string, releasing whatever the previous value held.
@@ -502,9 +505,9 @@ func (s b20Storage) stringChunks(slot common.Hash) uint64 {
 	return (length + 31) / 32
 }
 
-func (s b20Storage) name() string                 { return s.getString(b20SlotName) }
+func (s b20Storage) name() (string, bool)         { return s.getString(b20SlotName) }
 func (s b20Storage) setName(v string) bool        { return s.setString(b20SlotName, v) }
-func (s b20Storage) symbol() string               { return s.getString(b20SlotSymbol) }
+func (s b20Storage) symbol() (string, bool)       { return s.getString(b20SlotSymbol) }
 func (s b20Storage) setSymbol(v string) bool      { return s.setString(b20SlotSymbol, v) }
-func (s b20Storage) contractURI() string          { return s.getString(b20SlotContractURI) }
+func (s b20Storage) contractURI() (string, bool)  { return s.getString(b20SlotContractURI) }
 func (s b20Storage) setContractURI(v string) bool { return s.setString(b20SlotContractURI, v) }

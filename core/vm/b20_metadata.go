@@ -45,13 +45,21 @@ var (
 func (t b20Token) dispatchMetadata(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
 	case selContractURI:
-		return encString(t.s.contractURI()), nil, true
+		v, ok := t.s.contractURI()
+		if !ok {
+			return nil, ErrOutOfGas, true
+		}
+		return encString(v), nil, true
 	case selSupplyCap:
 		return encU256(t.s.supplyCap()), nil, true
 	case selPausedFeatures:
 		return encodeTuple(abiWordArray(t.pausedFeatures())), nil, true
 	case selEIP712Domain:
-		return t.eip712Domain(), nil, true
+		d, ok := t.eip712Domain()
+		if !ok {
+			return nil, ErrOutOfGas, true
+		}
+		return d, nil, true
 
 	// writes (METADATA_ROLE)
 	case selUpdateName:
@@ -141,16 +149,20 @@ func (t b20Token) pausedFeatures() []common.Hash {
 // eip712Domain implements ERC-5267. fields is 0x0f — name, version, chainId
 // and verifyingContract are in use, salt and extensions are not — and matches
 // the four fields domainSeparator actually hashes.
-func (t b20Token) eip712Domain() []byte {
+func (t b20Token) eip712Domain() ([]byte, bool) {
+	name, ok := t.s.name()
+	if !ok {
+		return nil, false
+	}
 	var fields common.Hash
 	fields[0] = 0x0f // bytes1 sits at the high end of its word
 	return encodeTuple(
 		abiWord(fields),
-		abiString(t.s.name()),
+		abiString(name),
 		abiString(b20EIP712Version),
 		abiWord(wU256(t.ctx.ChainID())),
 		abiWord(addrKey(t.ctx.Self)),
 		abiWord(common.Hash{}), // salt: unused
 		abiWordArray(nil),      // extensions: none
-	)
+	), true
 }

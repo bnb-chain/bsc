@@ -96,9 +96,17 @@ func (t b20Token) dispatch(input []byte) ([]byte, error) {
 
 	switch sel {
 	case selName:
-		return encString(t.s.name()), nil
+		v, ok := t.s.name()
+		if !ok {
+			return nil, ErrOutOfGas
+		}
+		return encString(v), nil
 	case selSymbol:
-		return encString(t.s.symbol()), nil
+		v, ok := t.s.symbol()
+		if !ok {
+			return nil, ErrOutOfGas
+		}
+		return encString(v), nil
 	case selDecimals:
 		return encU256(uint256.NewInt(uint64(t.decimals))), nil
 	case selTotalSupply:

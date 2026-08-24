@@ -250,10 +250,10 @@ func TestB20CreateParams(t *testing.T) {
 	}
 	asset := common.BytesToAddress(ret)
 	view := newUnmeteredB20Storage(statedb, asset)
-	if got := view.name(); got != "Gold Fund" {
+	if got := strOf(view.name()); got != "Gold Fund" {
 		t.Fatalf("name = %q, want Gold Fund", got)
 	}
-	if got := view.symbol(); got != "GLD" {
+	if got := strOf(view.symbol()); got != "GLD" {
 		t.Fatalf("symbol = %q, want GLD", got)
 	}
 	dec, _, err := evm.Call(creator, asset, b20Call(selDecimals), NewGasBudget(200_000), uint256.NewInt(0))
@@ -361,8 +361,8 @@ func TestB20CreateParamsCanonicalEncoding(t *testing.T) {
 		t.Fatalf("createB20 with a canonically encoded blob: %v", err)
 	}
 	view := newUnmeteredB20Storage(statedb, common.BytesToAddress(ret))
-	if view.name() != "A" || view.symbol() != "B" {
-		t.Fatalf("name/symbol = %q/%q, want A/B", view.name(), view.symbol())
+	if strOf(view.name()) != "A" || strOf(view.symbol()) != "B" {
+		t.Fatalf("name/symbol = %q/%q, want A/B", strOf(view.name()), strOf(view.symbol()))
 	}
 }
 

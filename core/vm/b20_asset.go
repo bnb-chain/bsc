@@ -193,7 +193,7 @@ func (e assetExt) markAnnouncement(id string) bool {
 func (e assetExt) extraMetaSlot(key string) common.Hash {
 	return e.s.strMapSlot(assetSlot(b20AssetSlotExtraMeta), key)
 }
-func (e assetExt) extraMetadata(key string) string {
+func (e assetExt) extraMetadata(key string) (string, bool) {
 	return e.s.getStringAt(e.extraMetaSlot(key))
 }
 func (e assetExt) setExtraMetadata(key, value string) bool {
@@ -353,7 +353,11 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 		if err != nil {
 			return nil, err, true
 		}
-		return encString(ext.extraMetadata(key)), nil, true
+		v, ok := ext.extraMetadata(key)
+		if !ok {
+			return nil, ErrOutOfGas, true
+		}
+		return encString(v), nil, true
 	case selUpdateExtraMetadata:
 		key, err := readStringArg(args, 0)
 		if err != nil {

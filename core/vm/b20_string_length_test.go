@@ -55,7 +55,7 @@ func TestB20StringLengthWordIsNotTrusted(t *testing.T) {
 			s := newUnmeteredB20Storage(statedb, b20Addr(b20VariantAsset, 1))
 			statedb.SetState(s.token, slotAt(b20SlotName), tc.word)
 
-			if got := s.name(); got != "" {
+			if got := strOf(s.name()); got != "" {
 				t.Errorf("name() = %q, want the empty string", got)
 			}
 			// Fatal, not Errorf: the repair below feeds this count to setStringAt's
@@ -68,7 +68,7 @@ func TestB20StringLengthWordIsNotTrusted(t *testing.T) {
 			// A write over the corrupt word must still land, so a token whose state
 			// arrived that way is repairable rather than bricked.
 			s.setName("ok")
-			if got := s.name(); got != "ok" {
+			if got := strOf(s.name()); got != "ok" {
 				t.Errorf("name() after setName = %q, want %q", got, "ok")
 			}
 		})

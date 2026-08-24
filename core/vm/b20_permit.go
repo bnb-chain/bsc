@@ -170,7 +170,10 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 // hashing a stored name it could not pay to read is work bounded by state rather
 // than by the caller's gas.
 func (t b20Token) domainSeparator() (common.Hash, bool) {
-	name := t.s.name()
+	name, ok := t.s.name()
+	if !ok {
+		return common.Hash{}, false
+	}
 	if !t.ctx.chargeKeccak(len(name)) ||
 		!t.ctx.chargeKeccak(len(b20EIP712Version)) ||
 		!t.ctx.chargeKeccak(160) {

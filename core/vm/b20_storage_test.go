@@ -29,6 +29,11 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// strOf drops the read-status half of a string getter. The unmetered views tests
+// build always report true, so a test that only wants the value says so here
+// rather than at twenty call sites.
+func strOf(v string, _ bool) string { return v }
+
 func newTestStorage(t *testing.T) b20Storage {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -272,7 +277,7 @@ func TestB20StorageStrings(t *testing.T) {
 
 	// short string (< 32 bytes): stored in-slot, low byte = 2*len.
 	s.setName("USD Coin")
-	if got := s.name(); got != "USD Coin" {
+	if got := strOf(s.name()); got != "USD Coin" {
 		t.Errorf("name = %q", got)
 	}
 	if w := s.getWord(slotAt(b20SlotName)); w[31] != byte(len("USD Coin")*2) {
@@ -282,13 +287,13 @@ func TestB20StorageStrings(t *testing.T) {
 	// exactly 31 bytes stays short; 32+ goes long.
 	short31 := strings.Repeat("a", 31)
 	s.setSymbol(short31)
-	if got := s.symbol(); got != short31 {
+	if got := strOf(s.symbol()); got != short31 {
 		t.Errorf("31-byte string round-trip failed")
 	}
 
 	long := strings.Repeat("x", 100)
 	s.setContractURI(long)
-	if got := s.contractURI(); got != long {
+	if got := strOf(s.contractURI()); got != long {
 		t.Errorf("long string round-trip failed: len %d", len(got))
 	}
 	// long-string marker: low bit of the length slot is set.
@@ -318,7 +323,7 @@ func TestB20StorageStringShrink(t *testing.T) {
 
 	// Shrink to a long-but-shorter value: slots 2 and 3 must be released.
 	s.setName(strings.Repeat("y", 40))
-	if got := s.name(); got != strings.Repeat("y", 40) {
+	if got := strOf(s.name()); got != strings.Repeat("y", 40) {
 		t.Errorf("name = %q, want 40 y's", got)
 	}
 	for i := uint64(2); i < 4; i++ {
@@ -329,7 +334,7 @@ func TestB20StorageStringShrink(t *testing.T) {
 
 	// Shrink to an inline short string: every tail slot must be released.
 	s.setName("USD")
-	if got := s.name(); got != "USD" {
+	if got := strOf(s.name()); got != "USD" {
 		t.Errorf("name = %q, want USD", got)
 	}
 	for i := uint64(0); i < 4; i++ {
@@ -365,7 +370,7 @@ func TestB20StringBoundaryMatrix(t *testing.T) {
 			s.setName(before)
 			s.setName(after)
 
-			if got := s.name(); got != after {
+			if got := strOf(s.name()); got != after {
 				t.Errorf("%d->%d: name = %q (len %d), want len %d", from, to, got, len(got), to)
 			}
 			word := s.getWord(slot)
@@ -418,7 +423,7 @@ func TestB20LongStringGas(t *testing.T) {
 	if c := charged(func() { s.setName("USD Coin") }); c != cold+set {
 		t.Errorf("short-string write charged %d, want %d", c, cold+set)
 	}
-	if c := charged(func() { _ = s.name() }); c != warm {
+	if c := charged(func() { _ = strOf(s.name()) }); c != warm {
 		t.Errorf("short-string read charged %d, want %d", c, warm)
 	}
 
@@ -431,7 +436,7 @@ func TestB20LongStringGas(t *testing.T) {
 		t.Errorf("long-string write charged %d, want %d", c, 2*warm+keccak32+4*(cold+set))
 	}
 	// The read pays the length slot, the same single keccak, and four warm reads.
-	if c := charged(func() { _ = s.name() }); c != warm+keccak32+4*warm {
+	if c := charged(func() { _ = strOf(s.name()) }); c != warm+keccak32+4*warm {
 		t.Errorf("long-string read charged %d, want %d", c, warm+keccak32+4*warm)
 	}
 
@@ -441,7 +446,7 @@ func TestB20LongStringGas(t *testing.T) {
 	if c := charged(func() { s.setName("USD") }); c != 2*warm+keccak32+4*warm {
 		t.Errorf("shrink-to-short charged %d, want %d", c, 2*warm+keccak32+4*warm)
 	}
-	if got := s.name(); got != "USD" {
+	if got := strOf(s.name()); got != "USD" {
 		t.Errorf("name = %q, want USD", got)
 	}
 }
