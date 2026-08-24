@@ -19,6 +19,8 @@ package vm
 import (
 	"bytes"
 	"errors"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -262,5 +264,58 @@ func TestB20ConstantsMatchBaseStd(t *testing.T) {
 	// from BEP-702 3.8, so this pins the spec rather than the reference.
 	if b20PolicyBatchMax != 64 {
 		t.Errorf("membership batch limit = %d, want 64 (BEP-702 3.8)", b20PolicyBatchMax)
+	}
+}
+
+// TestB20ErrorOverloadsAreDeliberate is what remains of a constraint solc used to
+// enforce. Solidity forbids two errors of one name in one interface, and the
+// deleted .sol mirror failed to compile until a duplicate PolicyNotFound was
+// split — the only time anything checked this.
+//
+// The check cannot be rebuilt from the specification: BEP-702 declares errors
+// inside an interface only for IActivationRegistry, four of the fifty-five, so
+// there is no attribution to test against and inventing one would pin this
+// implementation to its own guess. What is checkable without inventing anything
+// is that the overloaded names stay a closed, named set. A third form appearing
+// beside an existing name is the accidental case — the one the mirror caught —
+// and it fails here.
+func TestB20ErrorOverloadsAreDeliberate(t *testing.T) {
+	// Each entry is legitimate only because the two forms live in different
+	// interfaces, which BEP-702 states in prose rather than in a declaration.
+	allowed := map[string]string{
+		"PolicyNotFound": "IPolicyRegistry answers about a policy the caller named, so " +
+			"the argument-less form suffices; IN20 names the id it could not find (3.8)",
+		"Unauthorized": "IPolicyRegistry rejects a caller who is not the policy admin; " +
+			"IActivationRegistry names the caller (3.8, 3.15)",
+	}
+
+	forms := map[string][]string{}
+	for sig := range b20ErrSigs {
+		name := sig[:strings.IndexByte(sig, '(')]
+		forms[name] = append(forms[name], sig)
+	}
+	for name, sigs := range forms {
+		if len(sigs) == 1 {
+			continue
+		}
+		sort.Strings(sigs)
+		if _, ok := allowed[name]; !ok {
+			t.Errorf("%s is registered in %d forms (%s) and is not a declared overload. "+
+				"Two errors of one name are illegal in one Solidity interface, so either "+
+				"they belong to different ones — say which, here — or one of them is a "+
+				"mistake", name, len(sigs), strings.Join(sigs, ", "))
+		}
+		if len(sigs) > 2 {
+			t.Errorf("%s has %d forms (%s); the exemption covers a pair in two interfaces, "+
+				"not a family", name, len(sigs), strings.Join(sigs, ", "))
+		}
+	}
+	// And the exemptions must stay earned: an entry whose second form was removed
+	// is a stale licence for the next duplicate to slip through.
+	for name := range allowed {
+		if len(forms[name]) < 2 {
+			t.Errorf("%s is exempted as an overload but has %d form(s); drop the exemption",
+				name, len(forms[name]))
+		}
 	}
 }
