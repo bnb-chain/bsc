@@ -295,3 +295,42 @@ func TestB20NeverOverwritesForeignCode(t *testing.T) {
 		t.Fatalf("registry foreign code was overwritten: hash %x, want %x", got, foreignHash)
 	}
 }
+
+// TestB20ActivationAdminSlotMustBeSet covers the clause that stops the zero
+// address from matching an unset admin. Nothing else did: the neighbouring gate
+// test pins the chain-config admin, which decides whether the precompiles resolve
+// at all, while this one is the storage slot requireAdmin actually reads. BEP-702
+// 3.15 requires both directions — the zero address is never a valid admin, and a
+// zero caller is Unauthorized.
+func TestB20ActivationAdminSlotMustBeSet(t *testing.T) {
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := *b20TestChainConfig()
+	evm := NewEVM(b20BlockContext(1), statedb, &cfg, Config{})
+	// Deliberately unseeded: the precompiles resolve, but the registry's admin slot
+	// is empty, which is the state a network is in before governance sets one.
+	if _, ok := evm.precompile(B20ActivationRegistryAddress); !ok {
+		t.Fatal("the activation registry does not resolve; the config gate is in the way")
+	}
+	reg := b20Storage{state: statedb, token: B20ActivationRegistryAddress}
+	if got := reg.getWord(actSlot(actSlotAdmin)); got != (common.Hash{}) {
+		t.Fatalf("the admin slot is %x, want empty for this test to mean anything", got)
+	}
+
+	for _, caller := range []common.Address{{}, common.HexToAddress("0x57ra9e")} {
+		_, _, err := evm.Call(caller, B20ActivationRegistryAddress,
+			b20Call(selActivate, featureB20Asset), NewGasBudget(5_000_000), uint256.NewInt(0))
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("activate from %s on a registry with no admin: err = %v, want a revert. "+
+				"An empty admin slot must not be matchable, least of all by the zero address",
+				caller.Hex(), err)
+		}
+	}
+
+	// And the feature stayed off, so nothing was activated on the way to the revert.
+	if got := reg.getWord(mappingSlot(actSlot(actSlotFeatures), featureB20Asset)); got != (common.Hash{}) {
+		t.Errorf("the Asset feature reads %x, want off", got)
+	}
+}

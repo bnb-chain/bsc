@@ -34,7 +34,13 @@ const (
 
 var b20ActivationRoot = erc7201Root(b20ActivationNamespace)
 
-// Feature identifiers: keccak256 of the canonical feature name.
+// Feature identifiers: keccak256 of the canonical feature name (BEP-702 3.15).
+// The names are consensus-visible and independent of the ERC-7201 storage
+// namespaces, which the first two deliberately spell differently
+// ("bsc.b20.asset") and the third does not: featurePolicyRegistry and
+// b20PolicyNamespace are the same string for two unrelated derivations. Renaming
+// the namespace must not carry the feature with it, or every integrator's
+// activate() call breaks.
 var (
 	featureB20Asset       = crypto.Keccak256Hash([]byte("bsc.b20_asset"))
 	featureB20Stablecoin  = crypto.Keccak256Hash([]byte("bsc.b20_stablecoin"))
@@ -91,9 +97,13 @@ func (r activationReg) setAdmin(a common.Address) {
 }
 
 // requireAdmin reverts unless the caller is the (non-zero) activation admin.
+// Both clauses are needed and neither is about the caller being zero: a zero
+// caller with an admin set fails the second, and one on a registry with no admin
+// fails the first — which is the clause that stops zero from matching zero
+// (BEP-702 3.15).
 func (r activationReg) requireAdmin(ctx *PrecompileContext) error {
 	admin := r.admin()
-	if admin == (common.Address{}) || ctx.Caller == (common.Address{}) || ctx.Caller != admin {
+	if admin == (common.Address{}) || ctx.Caller != admin {
 		return revB20("Unauthorized(address)", errSelUnauthorizedAddr, addrKey(ctx.Caller))
 	}
 	return nil
