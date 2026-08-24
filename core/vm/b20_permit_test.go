@@ -93,8 +93,8 @@ func TestB20Permit(t *testing.T) {
 
 	// happy path: valid signature sets the allowance and bumps the nonce.
 	v, r, s := sign(key, owner, spender, 777, 200, 0)
-	// Empty returndata, as base-std declares it: `permit(...) external` returns
-	// nothing, so a caller decoding a bool must fail here exactly as it does there.
+	// Empty returndata: EIP-2612's `permit(...) external` returns nothing, so a
+	// caller decoding a bool must fail here.
 	if ret, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); err != nil || len(ret) != 0 {
 		t.Fatalf("permit ret %x err %v, want empty returndata", ret, err)
 	}

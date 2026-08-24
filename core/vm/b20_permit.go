@@ -262,9 +262,9 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 			addrKey(signer), addrKey(owner))
 	}
 
-	// After recovery, as base-std orders it: a signature over a zero spender is a
-	// valid signature for an approval that must still be refused, and without this
-	// permit would set an allowance approve() rejects.
+	// Checked after recovery: a signature over a zero spender is a valid signature
+	// for an approval that must still be refused, and without this permit would set
+	// an allowance approve() rejects.
 	if spender == (common.Address{}) {
 		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
 	}
@@ -273,9 +273,9 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	if !t.emit(b20TopicApproval, owner, spender, value) {
 		return nil, ErrOutOfGas
 	}
-	// Empty returndata: base-std declares `permit(...) external` with no return
-	// value, as EIP-2612 does. Returning an ABI true would make a caller that
-	// decodes a bool succeed here and fail against Base.
+	// Empty returndata: EIP-2612 declares `permit(...) external` with no return
+	// value, so returning an ABI true would make a caller that decodes a bool
+	// succeed here and fail against every other implementation.
 	return nil, nil
 }
 

@@ -413,11 +413,10 @@ func TestB20CreateParamsRejectsMalformed(t *testing.T) {
 	}
 }
 
-// TestB20FieldValidationPrecedesOccupancy pins base-std's precedence: an invalid
+// TestB20FieldValidationPrecedesOccupancy pins the precedence: an invalid
 // currency is reported as such even when the salt in the same call is already
-// taken, because every field is validated before the address is derived
-// (IB20Factory.createB20's documented order puts MissingRequiredField and
-// InvalidCurrency ahead of TokenAlreadyExists).
+// taken, because every field is validated before the address is derived, which
+// puts MissingRequiredField and InvalidCurrency ahead of TokenAlreadyExists.
 func TestB20FieldValidationPrecedesOccupancy(t *testing.T) {
 	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdup)")

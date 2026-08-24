@@ -175,7 +175,7 @@ func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([
 	if t.ctx.ReadOnly {
 		return nil, ErrWriteProtection
 	}
-	// base-std checks the approver first. owner is msg.sender, so a zero one only
+	// The approver is checked first. owner is msg.sender, so a zero one only
 	// arises from a frame with no caller, but the check is declared and costs a
 	// comparison.
 	if owner == (common.Address{}) {
@@ -221,8 +221,8 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 		return nil, revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseTransfer))
 	}
 	// The two malformed-argument checks come before the allowance and the
-	// executor policy, matching base-std: a transfer to the zero address is
-	// reported as such whatever the caller's allowance is. move() repeats them for
+	// executor policy: a transfer to the zero address is reported as such whatever
+	// the caller's allowance is. move() repeats them for
 	// the direct transfer path; they are comparisons on already-decoded arguments,
 	// so the duplicate costs nothing.
 	if to == (common.Address{}) {
@@ -232,12 +232,8 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 		return nil, revB20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
 	// The allowance is spent unconditionally — the owner spending their own
-	// balance through transferFrom needs a self-approval, and the bootstrap
-	// window carves no exception either. base-std's MockB20 says so in as many
-	// words ("Allowance is consumed unconditionally — including during the
-	// factory bootstrap window ... Matches the Rust precompile, which carves no
-	// privileged exception for allowance accounting"), and has a regression test
-	// for the self-allowance decrementing. U256::MAX stays infinite.
+	// balance through transferFrom needs a self-approval, and the factory
+	// bootstrap window carves no exception either. U256::MAX stays infinite.
 	//
 	// Only the executor policy takes the self shortcut, and the privileged one:
 	// the sender policy already covers `from` inside move().
@@ -248,8 +244,8 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 		return nil, revB20("InsufficientAllowance(address,uint256,uint256)", errSelInsufficientAllow,
 			addrKey(spender), wU256(allowed), wU256(amount))
 	}
-	// Consulted after the allowance, again per base-std: an unauthorized executor
-	// with too little allowance is told about the allowance.
+	// Consulted after the allowance: an unauthorized executor with too little
+	// allowance is told about the allowance.
 	if !t.privileged && spender != from {
 		if _, _, executor := t.s.transferPolicies(); !t.policyAllows(executor, spender) {
 			return nil, revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,

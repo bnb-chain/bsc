@@ -268,8 +268,8 @@ func TestB20TransferFromSelfSpendsAllowance(t *testing.T) {
 		return r, e
 	}
 
-	// No self-approval yet: base-std consumes the allowance unconditionally, so
-	// this is InsufficientAllowance and not a free pass.
+	// No self-approval yet: the allowance is consumed unconditionally, so this is
+	// InsufficientAllowance and not a free pass.
 	out, err := send(b20Alice, b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(40)))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("self transferFrom without an approval: err = %v, want a revert", err)

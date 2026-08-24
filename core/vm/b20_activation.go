@@ -196,10 +196,9 @@ func updateActivationAdmin(ctx *PrecompileContext, reg activationReg, args []byt
 	if err != nil {
 		return err
 	}
-	// The zero check precedes the authorization check, matching base-std's
-	// order. A non-admin passing the zero address therefore sees
-	// ZeroAdminAddress rather than Unauthorized; the argument is caller-supplied
-	// so the earlier error leaks nothing about registry state.
+	// The zero check precedes the authorization check: a non-admin passing the
+	// zero address sees ZeroAdminAddress rather than Unauthorized. The argument is
+	// caller-supplied, so the earlier error leaks nothing about registry state.
 	if newAdmin == (common.Address{}) {
 		return revB20("ZeroAdminAddress()", errSelZeroAdminAddress)
 	}

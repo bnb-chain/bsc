@@ -352,10 +352,10 @@ func (t b20Token) renounceLastAdmin() error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// Two checks, not one condition: base-std reports a caller who holds no
-	// admin role as unauthorized and reserves NotSoleAdmin for one who does hold
-	// it but is not the last. Collapsing them told a stranger they were "not the
-	// sole admin", which is true but says the wrong thing.
+	// Two checks, not one condition: a caller who holds no admin role is
+	// unauthorized, and NotSoleAdmin is reserved for one who does hold it but is
+	// not the last. Collapsing them told a stranger they were "not the sole
+	// admin", which is true but says the wrong thing.
 	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) {
 		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), roleDefaultAdmin)
@@ -438,8 +438,7 @@ func (t b20Token) setPause(args []byte, on bool) error {
 	// Decoded before the role check, because that is where Solidity does it: the
 	// external dispatcher decodes the argument before any modifier runs, so a
 	// malformed array is reported as malformed whether or not the caller is
-	// authorized. base-std's audit list treats strict decoding as a property
-	// independent of authorization for the same reason.
+	// authorized.
 	features, err := readUint8Array(args)
 	if err != nil {
 		return err
@@ -652,9 +651,9 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
 	}
-	// The scope is validated before the id, matching base-std: an unrecognized
-	// scope is reported as such whatever id accompanies it. Resolving it to its
-	// accessors first is what puts that check ahead of the registry lookup.
+	// The scope is validated before the id: an unrecognized scope is reported as
+	// such whatever id accompanies it. Resolving it to its accessors first is what
+	// puts that check ahead of the registry lookup.
 	lane, ok := b20PolicyLanes[scope]
 	if !ok {
 		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)

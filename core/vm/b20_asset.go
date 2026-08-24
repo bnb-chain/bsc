@@ -24,8 +24,7 @@ import (
 
 // The Asset variant keeps its state in its own ERC-7201 namespace, disjoint
 // from the core one, so the extension composes without touching the shared
-// layout. Structure and offsets mirror base-std's MockB20AssetStorage
-// ("base.b20.asset"); only the chain prefix differs.
+// layout.
 const b20AssetNamespace = "bsc.b20.asset"
 
 const (
@@ -94,11 +93,10 @@ var (
 )
 
 // The ERC-165 ids the Asset variant advertises: ERC-165 itself and all four
-// ERC-8056 interfaces, as base-std's MockB20Asset does — its own comment records
-// that Conversion "is claimed after the interface review", toUIAmount and
-// fromUIAmount being the canonical converters. The advertised set is observable
-// surface, so it has to match rather than merely be a subset of what is
-// implemented.
+// ERC-8056 interfaces, Conversion included — toUIAmount and fromUIAmount are its
+// canonical converters and both are implemented. The advertised set is observable
+// surface, so it has to match what is implemented rather than merely be a subset
+// of it.
 var b20AssetInterfaceIDs = map[[4]byte]bool{
 	{0x01, 0xff, 0xc9, 0xa7}: true, // IERC165
 	{0xa6, 0x0b, 0xf1, 0x3d}: true, // IScaledUIAmount
@@ -133,9 +131,9 @@ func (e assetExt) setMultiplier(m *uint256.Int) {
 // set by the instant setter, and a pending schedule at slot 4. The *effective*
 // multiplier is the pending one once its timestamp has passed, and the stored one
 // otherwise — so multiplier() changes value at a timestamp, with no transaction
-// and no event at the flip. That is base-std's behaviour and it is the reason
-// adopting ERC-8056 is not a pure addition: an indexer rebuilding state from logs
-// alone will diverge (BEP-702 3.12).
+// and no event at the flip. That is why adopting ERC-8056 is not a pure
+// addition: an indexer rebuilding state from logs alone will diverge
+// (BEP-702 3.12).
 
 func (e assetExt) pendingSlot() common.Hash { return assetSlot(b20AssetSlotPending) }
 
@@ -472,8 +470,8 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 }
 
 // updateUIMultiplier schedules a multiplier change for a future timestamp. Check
-// order follows base-std: role, then the value, then the two timestamp bounds,
-// then whether a live schedule already exists.
+// order: role, then the value, then the two timestamp bounds, then whether a live
+// schedule already exists.
 func updateUIMultiplier(tok b20Token, ext assetExt, newMul, at *uint256.Int) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -562,7 +560,7 @@ func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 		return ErrOutOfGas
 	}
 	// ERC-8056's canonical event, emitted by both setters so one stream carries
-	// every change (base-std's changelog calls this out explicitly).
+	// every change.
 	if !tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
 		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(uint256.NewInt(now)).Bytes()...)) {
 		return ErrOutOfGas

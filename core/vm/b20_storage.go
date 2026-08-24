@@ -103,9 +103,8 @@ type b20Storage struct {
 }
 
 // mapSlot derives mapping[key] and meters the keccak, which hashes the 64-byte
-// (key ++ base) preimage. Use it on any metered path; the bare mappingSlot
-// helper stays available for tests and unmetered views.
-// mapSlot derives mapping[key], charging for the hash first.
+// (key ++ base) preimage. Use it on any metered path; the bare mappingSlot helper
+// stays available for tests and unmetered views.
 //
 // The three derivations below return the zero slot when their charge is refused.
 // That slot is meaningless, not dangerous: the frame is out of gas by then, so

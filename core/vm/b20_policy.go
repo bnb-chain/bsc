@@ -53,8 +53,8 @@ const (
 	b20PolicyCounterMax = uint64(1)<<56 - 1
 )
 
-// Storage layout, mirroring base-std's PolicyRegistryStorage. Slots are
-// append-only: never reorder them across forks.
+// Storage layout (BEP-702 3.17). Slots are append-only: never reorder them
+// across forks.
 const (
 	polSlotPolicies      = 0 // mapping(uint64 => packed word)
 	polSlotMembers       = 1 // mapping(uint64 => mapping(address => bool))
@@ -340,9 +340,9 @@ func (p policyReg) pendingPolicyAdminOf(id uint64) common.Address {
 }
 
 // ensureInitialized seeds the two sentinel policies and leaves the counter on
-// the first id available to callers. Like base-std it gates on the counter, not
-// on the sentinel words, so a harness that pre-warms the account's bytecode
-// cannot cause the seeding to be skipped.
+// the first id available to callers. It gates on the counter, not on the sentinel
+// words, so a harness that pre-warms the account's bytecode cannot cause the
+// seeding to be skipped.
 func (p policyReg) ensureInitialized() uint64 {
 	c := p.counter()
 	if c >= b20PolicyFirstID {
@@ -465,20 +465,18 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 }
 
 // validateChildren checks a proposed child set: the count, then that every entry
-// exists, then that none is itself a composite. Order follows base-std, and the
-// no-nesting rule keeps evaluation one level deep so isAuthorized cannot recurse
-// without bound.
+// exists, then that none is itself a composite. The no-nesting rule keeps
+// evaluation one level deep so isAuthorized cannot recurse without bound.
 func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 	if len(kids) < b20CompositeMinChildren || len(kids) > b20CompositeMaxChildren {
 		return nil, revB20("ChildPoliciesOutsideOfRange()", errSelChildrenOutOfRange)
 	}
 	out := make([]uint64, 0, len(kids))
 	for _, w := range kids {
-		// Strictly decoded, as Solidity's external decoder does and as base-std's
-		// audit list requires ("dirty high bits rejected"): taking the low eight
-		// bytes of a 32-byte word would let a caller name one policy in the bytes
-		// that matter and anything at all in the rest, and we would act on the
-		// former where Base reverts.
+		// Strictly decoded, as Solidity's external decoder does: taking the low
+		// eight bytes of a 32-byte word would let a caller name one policy in the
+		// bytes that matter and anything at all in the rest, and we would act on
+		// the former where a revert is owed.
 		id, ok := u64FromWord(w)
 		if !ok {
 			return nil, ErrExecutionReverted
@@ -494,8 +492,8 @@ func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 	return out, nil
 }
 
-// emitCompositeUpdated logs the complete post-update child set, as base-std does
-// on creation and on every replacement.
+// emitCompositeUpdated logs the complete post-update child set, on creation and
+// on every replacement.
 func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Address, kids []uint64) bool {
 	words := make([]common.Hash, len(kids))
 	for i, k := range kids {
@@ -619,9 +617,9 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 		return nil, revB20("IncompatiblePolicyType()", errSelIncompatibleType)
 	}
 
-	// The batch is decoded and bounded before any state is written, matching
-	// base-std. An enclosing revert would discard premature writes anyway, but it
-	// would not give back the gas they were metered at.
+	// The batch is decoded and bounded before any state is written. An enclosing
+	// revert would discard premature writes anyway, but it would not give back the
+	// gas they were metered at.
 	var accounts []common.Hash
 	if withAccounts {
 		if accounts, err = readWordArray(args, 2); err != nil {
@@ -687,8 +685,8 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	if err != nil {
 		return err
 	}
-	// Order matters: it is observable through which error the caller receives, so
-	// it follows base-std's canonical existence -> type -> admin -> batch.
+	// Order matters: it is observable through which error the caller receives —
+	// existence, then type, then admin, then batch.
 	if err := requirePolicyExists(reg, pid); err != nil {
 		return err
 	}

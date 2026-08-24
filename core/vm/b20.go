@@ -127,7 +127,7 @@ func (ctx *PrecompileContext) ensureSentinel() {
 
 // b20EnterCall applies the guards every B20 entry point shares: direct calls
 // only, nonpayable, and calldata charged once (BEP-702 3.14). The value check
-// precedes the charge, as in base-std, so a value-bearing call consumes no gas.
+// precedes the charge, so a value-bearing call consumes no gas.
 func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	if !ctx.DirectCall {
 		return ErrB20DelegateCall

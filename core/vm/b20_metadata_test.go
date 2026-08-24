@@ -142,10 +142,8 @@ func TestB20MetadataUpdates(t *testing.T) {
 }
 
 // TestB20MetadataDuringBootstrap pins that the metadata writers are reachable
-// from createB20's privileged init calls without METADATA_ROLE. base-std relies
-// on this (its test_post_create_calls_execute_against_token pushes an
-// updateName init call and asserts the rename took effect), and it is what lets
-// a creator finish configuring a token before any role holder exists.
+// from createB20's privileged init calls without METADATA_ROLE, which is what
+// lets a creator finish configuring a token before any role holder exists.
 func TestB20MetadataDuringBootstrap(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -212,8 +210,8 @@ func TestB20MetadataEvents(t *testing.T) {
 		t.Fatalf("got %d logs, want %d (NameUpdated, EIP712DomainChanged, SymbolUpdated, ContractURIUpdated)",
 			len(logs), len(wantTopics))
 	}
-	// NameUpdated and SymbolUpdated index the account that made the change, as
-	// base-std declares them; the other two take no arguments.
+	// NameUpdated and SymbolUpdated index the account that made the change; the
+	// other two take no arguments.
 	wantIndexed := map[common.Hash]bool{b20TopicNameUpdated: true, b20TopicSymbolUpdated: true}
 	for i, want := range wantTopics {
 		if logs[i].Address != token {

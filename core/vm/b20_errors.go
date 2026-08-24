@@ -69,7 +69,7 @@ func (e *b20RevertError) Is(target error) bool { return target == ErrExecutionRe
 // the precompile boundary. All other results pass through unchanged.
 func finishB20(ret []byte, err error) ([]byte, error) {
 	// A refused call form is a revert, not an exceptional halt: BEP-702 3.2 says
-	// DELEGATECALL and CALLCODE MUST revert, and base-std names both this and the
+	// DELEGATECALL and CALLCODE MUST revert, and names both this and the
 	// write-protection failure as ABI errors. Returning the sentinels straight to
 	// the EVM would exhaust the caller's gas and hand back no returndata, so an
 	// integrator could neither decode the reason nor keep the gas — a footgun no
@@ -121,7 +121,7 @@ func wU256(v *uint256.Int) common.Hash { return v.Bytes32() }
 func wU64(v uint64) common.Hash        { return uint256.NewInt(v).Bytes32() }
 func wU8(v byte) common.Hash           { var h common.Hash; h[31] = v; return h }
 
-// Registered error selectors (BEP-702 error surface, aligned with base-std).
+// Registered error selectors (BEP-702 error surface).
 var (
 	errSelNonPayable          = b20ErrorSel("NonPayable()")
 	errSelInvalidReceiver     = b20ErrorSel("InvalidReceiver(address)")
@@ -140,9 +140,9 @@ var (
 	errSelLastAdminRenounce   = b20ErrorSel("LastAdminCannotRenounce()")
 	errSelNotSoleAdmin        = b20ErrorSel("NotSoleAdmin()")
 	errSelPolicyForbids       = b20ErrorSel("PolicyForbids(bytes32,uint64)")
-	// Two forms, as base-std declares them: the registry answers about a policy
-	// the caller named, so the id adds nothing; a token binding one reports which
-	// id it could not find (IPolicyRegistry vs IB20).
+	// Two forms: the registry answers about a policy the caller named, so the id
+	// adds nothing; a token binding one reports which id it could not find
+	// (IPolicyRegistry vs IB20).
 	errSelPolicyNotFound     = b20ErrorSel("PolicyNotFound()")
 	errSelPolicyNotFoundID   = b20ErrorSel("PolicyNotFound(uint64)")
 	errSelUnsupportedScope   = b20ErrorSel("UnsupportedPolicyType(bytes32)")

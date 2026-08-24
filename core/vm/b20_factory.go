@@ -116,8 +116,7 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		}
 		// Unlike isB20, this one validates the variant byte: the return type is
 		// an enum, so naming an unrecognized variant would hand the caller a
-		// value its own ABI decoder rejects. base-std's variant_of is likewise
-		// defined over addresses that resolve to a known variant.
+		// value its own ABI decoder rejects.
 		if !IsB20Address(a) || !b20VariantRecognized(a[10]) {
 			return nil, revB20("InvalidVariant()", errSelInvalidVariant)
 		}
@@ -155,7 +154,7 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Order follows BEP-702 3.4 and base-std: the variant is resolved and its
+	// Order follows BEP-702 3.4: the variant is resolved and its
 	// feature gate applied before the variant-specific params blob is decoded, so
 	// a closed feature is reported as such whatever the payload.
 	if !isEnumWord(variantWord, b20VariantMax) {
@@ -174,10 +173,7 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		return nil, err
 	}
 	// Every field is validated before the address is derived, so a malformed
-	// currency is reported as such even when the salt is also taken. base-std's
-	// natspec lists the field errors ahead of TokenAlreadyExists, which is the
-	// only evidence either way — its factory journey tests the two cases with
-	// separate salts, so it does not pin the precedence.
+	// currency is reported as such even when the salt is also taken.
 	if variant == b20VariantStablecoin {
 		if err := validateCurrency(create.currency); err != nil {
 			return nil, err
@@ -224,9 +220,9 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 
 	// Each entry runs on the variant's full dispatcher, not the shared half: an
 	// Asset token has to be able to set its multiplier or batch its first
-	// distribution at creation, as base-std's token.call(initCalls[i]) allows. The
-	// bootstrap dispatched tok.dispatch directly from the commit that introduced
-	// it, when no variant layer existed yet, and was not revisited when one did.
+	// distribution at creation. The bootstrap dispatched tok.dispatch directly
+	// from the commit that introduced it, when no variant layer existed yet, and
+	// was not revisited when one did.
 	dispatch := func(call []byte) ([]byte, error) { return stablecoinDispatch(tok, newStablecoinExt(tokenCtx), call) }
 	if variant == b20VariantAsset {
 		dispatch = func(call []byte) ([]byte, error) { return assetDispatch(tok, newAssetExt(tokenCtx), call) }
@@ -276,7 +272,7 @@ type b20CreateParams struct {
 
 // decodeCreateParams decodes and validates the variant's create-params struct.
 // The version check precedes every field check, so an unsupported encoding is
-// always reported as such (base-std does the same).
+// always reported as such.
 func decodeCreateParams(variant byte, params []byte) (b20CreateParams, error) {
 	out := b20CreateParams{variant: variant}
 
@@ -321,8 +317,8 @@ func decodeCreateParams(variant byte, params []byte) (b20CreateParams, error) {
 	}
 
 	// Stablecoin: decimals are fixed and not carried on the wire. The currency's
-	// content is checked by the caller before the address is derived, since
-	// base-std reports a malformed one ahead of TokenAlreadyExists.
+	// content is checked by the caller before the address is derived, so a
+	// malformed one is reported ahead of TokenAlreadyExists.
 	out.decimals = 6
 	if out.currency, err = readStringArg(body, 4); err != nil {
 		return out, err

@@ -311,16 +311,16 @@ func TestB20SeizeWithMemo(t *testing.T) {
 	}
 }
 
-// TestB20PolicyStorageLayout pins the registry's storage against base-std's
-// PolicyRegistryStorage: the namespaced root, the slot order, and the packed
-// existence-and-admin word. These are consensus-visible, so the assertions are
-// on raw slots rather than on what the ABI reports.
+// TestB20PolicyStorageLayout pins the registry's storage (BEP-702 3.17): the
+// namespaced root, the slot order, and the packed existence-and-admin word.
+// These are consensus-visible, so the assertions are on raw slots rather than on
+// what the ABI reports.
 func TestB20PolicyStorageLayout(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 
-	// Slot order, mirroring base-std: policies, members, pendingAdmins, counter,
-	// then a reserved slot for composite children.
+	// Slot order: policies, members, pendingAdmins, counter, then a reserved slot
+	// for composite children.
 	root := new(uint256.Int).SetBytes(erc7201Root("bsc.policy_registry").Bytes())
 	for offset, want := range map[uint64]uint64{
 		polSlotPolicies: 0, polSlotMembers: 1, polSlotPendingAdmins: 2, polSlotCounter: 3,
@@ -357,7 +357,7 @@ func TestB20PolicyStorageLayout(t *testing.T) {
 		}
 	}
 	// Two sentinels are seeded first, so the first caller id draws counter 2 and
-	// the counter lands on 3 — the same value base-std's own layout test asserts.
+	// the counter lands on 3.
 	if got := new(uint256.Int).SetBytes(view.getWord(polSlot(polSlotCounter)).Bytes()).Uint64(); got != 3 {
 		t.Errorf("counter = %d, want 3", got)
 	}
@@ -427,8 +427,8 @@ func TestB20PolicySentinels(t *testing.T) {
 }
 
 // TestB20PolicyCheckOrder pins the order a membership update applies its checks.
-// The order is observable through which error a caller receives, so base-std's
-// canonical existence -> type -> admin -> batch sequence is part of the surface.
+// The order is observable through which error a caller receives, so the
+// existence -> type -> admin -> batch sequence is part of the surface.
 func TestB20PolicyCheckOrder(t *testing.T) {
 	_, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
@@ -607,8 +607,7 @@ func TestB20PolicyEvents(t *testing.T) {
 	}
 
 	// creator is the caller, not the nominated admin: a policy created on someone
-	// else's behalf must name whoever sent the transaction. base-std's
-	// create_policy_inner reads storage.caller() for this field.
+	// else's behalf must name whoever sent the transaction.
 	logs = logsOf(b20Alice, b20Call(selCreatePolicy, addrKey(heir), u256hash(b20PolicyBlocklist)))
 	if len(logs) != 2 {
 		t.Fatalf("createPolicy (third party) emitted %d logs, want 2", len(logs))
