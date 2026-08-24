@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -1451,8 +1452,22 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 		accountSet[account] = struct{}{}
 	}
 
+	// Block level pre-execution, in the same order as core.StateProcessor.Process. Without it the
+	// system contracts touched here keep their parent values and transactions reading them diverge.
+	config := api.b.ChainConfig()
+	systemcontracts.TryUpdateBuildInSystemContract(config, block.Number(), parent.Time(), block.Time(), statedb, true)
+	evm := vm.NewEVM(core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil), statedb, config, vm.Config{})
+	defer evm.Release()
+	if beaconRoot := block.BeaconRoot(); beaconRoot != nil {
+		core.ProcessBeaconBlockRoot(*beaconRoot, evm) // EIP-4788, a no-op for BSC's zero beacon root
+	}
+	if config.IsPrague(block.Number(), block.Time()) || config.IsUBT(block.Number(), block.Time()) {
+		core.ProcessParentBlockHash(block.ParentHash(), evm) // EIP-2935
+	}
+
 	// Recompute transactions.
-	signer := types.MakeSigner(api.b.ChainConfig(), block.Number(), block.Time())
+	signer := types.MakeSigner(config, block.Number(), block.Time())
+	beforeSystemTx := true
 	for _, tx := range block.Transactions() {
 		// Skip data empty tx and to is one of the interested accounts tx.
 		skip := false
@@ -1477,9 +1492,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 		}
 
 		// Apply transaction
-		msg, _ := core.TransactionToMessage(tx, signer, parent.Header().BaseFee)
-		context := core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil)
-		evm := vm.NewEVM(context, statedb, api.b.ChainConfig(), vm.Config{})
+		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 
 		if posa, ok := api.b.Engine().(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
@@ -1488,6 +1501,11 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 				if balance.Cmp(common.U2560) > 0 {
 					statedb.SetBalance(consensus.SystemAddress, uint256.NewInt(0), tracing.BalanceChangeUnspecified)
 					statedb.AddBalance(block.Header().Coinbase, balance, tracing.BalanceChangeUnspecified)
+				}
+				// upgrade built-in system contract before system txs if Feynman is enabled
+				if beforeSystemTx {
+					systemcontracts.TryUpdateBuildInSystemContract(config, block.Number(), parent.Time(), block.Time(), statedb, false)
+					beforeSystemTx = false
 				}
 			}
 		}
