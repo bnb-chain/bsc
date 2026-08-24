@@ -21,9 +21,12 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// B20 gas metering (BEP-702 3.14): mirror existing EVM cost functions so B20
-// state access is never cheaper than the same work through bytecode. Opcode,
-// memory and call overhead have no counterpart here and are not synthesized.
+// B20 gas metering (BEP-702 3.14): mirror existing EVM cost functions so nothing
+// a B20 call does is cheaper than the same work through bytecode. That covers
+// state access and equally the calldata copy, the keccaks, the logs and permit's
+// ecrecover — every charge goes through chargeGas, which is why the counter it
+// feeds is not GasCosts.StateGas (see meteredGasUsed). Opcode, memory and call
+// overhead have no counterpart here and are not synthesized.
 
 // The EIP-2929 warm/cold policy is normative and lives in BEP-702 3.17: no B20
 // address starts warm, a transaction access list applies, warmth is keyed on
@@ -46,7 +49,7 @@ func (ctx *PrecompileContext) chargeCalldata(input []byte) bool {
 	if words == 0 {
 		return true
 	}
-	return ctx.chargeStateGas(words * b20CalldataWordGas)
+	return ctx.chargeGas(words * b20CalldataWordGas)
 }
 
 // chargeKeccak meters a keccak256 over size bytes: the same base plus per-word
@@ -54,13 +57,13 @@ func (ctx *PrecompileContext) chargeCalldata(input []byte) bool {
 // bytes; leaving it unmetered would donate computation.
 func (ctx *PrecompileContext) chargeKeccak(size int) bool {
 	words := (uint64(size) + 31) / 32
-	return ctx.chargeStateGas(params.Keccak256Gas + params.Keccak256WordGas*words)
+	return ctx.chargeGas(params.Keccak256Gas + params.Keccak256WordGas*words)
 }
 
 // chargeLog meters a log emission at LOG* prices: base, per topic, per data
 // byte.
 func (ctx *PrecompileContext) chargeLog(topics int, dataLen int) bool {
-	return ctx.chargeStateGas(params.LogGas +
+	return ctx.chargeGas(params.LogGas +
 		params.LogTopicGas*uint64(topics) +
 		params.LogDataGas*uint64(dataLen))
 }
@@ -70,13 +73,13 @@ func (ctx *PrecompileContext) chargeLog(topics int, dataLen int) bool {
 // the address in this transaction.
 func (ctx *PrecompileContext) chargeAccountAccess(addr common.Address) bool {
 	if ctx.StateDB.AddressInAccessList(addr) {
-		return ctx.chargeStateGas(params.WarmStorageReadCostEIP2929)
+		return ctx.chargeGas(params.WarmStorageReadCostEIP2929)
 	}
 	// Warming before the charge mirrors the interpreter's own order; the addition
 	// is journalled, so a refused charge leaves nothing behind once the frame
 	// reverts.
 	ctx.StateDB.AddAddressToAccessList(addr)
-	return ctx.chargeStateGas(params.ColdAccountAccessCostEIP2929)
+	return ctx.chargeGas(params.ColdAccountAccessCostEIP2929)
 }
 
 // chargeCodeWrite meters writing account code: the per-byte deposit cost, the
@@ -88,7 +91,7 @@ func (ctx *PrecompileContext) chargeCodeWrite(addr common.Address, code []byte) 
 	if hadNoCode(ctx.StateDB, addr) {
 		cost += params.CreateGas
 	}
-	return ctx.chargeStateGas(cost) && ctx.chargeKeccak(len(code))
+	return ctx.chargeGas(cost) && ctx.chargeKeccak(len(code))
 }
 
 // sstoreSentry enforces EIP-2200's reentrancy guard: an SSTORE is refused
@@ -111,6 +114,12 @@ func (s b20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 	if s.ctx == nil {
 		return true
 	}
+	// First, as in gasSStoreEIP2200: a read-only frame may not write, whatever it
+	// could afford and whatever the net-metered price would have been.
+	if s.ctx.ReadOnly {
+		s.ctx.markWriteProtected()
+		return false
+	}
 	if !s.ctx.sstoreSentry() {
 		// Propagate, do not assign: the sentry refuses the write without
 		// draining the budget, so a spawner that only saw its own flag would
@@ -130,17 +139,17 @@ func (s b20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 	}
 	switch {
 	case current == value: // noop (1)
-		return s.ctx.chargeStateGas(cost + params.WarmStorageReadCostEIP2929)
+		return s.ctx.chargeGas(cost + params.WarmStorageReadCostEIP2929)
 
 	case original == current:
 		if original == (common.Hash{}) { // create slot (2.1.1)
-			return s.ctx.chargeStateGas(cost + params.SstoreSetGasEIP2200)
+			return s.ctx.chargeGas(cost + params.SstoreSetGasEIP2200)
 		}
 		if value == (common.Hash{}) { // delete slot (2.1.2b)
 			s.state.AddRefund(clearingRefund)
 		}
 		// write existing slot (2.1.2)
-		return s.ctx.chargeStateGas(cost + (params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929))
+		return s.ctx.chargeGas(cost + (params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929))
 	}
 
 	// dirty slot (2.2)
@@ -159,5 +168,5 @@ func (s b20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 		}
 	}
 	// dirty update (2.2)
-	return s.ctx.chargeStateGas(cost + params.WarmStorageReadCostEIP2929)
+	return s.ctx.chargeGas(cost + params.WarmStorageReadCostEIP2929)
 }

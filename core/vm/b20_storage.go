@@ -157,10 +157,10 @@ func (s b20Storage) chargeRead(slot common.Hash) bool {
 		return true
 	}
 	if _, warm := s.state.SlotInAccessList(s.token, slot); warm {
-		return s.ctx.chargeStateGas(params.WarmStorageReadCostEIP2929)
+		return s.ctx.chargeGas(params.WarmStorageReadCostEIP2929)
 	}
 	s.state.AddSlotToAccessList(s.token, slot)
-	return s.ctx.chargeStateGas(params.ColdSloadCostEIP2929)
+	return s.ctx.chargeGas(params.ColdSloadCostEIP2929)
 }
 
 // getWord reads a slot after charging for it. The second result is false when the
@@ -188,7 +188,7 @@ func (s b20Storage) getWord(slot common.Hash) common.Hash {
 // setWord writes a slot after metering it under EIP-2200 net metering with
 // EIP-3529 refunds (see chargeStorageWrite), and reports whether the write
 // happened. False covers both an unaffordable charge and the reentrancy sentry,
-// which refuses the write without going through chargeStateGas at all.
+// which refuses the write without going through chargeGas at all.
 //
 // Honour the result before doing any work proportional to what the caller sent —
 // hashing a caller-supplied key, encoding a caller-supplied string, walking a

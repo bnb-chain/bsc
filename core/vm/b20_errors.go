@@ -95,6 +95,9 @@ func finishB20(ret []byte, err error) ([]byte, error) {
 // value-bearing one — can use finishB20 directly, since there is nothing to have
 // exhausted yet.
 func finishB20Metered(ctx *PrecompileContext, ret []byte, err error) ([]byte, error) {
+	if ctx.writeProtectionViolated() {
+		return finishB20(nil, ErrWriteProtection)
+	}
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}

@@ -462,7 +462,7 @@ func TestB20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	if parent.OutOfGas() || child.OutOfGas() {
 		t.Fatal("fresh contexts must not report out of gas")
 	}
-	child.chargeStateGas(1_000_000) // more than the shared budget holds
+	child.chargeGas(1_000_000) // more than the shared budget holds
 
 	if !child.OutOfGas() {
 		t.Error("child does not report out of gas after an unaffordable charge")
@@ -483,7 +483,7 @@ func TestB20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	gas2 := NewGasBudget(100)
 	p2 := &PrecompileContext{StateDB: statedb, Self: b20Addr(b20VariantAsset, 4), gas: &gas2}
 	c2 := p2.spawnBootstrap(b20Addr(b20VariantAsset, 5), b20Alice)
-	p2.chargeStateGas(1_000_000)
+	p2.chargeGas(1_000_000)
 	if !c2.OutOfGas() {
 		t.Error("child spawned before the spawner's exhaustion does not observe it")
 	}
@@ -503,8 +503,8 @@ func TestB20SpawnedContextSharesStateGasTally(t *testing.T) {
 	}
 	child := parent.spawnBootstrap(b20Addr(b20VariantAsset, 2), b20Alice)
 
-	parent.chargeStateGas(700)
-	child.chargeStateGas(300)
+	parent.chargeGas(700)
+	child.chargeGas(300)
 
 	if got := parent.meteredGasUsed(); got != 1000 {
 		t.Errorf("spawner StateGasUsed = %d, want 1000 — the child's charges are missing", got)

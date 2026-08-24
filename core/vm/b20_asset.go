@@ -597,7 +597,7 @@ func batchMint(tok b20Token, args []byte) error {
 		return revB20("EmptyBatch()", errSelEmptyBatch)
 	}
 	for i := range recipients {
-		// chargeStateGas marks the frame out of gas and returns, so without this
+		// chargeGas marks the frame out of gas and returns, so without this
 		// the loop would run to completion on an exhausted budget — the state is
 		// discarded either way, but the node has already done the work. A batch
 		// long enough to exhaust its gas on the first recipient measured the same

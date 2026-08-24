@@ -15,7 +15,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TestB20ExhaustedBudgetStopsWork covers what chargeStateGas does not do: it marks
+// TestB20ExhaustedBudgetStopsWork covers what chargeGas does not do: it marks
 // the frame out of gas and returns, leaving the caller to continue. Every
 // individual charge was correct, and the dispatcher failed the call at the end, so
 // the state was always discarded — but the node had already done all the work.

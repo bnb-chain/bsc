@@ -257,7 +257,7 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	// out to be valid.
 	if !t.ctx.chargeKeccak(len(structHash)) ||
 		!t.ctx.chargeKeccak(66) ||
-		!t.ctx.chargeStateGas(params.EcrecoverGas) {
+		!t.ctx.chargeGas(params.EcrecoverGas) {
 		return nil, ErrOutOfGas
 	}
 	digest := crypto.Keccak256([]byte{0x19, 0x01}, dom.Bytes(), crypto.Keccak256(structHash))

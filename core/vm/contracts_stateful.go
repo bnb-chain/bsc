@@ -94,6 +94,11 @@ type frameAccounting struct {
 	// checks it and returns ErrOutOfGas.
 	outOfGas bool
 
+	// writeProtected is set sticky when a metered write is attempted in a
+	// read-only frame. It outranks outOfGas at the exit: the frame had no business
+	// writing at all, whatever it could afford.
+	writeProtected bool
+
 	meteredGasUsed uint64
 }
 
@@ -141,14 +146,15 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 // one it was spawned from — observes it, because they hold the same accounting.
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
-// chargeStateGas charges cost and reports whether the frame may continue.
+// chargeGas charges cost against the frame and reports whether it may continue.
+// Every B20 charge arrives here, state access and computation alike.
 //
 // False means stop: the caller must return before the operation this charge pays
 // for, the way the interpreter checks UseGas before executing an opcode rather
 // than after. A charge that cannot be covered marks the frame, and an already
 // marked frame refuses every later charge, so one failure ends the call rather
 // than letting the rest of the handler run on an exhausted budget.
-func (ctx *PrecompileContext) chargeStateGas(cost uint64) bool {
+func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 	if ctx.OutOfGas() {
 		return false
 	}
@@ -195,11 +201,28 @@ func (ctx *PrecompileContext) ChainID() *uint256.Int {
 	return id
 }
 
+// markWriteProtected records an attempted write in a read-only frame, the way
+// geth's gas functions return ErrWriteProtection before pricing anything
+// (gasSStoreEIP2200, gasSelfdestruct, gasCallIntrinsic). The handlers each check
+// ReadOnly first and none is known to be missing; this is what makes a missing
+// one fail closed instead of writing state inside a STATICCALL.
+func (ctx *PrecompileContext) markWriteProtected() { ctx.frameGas().writeProtected = true }
+
+// writeProtectionViolated reports whether any write was attempted in a read-only
+// frame during this call.
+func (ctx *PrecompileContext) writeProtectionViolated() bool {
+	return ctx.frame != nil && ctx.frame.writeProtected
+}
+
 // AddLog emits a log, or does nothing and reports false when the charge for it
 // cannot be covered. Dropping that result let a handler whose write had already
 // been refused still append its event: approve's Approval log costs 1,756 gas,
 // which fits inside the 2,300 the EIP-2200 sentry leaves behind.
 func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) bool {
+	if ctx.ReadOnly {
+		ctx.markWriteProtected()
+		return false
+	}
 	if !ctx.chargeLog(len(topics), len(data)) {
 		return false
 	}

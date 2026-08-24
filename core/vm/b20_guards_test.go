@@ -192,3 +192,54 @@ func TestB20NonDirectCallPlumbing(t *testing.T) {
 		}
 	}
 }
+
+// TestB20MeteringRefusesWritesInStaticFrames covers the backstop under the 25
+// hand-written ReadOnly guards. Removing any one of them used to let a
+// STATICCALL write: approve() with its guard deleted returned nil and left the
+// allowance slot holding the amount. The metering layer now refuses first, as
+// gasSStoreEIP2200 does, so a missing guard costs a revert rather than consensus.
+func TestB20MeteringRefusesWritesInStaticFrames(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	ret, _, err := evm.Call(b20ActivationAdmin, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x5711"), b20ActivationAdmin, nil),
+		NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	// Driven with readOnly set but reaching the handler directly, which is the
+	// state a frame is in when its own guard is missing.
+	tok := b20Token{
+		ctx: &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: b20Alice,
+			ReadOnly: true, DirectCall: true, Value: uint256.NewInt(0), gas: &GasBudget{RegularGas: 5_000_000}},
+	}
+	tok.s = newMeteredB20StorageAt(tok.ctx, token)
+
+	if ok := tok.s.setWord(tok.s.allowanceSlot(b20Alice, b20Bob), u256hash(4242)); ok {
+		t.Error("a metered write reported success in a read-only frame")
+	}
+	if got := statedb.GetState(token, tok.s.allowanceSlot(b20Alice, b20Bob)); got != (common.Hash{}) {
+		t.Errorf("the allowance slot holds %x, want empty — a read-only frame wrote state", got)
+	}
+	if !tok.ctx.writeProtectionViolated() {
+		t.Fatal("the refusal was not recorded, so the exit cannot report it")
+	}
+	if tok.ctx.OutOfGas() {
+		t.Error("the frame was marked out of gas; a static write is a protection failure, not exhaustion")
+	}
+
+	// And the exit turns it into the same typed revert a hand-written guard gives.
+	_, err = finishB20Metered(tok.ctx, nil, nil)
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("exit err = %v, want the StaticCallNotAllowed revert", err)
+	}
+
+	// A log is equally a write.
+	before := len(statedb.Logs())
+	if tok.ctx.AddLog([]common.Hash{b20TopicApproval}, nil) {
+		t.Error("AddLog reported success in a read-only frame")
+	}
+	if n := len(statedb.Logs()) - before; n != 0 {
+		t.Errorf("a read-only frame emitted %d log(s)", n)
+	}
+}
