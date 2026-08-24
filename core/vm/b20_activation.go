@@ -179,7 +179,9 @@ func setFeature(ctx *PrecompileContext, reg activationReg, args []byte, on bool)
 	if on {
 		topic = b20TopicFeatureActivated
 	}
-	ctx.AddLog([]common.Hash{topic, feature, addrKey(ctx.Caller)}, nil)
+	if !ctx.AddLog([]common.Hash{topic, feature, addrKey(ctx.Caller)}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -207,7 +209,9 @@ func updateActivationAdmin(ctx *PrecompileContext, reg activationReg, args []byt
 	previous := reg.admin()
 	ctx.ensureSentinel()
 	reg.setAdmin(newAdmin)
-	ctx.AddLog([]common.Hash{b20TopicAdminChanged, addrKey(previous), addrKey(newAdmin), addrKey(ctx.Caller)}, nil)
+	if !ctx.AddLog([]common.Hash{b20TopicAdminChanged, addrKey(previous), addrKey(newAdmin), addrKey(ctx.Caller)}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 

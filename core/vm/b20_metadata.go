@@ -87,9 +87,15 @@ func (t b20Token) updateName(v string) error {
 	if err := t.ensureMetadataWrite(); err != nil {
 		return err
 	}
-	t.s.setName(v)
-	t.ctx.AddLog([]common.Hash{b20TopicNameUpdated, addrKey(t.ctx.Caller)}, encString(v))
-	t.ctx.AddLog([]common.Hash{b20TopicEIP712DomainChanged}, nil)
+	if !t.s.setName(v) {
+		return ErrOutOfGas
+	}
+	if !t.ctx.AddLog([]common.Hash{b20TopicNameUpdated, addrKey(t.ctx.Caller)}, encString(v)) {
+		return ErrOutOfGas
+	}
+	if !t.ctx.AddLog([]common.Hash{b20TopicEIP712DomainChanged}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -97,8 +103,12 @@ func (t b20Token) updateSymbol(v string) error {
 	if err := t.ensureMetadataWrite(); err != nil {
 		return err
 	}
-	t.s.setSymbol(v)
-	t.ctx.AddLog([]common.Hash{b20TopicSymbolUpdated, addrKey(t.ctx.Caller)}, encString(v))
+	if !t.s.setSymbol(v) {
+		return ErrOutOfGas
+	}
+	if !t.ctx.AddLog([]common.Hash{b20TopicSymbolUpdated, addrKey(t.ctx.Caller)}, encString(v)) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -106,8 +116,12 @@ func (t b20Token) updateContractURI(v string) error {
 	if err := t.ensureMetadataWrite(); err != nil {
 		return err
 	}
-	t.s.setContractURI(v)
-	t.ctx.AddLog([]common.Hash{b20TopicContractURIUpdated}, nil)
+	if !t.s.setContractURI(v) {
+		return ErrOutOfGas
+	}
+	if !t.ctx.AddLog([]common.Hash{b20TopicContractURIUpdated}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 

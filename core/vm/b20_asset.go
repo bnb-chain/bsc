@@ -177,8 +177,14 @@ func (e assetExt) effectiveMultiplier(now uint64) *uint256.Int {
 func (e assetExt) announcementSlot(id string) common.Hash {
 	return e.s.strMapSlot(assetSlot(b20AssetSlotAnnouncements), id)
 }
-func (e assetExt) announcementUsed(id string) bool {
-	return e.s.getWord(e.announcementSlot(id)) != (common.Hash{})
+
+// announcementUsed reports whether the id has been announced, and whether the
+// answer is real. False/false means the read could not be paid for: announce must
+// stop there rather than treat an unpaid read as "unused" and go on to re-hash the
+// caller-sized id and encode all three strings into two events.
+func (e assetExt) announcementUsed(id string) (bool, bool) {
+	w, ok := e.s.getWordChecked(e.announcementSlot(id))
+	return w != (common.Hash{}), ok
 }
 func (e assetExt) markAnnouncement(id string) {
 	var one common.Hash
@@ -192,8 +198,8 @@ func (e assetExt) extraMetaSlot(key string) common.Hash {
 func (e assetExt) extraMetadata(key string) string {
 	return e.s.getStringAt(e.extraMetaSlot(key))
 }
-func (e assetExt) setExtraMetadata(key, value string) {
-	e.s.setStringAt(e.extraMetaSlot(key), value)
+func (e assetExt) setExtraMetadata(key, value string) bool {
+	return e.s.setStringAt(e.extraMetaSlot(key), value)
 }
 
 // initAssetExtension seeds a new Asset token's extension storage. decimals is
@@ -337,7 +343,11 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 		if err != nil {
 			return nil, err, true
 		}
-		return encBool(ext.announcementUsed(id)), nil, true
+		used, ok := ext.announcementUsed(id)
+		if !ok {
+			return nil, ErrOutOfGas, true
+		}
+		return encBool(used), nil, true
 	case selAnnounce:
 		return nil, announce(tok, ext, args), true
 	case selExtraMetadata:
@@ -371,9 +381,13 @@ func updateExtraMetadata(tok b20Token, ext assetExt, key, value string) error {
 	if len(key) == 0 {
 		return revB20("InvalidMetadataKey()", errSelInvalidMetadataKey)
 	}
-	ext.setExtraMetadata(key, value)
-	tok.ctx.AddLog([]common.Hash{b20TopicExtraMetadataUpdated},
-		encodeTuple(abiString(key), abiString(value)))
+	if !ext.setExtraMetadata(key, value) {
+		return ErrOutOfGas
+	}
+	if !tok.ctx.AddLog([]common.Hash{b20TopicExtraMetadataUpdated},
+		encodeTuple(abiString(key), abiString(value))) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -426,12 +440,18 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	if err != nil {
 		return err
 	}
-	if ext.announcementUsed(id) {
+	used, ok := ext.announcementUsed(id)
+	if !ok {
+		return ErrOutOfGas
+	}
+	if used {
 		return revB20Bytes("AnnouncementIdAlreadyUsed(string)", errSelAnnounceIdUsed, []byte(id))
 	}
 	ext.markAnnouncement(id) // marked before execution
-	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller)},
-		encodeTuple(abiString(id), abiString(description), abiString(uri)))
+	if !tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller)},
+		encodeTuple(abiString(id), abiString(description), abiString(uri))) {
+		return ErrOutOfGas
+	}
 
 	tok.inAnnounce = true // threaded into the internal calls below by value
 	for _, c := range calls {
@@ -445,7 +465,9 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 			return revB20Bytes("InternalCallFailed(bytes)", errSelInternalFailed, c)
 		}
 	}
-	tok.ctx.AddLog([]common.Hash{b20TopicEndAnnouncement}, encodeTuple(abiString(id)))
+	if !tok.ctx.AddLog([]common.Hash{b20TopicEndAnnouncement}, encodeTuple(abiString(id))) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -482,8 +504,10 @@ func updateUIMultiplier(tok b20Token, ext assetExt, newMul, at *uint256.Int) err
 	ext.setPending(newMul, at.Uint64())
 	// The third argument is when the value takes effect, which for a schedule is
 	// the future timestamp rather than now.
-	tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
-		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(at).Bytes()...))
+	if !tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
+		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(at).Bytes()...)) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -501,8 +525,10 @@ func cancelUIMultiplier(tok b20Token, ext assetExt) error {
 		return revB20("UIMultiplierUpdateDoesNotExist()", errSelUIMulMissing)
 	}
 	ext.clearPending()
-	tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierCancelled},
-		append(wU256(mul).Bytes(), wU64(at).Bytes()...))
+	if !tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierCancelled},
+		append(wU256(mul).Bytes(), wU64(at).Bytes()...)) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -524,17 +550,23 @@ func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 	if pendingMul, at := ext.pending(); at != 0 {
 		ext.clearPending()
 		if at > now {
-			tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierCancelled},
-				append(wU256(pendingMul).Bytes(), wU64(at).Bytes()...))
+			if !tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierCancelled},
+				append(wU256(pendingMul).Bytes(), wU64(at).Bytes()...)) {
+				return ErrOutOfGas
+			}
 		}
 	}
 	ext.setMultiplier(newMul)
 	mb := newMul.Bytes32()
-	tok.ctx.AddLog([]common.Hash{b20TopicMultiplierUpdated}, mb[:])
+	if !tok.ctx.AddLog([]common.Hash{b20TopicMultiplierUpdated}, mb[:]) {
+		return ErrOutOfGas
+	}
 	// ERC-8056's canonical event, emitted by both setters so one stream carries
 	// every change (base-std's changelog calls this out explicitly).
-	tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
-		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(uint256.NewInt(now)).Bytes()...))
+	if !tok.ctx.AddLog([]common.Hash{b20TopicUIMultiplierUpdated},
+		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(uint256.NewInt(now)).Bytes()...)) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 

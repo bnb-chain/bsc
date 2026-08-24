@@ -98,7 +98,9 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if !isEnumWord(variant, b20VariantMax) {
 			return nil, revPanic(0x21)
 		}
-		ctx.chargeKeccak(64)
+		if !ctx.chargeKeccak(64) {
+			return nil, ErrOutOfGas
+		}
 		addr := b20DeriveAddress(variant[31], sender, salt)
 		return addrKey(addr).Bytes(), nil
 	case selIsB20:
@@ -182,13 +184,17 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		}
 	}
 	creator := ctx.Caller
-	ctx.chargeKeccak(64)
+	if !ctx.chargeKeccak(64) {
+		return nil, ErrOutOfGas
+	}
 	addr := b20DeriveAddress(variant, creator, salt)
 
 	if b20AddressOccupied(ctx, addr) {
 		return nil, revB20("TokenAlreadyExists(address)", errSelTokenExists, addrKey(addr))
 	}
-	ctx.chargeCodeWrite(addr, b20MarkerCode)
+	if !ctx.chargeCodeWrite(addr, b20MarkerCode) {
+		return nil, ErrOutOfGas
+	}
 	ctx.StateDB.SetCode(addr, b20MarkerCode, tracing.CodeChangeContractCreation)
 
 	// Bootstrap context/token bound to the new address, privileged so initCalls
@@ -198,19 +204,22 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	tok := newB20TokenBootstrap(tokenCtx, decimals)
 
 	// Initial state: metadata, no supply cap, and the variant's own storage.
-	tok.s.setName(create.name)
-	tok.s.setSymbol(create.symbol)
+	if !tok.s.setName(create.name) || !tok.s.setSymbol(create.symbol) {
+		return nil, ErrOutOfGas
+	}
 	tok.s.setSupplyCap(b20NoSupplyCap)
 	if variant == b20VariantAsset {
 		initAssetExtension(tokenCtx, create.decimals)
-	} else {
-		newStablecoinExt(tokenCtx).setCurrency(create.currency)
+	} else if !newStablecoinExt(tokenCtx).setCurrency(create.currency) {
+		return nil, ErrOutOfGas
 	}
 	initialAdmin := create.initialAdmin
 	if initialAdmin != (common.Address{}) {
 		tok.s.setRole(roleDefaultAdmin, initialAdmin, true)
 		tok.s.setAdminCount(uint256.NewInt(1))
-		tokenCtx.AddLog([]common.Hash{b20TopicRoleGranted, roleDefaultAdmin, addrKey(initialAdmin), addrKey(creator)}, nil)
+		if !tokenCtx.AddLog([]common.Hash{b20TopicRoleGranted, roleDefaultAdmin, addrKey(initialAdmin), addrKey(creator)}, nil) {
+			return nil, ErrOutOfGas
+		}
 	}
 
 	// Each entry runs on the variant's full dispatcher, not the shared half: an
@@ -247,10 +256,12 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	// follow creation from one address. variantEventParams carries the
 	// variant's immutable identity data: empty for Asset, the versioned
 	// currency struct for Stablecoin.
-	ctx.AddLog(
+	if !ctx.AddLog(
 		[]common.Hash{b20TopicB20Created, addrKey(addr), wU8(variant)},
 		encodeB20CreatedData(create),
-	)
+	) {
+		return nil, ErrOutOfGas
+	}
 	return addrKey(addr).Bytes(), nil
 }
 

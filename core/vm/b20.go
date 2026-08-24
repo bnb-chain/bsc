@@ -85,7 +85,9 @@ var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 // b20InitializedMetered reports whether a B20 token exists at addr, charged as an
 // account access. Exact-hash, not non-empty: foreign code is not a token.
 func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
-	ctx.chargeAccountAccess(addr)
+	if !ctx.chargeAccountAccess(addr) {
+		return false
+	}
 	return ctx.StateDB.GetCodeHash(addr) == b20MarkerCodeHash
 }
 
@@ -93,7 +95,11 @@ func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
 // token or by anything else. createB20 must reject on any code, not only on
 // the sentinel: overwriting foreign code would destroy it (BEP-702 3.4).
 func b20AddressOccupied(ctx *PrecompileContext, addr common.Address) bool {
-	ctx.chargeAccountAccess(addr)
+	if !ctx.chargeAccountAccess(addr) {
+		// Reported occupied: the caller refuses on true, which is the safe answer
+		// when the frame can no longer pay to find out.
+		return true
+	}
 	return !hadNoCode(ctx.StateDB, addr)
 }
 
@@ -107,11 +113,15 @@ func hadNoCode(state StateDB, addr common.Address) bool {
 // ensureSentinel keeps a registry's storage out of reach of EIP-161 clearing. It
 // plants the marker only on an account with no code at all (BEP-702 3.16).
 func (ctx *PrecompileContext) ensureSentinel() {
-	ctx.chargeAccountAccess(ctx.Self)
+	if !ctx.chargeAccountAccess(ctx.Self) {
+		return
+	}
 	if !hadNoCode(ctx.StateDB, ctx.Self) {
 		return
 	}
-	ctx.chargeCodeWrite(ctx.Self, b20MarkerCode)
+	if !ctx.chargeCodeWrite(ctx.Self, b20MarkerCode) {
+		return
+	}
 	ctx.StateDB.SetCode(ctx.Self, b20MarkerCode, tracing.CodeChangeContractCreation)
 }
 
@@ -125,14 +135,13 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	if ctx.Value != nil && !ctx.Value.IsZero() {
 		return revB20("NonPayable()", errSelNonPayable)
 	}
-	ctx.chargeCalldata(input)
 	// Fail here rather than at the exit. RequiredGas is zero, so the interpreter
 	// charges nothing before the handler runs, and a caller that cannot even
 	// afford the calldata charge would otherwise still get the whole handler's
 	// native work — decoding, trie reads, keccak, permit's ecrecover — for the
 	// cost of a warm CALL, repeatable in a loop against already-expanded memory.
 	// Every later charge is bounded by what this one proves the caller can pay.
-	if ctx.OutOfGas() {
+	if !ctx.chargeCalldata(input) {
 		return ErrOutOfGas
 	}
 	return nil

@@ -72,7 +72,9 @@ func (t b20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, err 
 		}
 		ret, err := t.transfer(t.ctx.Caller, to, amount)
 		if err == nil {
-			t.emitMemo(memo)
+			if !t.emitMemo(memo) {
+				return nil, ErrOutOfGas, true
+			}
 		}
 		return ret, err, true
 	case selTransferFromWithMemo:
@@ -94,7 +96,9 @@ func (t b20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, err 
 		}
 		ret, err := t.transferFrom(t.ctx.Caller, from, to, amount)
 		if err == nil {
-			t.emitMemo(memo)
+			if !t.emitMemo(memo) {
+				return nil, ErrOutOfGas, true
+			}
 		}
 		return ret, err, true
 	case selMintWithMemo:
@@ -105,7 +109,9 @@ func (t b20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, err 
 		if err := t.mint(to, amount); err != nil {
 			return nil, err, true
 		}
-		t.emitMemo(memo)
+		if !t.emitMemo(memo) {
+			return nil, ErrOutOfGas, true
+		}
 		return nil, nil, true
 	case selBurnWithMemo:
 		amount, err := readU256(args, 0)
@@ -119,15 +125,17 @@ func (t b20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, err 
 		if err := t.burn(t.ctx.Caller, amount); err != nil {
 			return nil, err, true
 		}
-		t.emitMemo(memo)
+		if !t.emitMemo(memo) {
+			return nil, ErrOutOfGas, true
+		}
 		return nil, nil, true
 	}
 	return nil, nil, false
 }
 
 // emitMemo emits Memo(caller, memo) immediately after a primary op.
-func (t b20Token) emitMemo(memo common.Hash) {
-	t.ctx.AddLog([]common.Hash{b20TopicMemo, addrKey(t.ctx.Caller), memo}, nil)
+func (t b20Token) emitMemo(memo common.Hash) bool {
+	return t.ctx.AddLog([]common.Hash{b20TopicMemo, addrKey(t.ctx.Caller), memo}, nil)
 }
 
 func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, error) {
@@ -154,11 +162,17 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 // per-word price the KECCAK256 opcode charges. A Solidity ERC-2612 hashes the
 // same three preimages and is billed for all of them; leaving them free would
 // make the native path cheaper than bytecode (BEP-702 3.14).
+// domainSeparator returns the EIP-712 domain hash, or the zero hash when a charge
+// on the way could not be covered — the caller stops on an out-of-gas frame, and
+// hashing a stored name it could not pay to read is work bounded by state rather
+// than by the caller's gas.
 func (t b20Token) domainSeparator() common.Hash {
 	name := t.s.name()
-	t.ctx.chargeKeccak(len(name))
-	t.ctx.chargeKeccak(len(b20EIP712Version))
-	t.ctx.chargeKeccak(160)
+	if !t.ctx.chargeKeccak(len(name)) ||
+		!t.ctx.chargeKeccak(len(b20EIP712Version)) ||
+		!t.ctx.chargeKeccak(160) {
+		return common.Hash{}
+	}
 	nameHash := crypto.Keccak256Hash([]byte(name))
 	versionHash := crypto.Keccak256Hash([]byte(b20EIP712Version))
 	chainID := t.ctx.ChainID().Bytes32()
@@ -235,9 +249,11 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	// its own precompile at a flat 3000 gas; a native permit doing the same
 	// secp256k1 work owes the same, and owes it whether or not the signature turns
 	// out to be valid.
-	t.ctx.chargeKeccak(len(structHash))
-	t.ctx.chargeKeccak(66)
-	t.ctx.chargeStateGas(params.EcrecoverGas)
+	if !t.ctx.chargeKeccak(len(structHash)) ||
+		!t.ctx.chargeKeccak(66) ||
+		!t.ctx.chargeStateGas(params.EcrecoverGas) {
+		return nil, ErrOutOfGas
+	}
 	digest := crypto.Keccak256([]byte{0x19, 0x01}, dom.Bytes(), crypto.Keccak256(structHash))
 
 	signer, ok := ecrecoverAddress(digest, v, r, s)
@@ -254,7 +270,9 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	}
 	t.s.setNonce(owner, new(uint256.Int).AddUint64(nonce, 1))
 	t.s.setAllowance(owner, spender, value)
-	t.emit(b20TopicApproval, owner, spender, value)
+	if !t.emit(b20TopicApproval, owner, spender, value) {
+		return nil, ErrOutOfGas
+	}
 	// Empty returndata: base-std declares `permit(...) external` with no return
 	// value, as EIP-2612 does. Returning an ABI true would make a caller that
 	// decodes a bool succeed here and fail against Base.

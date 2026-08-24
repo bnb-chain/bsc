@@ -191,7 +191,9 @@ func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([
 	// approve, so there is nothing to consult. A paused token still accepts
 	// approvals; the transfer they authorize is what the pause stops.
 	t.s.setAllowance(owner, spender, amount)
-	t.emit(b20TopicApproval, owner, spender, amount)
+	if !t.emit(b20TopicApproval, owner, spender, amount) {
+		return nil, ErrOutOfGas
+	}
 	return encBool(true), nil
 }
 
@@ -205,7 +207,9 @@ func (t b20Token) transfer(from, to common.Address, amount *uint256.Int) ([]byte
 	if err := t.move(from, to, amount); err != nil {
 		return nil, err
 	}
-	t.emit(b20TopicTransfer, from, to, amount)
+	if !t.emit(b20TopicTransfer, from, to, amount) {
+		return nil, ErrOutOfGas
+	}
 	return encBool(true), nil
 }
 
@@ -258,7 +262,9 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 	if err := t.move(from, to, amount); err != nil {
 		return nil, err
 	}
-	t.emit(b20TopicTransfer, from, to, amount)
+	if !t.emit(b20TopicTransfer, from, to, amount) {
+		return nil, ErrOutOfGas
+	}
 	return encBool(true), nil
 }
 
@@ -315,9 +321,9 @@ func (t b20Token) isPaused(bit uint) bool {
 	return new(uint256.Int).Rsh(t.s.paused(), bit).Uint64()&1 == 1
 }
 
-func (t b20Token) emit(topic0 common.Hash, a, b common.Address, value *uint256.Int) {
+func (t b20Token) emit(topic0 common.Hash, a, b common.Address, value *uint256.Int) bool {
 	v := value.Bytes32()
-	t.ctx.AddLog([]common.Hash{topic0, addrKey(a), addrKey(b)}, v[:])
+	return t.ctx.AddLog([]common.Hash{topic0, addrKey(a), addrKey(b)}, v[:])
 }
 
 // --- ABI helpers ------------------------------------------------------------

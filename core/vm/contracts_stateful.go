@@ -190,16 +190,20 @@ func (ctx *PrecompileContext) ChainID() *uint256.Int {
 	return id
 }
 
-// AddLog emits an EVM log at the precompile's own address (Self). The
-// remaining fields (tx hash/index, block hash, log index) are filled by the
-// StateDB at finalisation, exactly as for contract-emitted logs.
-func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) {
-	ctx.chargeLog(len(topics), len(data))
+// AddLog emits a log, or does nothing and reports false when the charge for it
+// cannot be covered. Dropping that result let a handler whose write had already
+// been refused still append its event: approve's Approval log costs 1,756 gas,
+// which fits inside the 2,300 the EIP-2200 sentry leaves behind.
+func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) bool {
+	if !ctx.chargeLog(len(topics), len(data)) {
+		return false
+	}
 	ctx.StateDB.AddLog(&types.Log{
 		Address: ctx.Self,
 		Topics:  topics,
 		Data:    data,
 	})
+	return true
 }
 
 func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool, value *uint256.Int) (ret []byte, remaining GasBudget, err error) {

@@ -309,7 +309,9 @@ func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 		if role == roleDefaultAdmin {
 			t.s.setAdminCount(new(uint256.Int).AddUint64(t.s.adminCount(), 1))
 		}
-		t.ctx.AddLog([]common.Hash{b20TopicRoleGranted, role, addrKey(account), addrKey(t.ctx.Caller)}, nil)
+		if !t.ctx.AddLog([]common.Hash{b20TopicRoleGranted, role, addrKey(account), addrKey(t.ctx.Caller)}, nil) {
+			return ErrOutOfGas
+		}
 	}
 	return nil
 }
@@ -322,7 +324,9 @@ func (t b20Token) revokeRole(role common.Hash, account common.Address) error {
 	if role == roleDefaultAdmin && t.s.hasRole(role, account) && t.s.adminCount().Eq(uint256.NewInt(1)) {
 		return revB20("LastAdminCannotRenounce()", errSelLastAdminRenounce)
 	}
-	t.removeRole(role, account)
+	if !t.removeRole(role, account) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -338,7 +342,9 @@ func (t b20Token) renounceRole(role common.Hash, confirmation common.Address) er
 	if role == roleDefaultAdmin && t.s.hasRole(role, t.ctx.Caller) && t.s.adminCount().Eq(uint256.NewInt(1)) {
 		return revB20("LastAdminCannotRenounce()", errSelLastAdminRenounce)
 	}
-	t.removeRole(role, t.ctx.Caller)
+	if !t.removeRole(role, t.ctx.Caller) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -360,10 +366,14 @@ func (t b20Token) renounceLastAdmin() error {
 	t.s.setRole(roleDefaultAdmin, t.ctx.Caller, false)
 	t.s.setAdminCount(new(uint256.Int))
 	t.ctx.adminRenounced = true
-	t.ctx.AddLog([]common.Hash{b20TopicRoleRevoked, roleDefaultAdmin, addrKey(t.ctx.Caller), addrKey(t.ctx.Caller)}, nil)
+	if !t.ctx.AddLog([]common.Hash{b20TopicRoleRevoked, roleDefaultAdmin, addrKey(t.ctx.Caller), addrKey(t.ctx.Caller)}, nil) {
+		return ErrOutOfGas
+	}
 	// The dedicated event marks the transition an indexer cannot infer from
 	// RoleRevoked alone: the token is now permanently ungovernable.
-	t.ctx.AddLog([]common.Hash{b20TopicLastAdminRenounced, addrKey(t.ctx.Caller)}, nil)
+	if !t.ctx.AddLog([]common.Hash{b20TopicLastAdminRenounced, addrKey(t.ctx.Caller)}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -373,21 +383,23 @@ func (t b20Token) setRoleAdmin(role, newAdminRole common.Hash) error {
 	}
 	prev := t.s.roleAdmin(role)
 	t.s.setRoleAdmin(role, newAdminRole)
-	t.ctx.AddLog([]common.Hash{b20TopicRoleAdminChanged, role, prev, newAdminRole}, nil)
+	if !t.ctx.AddLog([]common.Hash{b20TopicRoleAdminChanged, role, prev, newAdminRole}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
 // removeRole clears role from account (if held), maintaining adminCount, and
 // emits RoleRevoked. Renounce silently succeeds when the role is not held.
-func (t b20Token) removeRole(role common.Hash, account common.Address) {
+func (t b20Token) removeRole(role common.Hash, account common.Address) bool {
 	if !t.s.hasRole(role, account) {
-		return
+		return true
 	}
 	t.s.setRole(role, account, false)
 	if role == roleDefaultAdmin {
 		t.s.setAdminCount(new(uint256.Int).SubUint64(t.s.adminCount(), 1))
 	}
-	t.ctx.AddLog([]common.Hash{b20TopicRoleRevoked, role, addrKey(account), addrKey(t.ctx.Caller)}, nil)
+	return t.ctx.AddLog([]common.Hash{b20TopicRoleRevoked, role, addrKey(account), addrKey(t.ctx.Caller)}, nil)
 }
 
 // ensureRole reverts unless the caller holds role (skipped when privileged).
@@ -442,7 +454,13 @@ func (t b20Token) setPause(args []byte, on bool) error {
 	if len(features) == 0 {
 		return revB20("EmptyFeatureSet()", errSelEmptyFeatureSet)
 	}
-	p := t.s.paused()
+	// Read before the caller-sized loop and the encoding below: a mask this frame
+	// could not pay to read is zero, which says "nothing paused", and the work that
+	// follows is proportional to the caller's array.
+	p, ok := t.s.pausedChecked()
+	if !ok {
+		return ErrOutOfGas
+	}
 	words := make([]common.Hash, len(features))
 	for i, f := range features {
 		if uint(f) > b20PauseSeize {
@@ -464,7 +482,9 @@ func (t b20Token) setPause(args []byte, on bool) error {
 	// The event carries the requested feature list, not the resulting mask: it
 	// records the action taken, so re-pausing an already-paused feature is
 	// visible rather than indistinguishable from a no-op.
-	t.ctx.AddLog([]common.Hash{topic, addrKey(t.ctx.Caller)}, encodeTuple(abiWordArray(words)))
+	if !t.ctx.AddLog([]common.Hash{topic, addrKey(t.ctx.Caller)}, encodeTuple(abiWordArray(words))) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -508,7 +528,9 @@ func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
 	toSlot := t.s.balanceSlot(to)
 	t.s.setU256At(toSlot, new(uint256.Int).Add(t.s.getU256At(toSlot), amount))
 	t.s.setTotalSupply(newSupply)
-	t.emit(b20TopicTransfer, common.Address{}, to, amount)
+	if !t.emit(b20TopicTransfer, common.Address{}, to, amount) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -538,7 +560,9 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 		return revPanic(0x11) // supply underflow
 	}
 	t.s.setTotalSupply(new(uint256.Int).Sub(supply, amount))
-	t.emit(b20TopicTransfer, from, common.Address{}, amount)
+	if !t.emit(b20TopicTransfer, from, common.Address{}, amount) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -582,10 +606,16 @@ func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, me
 	t.s.setU256At(fromSlot, new(uint256.Int).Sub(bal, amount))
 	toSlot := t.s.balanceSlot(to)
 	t.s.setU256At(toSlot, new(uint256.Int).Add(t.s.getU256At(toSlot), amount))
-	t.emit(b20TopicTransfer, from, to, amount)
-	t.emitMemo(memo)
+	if !t.emit(b20TopicTransfer, from, to, amount) {
+		return ErrOutOfGas
+	}
+	if !t.emitMemo(memo) {
+		return ErrOutOfGas
+	}
 	ab := amount.Bytes32()
-	t.ctx.AddLog([]common.Hash{b20TopicSeized, addrKey(t.ctx.Caller), addrKey(from), addrKey(to)}, ab[:])
+	if !t.ctx.AddLog([]common.Hash{b20TopicSeized, addrKey(t.ctx.Caller), addrKey(from), addrKey(to)}, ab[:]) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -604,8 +634,10 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	}
 	previous := t.s.supplyCap()
 	t.s.setSupplyCap(newCap)
-	t.ctx.AddLog([]common.Hash{b20TopicSupplyCapUpdated, addrKey(t.ctx.Caller)},
-		append(wU256(previous).Bytes(), wU256(newCap).Bytes()...))
+	if !t.ctx.AddLog([]common.Hash{b20TopicSupplyCapUpdated, addrKey(t.ctx.Caller)},
+		append(wU256(previous).Bytes(), wU256(newCap).Bytes()...)) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -640,8 +672,10 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	// event would also pay.
 	previous := read()
 	write(id)
-	t.ctx.AddLog([]common.Hash{b20TopicPolicyUpdated, scope},
-		append(wU64(previous).Bytes(), wU64(id).Bytes()...))
+	if !t.ctx.AddLog([]common.Hash{b20TopicPolicyUpdated, scope},
+		append(wU64(previous).Bytes(), wU64(id).Bytes()...)) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 

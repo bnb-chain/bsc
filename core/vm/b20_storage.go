@@ -105,9 +105,15 @@ type b20Storage struct {
 // mapSlot derives mapping[key] and meters the keccak, which hashes the 64-byte
 // (key ++ base) preimage. Use it on any metered path; the bare mappingSlot
 // helper stays available for tests and unmetered views.
+// mapSlot derives mapping[key], charging for the hash first.
+//
+// The three derivations below return the zero slot when their charge is refused.
+// That slot is meaningless, not dangerous: the frame is out of gas by then, so
+// every read or write through it is refused too. Skipping the hash matters most
+// for strMapSlot, whose preimage is caller-sized.
 func (s b20Storage) mapSlot(base, key common.Hash) common.Hash {
-	if s.ctx != nil {
-		s.ctx.chargeKeccak(64)
+	if s.ctx != nil && !s.ctx.chargeKeccak(64) {
+		return common.Hash{}
 	}
 	return mappingSlot(base, key)
 }
@@ -117,8 +123,8 @@ func (s b20Storage) mapSlot(base, key common.Hash) common.Hash {
 // key to a word, so the preimage is variable-length — and so is the charge,
 // which is what keeps a long caller-supplied key from hashing for free.
 func (s b20Storage) strMapSlot(base common.Hash, key string) common.Hash {
-	if s.ctx != nil {
-		s.ctx.chargeKeccak(len(key) + 32)
+	if s.ctx != nil && !s.ctx.chargeKeccak(len(key)+32) {
+		return common.Hash{}
 	}
 	return crypto.Keccak256Hash([]byte(key), base.Bytes())
 }
@@ -162,6 +168,17 @@ func (s b20Storage) chargeRead(slot common.Hash) bool {
 // charge could not be covered, in which case nothing was read and the caller must
 // stop — the value is meaningless, and acting on a zero is how a frame out of gas
 // took a fail-open branch.
+// getWordChecked is getWord with the charge result, for reads whose value decides
+// a branch. getWord's zero is safe only where the next charge stops the caller
+// anyway; where a zero means "absent" and absent means "proceed", the caller has
+// to know the read never happened.
+func (s b20Storage) getWordChecked(slot common.Hash) (common.Hash, bool) {
+	if !s.chargeRead(slot) {
+		return common.Hash{}, false
+	}
+	return s.state.GetState(s.token, slot), true
+}
+
 func (s b20Storage) getWord(slot common.Hash) common.Hash {
 	if !s.chargeRead(slot) {
 		return common.Hash{}
@@ -202,8 +219,19 @@ func (s b20Storage) supplyCap() *uint256.Int       { return s.getU256(b20SlotSup
 func (s b20Storage) setSupplyCap(v *uint256.Int)   { s.setU256(b20SlotSupplyCap, v) }
 func (s b20Storage) adminCount() *uint256.Int      { return s.getU256(b20SlotAdminCount) }
 func (s b20Storage) setAdminCount(v *uint256.Int)  { s.setU256(b20SlotAdminCount, v) }
-func (s b20Storage) paused() *uint256.Int          { return s.getU256(b20SlotPaused) }
-func (s b20Storage) setPaused(v *uint256.Int)      { s.setU256(b20SlotPaused, v) }
+
+// pausedChecked is paused with the charge result, for the write path, whose work
+// after the read is proportional to the caller's feature array.
+func (s b20Storage) pausedChecked() (*uint256.Int, bool) {
+	w, ok := s.getWordChecked(slotAt(b20SlotPaused))
+	if !ok {
+		return new(uint256.Int), false
+	}
+	return new(uint256.Int).SetBytes(w.Bytes()), true
+}
+
+func (s b20Storage) paused() *uint256.Int     { return s.getU256(b20SlotPaused) }
+func (s b20Storage) setPaused(v *uint256.Int) { s.setU256(b20SlotPaused, v) }
 
 // --- balances / allowances / nonces ----------------------------------------
 
@@ -351,8 +379,8 @@ func (s b20Storage) setSeizeReceiverPolicy(id uint64) {
 // --- strings (Solidity storage encoding) ------------------------------------
 
 func (s b20Storage) getString(offset uint64) string { return s.getStringAt(slotAt(offset)) }
-func (s b20Storage) setString(offset uint64, str string) {
-	s.setStringAt(slotAt(offset), str)
+func (s b20Storage) setString(offset uint64, str string) bool {
+	return s.setStringAt(slotAt(offset), str)
 }
 
 // stringDataRoot derives the slot a long string's data begins at, keccak256 of
@@ -360,8 +388,8 @@ func (s b20Storage) setString(offset uint64, str string) {
 // mapping slot is metered the same way (see mapSlot); a long string's data root
 // is no less a runtime keccak just because the preimage is one word.
 func (s b20Storage) stringDataRoot(slot common.Hash) *uint256.Int {
-	if s.ctx != nil {
-		s.ctx.chargeKeccak(32)
+	if s.ctx != nil && !s.ctx.chargeKeccak(32) {
+		return new(uint256.Int)
 	}
 	return new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
 }
@@ -406,7 +434,7 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 }
 
 // setStringAt writes a string, releasing whatever the previous value held.
-func (s b20Storage) setStringAt(slot common.Hash, str string) {
+func (s b20Storage) setStringAt(slot common.Hash, str string) bool {
 	b := []byte(str)
 	oldChunks := s.stringChunks(slot)
 	newChunks := uint64(0)
@@ -418,19 +446,21 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 		var word common.Hash
 		copy(word[:], b)
 		word[31] = byte(len(b) * 2)
-		s.setWord(slot, word)
-	} else {
-		s.setWord(slot, uint256.NewInt(uint64(len(b)*2+1)).Bytes32())
+		if !s.setWord(slot, word) {
+			return false
+		}
+	} else if !s.setWord(slot, uint256.NewInt(uint64(len(b)*2+1)).Bytes32()) {
+		return false
 	}
 	if newChunks == 0 && oldChunks == 0 {
-		return // wholly inline, before and after: no data region exists
+		return true // wholly inline, before and after: no data region exists
 	}
 	// One keccak covers writing the new chunks and releasing the old ones, as
 	// it would in Solidity — deriving the root twice would overcharge.
 	base := s.stringDataRoot(slot)
 	for i := uint64(0); i < newChunks; i++ {
 		if s.ctx != nil && s.ctx.OutOfGas() {
-			return
+			return false
 		}
 		var chunk common.Hash
 		copy(chunk[:], b[i*32:])
@@ -445,10 +475,11 @@ func (s b20Storage) setStringAt(slot common.Hash, str string) {
 	// on 30,000 gas cleared 1875 slots in 126us and could do so again forever.
 	for i := newChunks; i < oldChunks; i++ {
 		if s.ctx != nil && s.ctx.OutOfGas() {
-			return
+			return false
 		}
 		s.setWord(new(uint256.Int).AddUint64(base, i).Bytes32(), common.Hash{})
 	}
+	return true
 }
 
 // stringChunks reports how many tail slots the string currently at slot
@@ -469,9 +500,9 @@ func (s b20Storage) stringChunks(slot common.Hash) uint64 {
 	return (length + 31) / 32
 }
 
-func (s b20Storage) name() string            { return s.getString(b20SlotName) }
-func (s b20Storage) setName(v string)        { s.setString(b20SlotName, v) }
-func (s b20Storage) symbol() string          { return s.getString(b20SlotSymbol) }
-func (s b20Storage) setSymbol(v string)      { s.setString(b20SlotSymbol, v) }
-func (s b20Storage) contractURI() string     { return s.getString(b20SlotContractURI) }
-func (s b20Storage) setContractURI(v string) { s.setString(b20SlotContractURI, v) }
+func (s b20Storage) name() string                 { return s.getString(b20SlotName) }
+func (s b20Storage) setName(v string) bool        { return s.setString(b20SlotName, v) }
+func (s b20Storage) symbol() string               { return s.getString(b20SlotSymbol) }
+func (s b20Storage) setSymbol(v string) bool      { return s.setString(b20SlotSymbol, v) }
+func (s b20Storage) contractURI() string          { return s.getString(b20SlotContractURI) }
+func (s b20Storage) setContractURI(v string) bool { return s.setString(b20SlotContractURI, v) }

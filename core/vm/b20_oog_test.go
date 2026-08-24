@@ -1,7 +1,9 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -255,5 +257,128 @@ func TestB20CalldataGasMatchesTheBEP(t *testing.T) {
 	if d := charged(1000) - charged(999); d != params.CopyGas+params.MemoryGas {
 		t.Errorf("the 1000th word costs %d, want %d — the charge is not linear",
 			d, params.CopyGas+params.MemoryGas)
+	}
+}
+
+// TestB20AnnounceStopsAtTheUnpaidRead is the regression Codex named as the proof
+// that a failed read must be reported, not silently zeroed.
+//
+// A zero read made announcementUsed report "unused", so announce went on to
+// ABI-encode the id, description and uri into an Announcement log and — with an
+// empty calls array, where the loop's own guard never runs — encode the id again
+// for EndAnnouncement. Both insertions happened on a frame whose charge had
+// already been refused, so a failing call still published a complete, balanced
+// disclosure. Reaching EndAnnouncement is the observable: it is the last write in
+// the function, and nothing after the refusal should execute at all.
+func TestB20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
+	statedb, evm := newB20EVM(t)
+	admin := b20ActivationAdmin
+	ret, _, err := evm.Call(admin, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0xaa11"), admin, [][]byte{
+			b20Call(selGrantRole, roleOperator, addrKey(admin)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	p, ok := resolveB20(token)
+	if !ok {
+		t.Fatal("the token does not resolve")
+	}
+
+	// Long strings, so the skipped work is proportional to calldata, and an empty
+	// calls array so the loop guard never gets a turn. A fresh id per probe, so each
+	// meets a cold slot rather than the previous probe's AnnouncementIdAlreadyUsed.
+	long := strings.Repeat("x", 600)
+
+	probes, refused, zero := 0, 0, 0
+	for g := uint64(2_000); g <= 320_000; g += 2_000 {
+		before := len(statedb.Logs())
+		_, _, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
+			admin, token, encodeAnnounceWith(nil, fmt.Sprintf("announcement-%d", g), long, long),
+			NewGasBudget(g), false, true, uint256.NewInt(0))
+		added := statedb.Logs()[before:]
+		probes++
+		if err == nil {
+			continue
+		}
+		refused++
+		if !errors.Is(err, ErrOutOfGas) {
+			t.Fatalf("budget %d: err = %v, want ErrOutOfGas", g, err)
+		}
+		if len(added) == 0 {
+			zero++
+		}
+		// A log the frame did pay for may be here — the caller's revert removes it.
+		// EndAnnouncement may not: it is emitted after the refusal point, so its
+		// presence in a failing call means execution carried on past the refusal.
+		for _, l := range added {
+			if l.Topics[0] == b20TopicEndAnnouncement {
+				t.Fatalf("budget %d: the call ran out of gas yet reached EndAnnouncement, "+
+					"so it kept executing after a charge was refused", g)
+			}
+		}
+	}
+	if refused == 0 || refused == probes {
+		t.Fatalf("%d of %d probes were refused; the sweep needs both outcomes to be "+
+			"straddling the boundary", refused, probes)
+	}
+	if zero == 0 {
+		t.Error("no probe was refused before its first log, so the sweep never reached " +
+			"the unpaid read this test is named for")
+	}
+}
+
+// TestB20AnnouncementViewNeverAnswersFromAnUnpaidRead pins the end-to-end
+// property rather than either mechanism that provides it. Two independent
+// barriers stand between an unpaid read and a wrong answer: announcementUsed
+// reports that it could not read, and finishB20Metered overrides the returned
+// error whenever the frame's out-of-gas flag is set. Remove either alone and
+// the other still holds, so no single-mutation test can witness this; remove
+// both and the view returns false for an id that was announced, with a nil
+// error and gas still in hand. That combination is what this test refuses.
+func TestB20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
+	_, evm := newB20EVM(t)
+	admin := b20ActivationAdmin
+	ret, _, err := evm.Call(admin, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0xbb22"), admin, [][]byte{
+			b20Call(selGrantRole, roleOperator, addrKey(admin)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	p, ok := resolveB20(token)
+	if !ok {
+		t.Fatal("the token does not resolve")
+	}
+
+	const id = "disclosure-1"
+	if _, _, err := evm.Call(admin, token, encodeAnnounceWith(nil, id, "d", "u"),
+		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
+		t.Fatalf("announce: %v", err)
+	}
+
+	input := encodeStringCall(selIsAnnouncementIdUsed, id)
+	answered, refused := 0, 0
+	for g := uint64(20); g <= 2_000; g += 20 {
+		out, _, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
+			admin, token, input, NewGasBudget(g), true, true, uint256.NewInt(0))
+		if err != nil {
+			if !errors.Is(err, ErrOutOfGas) {
+				t.Fatalf("budget %d: err = %v, want ErrOutOfGas", g, err)
+			}
+			refused++
+			continue
+		}
+		answered++
+		if !bytes.Equal(out, encBool(true)) {
+			t.Fatalf("budget %d: the view answered %x for an id that was announced. A read "+
+				"that could not be paid for must fail the call, never default to zero", g, out)
+		}
+	}
+	if answered == 0 || refused == 0 {
+		t.Fatalf("%d answered, %d refused; the sweep needs both to straddle the read's price",
+			answered, refused)
 	}
 }

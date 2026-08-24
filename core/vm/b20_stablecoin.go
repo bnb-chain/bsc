@@ -46,8 +46,8 @@ func (e stablecoinExt) currency() string {
 	return e.s.getStringAt(stablecoinSlot(b20StablecoinSlotCurrency))
 }
 
-func (e stablecoinExt) setCurrency(v string) {
-	e.s.setStringAt(stablecoinSlot(b20StablecoinSlotCurrency), v)
+func (e stablecoinExt) setCurrency(v string) bool {
+	return e.s.setStringAt(stablecoinSlot(b20StablecoinSlotCurrency), v)
 }
 
 // stablecoinDispatch routes a Stablecoin call: the one extension selector

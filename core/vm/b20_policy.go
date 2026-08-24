@@ -115,20 +115,20 @@ var (
 
 // emitPolicyAdminUpdated reports creation, handover and renunciation through one
 // event, so a policy's whole admin history is a single filter.
-func emitPolicyAdminUpdated(ctx *PrecompileContext, id uint64, previous, next common.Address) {
-	ctx.AddLog([]common.Hash{
+func emitPolicyAdminUpdated(ctx *PrecompileContext, id uint64, previous, next common.Address) bool {
+	return ctx.AddLog([]common.Hash{
 		b20TopicPolicyAdminUpdated, idKey(id), addrKey(previous), addrKey(next),
 	}, nil)
 }
 
 // emitMembersUpdated reports under the event belonging to the policy's own type,
 // so a consumer can subscribe to just the list it cares about.
-func emitMembersUpdated(ctx *PrecompileContext, ptype byte, id uint64, updater common.Address, included bool, accounts []common.Hash) {
+func emitMembersUpdated(ctx *PrecompileContext, ptype byte, id uint64, updater common.Address, included bool, accounts []common.Hash) bool {
 	topic := b20TopicBlocklistUpdated
 	if ptype == b20PolicyAllowlist {
 		topic = b20TopicAllowlistUpdated
 	}
-	ctx.AddLog(
+	return ctx.AddLog(
 		[]common.Hash{topic, idKey(id), addrKey(updater)},
 		encodeTuple(abiWord(boolWord(included)), abiWordArray(accounts)),
 	)
@@ -496,12 +496,12 @@ func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 
 // emitCompositeUpdated logs the complete post-update child set, as base-std does
 // on creation and on every replacement.
-func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Address, kids []uint64) {
+func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Address, kids []uint64) bool {
 	words := make([]common.Hash, len(kids))
 	for i, k := range kids {
 		words[i] = wU64(k)
 	}
-	ctx.AddLog([]common.Hash{b20TopicCompositeUpdated, idKey(id), addrKey(admin)},
+	return ctx.AddLog([]common.Hash{b20TopicCompositeUpdated, idKey(id), addrKey(admin)},
 		encodeTuple(abiWordArray(words)))
 }
 
@@ -547,9 +547,15 @@ func createCompositePolicy(ctx *PrecompileContext, reg policyReg, args []byte) (
 	reg.setCounter(c + 1)
 	reg.setPolicyAdmin(id, admin)
 	reg.setChildren(id, kids)
-	ctx.AddLog([]common.Hash{b20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes())
-	emitPolicyAdminUpdated(ctx, id, common.Address{}, admin)
-	emitCompositeUpdated(ctx, id, admin, kids)
+	if !ctx.AddLog([]common.Hash{b20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes()) {
+		return nil, ErrOutOfGas
+	}
+	if !emitPolicyAdminUpdated(ctx, id, common.Address{}, admin) {
+		return nil, ErrOutOfGas
+	}
+	if !emitCompositeUpdated(ctx, id, admin, kids) {
+		return nil, ErrOutOfGas
+	}
 	return wU64(id).Bytes(), nil
 }
 
@@ -581,7 +587,9 @@ func updateComposite(ctx *PrecompileContext, reg policyReg, args []byte) error {
 		return err
 	}
 	reg.setChildren(id, kids)
-	emitCompositeUpdated(ctx, id, ctx.Caller, kids)
+	if !emitCompositeUpdated(ctx, id, ctx.Caller, kids) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -633,10 +641,14 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	id := uint64(ptype)<<56 | c
 	reg.setCounter(c + 1)
 	reg.setPolicyAdmin(id, admin)
-	ctx.AddLog([]common.Hash{b20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes())
+	if !ctx.AddLog([]common.Hash{b20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes()) {
+		return nil, ErrOutOfGas
+	}
 	// The initial admin is reported as a transition from nobody, so it lands in
 	// the same event stream as every later handover.
-	emitPolicyAdminUpdated(ctx, id, common.Address{}, admin)
+	if !emitPolicyAdminUpdated(ctx, id, common.Address{}, admin) {
+		return nil, ErrOutOfGas
+	}
 
 	if withAccounts {
 		for _, a := range accounts {
@@ -649,7 +661,9 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 			reg.setMember(id, addr, true)
 		}
 		// Emitted even for an empty batch: the call form is part of the record.
-		emitMembersUpdated(ctx, ptype, id, ctx.Caller, true, accounts)
+		if !emitMembersUpdated(ctx, ptype, id, ctx.Caller, true, accounts) {
+			return nil, ErrOutOfGas
+		}
 	}
 	return encU256(uint256.NewInt(id)), nil
 }
@@ -702,7 +716,9 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 		}
 		reg.setMember(pid, addr, in)
 	}
-	emitMembersUpdated(ctx, wantType, pid, ctx.Caller, in, accounts)
+	if !emitMembersUpdated(ctx, wantType, pid, ctx.Caller, in, accounts) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -724,9 +740,11 @@ func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error 
 	reg.setPending(id, newAdmin)
 	// Emitted for a cancellation too, where newAdmin is zero: withdrawing a
 	// nomination is a governance action and should not be a silent one.
-	ctx.AddLog([]common.Hash{
+	if !ctx.AddLog([]common.Hash{
 		b20TopicPolicyAdminStaged, idKey(id), addrKey(ctx.Caller), addrKey(newAdmin),
-	}, nil)
+	}, nil) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -751,7 +769,9 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	previous := reg.admin(pid)
 	reg.setPolicyAdmin(pid, ctx.Caller)
 	reg.setPending(pid, common.Address{})
-	emitPolicyAdminUpdated(ctx, pid, previous, ctx.Caller)
+	if !emitPolicyAdminUpdated(ctx, pid, previous, ctx.Caller) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
@@ -771,7 +791,9 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	// answering reads.
 	reg.setPolicyAdmin(pid, common.Address{})
 	reg.setPending(pid, common.Address{})
-	emitPolicyAdminUpdated(ctx, pid, ctx.Caller, common.Address{})
+	if !emitPolicyAdminUpdated(ctx, pid, ctx.Caller, common.Address{}) {
+		return ErrOutOfGas
+	}
 	return nil
 }
 
