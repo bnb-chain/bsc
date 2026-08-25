@@ -70,8 +70,7 @@ var (
 	badBidBlockCounter = metrics.NewRegisteredCounter("chain/insert/badBidblock", nil)
 	// Not badBlockRecords: that set stops accepting entries at badBlockRecordslimit,
 	// which would freeze the counter for the rest of the process lifetime.
-	badBidBlockCountedMu sync.Mutex
-	badBidBlockCounted   = lru.NewBasicLRU[common.Hash, struct{}](badBlockRecordslimit)
+	badBidBlockCounted = lru.NewCache[common.Hash, struct{}](badBlockRecordslimit)
 
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
@@ -3407,22 +3406,10 @@ func countBadBidBlock(block *types.Block) {
 	if _, ok := badBidBlockBuilder(block); !ok {
 		return
 	}
-	if !markBadBidBlockCounted(block.Hash()) {
-		return
+	if hash := block.Hash(); !badBidBlockCounted.Contains(hash) {
+		badBidBlockCounted.Add(hash, struct{}{})
+		badBidBlockCounter.Inc(1)
 	}
-	badBidBlockCounter.Inc(1)
-}
-
-// markBadBidBlockCounted reports whether hash was absent, adding it if so.
-func markBadBidBlockCounted(hash common.Hash) bool {
-	badBidBlockCountedMu.Lock()
-	defer badBidBlockCountedMu.Unlock()
-
-	if badBidBlockCounted.Contains(hash) {
-		return false
-	}
-	badBidBlockCounted.Add(hash, struct{}{})
-	return true
 }
 
 // badBidBlockBuilder returns the builder encoded in the header of a block produced
