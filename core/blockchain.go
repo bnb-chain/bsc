@@ -46,6 +46,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -64,6 +65,12 @@ var (
 	badBlockRecords      = mapset.NewSet[common.Hash]()
 	badBlockRecordslimit = 1000
 	badBlockGauge        = metrics.NewRegisteredGauge("chain/insert/badBlock", nil)
+
+	badBidBlockCounter = metrics.NewRegisteredCounter("chain/insert/badBidblock", nil)
+	// Not badBlockRecords: that set stops accepting entries at badBlockRecordslimit,
+	// which would freeze the counter for the rest of the process lifetime.
+	badBidBlockCountedMu sync.Mutex
+	badBidBlockCounted   = lru.NewBasicLRU[common.Hash, struct{}](badBlockRecordslimit)
 
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
@@ -3317,8 +3324,48 @@ func (bc *BlockChain) reportBlock(block *types.Block, res *ProcessResult, err er
 	if res != nil {
 		receipts = res.Receipts
 	}
+	countBadBidBlock(block)
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))
+}
+
+// countBadBidBlock counts bad MEV v2 (BEP-675 SendBidBlock) blocks once per block,
+// since peers re-announce and the fetcher requeues the same bad block.
+func countBadBidBlock(block *types.Block) {
+	if _, ok := badBidBlockBuilder(block); !ok {
+		return
+	}
+	if !markBadBidBlockCounted(block.Hash()) {
+		return
+	}
+	badBidBlockCounter.Inc(1)
+}
+
+// markBadBidBlockCounted reports whether hash was absent, adding it if so.
+func markBadBidBlockCounted(hash common.Hash) bool {
+	badBidBlockCountedMu.Lock()
+	defer badBidBlockCountedMu.Unlock()
+
+	if badBidBlockCounted.Contains(hash) {
+		return false
+	}
+	badBidBlockCounted.Add(hash, struct{}{})
+	return true
+}
+
+// badBidBlockBuilder returns the builder encoded in the header of a block produced
+// through the MEV v2 (BEP-675 SendBidBlock) path. The tag is self-declared and no
+// consensus rule checks its value, so treat the builder as a lead, not as proof.
+func badBidBlockBuilder(block *types.Block) (common.Address, bool) {
+	requestsHash := block.RequestsHash()
+	if requestsHash == nil {
+		return common.Address{}, false
+	}
+	version, builder, ok := buildertypes.DecodeBlockMevInfo(*requestsHash)
+	if !ok || version != buildertypes.BlockMevInfoVersionBidBlock {
+		return common.Address{}, false
+	}
+	return builder, true
 }
 
 // logForkReadiness will write a log when a future fork is scheduled, but not
@@ -3364,16 +3411,23 @@ func summarizeBadBlock(block *types.Block, receipts []*types.Receipt, config *pa
 		badBlockGauge.Update(int64(badBlockRecords.Cardinality()))
 	}
 
+	builder, isBidBlock := badBidBlockBuilder(block)
+	var builderString string
+	if isBidBlock {
+		builderString = fmt.Sprintf("\nBuilder: %v", builder)
+	}
+
 	return fmt.Sprintf(`
 ########## BAD BLOCK #########
 Block: %v (%#x)
 Miner: %v
+IsBidBlock: %v%v
 Error: %v
 Platform: %v%v
 Chain config: %#v
 Receipts: %v
 ##############################
-`, block.Number(), block.Hash(), block.Coinbase(), err, platform, vcs, config, receiptString)
+`, block.Number(), block.Hash(), block.Coinbase(), isBidBlock, builderString, err, platform, vcs, config, receiptString)
 }
 
 // InsertHeaderChain attempts to insert the given header chain in to the local
