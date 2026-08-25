@@ -222,6 +222,150 @@ func TestCopy(t *testing.T) {
 	}
 }
 
+// TestCopyConcurrentStorageAccess tests that states derived from a common one
+// through Copy can be read from concurrently, even when they all touch the very
+// same account and storage slots.
+//
+// Reading a storage slot is not a read-only operation on the state object, it
+// populates the origin-storage cache, so a state object or a storage cache
+// shared between two copies is a "concurrent map writes" fatal error waiting to
+// happen. That is what took down archive nodes serving debug_traceBlockByNumber
+// in https://github.com/bnb-chain/bsc/issues/3797, because the parallel block
+// tracer hands one copy to each of its worker goroutines.
+func TestCopyConcurrentStorageAccess(t *testing.T) {
+	var (
+		addr   = common.Address{0xaa}
+		db     = NewDatabaseForTesting()
+		keys   []common.Hash
+		values = make(map[common.Hash]common.Hash)
+	)
+	// Persist an account with a bunch of populated storage slots, so that
+	// reading them back has to go through the state reader.
+	state, err := New(types.EmptyRootHash, db)
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	state.CreateAccount(addr)
+	state.SetCode(addr, []byte{0x01}, tracing.CodeChangeUnspecified)
+	for i := 1; i <= 64; i++ {
+		key, value := common.BytesToHash([]byte{byte(i)}), common.BytesToHash([]byte{byte(i * 3)})
+		keys = append(keys, key)
+		values[key] = value
+		state.SetState(addr, key, value)
+	}
+	root, err := state.Commit(0, false, false)
+	if err != nil {
+		t.Fatalf("failed to commit state: %v", err)
+	}
+	// Build the base state the way the chain does, sharing a single cached
+	// reader between it and all of its copies.
+	warmer, ok := db.(interface {
+		ReadersWithCacheStats(common.Hash) (Reader, Reader, error)
+	})
+	if !ok {
+		t.Fatal("state database does not provide cached readers")
+	}
+	_, reader, err := warmer.ReadersWithCacheStats(root)
+	if err != nil {
+		t.Fatalf("failed to create reader: %v", err)
+	}
+	base, err := NewWithReader(root, db, reader)
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	// Resolve the account and one of its slots up front, so that the copies
+	// taken below have to deep copy a state object with a warm storage cache,
+	// just like the tracer copies a state which already executed transactions.
+	if have, want := base.GetState(addr, keys[0]), values[keys[0]]; have != want {
+		t.Fatalf("slot %x: value mismatch: have %x, want %x", keys[0], have, want)
+	}
+	// The base state stands in for the one the tracer keeps executing on, the
+	// copies for the ones handed over to the worker goroutines. All copies must
+	// be taken before the readers are started, mirroring the tracer.
+	states := []*StateDB{base}
+	for i := 0; i < 8; i++ {
+		states = append(states, base.Copy())
+	}
+	var wg sync.WaitGroup
+	for i, s := range states {
+		wg.Add(1)
+		go func(i int, s *StateDB) {
+			defer wg.Done()
+
+			// Every state resolves all the remaining slots on its own, filling
+			// the storage caches of its own state object.
+			for _, key := range keys {
+				if have, want := s.GetState(addr, key), values[key]; have != want {
+					t.Errorf("state %d, slot %x: value mismatch: have %x, want %x", i, key, have, want)
+				}
+				if have, want := s.GetCommittedState(addr, key), values[key]; have != want {
+					t.Errorf("state %d, slot %x: committed value mismatch: have %x, want %x", i, key, have, want)
+				}
+			}
+			// Mutate too, so that finalisation has to consult the caches filled
+			// in above.
+			s.SetState(addr, keys[i%len(keys)], common.Hash{byte(i)})
+			s.SetNonce(addr, uint64(i), tracing.NonceChangeUnspecified)
+			s.Finalise(true)
+		}(i, s)
+	}
+	wg.Wait()
+}
+
+// TestSharedReaderAccountIsolation tests that states sharing a cached reader,
+// which is what StateDB.Copy leaves behind, do not end up aliasing the account
+// data resolved through that cache. Aliasing it would silently couple states
+// that are explicitly expected to be independent, such as the per-transaction
+// copies the parallel block tracer hands to its worker goroutines.
+func TestSharedReaderAccountIsolation(t *testing.T) {
+	var (
+		addr = common.Address{0xaa}
+		db   = NewDatabaseForTesting()
+	)
+	state, err := New(types.EmptyRootHash, db)
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	state.CreateAccount(addr)
+	state.AddBalance(addr, uint256.NewInt(1000), tracing.BalanceChangeUnspecified)
+	state.SetCode(addr, []byte{0x01}, tracing.CodeChangeUnspecified)
+	root, err := state.Commit(0, false, false)
+	if err != nil {
+		t.Fatalf("failed to commit state: %v", err)
+	}
+	warmer, ok := db.(interface {
+		ReadersWithCacheStats(common.Hash) (Reader, Reader, error)
+	})
+	if !ok {
+		t.Fatal("state database does not provide cached readers")
+	}
+	_, reader, err := warmer.ReadersWithCacheStats(root)
+	if err != nil {
+		t.Fatalf("failed to create reader: %v", err)
+	}
+	first, err := NewWithReader(root, db, reader)
+	if err != nil {
+		t.Fatalf("failed to create state: %v", err)
+	}
+	second := first.Copy()
+
+	// The first resolution populates the reader cache, the second one is served
+	// from it. Both must yield independently owned account data.
+	firstObj, secondObj := first.getStateObject(addr), second.getStateObject(addr)
+	if firstObj == nil || secondObj == nil {
+		t.Fatal("failed to resolve the state object")
+	}
+	if firstObj.origin == secondObj.origin {
+		t.Error("state objects share their origin account")
+	}
+	if firstObj.origin.Balance == secondObj.origin.Balance {
+		t.Error("state objects share their origin account balance")
+	}
+	if firstObj.data.Balance == secondObj.data.Balance {
+		t.Error("state objects share their account balance")
+	}
+}
+
 // TestCopyWithDirtyJournal tests if Copy can correct create a equal copied
 // stateDB with dirty journal present.
 func TestCopyWithDirtyJournal(t *testing.T) {
