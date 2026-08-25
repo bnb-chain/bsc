@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"reflect"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/bohr"
@@ -56,8 +57,28 @@ const (
 	defaultNet = "Default"
 )
 
+// genesisHash records the genesis hash of the chain, which selects the network
+// specific contract upgrades below. It is written while the blockchain is set up
+// and read afterwards from whichever goroutine happens to process or trace a
+// block, so the accesses are guarded to keep them race free.
+var genesisHash atomic.Pointer[common.Hash]
+
+// SetGenesisHash configures the genesis hash which decides the set of system
+// contract upgrades to apply.
+func SetGenesisHash(hash common.Hash) {
+	genesisHash.Store(&hash)
+}
+
+// GenesisHash returns the configured genesis hash, the zero hash if it has not
+// been configured yet.
+func GenesisHash() common.Hash {
+	if hash := genesisHash.Load(); hash != nil {
+		return *hash
+	}
+	return common.Hash{}
+}
+
 var (
-	GenesisHash common.Hash
 	// upgrade config
 	ramanujanUpgrade = make(map[string]*Upgrade)
 
@@ -1132,7 +1153,7 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 	}
 
 	var network string
-	switch GenesisHash {
+	switch GenesisHash() {
 	/* Add mainnet genesis hash */
 	case params.BSCGenesisHash:
 		network = mainNet

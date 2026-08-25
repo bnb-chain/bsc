@@ -460,7 +460,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	if err != nil {
 		return nil, err
 	}
-	systemcontracts.GenesisHash = genesisHash
+	systemcontracts.SetGenesisHash(genesisHash)
 	log.Info("Initialised chain configuration", "config", chainConfig)
 	/*
 		log.Info("")
