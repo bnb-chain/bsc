@@ -795,15 +795,10 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	return nil
 }
 
-// requirePolicyExists reverts PolicyNotFound unless the policy exists.
-//
-// It asks policyExists, not the raw exists bit: the sentinels are seeded lazily
-// by ensureInitialized, which only the create paths call, so before the first
-// policy on a network their word is still unwritten. Reading the bit directly made
-// a sentinel report PolicyNotFound until someone created something and
-// Unauthorized afterwards — the same call answering differently on unrelated
-// history. The sentinels always exist; it is their zero admin that keeps them
-// un-administrable.
+// requirePolicyExists reverts PolicyNotFound unless the policy exists. It asks
+// policyExists rather than the raw bit, because the sentinels are seeded lazily
+// and always exist whether or not their word has been written; it is their zero
+// admin that keeps them un-administrable.
 func requirePolicyExists(reg policyReg, id uint64) error {
 	if !reg.policyExists(id) {
 		return revB20("PolicyNotFound()", errSelPolicyNotFound)

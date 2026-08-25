@@ -159,16 +159,11 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 
 // --- EIP-2612 permit --------------------------------------------------------
 
-// domainSeparator computes the EIP-712 domain separator from the live token
-// name, version "1", chain id and the token address.
-// Every keccak here is a runtime hash the caller must pay for, at the same
-// per-word price the KECCAK256 opcode charges. A Solidity ERC-2612 hashes the
-// same three preimages and is billed for all of them; leaving them free would
-// make the native path cheaper than bytecode (BEP-702 3.14).
-// domainSeparator returns the EIP-712 domain hash, or the zero hash when a charge
-// on the way could not be covered — the caller stops on an out-of-gas frame, and
-// hashing a stored name it could not pay to read is work bounded by state rather
-// than by the caller's gas.
+// domainSeparator computes the EIP-712 domain hash from the live token name,
+// version "1", chain id and the token address, and reports false when a charge on
+// the way could not be covered. A Solidity ERC-2612 pays for the same three
+// hashes, so leaving them free would make the native path cheaper than bytecode
+// (BEP-702 3.14).
 func (t b20Token) domainSeparator() (common.Hash, bool) {
 	name, ok := t.s.name()
 	if !ok {

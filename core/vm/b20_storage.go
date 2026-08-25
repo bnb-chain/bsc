@@ -185,18 +185,14 @@ func (s b20Storage) getWord(slot common.Hash) common.Hash {
 	return s.state.GetState(s.token, slot)
 }
 
-// setWord writes a slot after metering it under EIP-2200 net metering with
-// EIP-3529 refunds (see chargeStorageWrite), and reports whether the write
-// happened. False covers both an unaffordable charge and the reentrancy sentry,
-// which refuses the write without going through chargeGas at all.
+// setWord writes a slot after metering it (see chargeStorageWrite) and reports
+// whether the write happened. False covers an unaffordable charge, the reentrancy
+// sentry, and a read-only frame.
 //
-// Honour the result before doing any work proportional to what the caller sent —
-// hashing a caller-supplied key, encoding a caller-supplied string, walking a
-// caller-supplied array. The fixed-size wrappers below drop it deliberately: the
-// out-of-gas flag is sticky, so no later charge can succeed either, and
-// finishB20Metered turns it into ErrOutOfGas whatever the handler returned. What
-// dropping it cannot do is bound the work, which is why the string writers and
-// the metered reads report instead.
+// Honour the result before doing work proportional to what the caller sent. The
+// fixed-size wrappers below drop it deliberately: the out-of-gas flag is sticky
+// and the exit reports it either way, so what dropping it costs is the bound on
+// work, not correctness.
 func (s b20Storage) setWord(slot, val common.Hash) bool {
 	if !s.chargeStorageWrite(slot, val) {
 		return false

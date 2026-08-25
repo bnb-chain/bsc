@@ -172,14 +172,12 @@ func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
 // meteredGasUsed returns every charge this frame levied, a bootstrap child's
-// included: storage and account access, and equally the calldata copy, the
-// keccaks, the logs and permit's ecrecover. Read only by the metering tests.
+// included: state access and equally the calldata copy, the keccaks, the logs and
+// permit's ecrecover. Read only by the metering tests.
 //
-// It is not GasCosts.StateGas. That is a separate dimension in the
-// multidimensional paradigm, and half of what is counted here is computation
-// rather than state. BEP-702 3.14 commits to inheriting the split if BSC adopts
-// EIP-8037/8038; whoever does that has to divide these charges by dimension
-// first, which is a question about the EIP's boundary and not a rename.
+// It is not GasCosts.StateGas, which is a separate dimension — half of what is
+// counted here is computation. Wiring it there means dividing these charges by
+// dimension first.
 func (ctx *PrecompileContext) meteredGasUsed() uint64 {
 	if ctx.frame == nil {
 		return 0

@@ -1119,22 +1119,14 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 			statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeNewContract)
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
-		// The B20 registries are precompiles, not upgradeable contracts, so they
-		// are seeded here rather than through an Upgrade config. The fork opens no
-		// feature; it only installs the switch that lets governance open one
-		// later, plus the sentinel that keeps the registry accounts from being
-		// reaped (BEP-702 3.15, 3.16).
-		//
-		// A usable admin is what schedules B20 (ChainConfig.B20Scheduled), so a
-		// network whose config still names the placeholder writes nothing here and
-		// routes nothing in the EVM. That is what lets this code ship while the
-		// real admin is undecided, and on a network whose Pasteur is already in the
-		// past it is what keeps a fresh sync from diverging from nodes that ran the
-		// released client through that block.
+		// The B20 registries are precompiles rather than upgradeable contracts, so
+		// they are seeded here instead of through an Upgrade config. The fork opens
+		// no feature; it installs the governance switch and the sentinel that keeps
+		// the registry accounts from being reaped. A network still naming the
+		// placeholder admin writes nothing here and routes nothing in the EVM.
 		if config.B20Scheduled() && config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
-			// The admin comes from chain configuration rather than being fixed here
-			// (BEP-702 3.15), so a QA network can hold the switch with a key it
-			// controls while the public networks name their multisig.
+			// The admin comes from chain configuration, so a QA network can hold the
+			// switch with its own key while the public networks name their multisig.
 			admin := *config.B20ActivationAdmin
 			vm.SeedB20Activation(statedb, admin)
 			log.Info("Seeded B20 activation registry", "blockNumber", blockNumber.Int64(),
