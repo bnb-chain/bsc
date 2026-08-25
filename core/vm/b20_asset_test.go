@@ -480,7 +480,7 @@ func TestB20MultiplierCeilingIsOneConstant(t *testing.T) {
 	}
 	ceiling := new(uint256.Int).SetBytes(advertised)
 	over := new(uint256.Int).AddUint64(ceiling, 1)
-	future := u256hash(uint64(evm.Context.Time) + 3600)
+	future := u256hash(evm.Context.Time + 3600)
 
 	for _, tc := range []struct {
 		name  string
