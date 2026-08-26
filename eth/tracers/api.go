@@ -712,6 +712,13 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 		results   = make([]*txTraceResult, len(txs))
 		pend      sync.WaitGroup
 	)
+	// Resolve the parent block before any worker is started. Bailing out after
+	// they are up would leave them waiting on a job channel which is never
+	// closed, leaking a goroutine per worker on every failed request.
+	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
+	if err != nil {
+		return nil, err
+	}
 	threads := runtime.NumCPU()
 	if threads > len(txs) {
 		threads = len(txs)
@@ -721,7 +728,10 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 		pend.Add(1)
 		gopool.Submit(func() {
 			defer pend.Done()
-			// Fetch and execute the next transaction trace tasks
+			// Fetch and execute the next transaction trace tasks. Every task
+			// carries its own private copy of the state, so that the tracing
+			// done here never touches state objects owned by another worker or
+			// by the goroutine generating the pre-states below.
 			for task := range jobs {
 				msg, _ := core.TransactionToMessage(txs[task.index], signer, block.BaseFee())
 				txctx := &Context{
@@ -743,11 +753,6 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 				results[task.index] = &txTraceResult{TxHash: txs[task.index].Hash(), Result: res}
 			}
 		})
-	}
-
-	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
-	if err != nil {
-		return nil, err
 	}
 
 	// Feed the transactions into the tracers and return
