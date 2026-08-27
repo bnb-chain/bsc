@@ -390,6 +390,7 @@ type BlockChain struct {
 	newPayloadFeed           event.Feed // Feed for engine API newPayload events
 	finalizedHeaderFeed      event.Feed
 	highestVerifiedBlockFeed event.Feed
+	badBidBlockFeed          event.Feed
 	blockProcCounter         int32
 	scope                    event.SubscriptionScope
 	genesisBlock             *types.Block
@@ -2720,6 +2721,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
+		bc.reportBadBidBlockEvidence(block)
 		return nil, err
 	}
 	ptime := time.Since(pstart)
@@ -2731,6 +2733,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
+		bc.reportBadBidBlockEvidence(block)
 		return nil, err
 	}
 	vtime := time.Since(vstart)
@@ -3410,6 +3413,28 @@ func countBadBidBlock(block *types.Block) {
 		badBidBlockCounted.Add(hash, struct{}{})
 		badBidBlockCounter.Inc(1)
 	}
+}
+
+// reportBadBidBlockEvidence posts evidence that a BidBlock failed execution.
+//
+// Only call it for blocks past header and body verification: the sync path feeds
+// unverified blocks straight to InsertChain, so an earlier reject proves nothing
+// about the sealer and would let any peer frame a builder.
+func (bc *BlockChain) reportBadBidBlockEvidence(block *types.Block) {
+	builder, ok := badBidBlockBuilder(block)
+	if !ok {
+		return
+	}
+	ev := BadBidBlockEvent{
+		Builder:    builder,
+		Sealer:     block.Coinbase(),
+		Hash:       block.Hash(),
+		ParentHash: block.ParentHash(),
+		Number:     block.NumberU64(),
+	}
+	// Off the import path: Send blocks until every subscriber accepts, and the
+	// miner's reads contract state. Blocking here would stall import under chainmu.
+	go bc.badBidBlockFeed.Send(ev)
 }
 
 // badBidBlockBuilder returns the builder encoded in the header of a block produced

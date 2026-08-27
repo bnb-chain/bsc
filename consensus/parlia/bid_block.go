@@ -2,18 +2,24 @@ package parlia
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var signableSystemTxSelectors = map[string][4]byte{
@@ -194,6 +200,94 @@ func (p *Parlia) selectorFor(methodName string) [4]byte {
 		panic(fmt.Sprintf("missing fixed system tx selector %s", methodName))
 	}
 	return selector
+}
+
+// ValidatorRole classifies an address within the working validator set.
+type ValidatorRole uint8
+
+const (
+	// ValidatorRoleNone means the address is not a working validator.
+	ValidatorRoleNone ValidatorRole = iota
+	ValidatorRoleCabinet
+	// ValidatorRoleCandidate also covers cabinet validators selected into the
+	// rotating tail, which are conservatively counted as candidates.
+	ValidatorRoleCandidate
+)
+
+func (r ValidatorRole) String() string {
+	switch r {
+	case ValidatorRoleCabinet:
+		return "cabinet"
+	case ValidatorRoleCandidate:
+		return "candidate"
+	default:
+		return "none"
+	}
+}
+
+// initNumOfCabinets mirrors BSCValidatorSet.INIT_NUM_OF_CABINETS, its fallback
+// while numOfCabinets is unset.
+const initNumOfCabinets = 21
+
+// SealerRole classifies addr against the mining validator set at blockHash. The
+// fixed prefix is guaranteed to contain cabinets; the rotating tail is
+// conservatively treated as candidates.
+func (p *Parlia) SealerRole(blockHash common.Hash, addr common.Address) (ValidatorRole, error) {
+	var validators []common.Address
+	var voteAddrs []types.BLSPublicKey
+	if err := p.callValidatorSet(blockHash, "getMiningValidators", &validators, &voteAddrs); err != nil {
+		return ValidatorRoleNone, fmt.Errorf("getMiningValidators: %w", err)
+	}
+	idx := slices.Index(validators, addr)
+	if idx < 0 {
+		return ValidatorRoleNone, nil
+	}
+
+	var numOfCabinets *big.Int
+	if err := p.callValidatorSet(blockHash, "numOfCabinets", &numOfCabinets); err != nil {
+		return ValidatorRoleNone, fmt.Errorf("numOfCabinets: %w", err)
+	}
+	cabinets := initNumOfCabinets
+	if numOfCabinets != nil && numOfCabinets.IsInt64() && numOfCabinets.Sign() > 0 {
+		cabinets = int(numOfCabinets.Int64())
+	}
+	var maxWorkingCandidates *big.Int
+	if err := p.callValidatorSet(blockHash, "maxNumOfWorkingCandidates", &maxWorkingCandidates); err != nil {
+		return ValidatorRoleNone, fmt.Errorf("maxNumOfWorkingCandidates: %w", err)
+	}
+	guaranteedCabinets := min(len(validators), cabinets)
+	if maxWorkingCandidates != nil && maxWorkingCandidates.IsInt64() && maxWorkingCandidates.Sign() > 0 {
+		workingCandidates := min(int(maxWorkingCandidates.Int64()), guaranteedCabinets)
+		guaranteedCabinets -= workingCandidates
+	}
+	if idx < guaranteedCabinets {
+		return ValidatorRoleCabinet, nil
+	}
+	return ValidatorRoleCandidate, nil
+}
+
+// callValidatorSet performs a no-argument view call on the validator contract.
+func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out ...interface{}) error {
+	data, err := p.validatorSetABI.Pack(method)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
+	msgData := (hexutil.Bytes)(data)
+	toAddress := common.HexToAddress(systemcontracts.ValidatorContract)
+	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
+	result, err := p.ethAPI.Call(ctx, ethapi.TransactionArgs{
+		Gas:  &gas,
+		To:   &toAddress,
+		Data: &msgData,
+	}, &blockNr, nil, nil)
+	if err != nil {
+		return err
+	}
+	return p.validatorSetABI.UnpackIntoInterface(&out, method, result)
 }
 
 func (p *Parlia) BlockTimeUpperCheck(chain consensus.ChainHeaderReader, header *types.Header) error {
