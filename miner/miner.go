@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
@@ -44,8 +43,6 @@ type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
 	SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription
-	// ChainDb is used to persist BidBlock revoke lockouts across restarts.
-	ChainDb() ethdb.Database
 }
 
 // Miner is the main object which takes care of submitting new work to consensus
@@ -65,7 +62,7 @@ type Miner struct {
 }
 
 func New(eth Backend, config *minerconfig.Config, eventMux *event.TypeMux, engine consensus.Engine) *Miner {
-	bidBlockPermMgr := NewBidBlockPermissionManager(eth.ChainDb())
+	bidBlockPermMgr := NewBidBlockPermissionManager(config.BidBlockRevokesJournal)
 	miner := &Miner{
 		mux:     eventMux,
 		eth:     eth,

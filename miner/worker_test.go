@@ -151,7 +151,6 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 
 func (b *testWorkerBackend) BlockChain() *core.BlockChain { return b.chain }
 func (b *testWorkerBackend) TxPool() *txpool.TxPool       { return b.txPool }
-func (b *testWorkerBackend) ChainDb() ethdb.Database      { return b.db }
 
 // SubscribeSyncEvents subscribes to a throwaway feed that never fires; the
 // worker tests do not exercise downloader-driven start/stop behavior.
@@ -173,7 +172,7 @@ func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, blocks int) (*worker, *testWorkerBackend) {
 	backend := newTestWorkerBackend(t, chainConfig, engine, db, blocks)
 	backend.txPool.Add(pendingTxs, true)
-	w := newWorker(testConfig, engine, backend, new(event.TypeMux), NewBidBlockPermissionManager(nil))
+	w := newWorker(testConfig, engine, backend, new(event.TypeMux), NewBidBlockPermissionManager(""))
 	w.setEtherbase(testBankAddress)
 	return w, backend
 }

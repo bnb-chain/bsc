@@ -432,6 +432,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
 
+	// BidBlock revoke lockouts (validator-local MEV policy) journal to a file
+	// under the datadir rather than chaindata.
+	if config.Miner.BidBlockRevokesJournal != "" {
+		config.Miner.BidBlockRevokesJournal = stack.ResolvePath(config.Miner.BidBlockRevokesJournal)
+	}
+
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
 	}
