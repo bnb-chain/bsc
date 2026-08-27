@@ -26,6 +26,18 @@ const (
 	// so the limit is 47 ~= 21/0.45, here set it to 68 with a buffer.
 	receiveRateLimitPerSecond = 68
 
+	// serveBytesRateLimitPerSecond is the per-peer budget, in response bytes,
+	// for serving GetBlocksByRange over one second. A single small request can
+	// force up to softResponseLimit (8 MiB) of disk lookups, RLP encoding and
+	// upload, so — mirroring the vote receive-rate limiter — a peer that keeps
+	// requesting ranges is bounded to this sustained serving cost.
+	//
+	// 8 MiB/s lets a legitimate quick-block-fetching peer burst several full
+	// responses within a period (the requester only asks when filling a gap
+	// near head, not continuously), while capping a spamming connection to a
+	// predictable, low cost.
+	serveBytesRateLimitPerSecond = 8 * 1024 * 1024
+
 	// the time span of one period
 	secondsPerPeriod = float64(30)
 )
@@ -37,7 +49,11 @@ type Peer struct {
 	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
 	periodBegin   time.Time                  // Begin time of the latest period for votes counting
 	periodCounter uint                       // Votes number in the latest period
-	dispatcher    *Dispatcher                // Message request-response dispatcher
+
+	blockServeBegin   time.Time // Begin time of the latest period for block-serving byte counting
+	blockServeCounter uint64    // GetBlocksByRange response bytes served in the latest period
+
+	dispatcher *Dispatcher // Message request-response dispatcher
 
 	*p2p.Peer                   // The embedded P2P package peer
 	rw        p2p.MsgReadWriter // Input/output streams for bsc
@@ -51,16 +67,17 @@ type Peer struct {
 func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 	id := p.ID().String()
 	peer := &Peer{
-		id:            id,
-		knownVotes:    newKnownCache(maxKnownVotes),
-		voteBroadcast: make(chan []*types.VoteEnvelope, voteBufferSize),
-		periodBegin:   time.Now(),
-		periodCounter: 0,
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		logger:        log.New("peer", id[:8]),
-		term:          make(chan struct{}),
+		id:              id,
+		knownVotes:      newKnownCache(maxKnownVotes),
+		voteBroadcast:   make(chan []*types.VoteEnvelope, voteBufferSize),
+		periodBegin:     time.Now(),
+		periodCounter:   0,
+		blockServeBegin: time.Now(),
+		Peer:            p,
+		rw:              rw,
+		version:         version,
+		logger:          log.New("peer", id[:8]),
+		term:            make(chan struct{}),
 	}
 	peer.dispatcher = NewDispatcher(peer)
 	go peer.broadcastVotes()
@@ -138,6 +155,41 @@ func (p *Peer) IsOverLimitAfterReceivingVotes(n uint) bool {
 	}
 	p.periodCounter += n
 	return p.periodCounter > uint(secondsPerPeriod*receiveRateLimitPerSecond)
+}
+
+// blockServeBudget is the rolling per-period serving budget in bytes.
+func blockServeBudget() uint64 {
+	return uint64(secondsPerPeriod * serveBytesRateLimitPerSecond)
+}
+
+// IsOverBlockServeLimit reports whether this peer has already exhausted its
+// per-period GetBlocksByRange serving budget, rolling the period over when it
+// has elapsed. It does not charge the budget; call ChargeBlockServe with the
+// actual response size after a response has been built.
+//
+// These per-peer counters are only ever touched from the peer's single
+// message-handling goroutine (Handle), same as the vote counter above, so no
+// locking is needed.
+func (p *Peer) IsOverBlockServeLimit() bool {
+	if time.Since(p.blockServeBegin).Seconds() >= secondsPerPeriod {
+		if p.blockServeCounter > blockServeBudget() {
+			p.Log().Debug("serving GetBlocksByRange too much", "secondsPerPeriod", secondsPerPeriod, "bytes", p.blockServeCounter)
+		}
+		p.blockServeBegin = time.Now()
+		p.blockServeCounter = 0
+		return false
+	}
+	return p.blockServeCounter > blockServeBudget()
+}
+
+// ChargeBlockServe accounts n response bytes served for a GetBlocksByRange
+// reply against this peer's rolling per-period budget.
+func (p *Peer) ChargeBlockServe(n uint64) {
+	if time.Since(p.blockServeBegin).Seconds() >= secondsPerPeriod {
+		p.blockServeBegin = time.Now()
+		p.blockServeCounter = 0
+	}
+	p.blockServeCounter += n
 }
 
 // broadcastVotes is a write loop that schedules votes broadcasts

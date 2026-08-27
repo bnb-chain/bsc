@@ -183,6 +183,17 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("msg %v, invalid count: %v", GetBlocksByRangeMsg, req.Count)
 	}
 
+	// Rate-limit block serving per peer, mirroring the vote receive-rate limiter
+	// (handleVotes). A small request can force up to softResponseLimit of disk
+	// lookups, RLP encoding and upload; once a peer has spent its rolling
+	// per-period serving budget, drop further range requests (silently, like
+	// votes — keep the connection) until the period rolls over. The check runs
+	// before any disk lookup so a spamming peer stops costing work.
+	if peer.IsOverBlockServeLimit() {
+		log.Debug("drop GetBlocksByRange over serve rate limit", "from", peer.id)
+		return nil
+	}
+
 	// Get requested blocks
 	blocks := make([]rlp.RawValue, 0, req.Count)
 	var block *types.Block
@@ -214,6 +225,9 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		blocks = append(blocks, enc)
 		responseSize += len(enc)
 	}
+
+	// Account the bytes actually served against the peer's rolling budget.
+	peer.ChargeBlockServe(uint64(responseSize))
 
 	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks), "responseSize", responseSize)
 	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangeRLPPacket{
