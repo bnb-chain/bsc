@@ -20,7 +20,6 @@ import (
 	"bytes"
 	rand2 "crypto/rand"
 	"crypto/sha256"
-	"errors"
 	"io"
 	"math"
 	"math/big"
@@ -913,16 +912,33 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 }
 
+// handleRecordingBackend records whether a packet reached Backend.Handle, so a
+// test can tell "dropped in the handler" from "forwarded to the fetcher".
+type handleRecordingBackend struct {
+	Backend
+	handled bool
+}
+
+func (b *handleRecordingBackend) Handle(peer *Peer, packet Packet) error {
+	b.handled = true
+	return b.Backend.Handle(peer, packet)
+}
+
 // TestHandleNewBlockBadBody verifies that a propagated block whose body does
-// not match its header commitments (TxHash / UncleHash) is rejected with an
-// error, which tears the connection down, instead of only being logged. This
-// pins the fix for the former "return nil" that let a peer replay malformed
-// blocks and burn DeriveSha for free.
+// not match its header commitments (TxHash / UncleHash) is DROPPED — never
+// forwarded to the backend, so this node does not re-broadcast the garbage —
+// while the connection is left intact.
+//
+// The sender is deliberately not disconnected: with EnableQuickBlockFetching an
+// honest relay forwards a block it pulled via fetchRangeBlocks (which does not
+// verify TxHash/UncleHash) before InsertChain validates the body, so fault
+// cannot be attributed to whoever delivered the NewBlock.
 func TestHandleNewBlockBadBody(t *testing.T) {
 	t.Parallel()
 
-	backend := newTestBackend(maxBodiesServe + 15)
-	defer backend.close()
+	inner := newTestBackend(maxBodiesServe + 15)
+	defer inner.close()
+	backend := &handleRecordingBackend{Backend: inner}
 
 	protos := []p2p.Protocol{
 		{Name: "eth", Version: ETH68},
@@ -935,7 +951,7 @@ func TestHandleNewBlockBadBody(t *testing.T) {
 	p2pEthSrc, p2pEthSink := p2p.MsgPipe()
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
-	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, backend.chain.Config())
+	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, inner.chain.Config())
 
 	encode := func(block *types.Block) p2p.Msg {
 		size, r, _ := rlp.EncodeToReader(NewBlockPacket{Block: block, TD: big.NewInt(1)})
@@ -966,15 +982,34 @@ func TestHandleNewBlockBadBody(t *testing.T) {
 		{"invalid uncles (UncleHash mismatch)", badUncleBlock},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := handleNewBlock(backend, encode(tc.block), localEth)
-			if err == nil {
-				t.Fatalf("a body/header-commitment mismatch must return an error (disconnect), got nil")
+			backend.handled = false
+			if err := handleNewBlock(backend, encode(tc.block), localEth); err != nil {
+				t.Fatalf("a body/header-commitment mismatch must not error (no disconnect), got %v", err)
 			}
-			if !errors.Is(err, errDecode) {
-				t.Fatalf("expected an errDecode-wrapped error, got %v", err)
+			if backend.handled {
+				t.Fatal("a malformed block must be dropped, not forwarded to the backend")
 			}
 		})
 	}
+
+	// Positive control: a block whose body does match its commitments must
+	// still reach the backend, so the drop above is specific to malformed
+	// bodies rather than rejecting everything.
+	t.Run("well-formed block is forwarded", func(t *testing.T) {
+		good := types.NewBlockWithHeader(&types.Header{
+			Number:      big.NewInt(0),
+			UncleHash:   types.EmptyUncleHash,
+			TxHash:      types.EmptyTxsHash,
+			ReceiptHash: types.EmptyReceiptsHash,
+		})
+		backend.handled = false
+		if err := handleNewBlock(backend, encode(good), localEth); err != nil {
+			t.Fatalf("a well-formed block must be accepted, got %v", err)
+		}
+		if !backend.handled {
+			t.Fatal("a well-formed block must be forwarded to the backend")
+		}
+	})
 }
 
 func TestHandleNewBlockhashes(t *testing.T) {

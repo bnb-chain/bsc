@@ -27,10 +27,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
+
+// malformedPropagatedBlockMeter counts propagated blocks discarded because the
+// body does not match the header commitments. The sender is not disconnected
+// (see handleNewBlock), so this is the only signal such traffic is happening.
+var malformedPropagatedBlockMeter = metrics.NewRegisteredMeter("eth/propagated/block/malformed", nil)
 
 func handleGetBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 	// Decode the complex header query
@@ -398,23 +404,34 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	// A propagated block whose body does not match its header commitments is
-	// malformed: it can never enter the chain and forcing the recipient to
-	// re-derive the commitments (CalcUncleHash / DeriveSha over every tx) is
-	// pure wasted work. Treat it as a bad peer and tear the connection down
-	// (handleMessage disconnects on any returned error) instead of only
-	// logging and staying connected, which let a peer repeat it for free.
+	// malformed: it can never enter the chain, so drop it here instead of
+	// letting it reach the fetcher, where this node would re-broadcast it and
+	// amplify the garbage before InsertChain ever validates the body.
+	//
+	// The sender is NOT disconnected, deliberately. Fault cannot be attributed
+	// to it: with EnableQuickBlockFetching (the default on sentry nodes) a block
+	// pulled via fetchRangeBlocks is only SanityCheck'd — TxHash/UncleHash are
+	// not verified — and the fetcher propagates once verifyHeader passes, ahead
+	// of InsertChain. An honest relay therefore forwards a body-mismatched
+	// block it received from a bad upstream without any way of knowing, so
+	// disconnecting on receipt would punish the relay for someone else's fault
+	// and could cascade through a relay topology. Dropping without propagating
+	// already denies a malicious peer the amplification and the downstream
+	// insert work; the residual cost is one body-hash derivation per message,
+	// which is unavoidable since that is what reveals the mismatch.
 	//
 	// Upstream go-ethereum resolved the original TODO here by removing the
 	// whole NewBlock broadcast path post-merge; BSC (Parlia PoSA) still relies
-	// on eth NewBlock gossip to propagate blocks, so the handler stays and the
-	// mismatch must be an explicit disconnect signal.
+	// on eth NewBlock gossip to propagate blocks, so the handler stays.
 	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
-		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
-		return fmt.Errorf("%w: propagated block has invalid uncle hash: have %x, exp %x", errDecode, hash, ann.Block.UncleHash())
+		log.Warn("Discarded propagated block with invalid uncles", "peer", peer.ID(), "number", ann.Block.NumberU64(), "have", hash, "exp", ann.Block.UncleHash())
+		malformedPropagatedBlockMeter.Mark(1)
+		return nil
 	}
 	if hash := types.DeriveSha(ann.Block.Transactions(), trie.NewStackTrie(nil)); hash != ann.Block.TxHash() {
-		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
-		return fmt.Errorf("%w: propagated block has invalid body: have %x, exp %x", errDecode, hash, ann.Block.TxHash())
+		log.Warn("Discarded propagated block with invalid body", "peer", peer.ID(), "number", ann.Block.NumberU64(), "have", hash, "exp", ann.Block.TxHash())
+		malformedPropagatedBlockMeter.Mark(1)
+		return nil
 	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
