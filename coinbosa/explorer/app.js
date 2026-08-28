@@ -66,7 +66,20 @@ function renderFooter(){
   document.getElementById('fcol-com').innerHTML=[link(LINKS.telegram,'Telegram'),link(LINKS.telegramCommunity,'Telegram '+t('community')),link(LINKS.facebook,'Facebook'),link(LINKS.discord||'','Discord'),link(LINKS.twitter||'','X / Twitter')].join('');
   document.getElementById('fcol-res').innerHTML=[link(LINKS.whitepaper,t('readWhitepaper')),link(LINKS.github,'GitHub'),link(LINKS.explorer,t('explorer'))].join('');
 }
-let lang=localStorage.getItem('coinbosa.lang')||(navigator.languages||[]).map(l=>l.slice(0,2)).find(l=>I18N[l])||'fr';
+// Ordre de decision de la langue, du plus explicite au plus general :
+//   1. ?lang=xx dans l'URL — permet de PARTAGER un lien dans une langue donnee.
+//      Sans cela la langue ne vivait que dans localStorage, donc un lien envoye a
+//      une bourse s'ouvrait dans la langue du destinataire, jamais dans la notre.
+//   2. le choix deja fait par le visiteur sur ce navigateur ;
+//   3. la langue du navigateur, si nous la parlons ;
+//   4. l'anglais. PAS le francais : un visiteur allemand, russe ou japonais
+//      tombait sur du francais, alors que le projet vise l'international.
+let lang=(function(){
+  var p=new URLSearchParams(location.search).get('lang');
+  if(p&&I18N[p])return p;
+  var m=localStorage.getItem('coinbosa.lang'); if(m&&I18N[m])return m;
+  return (navigator.languages||[]).map(l=>l.slice(0,2)).find(l=>I18N[l])||'en';
+})();
 const t=k=>(I18N[lang]&&I18N[lang][k])||I18N.en[k]||k;
 
 const sel=document.getElementById('lang');
