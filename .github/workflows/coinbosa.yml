@@ -43,9 +43,14 @@ jobs:
             base="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
           fi
           echo "Controle des commits $base..HEAD"
-          # -i : la casse ne doit pas servir de contournement.
+          # -i  : la casse ne doit pas servir de contournement.
+          # ^   : ANCRE EN DEBUT DE LIGNE, et c'est essentiel. Un pied de page git
+          #       commence toujours une ligne. Sans l'ancre, la barriere s'arretait
+          #       sur un commit qui se CONTENTAIT de citer la regle en prose — elle
+          #       a commence par se bloquer elle-meme. Une barriere qui punit le fait
+          #       d'en parler est une barriere qu'on finit par desactiver.
           fautifs=$(git log --format='%H %s%n%b' "$base..HEAD" \
-            | grep -iE 'co-authored-by:.*(claude|cursor|copilot|codex|anthropic|openai)|noreply@anthropic|cursoragent@|generated with .*(claude|cursor|copilot)' \
+            | grep -iE '^[[:space:]]*(co-authored-by:[[:space:]]*.*(claude|cursor|copilot|codex|anthropic|openai|noreply@anthropic|cursoragent@)|(.{0,4})?generated with .*(claude|cursor|copilot|codex))' \
             || true)
           if [ -n "$fautifs" ]; then
             echo "::error::Un message de commit porte la signature d'un outil."
