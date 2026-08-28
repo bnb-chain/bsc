@@ -92,7 +92,11 @@ var CONTENT = {
   network: {
     name:          "Coinbosa Chain",
     evm:           "Compatible EVM",
-    consensus:     "Parlia · PoSA",
+    // « PoSA » veut dire preuve d'enjeu ET d'autorite. Coinbosa n'a pas d'enjeu :
+    // le contrat systeme expose un ensemble de validateurs fixe, sans depot ni
+    // sanction. Ecrire PoSA ici affirmait une caution qui n'existe pas, et
+    // contredisait le livre blanc, qui dit « preuve d'autorite aujourd'hui ».
+    consensus:     "Parlia — preuve d'autorité aujourd'hui",
     chainId:       "26262",
     blockTime:     "5 s",
     coin:          "BOSA",

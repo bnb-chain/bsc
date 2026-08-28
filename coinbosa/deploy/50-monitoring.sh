@@ -92,12 +92,55 @@ alerte() {  # $1=niveau  $2=titre  $3=détail
 
 hauteur() { sudo -u "$2" "$GETH" attach --exec 'eth.blockNumber' "$1" 2>/dev/null | tr -cd '0-9'; }
 
+# ---------------------------------------------------------------------------
+# Fenetre de maintenance.
+#
+# L'arret propre planifie (60-journal.sh) redemarre les noeuds vers 04:20 UTC.
+# Cette sonde passe toutes les deux minutes. Les 24 et 28 aout 2026 elles se sont
+# croisees et deux incidents Sentry ont ete ouverts pour une chaine saine.
+#
+# Pendant la fenetre, SEULES les pannes transitoires par nature — un noeud qui ne
+# repond pas parce qu'il redemarre — cessent de partir vers Sentry ; elles restent
+# ecrites dans le journal. Tout le reste garde sa voix : rembobinage, fork,
+# stagnation, disque, certificat. Ce sont des defauts qu'un redemarrage
+# n'explique pas, et les taire serait rendre la sonde aveugle.
+#
+# Le temoin porte une echeance. Depassee, on realerte — et sur un motif plus
+# grave, car une maintenance qui deborde est un vrai incident.
+# ---------------------------------------------------------------------------
+TEMOIN=/run/coinbosa-maintenance
+MAINTENANCE=0
+if [ -r "$TEMOIN" ]; then
+  fin=$(tr -cd '0-9' < "$TEMOIN")
+  maintenant=$(date +%s)
+  if [ -n "$fin" ] && [ "$maintenant" -lt "$fin" ] 2>/dev/null; then
+    MAINTENANCE=1
+    logger -t coinbosa-watchdog "fenetre de maintenance active, encore $((fin - maintenant))s"
+  else
+    # Le temoin traine alors que la fenetre est close : le script d'arret propre
+    # n'est pas alle au bout. C'est precisement ce qu'il faut savoir.
+    alerte error "fenetre de maintenance depassee" \
+      "le temoin $TEMOIN a expire depuis $((maintenant - ${fin:-$maintenant}))s — l arret propre n a pas termine"
+    rm -f "$TEMOIN"
+  fi
+fi
+
+# Alerte pour les pannes qu'un redemarrage explique. Hors fenetre, elle se
+# comporte exactement comme alerte().
+alerte_transitoire() {
+  if [ "$MAINTENANCE" = "1" ]; then
+    logger -t coinbosa-watchdog "pendant maintenance, non remonte : $2 — $3"
+  else
+    alerte "$1" "$2" "$3"
+  fi
+}
+
 # --- 1. la chaîne avance-t-elle ? C'est LE test de vie. -----------------------
 hv=$(hauteur "$VAL_IPC" "$VAL_USER")
 hn=$(hauteur "$NODE_IPC" "$NODE_USER")
 
 if [ -z "${hv:-}" ]; then
-  alerte error "validateur injoignable" "aucune reponse sur $VAL_IPC"
+  alerte_transitoire error "validateur injoignable" "aucune reponse sur $VAL_IPC"
 else
   # On memorise la hauteur ET l'instant. Comparer deux mesures sans regarder le temps
   # ecoule produit un faux positif des qu'on releve deux fois en moins de 5 s : aucun bloc
@@ -127,7 +170,7 @@ fi
 # --- 2. les deux nœuds racontent-ils la même chaîne ? ------------------------
 if [ -n "${hv:-}" ] && [ -n "${hn:-}" ]; then
   ecart=$((hv - hn)); [ "$ecart" -lt 0 ] && ecart=$((-ecart))
-  [ "$ecart" -gt 20 ] && alerte error "noeud RPC decroche" "validateur=$hv noeud=$hn ecart=$ecart blocs"
+  [ "$ecart" -gt 20 ] && alerte_transitoire error "noeud RPC decroche" "validateur=$hv noeud=$hn ecart=$ecart blocs"
   # Un désaccord de hash à hauteur égale = fork silencieux, le pire des cas.
   if [ "$ecart" -eq 0 ] && [ "$hv" -gt 0 ]; then
     a=$(sudo -u "$VAL_USER" "$GETH" attach --exec "eth.getBlock($hv).hash" "$VAL_IPC" 2>/dev/null | tr -d '"')
@@ -135,12 +178,12 @@ if [ -n "${hv:-}" ] && [ -n "${hn:-}" ]; then
     [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ] && alerte fatal "FORK : hash divergents" "bloc $hv : $a vs $b"
   fi
 else
-  [ -z "${hn:-}" ] && alerte error "noeud RPC injoignable" "aucune reponse sur $NODE_IPC"
+  [ -z "${hn:-}" ] && alerte_transitoire error "noeud RPC injoignable" "aucune reponse sur $NODE_IPC"
 fi
 
 # --- 3. services ------------------------------------------------------------
 for s in coinbosa-validator coinbosa-node caddy; do
-  systemctl is-active --quiet "$s" || alerte fatal "service arrete" "$s"
+  systemctl is-active --quiet "$s" || alerte_transitoire fatal "service arrete" "$s"
 done
 
 # --- 4. disque : la chaine grossit tous les jours ----------------------------
@@ -173,7 +216,7 @@ hex_h=$(curl -s -X POST "https://$DOMAINE/rpc" -H 'content-type: application/jso
   | sed -n 's/.*"result"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
 if [ -z "${hex_h:-}" ]; then
-  alerte error "RPC public muet" "eth_blockNumber sans reponse sur https://$DOMAINE/rpc"
+  alerte_transitoire error "RPC public muet" "eth_blockNumber sans reponse sur https://$DOMAINE/rpc"
 else
   t0=$(date +%s)
   rep=$(curl -s -X POST "https://$DOMAINE/rpc" -H 'content-type: application/json' \
@@ -184,12 +227,12 @@ else
   # Trois pannes distinctes, trois messages distincts : « ca ne marche pas » ne dit
   # pas par ou commencer un dimanche a 3 h du matin.
   if [ -z "${rep:-}" ]; then
-    alerte error "index des journaux MORT" "eth_getLogs sans reponse en ${duree}s — aucun tiers ne peut lire la chaine"
+    alerte_transitoire error "index des journaux MORT" "eth_getLogs sans reponse en ${duree}s — aucun tiers ne peut lire la chaine"
   elif echo "$rep" | grep -qE '"error"[[:space:]]*:'; then
     msg=$(echo "$rep" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    alerte error "index des journaux en erreur" "eth_getLogs repond: ${msg:-erreur} — chercher FilterMaps dans journalctl -u coinbosa-node"
+    alerte_transitoire error "index des journaux en erreur" "eth_getLogs repond: ${msg:-erreur} — chercher FilterMaps dans journalctl -u coinbosa-node"
   elif [ "$duree" -ge "$LOGS_SEUIL" ]; then
-    alerte error "index des journaux LENT" "eth_getLogs a mis ${duree}s (seuil ${LOGS_SEUIL}s) — index en reconstruction, ou qui derive"
+    alerte_transitoire error "index des journaux LENT" "eth_getLogs a mis ${duree}s (seuil ${LOGS_SEUIL}s) — index en reconstruction, ou qui derive"
   fi
 fi
 

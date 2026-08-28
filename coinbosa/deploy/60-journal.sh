@@ -68,8 +68,32 @@ hauteur_de() {
     "/var/lib/coinbosa/$1/geth.ipc" 2>/dev/null | tr -cd '0-9'
 }
 
+# ---------------------------------------------------------------------------
+# Temoin de maintenance.
+#
+# Ce script coupe les noeuds ; la sonde de surveillance les interroge toutes les
+# deux minutes. Les 24 et 28 aout 2026, les deux se sont croisees : la sonde a
+# trouve le validateur muet PENDANT son redemarrage et a ouvert deux incidents
+# Sentry pour une chaine qui allait parfaitement bien. Une sonde qui crie au loup
+# finit par etre ignoree — et le jour ou elle a raison, personne ne regarde.
+#
+# Le temoin porte une ECHEANCE, il n'est pas un simple interrupteur. Passee cette
+# echeance la sonde realerte, et sur un motif plus grave : une fenetre de
+# maintenance qui deborde est elle-meme un incident. Un script mort ne peut donc
+# pas rendre la surveillance aveugle.
+# ---------------------------------------------------------------------------
+TEMOIN=/run/coinbosa-maintenance
+FENETRE=${FENETRE:-420}          # 2 noeuds x 60 s d'attente, plus la marge d'arret
+
+# Le temoin part quoi qu'il arrive : succes, echec, interruption. Sans ce filet,
+# un exit 1 en plein redemarrage laisserait la sonde muette jusqu'a l'echeance.
+trap 'rm -f "$TEMOIN"' EXIT INT TERM
+
 for R in node validator; do
   SVC="coinbosa-$R"
+  # Repose a chaque noeud : le second redemarrage doit disposer de la fenetre
+  # entiere, pas du reliquat laisse par le premier.
+  echo "$(( $(date +%s) + FENETRE ))" > "$TEMOIN"
   systemctl is-active --quiet "$SVC" || { alerte error "noeud deja arrete" "$SVC n etait pas actif — rien a redemarrer"; continue; }
 
   AVANT_J=$(journal_de "$R")
