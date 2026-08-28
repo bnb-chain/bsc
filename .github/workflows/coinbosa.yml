@@ -25,6 +25,38 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # L'historique complet est requis : le controle ci-dessous compare les
+          # commits pousses a leur base, ce qu'un checkout superficiel interdit.
+          fetch-depth: 0
+
+      # --- aucune signature d'outil dans les messages de commit ---
+      # Un auditeur externe a ouvert ce depot et y a lu, dans les messages de commit
+      # de la branche par defaut, la signature de l'outil qui les avait rediges. Le
+      # depot doit montrer le travail de l'equipe, et un commit n'a qu'un auteur : la
+      # personne qui en repond. La regle existait dans AGENTS.md ; rien ne la faisait
+      # respecter, et 21 commits sont passes.
+      - name: Aucune signature d'outil dans les commits
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+          fi
+          echo "Controle des commits $base..HEAD"
+          # -i : la casse ne doit pas servir de contournement.
+          fautifs=$(git log --format='%H %s%n%b' "$base..HEAD" \
+            | grep -iE 'co-authored-by:.*(claude|cursor|copilot|codex|anthropic|openai)|noreply@anthropic|cursoragent@|generated with .*(claude|cursor|copilot)' \
+            || true)
+          if [ -n "$fautifs" ]; then
+            echo "::error::Un message de commit porte la signature d'un outil."
+            echo "$fautifs"
+            echo ""
+            echo "Retire le pied de page du message, puis reecris le commit :"
+            echo "  git commit --amend     (dernier commit)"
+            echo "  git rebase -i <base>   (plusieurs commits)"
+            exit 1
+          fi
+          echo "Aucune signature d'outil."
 
       # --- cohérence du site vitrine ---
       # Placé avant toute compilation : ne dépend ni de Go ni de Node, coûte deux
