@@ -75,6 +75,12 @@ var (
 	// which would freeze the counter for the rest of the process lifetime.
 	badBidBlockCounted = lru.NewCache[common.Hash, struct{}](badBlockRecordslimit)
 
+	// badBidBlockEvidenced deduplicates evidence per block, since peers re-announce
+	// and the fetcher requeues the same bad block. Kept apart from
+	// badBidBlockCounted, which also covers blocks that never reach execution.
+	badBidBlockEvidenced      = lru.NewCache[common.Hash, struct{}](badBlockRecordslimit)
+	badBidBlockDroppedCounter = metrics.NewRegisteredCounter("chain/insert/badBidblockDropped", nil)
+
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
 	headFastBlockGauge = metrics.NewRegisteredGauge("chain/head/receipt", nil)
@@ -3447,10 +3453,18 @@ func (bc *BlockChain) reportBadBidBlockEvidence(block *types.Block) {
 	if !ok {
 		return
 	}
+	// Deduplicated here rather than in the consumer, which would still pay for a
+	// validator-set lookup per copy and let one re-announced block crowd the queue.
+	hash := block.Hash()
+	if badBidBlockEvidenced.Contains(hash) {
+		return
+	}
+	badBidBlockEvidenced.Add(hash, struct{}{})
+
 	ev := BadBidBlockEvent{
 		Builder:    builder,
 		Sealer:     block.Coinbase(),
-		Hash:       block.Hash(),
+		Hash:       hash,
 		ParentHash: block.ParentHash(),
 		Number:     block.NumberU64(),
 	}
@@ -3461,7 +3475,8 @@ func (bc *BlockChain) reportBadBidBlockEvidence(block *types.Block) {
 	select {
 	case bc.badBidBlockCh <- ev:
 	default:
-		log.Debug("Bad BidBlock evidence dropped, queue full", "builder", builder, "number", ev.Number)
+		badBidBlockDroppedCounter.Inc(1)
+		log.Warn("Bad BidBlock evidence dropped, queue full", "builder", builder, "number", ev.Number, "hash", hash)
 	}
 }
 
