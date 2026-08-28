@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -287,7 +288,18 @@ func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out ...i
 	if err != nil {
 		return err
 	}
-	return p.validatorSetABI.UnpackIntoInterface(&out, method, result)
+	return unpackValidatorSet(p.validatorSetABI, method, result, out...)
+}
+
+// unpackValidatorSet decodes a validator-contract return value. A single output
+// must be decoded into the destination itself: the abi package routes that case
+// through copyAtomic, which cannot write into a []interface{} and fails with
+// "cannot unmarshal ... in to []interface {}".
+func unpackValidatorSet(contractABI abi.ABI, method string, result []byte, out ...interface{}) error {
+	if len(out) == 1 {
+		return contractABI.UnpackIntoInterface(out[0], method, result)
+	}
+	return contractABI.UnpackIntoInterface(&out, method, result)
 }
 
 func (p *Parlia) BlockTimeUpperCheck(chain consensus.ChainHeaderReader, header *types.Header) error {
