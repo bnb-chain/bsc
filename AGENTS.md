@@ -1,6 +1,6 @@
 # Règles de travail sur ce dépôt
 
-Plusieurs assistants travaillent sur ce dépôt en parallèle. Ce fichier existe pour qu'une
+Plusieurs intervenants travaillent sur ce dépôt en parallèle. Ce fichier existe pour qu'une
 modification faite d'un côté n'annule pas silencieusement une garantie posée de l'autre.
 
 **La production appartient à l'éditeur.** Rien ne part en ligne sans son accord explicite.
@@ -61,8 +61,9 @@ arrêt *propre*. Arrêt uniquement par `systemctl stop` ; voir `coinbosa/deploy/
 - **Aucun conteneur.** Docker a été entièrement retiré du dépôt ; le déploiement est natif
   (`coinbosa/deploy/`). Ne pas réintroduire de `Dockerfile`, `docker-compose`, ni de
   workflow qui publie une image.
-- **Aucune signature d'IA** dans les commits : pas de `Co-Authored-By`, pas de mention
-  d'assistant dans les messages.
+- **Un commit n'a qu'un auteur : la personne qui en répond.** Pas de `Co-Authored-By`,
+  pas de mention d'outil dans le message. Le journal du dépôt dit qui assume le
+  changement, pas avec quoi il a été écrit.
 - **Ne jamais afficher de chiffre qui ne vienne pas de la chaîne.** L'explorateur a
   contenu des blocs, transactions et jetons fabriqués en dur : tout a été retiré. Quand
   aucun nœud ne répond, il affiche un avis, pas des données inventées.
