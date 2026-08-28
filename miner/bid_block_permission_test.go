@@ -472,9 +472,12 @@ func TestBidBlockPermission_ExpiredNotRestored(t *testing.T) {
 	expired := common.HexToAddress("0x2")
 
 	now := time.Now()
-	seed := map[common.Address]BidBlockRevokeRecord{
-		active:  {RevokedAt: now.Add(-1 * time.Hour), Duration: bidBlockRevokeDuration, Reason: "active"},
-		expired: {RevokedAt: now.Add(-25 * time.Hour), Duration: bidBlockRevokeDuration, Reason: "expired"},
+	seed := bidBlockRevokeJournal{
+		Version: bidBlockRevokeJournalVersion,
+		Revokes: map[common.Address]BidBlockRevokeRecord{
+			active:  {RevokedAt: now.Add(-1 * time.Hour), Duration: bidBlockRevokeDuration, Reason: "active"},
+			expired: {RevokedAt: now.Add(-25 * time.Hour), Duration: bidBlockRevokeDuration, Reason: "expired"},
+		},
 	}
 	blob, err := json.Marshal(seed)
 	if err != nil {
@@ -512,6 +515,75 @@ func TestBidBlockPermission_LoadToleratesBadState(t *testing.T) {
 	m2 := NewBidBlockPermissionManager(testJournalPath(t))
 	if !m2.IsAllowed(builder) {
 		t.Fatal("a missing journal must yield an empty manager")
+	}
+}
+
+// TestBidBlockPermission_RejectsUnknownVersion pins the version envelope: a
+// journal written by a future build must be refused outright rather than
+// decoded with this build's interpretation of the fields. Starting empty only
+// costs the remaining lockout windows, which self-expire; misreading a changed
+// field could revoke or release the wrong builders.
+func TestBidBlockPermission_RejectsUnknownVersion(t *testing.T) {
+	builder := common.HexToAddress("0x1")
+	rec := BidBlockRevokeRecord{
+		RevokedAt: time.Now(),
+		Duration:  bidBlockRevokeDuration,
+		Reason:    testInsertChainReason,
+	}
+
+	// A future version carrying an otherwise-valid record: must NOT be applied.
+	future := testJournalPath(t)
+	blob, err := json.Marshal(bidBlockRevokeJournal{
+		Version: bidBlockRevokeJournalVersion + 1,
+		Revokes: map[common.Address]BidBlockRevokeRecord{builder: rec},
+	})
+	if err != nil {
+		t.Fatalf("marshal seed: %v", err)
+	}
+	if err := os.WriteFile(future, blob, 0o600); err != nil {
+		t.Fatalf("seed journal: %v", err)
+	}
+	if !NewBidBlockPermissionManager(future).IsAllowed(builder) {
+		t.Fatal("a journal from an unknown version must not be applied")
+	}
+
+	// The pre-envelope format (a bare map) decodes into the envelope with
+	// version 0, so it lands on the same refusal path rather than being
+	// silently half-read.
+	legacy := testJournalPath(t)
+	blob, err = json.Marshal(map[common.Address]BidBlockRevokeRecord{builder: rec})
+	if err != nil {
+		t.Fatalf("marshal legacy seed: %v", err)
+	}
+	if err := os.WriteFile(legacy, blob, 0o600); err != nil {
+		t.Fatalf("seed legacy journal: %v", err)
+	}
+	if !NewBidBlockPermissionManager(legacy).IsAllowed(builder) {
+		t.Fatal("a pre-envelope journal must not be applied")
+	}
+}
+
+// TestBidBlockPermission_JournalKeysAreStable pins the on-disk key names. They
+// are the wire format: renaming a Go field is free, but changing a json tag is
+// a format change and must come with a version bump, or old journals decode
+// their renamed fields to zero — a zero Duration reads as already expired.
+func TestBidBlockPermission_JournalKeysAreStable(t *testing.T) {
+	path := testJournalPath(t)
+	m := NewBidBlockPermissionManager(path)
+	m.Revoke(common.HexToAddress("0x1"), testInsertChainReason, common.HexToHash("0xabc"), 100)
+	waitForBidBlockPersist(t, path)
+
+	blob, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	for _, key := range []string{
+		`"version"`, `"revokes"`,
+		`"revokedAt"`, `"duration"`, `"reason"`, `"blockHash"`, `"blockNum"`,
+	} {
+		if !strings.Contains(string(blob), key) {
+			t.Errorf("journal is missing the stable key %s; a tag change needs a version bump\ngot: %s", key, blob)
+		}
 	}
 }
 
@@ -566,9 +638,9 @@ func TestBidBlockPermission_SetAllowedPersists(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		blob, _ := os.ReadFile(path)
-		var stored map[common.Address]BidBlockRevokeRecord
+		var stored bidBlockRevokeJournal
 		if json.Unmarshal(blob, &stored) == nil {
-			if _, ok := stored[builder]; !ok {
+			if _, ok := stored.Revokes[builder]; !ok {
 				break
 			}
 		}

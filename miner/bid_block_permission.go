@@ -43,13 +43,37 @@ const (
 // bad bids), never on-chain, and benefits from JSON's forgiving schema
 // evolution and readability.
 
+// bidBlockRevokeJournalVersion is the on-disk format version. Bump it only for a
+// change JSON cannot absorb on its own: adding a field is already compatible in
+// both directions (an old file decodes with the field zeroed, a new file read by
+// an older binary ignores the unknown key), so a bump is for a change in the
+// MEANING of an existing field, a removal, or a rename — the cases that would
+// otherwise be applied silently and wrongly to old data.
+const bidBlockRevokeJournalVersion = 1
+
+// bidBlockRevokeJournal is the envelope actually written to disk. The version
+// lives beside the payload so an unrecognised format is refused explicitly
+// rather than being half-decoded into whatever the current struct happens to
+// look like.
+type bidBlockRevokeJournal struct {
+	Version int                                     `json:"version"`
+	Revokes map[common.Address]BidBlockRevokeRecord `json:"revokes"`
+}
+
 // BidBlockRevokeRecord holds one active revoke event.
+//
+// The json tags are explicit and MUST stay stable: without them the wire format
+// would be the Go field names, so a routine rename would silently change the
+// on-disk keys, and every renamed field would decode to its zero value on the
+// next start — a zero Duration reads as "already expired", i.e. a lockout that
+// quietly disappears. Renaming a Go field here is free; changing a tag is a
+// format change and needs a version bump.
 type BidBlockRevokeRecord struct {
-	RevokedAt time.Time
-	Duration  time.Duration
-	Reason    string // err detail for auto revokes (InsertChain failure), or RevokeReasonManual
-	BlockHash common.Hash
-	BlockNum  uint64
+	RevokedAt time.Time     `json:"revokedAt"`
+	Duration  time.Duration `json:"duration"`
+	Reason    string        `json:"reason"` // err detail for auto revokes (InsertChain failure), or RevokeReasonManual
+	BlockHash common.Hash   `json:"blockHash"`
+	BlockNum  uint64        `json:"blockNum"`
 }
 
 // BidBlockPermissionManager tracks per-builder SendBidBlock revokes.
@@ -105,13 +129,22 @@ func (m *BidBlockPermissionManager) load() {
 	if err != nil || len(blob) == 0 {
 		return // no journal yet (or unreadable): start empty
 	}
-	var stored map[common.Address]BidBlockRevokeRecord
-	if err := json.Unmarshal(blob, &stored); err != nil {
+	var journal bidBlockRevokeJournal
+	if err := json.Unmarshal(blob, &journal); err != nil {
 		log.Warn("Failed to decode persisted BidBlock revokes, starting empty", "path", m.journalPath, "err", err)
 		return
 	}
+	// Refuse a version this build does not know rather than applying the current
+	// struct's meaning to it. Starting empty costs at most the remaining lockout
+	// windows, which expire on their own within bidBlockRevokeDuration anyway;
+	// misreading a future format could resurrect or drop the wrong builders.
+	if journal.Version != bidBlockRevokeJournalVersion {
+		log.Warn("Unsupported BidBlock revoke journal version, starting empty",
+			"path", m.journalPath, "version", journal.Version, "supported", bidBlockRevokeJournalVersion)
+		return
+	}
 	now := m.clock()
-	for builder, rec := range stored {
+	for builder, rec := range journal.Revokes {
 		if isRevokeActive(rec, now) {
 			m.revoked[builder] = rec
 		}
@@ -162,7 +195,10 @@ func (m *BidBlockPermissionManager) persistAsync(seq uint64, snapshot map[common
 		return // an equal-or-newer snapshot has already been handled; this one is stale
 	}
 	m.persistedSeq = seq
-	blob, err := json.Marshal(snapshot)
+	blob, err := json.Marshal(bidBlockRevokeJournal{
+		Version: bidBlockRevokeJournalVersion,
+		Revokes: snapshot,
+	})
 	if err != nil {
 		log.Warn("Failed to encode BidBlock revokes for persistence", "err", err)
 		return
