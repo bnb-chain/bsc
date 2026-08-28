@@ -56,9 +56,10 @@ publier le code source correspondant s'appliquera dès qu'un binaire sera distri
 
 ---
 
-## D2 — Consensus par preuve d'enjeu
+## D2 — Consensus par preuve d'enjeu (visée, non atteinte)
 
-**Retenu.** Les validateurs immobilisent un enjeu pour entrer dans le consensus.
+**Retenu comme cible.** Les validateurs immobiliseront un enjeu pour entrer dans le
+consensus. Au présent, ce n'est pas le cas : voir « État réel » plus bas.
 
 Parlia est un consensus *Proof of Staked Authority* : enjeu immobilisé **et** nombre de places
 borné. C'est le modèle de BNB Chain. Il se distingue d'une preuve d'enjeu ouverte comme celle

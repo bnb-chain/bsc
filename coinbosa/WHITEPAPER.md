@@ -256,7 +256,7 @@ documentation d'intégration précise « BRC20 de Coinbosa » pour lever l'ambig
 
 ## 7. Le consensus et les validateurs
 
-### Preuve d'enjeu
+### Preuve d'autorité aujourd'hui, preuve d'enjeu visée
 
 Coinbosa vise un consensus par **preuve d'enjeu** : les validateurs immobiliseront des BOSA pour
 entrer dans l'ensemble qui produit les blocs, et les perdront en cas de faute. Le moteur de

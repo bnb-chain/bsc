@@ -110,7 +110,7 @@ période de déblocage — reste à écrire. C'est le chantier décrit au jalon 
 | | |
 |---|---|
 | Chain ID | `26262` |
-| Consensus | Parlia — preuve d'enjeu (*Proof of Staked Authority*) |
+| Consensus | Parlia — **preuve d'autorité aujourd'hui** (preuve d'enjeu visée, voir ROADMAP) |
 | Temps de bloc | **5 secondes** |
 | Epoch | 200 blocs |
 | Client | `geth` v1.7.6 patché pour Coinbosa |
