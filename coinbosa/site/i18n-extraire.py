@@ -399,6 +399,26 @@ def depuis_app_js():
     for m in re.finditer(r'data-i18n="(app\.[\w.-]+)">([^<\']+)', s):
         d[m.group(1)] = m.group(2).strip()
 
+    # La fiche du reseau : etiquettes du tableau stats, puis les valeurs
+    # correspondantes dans CONTENT.network.
+    for m in re.finditer(r'c:\s*"(\w+)",\s*k:\s*"([^"]+)"', s):
+        d[f"app.stat.{m.group(1)}"] = m.group(2)
+
+    reseau = {
+        "app.reseau.evm": "evm",
+        "app.reseau.consensus": "consensus",
+        "app.reseau.standard": "tokenStandard",
+        "app.reseau.note-offre": "supplyNote",
+    }
+    for cle, champ in reseau.items():
+        m = re.search(champ + r':\s*"([^"]+)"', s)
+        if m:
+            d[cle] = m.group(1)
+    m = re.search(r'decimals:\s*"([^"]+)"', s)
+    if m:
+        # app.js assemble « 18 » et « décimales » : la valeur affichee est la somme.
+        d["app.reseau.decimales"] = m.group(1) + " décimales"
+
     try:
         i = s.index("products: [")
         bloc = s[i:s.index("// Le socle", i)]

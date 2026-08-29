@@ -220,17 +220,25 @@ var CONTENT = {
     if (!g) return;
     var n = CONTENT.network;
     var stats = [
-      { k: "Machine",     v: esc(n.evm),           hl: false },
-      { k: "Consensus",   v: esc(n.consensus),     hl: false },
-      { k: "Chain ID",    v: esc(n.chainId),       hl: false },
-      { k: "Temps de bloc", v: esc(n.blockTime),   hl: false },
-      { k: "Coin natif",  v: esc(n.coin) + '<small>' + esc(n.decimals) + ' décimales</small>', hl: true },
-      { k: "Offre totale", v: esc(n.supply) + '<small>' + esc(n.supplyNote) + '</small>', hl: true },
-      { k: "Standard de jeton", v: esc(n.tokenStandard), hl: false }
+      // Chaque etiquette et chaque valeur non numerique porte sa cle : sans
+      // cela la fiche du reseau restait entierement francaise au milieu d'une
+      // page traduite — « Temps de bloc », « Offre totale », « Parlia — preuve
+      // d'autorite aujourd'hui ».
+      { c: "machine",   k: "Machine",           v: esc(n.evm),           cv: "app.reseau.evm" },
+      { c: "consensus", k: "Consensus",         v: esc(n.consensus),     cv: "app.reseau.consensus" },
+      { c: "chainid",   k: "Chain ID",          v: esc(n.chainId) },
+      { c: "bloc",      k: "Temps de bloc",     v: esc(n.blockTime) },
+      { c: "coin",      k: "Coin natif",        hl: true,
+        v: esc(n.coin) + '<small data-i18n="app.reseau.decimales">' + esc(n.decimals) + ' décimales</small>' },
+      { c: "offre",     k: "Offre totale",      hl: true,
+        v: esc(n.supply) + '<small data-i18n="app.reseau.note-offre">' + esc(n.supplyNote) + '</small>' },
+      { c: "standard",  k: "Standard de jeton", v: esc(n.tokenStandard), cv: "app.reseau.standard" }
     ];
     stats.forEach(function (s) {
       var d = el('div', 'stat' + (s.hl ? ' hl' : ''));
-      d.innerHTML = '<div class="k">' + esc(s.k) + '</div><div class="v">' + s.v + '</div>';
+      var vAttr = s.cv ? ' data-i18n="' + s.cv + '"' : '';
+      d.innerHTML = '<div class="k" data-i18n="app.stat.' + s.c + '">' + esc(s.k) + '</div>' +
+                    '<div class="v"' + vAttr + '>' + s.v + '</div>';
       g.appendChild(d);
     });
   })();

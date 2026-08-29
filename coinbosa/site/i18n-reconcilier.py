@@ -50,6 +50,27 @@ SECOURS = {
                      "pt": "Desenvolvedores", "ar": "المطوّرون", "zh": "开发者"},
     "Rejoindre": {"en": "Join", "es": "Unirse", "pt": "Participar",
                   "ar": "انضم", "zh": "加入"},
+    # Fiche du reseau, fabriquee par app.js. Chaque valeur reprend le terme que
+    # la traductrice de la langue a DEJA employe ailleurs dans son fichier :
+    #   « Machine virtuelle » -> Virtual machine / 虚拟机 ;
+    #   « Compatible EVM »    -> EVM-compatible / 兼容 EVM ;
+    #   « BRC20 · compatible ERC-20 » -> BRC20 (ERC-20 compatible) / BRC20（兼容 ERC-20）.
+    "Machine": {"en": "Virtual machine", "es": "Máquina virtual",
+                "pt": "Máquina virtual", "ar": "الآلة الافتراضية", "zh": "虚拟机"},
+    "Compatible EVM": {"en": "EVM-compatible", "es": "Compatible con EVM",
+                       "pt": "Compatível com EVM", "ar": "متوافق مع EVM",
+                       "zh": "兼容 EVM"},
+    "18 décimales": {"en": "18 decimals", "es": "18 decimales",
+                     "pt": "18 casas decimais", "ar": "18 خانة عشرية",
+                     "zh": "18 位小数"},
+    "offre fixe, aucune émission": {
+        "en": "fixed supply, no issuance", "es": "oferta fija, sin emisión",
+        "pt": "oferta fixa, sem emissão", "ar": "عرض ثابت، دون إصدار",
+        "zh": "供应量固定，无增发"},
+    "BRC20 · compatible ERC-20": {
+        "en": "BRC20 · ERC-20 compatible", "es": "BRC20 · compatible con ERC-20",
+        "pt": "BRC20 · compatível com ERC-20", "ar": "BRC20 · متوافق مع ERC-20",
+        "zh": "BRC20 · 兼容 ERC-20"},
 }
 
 
