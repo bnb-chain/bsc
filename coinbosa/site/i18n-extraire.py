@@ -346,7 +346,13 @@ def instrumenter(page):
                  'name="twitter:title"'):
         m = re.search(r'<meta\s+' + prop + r'\s+content="([^"]+)"', travail)
         if m and traduisible(m.group(1)):
-            k = f"{prefixe}.meta.{slug(prop)}"
+            # La cle encode le TEXTE, pas seulement la propriete. Sinon une
+            # description reecrite garde la meme cle : l'outil de reconciliation
+            # la croit inchangee et conserve la traduction de l'ANCIEN texte.
+            # C'est arrive a la refonte — les titres et descriptions de partage,
+            # donc le premier texte que lit un moteur de recherche, sont restes
+            # en anglais de la version precedente sans que rien ne le signale.
+            k = f"{prefixe}.meta.{slug(prop)}.{slug(m.group(1), 28)}"
             dico[k] = m.group(1)
 
     # On remet les zones mortes.

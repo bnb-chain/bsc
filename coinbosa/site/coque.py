@@ -30,6 +30,7 @@ USAGE
 
 import collections
 import hashlib
+import html
 import json
 import re
 import subprocess
@@ -226,6 +227,38 @@ def verifier():
         if manquantes:
             defauts.append(f"clés posées dans les pages mais absentes du "
                            f"dictionnaire français : {sorted(manquantes)[:5]}")
+        # Toute cle doit ENCODER SON PROPRE TEXTE. C'est l'invariant qui fait
+        # tomber une traduction perimee : si le francais change, la cle change,
+        # et l'ancienne traduction disparait au lieu de survivre en silence.
+        # Les cles de metadonnees ne le respectaient pas — elles etaient nommees
+        # d'apres la propriete HTML — et 25 traductions de l'ANCIEN site ont
+        # ainsi ete servies apres une refonte complete, sur les titres de page
+        # et les apercus de partage, c'est-a-dire le texte le plus expose.
+        import unicodedata
+
+        def _slug(t, n=42):
+            t = re.sub(r"<[^>]+>", "", t)
+            # Le desechappement DOIT etre fait, exactement comme dans
+            # i18n-extraire.py : sans lui « Chaine &amp; BOSA » donne
+            # « chaine-amp-bosa » d'un cote et « chaine-bosa » de l'autre, et le
+            # controle accuse a tort des cles parfaitement valides.
+            t = html.unescape(t)
+            t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()
+            t = re.sub(r"[^a-zA-Z0-9]+", "-", t).strip("-").lower()
+            return t[:n].rstrip("-") or "vide"
+
+        sans_texte = []
+        for cle, val in source.items():
+            queue = cle.rsplit(".", 1)[-1]
+            queue = re.sub(r"-\d+$", "", queue)          # suffixe d'unicite
+            attendu = _slug(val, len(queue) if queue else 42)
+            if queue and attendu and not queue.startswith(attendu[:12]):
+                sans_texte.append(cle)
+        if len(sans_texte) > 3:
+            defauts.append(f"{len(sans_texte)} cle(s) n'encodent pas leur texte, "
+                           f"ex. {sorted(sans_texte)[:3]} — une refonte du contenu "
+                           f"y laisserait des traductions perimees")
+
         for f in sorted((RACINE / "assets").glob("i18n-*.js")):
             code = f.stem.split("-")[-1]
             txt = f.read_text(encoding="utf-8")
