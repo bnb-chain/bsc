@@ -2,7 +2,7 @@
 <html lang="fr">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coinbosa — L'écosystème technologique</title>
+<title data-i18n="accueil.title.coinbosa-l-ecosysteme-technologique">Coinbosa — L'écosystème technologique</title>
 <meta name="description" content="Coinbosa : un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.">
 <meta name="robots" content="index, follow">
 <meta name="theme-color" content="#0a141f">
@@ -21,57 +21,59 @@
 <meta name="twitter:description" content="Coinbosa : un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.">
 <meta name="twitter:image" content="https://coinbosa.com/og-image.jpg">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Coinbosa","url":"https://coinbosa.com","logo":"https://coinbosa.com/og-image.jpg","description":"Coinbosa : un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.","sameAs":["https://www.facebook.com/coinbosa","https://t.me/coinbosa","https://github.com/Coinbosa/coinbosa-chain"]}</script>
-<link rel="stylesheet" href="/assets/style.css?v=44132ffb5d">
+<link rel="stylesheet" href="/assets/style.css?v=55ee396edf">
+<script src="/assets/i18n.js?v=cf9b7c2af7" defer></script>
 <script src="/app.js?v=984164ed0c" defer></script>
 <script src="/assets/scene.js?v=bb0a96e389" defer></script>
 
 <header class="hdr" id="top">
   <div class="hdr-inner">
-    <a class="brand" href="/" aria-label="Coinbosa — accueil">
-      <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+    <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil">
+      <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" width="34" height="34">
       <span class="brand-name">Coin<b>bosa</b></span>
     </a>
 
-    <nav class="nav" aria-label="Navigation principale">
-      <a href="/ecosysteme.html">Écosystème</a>
-      <a href="/chaine.html">Chaîne &amp; BOSA</a>
-      <a href="/developpeurs.html">Développeurs</a>
-      <a href="/a-propos.html">À propos</a>
+    <nav class="nav" aria-label="Navigation principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale">
+      <a href="/ecosysteme.html" data-i18n="nav.ecosysteme">Écosystème</a>
+      <a href="/chaine.html" data-i18n="nav.chaine">Chaîne &amp; BOSA</a>
+      <a href="/developpeurs.html" data-i18n="nav.developpeurs">Développeurs</a>
+      <a href="/a-propos.html" data-i18n="nav.a-propos">À propos</a>
       <span id="nav-extra"></span>
     </nav>
 
     <div class="hdr-actions">
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" aria-pressed="false">
+      <select class="lang-select" id="lang" aria-label="Language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language"></select>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" aria-pressed="false">
         <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" stroke-linecap="round"/></svg>
       </button>
-      <a class="btn btn-primary btn-sm cta-nav" id="cta-nav" href="/#rejoindre">Rejoindre</a>
-      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-menu">
+      <a class="btn btn-primary btn-sm cta-nav" id="cta-nav" href="/#rejoindre" data-i18n="nav.rejoindre">Rejoindre</a>
+      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" aria-expanded="false" aria-controls="mobile-menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
       </button>
     </div>
   </div>
 
   <div class="mobile-menu" id="mobile-menu">
-    <a href="/ecosysteme.html">Écosystème</a>
-    <a href="/chaine.html">Chaîne &amp; BOSA</a>
-    <a href="/developpeurs.html">Développeurs</a>
-    <a href="/a-propos.html">À propos</a>
+    <a href="/ecosysteme.html" data-i18n="nav.ecosysteme">Écosystème</a>
+    <a href="/chaine.html" data-i18n="nav.chaine">Chaîne &amp; BOSA</a>
+    <a href="/developpeurs.html" data-i18n="nav.developpeurs">Développeurs</a>
+    <a href="/a-propos.html" data-i18n="nav.a-propos">À propos</a>
     <span id="mnav-extra"></span>
-    <a class="btn btn-primary" href="/#rejoindre">Rejoindre l'écosystème</a>
+    <a class="btn btn-primary" href="/#rejoindre" data-i18n="nav.rejoindre-long">Rejoindre l'écosystème</a>
   </div>
 </header>
 
 <main id="main">
 
 <!-- ============ HERO ============ -->
-<section class="hero" aria-label="Coinbosa">
+<section class="hero" aria-label="Coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa">
   <canvas id="node-net" aria-hidden="true"></canvas>
   <div class="voile-hero" aria-hidden="true"></div>
   <div class="wrap hero-inner">
     <span class="eyebrow">coinbosa, Inc. — Delaware, United States</span>
-    <h1>L'écosystème <span class="grad">Coinbosa</span>.<br>Une chaîne pour les relier.</h1>
-    <p class="lead">
+    <h1 data-i18n="accueil.h1.l-ecosysteme-coinbosa-une-chaine-pour-les">L'écosystème <span class="grad">Coinbosa</span>.<br>Une chaîne pour les relier.</h1>
+    <p class="lead" data-i18n="accueil.p.education-marches-paiements-banque-confide">
       Éducation, marchés, paiements, banque, confidentialité — des produits
       qui existent, et une blockchain souveraine construite pour devenir leur socle commun.
     </p>
@@ -79,7 +81,7 @@
       <a class="btn btn-primary" href="/ecosysteme.html">Voir l'écosystème</a>
       <a class="btn btn-ghost" href="/chaine.html">La chaîne &amp; BOSA</a>
     </div>
-    <p class="hero-note">
+    <p class="hero-note" data-i18n="accueil.p.chaine-compatible-evm-chain-id-26262-bloc">
       Chaîne compatible EVM · chain ID 26262 · bloc toutes les 5 secondes · offre fixe de 700 000 000 BOSA
     </p>
   </div>
@@ -91,36 +93,36 @@
 </div>
 
 <!-- ============ TROIS AXES ============ -->
-<section class="scene" aria-label="Les trois axes">
+<section class="scene" aria-label="Les trois axes" data-i18n-attr-aria-label="accueil.attr.aria-label.les-trois-axes" data-i18n-attr-aria-label="accueil.attr.aria-label.les-trois-axes" data-i18n-attr-aria-label="accueil.attr.aria-label.les-trois-axes" data-i18n-attr-aria-label="accueil.attr.aria-label.les-trois-axes" data-i18n-attr-aria-label="accueil.attr.aria-label.les-trois-axes" data-i18n-attr-aria-label="accueil.attr.aria-label.les-trois-axes">
   <div class="wrap">
     <div class="scene-head">
       <span class="eyebrow reveal">La démarche</span>
-      <h2 class="reveal" style="transition-delay:.06s">Construire, puis relier.</h2>
-      <p class="lead reveal" style="transition-delay:.12s">
+      <h2 class="reveal" style="transition-delay:.06s" data-i18n="accueil.h2.construire-puis-relier">Construire, puis relier.</h2>
+      <p class="lead reveal" style="transition-delay:.12s" data-i18n="accueil.p.chaque-brique-est-livree-pour-elle-meme-et">
         Chaque brique est livrée pour elle-même et doit tenir debout seule.
         La chaîne vient ensuite, comme socle commun — pas comme prétexte.
       </p>
     </div>
     <div class="duo reveal" style="transition-delay:.18s">
       <article>
-        <h3>Des produits d'abord</h3>
-        <p>
+        <h3 data-i18n="accueil.h3.des-produits-d-abord">Des produits d'abord</h3>
+        <p data-i18n="accueil.p.une-ecole-de-trading-et-une-bourse-sont-en">
           Une école de trading et une bourse sont en production aujourd'hui. Une carte,
           un VPN et une plateforme bancaire sont en construction. Chaque brique affiche
           son statut réel, sans arrondi favorable.
         </p>
       </article>
       <article>
-        <h3>Une chaîne souveraine</h3>
-        <p>
+        <h3 data-i18n="accueil.h3.une-chaine-souveraine">Une chaîne souveraine</h3>
+        <p data-i18n="accueil.p.coinbosa-chain-est-compatible-evm-les-outi">
           Coinbosa Chain est compatible EVM : les outils, portefeuilles et contrats de
           l'écosystème Ethereum fonctionnent sans réécriture. Le bloc 0 est produit,
           l'offre est figée, l'empreinte est publique et vérifiable.
         </p>
       </article>
       <article>
-        <h3>Le raccordement ensuite</h3>
-        <p>
+        <h3 data-i18n="accueil.h3.le-raccordement-ensuite">Le raccordement ensuite</h3>
+        <p data-i18n="accueil.p.relier-les-produits-a-la-chaine-paiement-e">
           Relier les produits à la chaîne — paiement en BOSA, adossement de la carte —
           est une feuille de route, pas un état de fait. Chaque raccordement sera annoncé
           lorsqu'il fonctionnera, et pas avant.
@@ -131,62 +133,62 @@
 </section>
 
 <!-- ============ ÉCOSYSTÈME (produits) ============ -->
-<section class="scene" id="ecosysteme" aria-label="L'écosystème Coinbosa">
+<section class="scene" id="ecosysteme" aria-label="L'écosystème Coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-coinbosa" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-coinbosa">
   <div class="wrap">
     <div class="scene-head">
       <span class="eyebrow reveal">L'écosystème</span>
-      <h2 class="reveal" style="transition-delay:.06s">Des produits, un même cap.</h2>
-      <p class="lead reveal" style="transition-delay:.12s">
+      <h2 class="reveal" style="transition-delay:.06s" data-i18n="accueil.h2.des-produits-un-meme-cap">Des produits, un même cap.</h2>
+      <p class="lead reveal" style="transition-delay:.12s" data-i18n="accueil.p.chaque-brique-a-son-statut-affiche-honnete">
         Chaque brique a son statut, affiché honnêtement — de la production à la feuille de route.
       </p>
     </div>
     <div class="products" id="product-grid"><!-- rendu depuis CONTENT.products --></div>
     <div class="suite">
-      <p><strong>Chaque produit en détail</strong>Ce que fait chaque brique, où elle en est, et ce qui reste à construire.</p>
+      <p data-i18n="accueil.p.chaque-produit-en-detailce-que-fait-chaque"><strong>Chaque produit en détail</strong>Ce que fait chaque brique, où elle en est, et ce qui reste à construire.</p>
       <a class="btn btn-ghost" href="/ecosysteme.html">Explorer l'écosystème</a>
     </div>
   </div>
 </section>
 
 <!-- ============ SOCLE (chaîne + BOSA) ============ -->
-<section class="scene socle" id="socle" aria-label="Le socle : Coinbosa Chain et BOSA">
+<section class="scene socle" id="socle" aria-label="Le socle : Coinbosa Chain et BOSA" data-i18n-attr-aria-label="accueil.attr.aria-label.le-socle-coinbosa-chain-et-bosa" data-i18n-attr-aria-label="accueil.attr.aria-label.le-socle-coinbosa-chain-et-bosa" data-i18n-attr-aria-label="accueil.attr.aria-label.le-socle-coinbosa-chain-et-bosa" data-i18n-attr-aria-label="accueil.attr.aria-label.le-socle-coinbosa-chain-et-bosa" data-i18n-attr-aria-label="accueil.attr.aria-label.le-socle-coinbosa-chain-et-bosa" data-i18n-attr-aria-label="accueil.attr.aria-label.le-socle-coinbosa-chain-et-bosa">
   <div class="wrap">
     <div class="scene-head">
       <span class="eyebrow reveal">Le socle</span>
-      <h2 class="reveal" style="transition-delay:.06s">Coinbosa Chain &amp; <span class="grad">BOSA</span></h2>
-      <p class="lead reveal" style="transition-delay:.12s">
+      <h2 class="reveal" style="transition-delay:.06s" data-i18n="accueil.h2.coinbosa-chain-bosa">Coinbosa Chain &amp; <span class="grad">BOSA</span></h2>
+      <p class="lead reveal" style="transition-delay:.12s" data-i18n="accueil.p.la-chaine-compatible-evm-pensee-pour-relie">
         La chaîne compatible EVM pensée pour relier l'écosystème à terme. Des faits vérifiables, rien de plus.
       </p>
     </div>
     <div class="stat-grid reveal" id="stat-grid"><!-- rendu depuis CONTENT.network --></div>
     <div class="suite">
-      <p><strong>Connecter ton portefeuille</strong>Paramètres du réseau, empreinte du bloc 0, et comment ajouter la chaîne en une étape.</p>
+      <p data-i18n="accueil.p.connecter-ton-portefeuilleparametres-du-re"><strong>Connecter ton portefeuille</strong>Paramètres du réseau, empreinte du bloc 0, et comment ajouter la chaîne en une étape.</p>
       <a class="btn btn-ghost" href="/chaine.html">Voir la chaîne</a>
     </div>
   </div>
 </section>
 
 <!-- ============ PLANÈTE (l'écosystème en orbite) ============ -->
-<section class="planete" aria-label="L'écosystème en orbite">
+<section class="planete" aria-label="L'écosystème en orbite" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-en-orbite" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-en-orbite" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-en-orbite" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-en-orbite" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-en-orbite" data-i18n-attr-aria-label="accueil.attr.aria-label.l-ecosysteme-en-orbite">
   <canvas id="anneaux" aria-hidden="true"></canvas>
   <div class="voile-planete" aria-hidden="true"></div>
   <div class="planete-in">
     <div class="wrap dedans">
       <div class="col">
         <span class="eyebrow reveal">Le socle</span>
-        <h2 class="reveal" style="transition-delay:.06s">Tout gravite autour d'un <span class="grad">même noyau</span>.</h2>
-        <p class="lead reveal" style="transition-delay:.12s">
+        <h2 class="reveal" style="transition-delay:.06s" data-i18n="accueil.h2.tout-gravite-autour-d-un-meme-noyau">Tout gravite autour d'un <span class="grad">même noyau</span>.</h2>
+        <p class="lead reveal" style="transition-delay:.12s" data-i18n="accueil.p.la-chaine-au-centre-les-produits-en-orbite">
           La chaîne au centre, les produits en orbite. Chacun garde sa trajectoire
           propre — certains percent la surface, d'autres replongent le temps de se
           construire.
         </p>
         <ul class="orbites reveal" style="transition-delay:.18s">
-          <li><span class="bille" style="color:var(--gold-soft)"></span><b>Coinbosa Academy</b><span class="etat">En production</span></li>
-          <li><span class="bille" style="color:var(--gold-soft)"></span><b>NextFuture</b><span class="etat">En production</span></li>
-          <li><span class="bille" style="color:var(--st-soon)"></span><b>Coinbosa Card</b><span class="etat">À venir</span></li>
-          <li><span class="bille" style="color:var(--st-building)"></span><b>Coinbosa VPN</b><span class="etat">En construction</span></li>
-          <li><span class="bille" style="color:var(--st-building)"></span><b>BOSA Omni AI</b><span class="etat">En construction</span></li>
-          <li><span class="bille" style="color:var(--st-building)"></span><b>Neobanq</b><span class="etat">En construction</span></li>
+          <li data-i18n="accueil.li.coinbosa-academyen-production"><span class="bille" style="color:var(--gold-soft)"></span><b>Coinbosa Academy</b><span class="etat">En production</span></li>
+          <li data-i18n="accueil.li.nextfutureen-production"><span class="bille" style="color:var(--gold-soft)"></span><b>NextFuture</b><span class="etat">En production</span></li>
+          <li data-i18n="accueil.li.coinbosa-carda-venir"><span class="bille" style="color:var(--st-soon)"></span><b>Coinbosa Card</b><span class="etat">À venir</span></li>
+          <li data-i18n="accueil.li.coinbosa-vpnen-construction"><span class="bille" style="color:var(--st-building)"></span><b>Coinbosa VPN</b><span class="etat">En construction</span></li>
+          <li data-i18n="accueil.li.bosa-omni-aien-construction"><span class="bille" style="color:var(--st-building)"></span><b>BOSA Omni AI</b><span class="etat">En construction</span></li>
+          <li data-i18n="accueil.li.neobanqen-construction"><span class="bille" style="color:var(--st-building)"></span><b>Neobanq</b><span class="etat">En construction</span></li>
         </ul>
       </div>
     </div>
@@ -194,12 +196,12 @@
 </section>
 
 <!-- ============ REJOINDRE ============ -->
-<section class="scene" id="rejoindre" aria-label="Rejoindre l'écosystème">
+<section class="scene" id="rejoindre" aria-label="Rejoindre l'écosystème" data-i18n-attr-aria-label="accueil.attr.aria-label.rejoindre-l-ecosysteme" data-i18n-attr-aria-label="accueil.attr.aria-label.rejoindre-l-ecosysteme" data-i18n-attr-aria-label="accueil.attr.aria-label.rejoindre-l-ecosysteme" data-i18n-attr-aria-label="accueil.attr.aria-label.rejoindre-l-ecosysteme" data-i18n-attr-aria-label="accueil.attr.aria-label.rejoindre-l-ecosysteme" data-i18n-attr-aria-label="accueil.attr.aria-label.rejoindre-l-ecosysteme">
   <div class="wrap">
     <div class="join reveal">
       <span class="eyebrow" style="justify-content:center">Rejoindre</span>
-      <h2>Construisons l'écosystème <span class="grad">Coinbosa</span>.</h2>
-      <p class="lead">
+      <h2 data-i18n="accueil.h2.construisons-l-ecosysteme-coinbosa">Construisons l'écosystème <span class="grad">Coinbosa</span>.</h2>
+      <p class="lead" data-i18n="accueil.p.suivez-l-avancement-des-produits-de-l-acad">
         Suivez l'avancement des produits, de l'Academy à la chaîne. Une vision qui se construit brique par brique.
       </p>
       <div class="join-cta" id="join-cta"><!-- rendu depuis CONTENT.links --></div>
@@ -213,26 +215,26 @@
   <div class="wrap">
     <div class="ft-top">
       <div class="ft-brand">
-        <a class="brand" href="/" aria-label="Coinbosa — accueil">
-          <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+        <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2">
+          <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" width="34" height="34">
           <span class="brand-name">Coin<b>bosa</b></span>
         </a>
-        <p>Un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.</p>
+        <p data-i18n="accueil.p.un-ecosysteme-technologique-education-marc">Un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.</p>
         <div class="ft-socials" id="ft-socials"><!-- icônes sociales depuis CONTENT.links --></div>
       </div>
 
       <div class="ft-col">
-        <h3>Écosystème</h3>
+        <h3 data-i18n="accueil.h3.ecosysteme">Écosystème</h3>
         <ul id="ft-eco"><!-- rendu depuis CONTENT.products --></ul>
       </div>
 
       <div class="ft-col">
-        <h3>Réseau</h3>
+        <h3 data-i18n="accueil.h3.reseau">Réseau</h3>
         <ul id="ft-network"><!-- explorer / whitepaper / github --></ul>
       </div>
 
       <div class="ft-col">
-        <h3>Communauté</h3>
+        <h3 data-i18n="accueil.h3.communaute">Communauté</h3>
         <ul id="ft-community"><!-- socials en texte --></ul>
       </div>
     </div>

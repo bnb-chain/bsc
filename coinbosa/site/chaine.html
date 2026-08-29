@@ -2,7 +2,7 @@
 <html lang="fr">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coinbosa Chain & BOSA — paramètres du réseau</title>
+<title data-i18n="chaine.title.coinbosa-chain-bosa-parametres-du-reseau">Coinbosa Chain & BOSA — paramètres du réseau</title>
 <meta name="description" content="Coinbosa Chain : compatible EVM, chain ID 26262, bloc de 5 secondes, offre fixe de 700 000 000 BOSA. Paramètres pour ajouter le réseau à un portefeuille.">
 <meta name="robots" content="index, follow">
 <meta name="theme-color" content="#0a141f">
@@ -20,70 +20,72 @@
 <meta name="twitter:title" content="Coinbosa Chain & BOSA — paramètres du réseau">
 <meta name="twitter:description" content="Coinbosa Chain : compatible EVM, chain ID 26262, bloc de 5 secondes, offre fixe de 700 000 000 BOSA. Paramètres pour ajouter le réseau à un portefeuille.">
 <meta name="twitter:image" content="https://coinbosa.com/og-image.jpg">
-<link rel="stylesheet" href="/assets/style.css?v=44132ffb5d">
+<link rel="stylesheet" href="/assets/style.css?v=55ee396edf">
+<script src="/assets/i18n.js?v=cf9b7c2af7" defer></script>
 <script src="/app.js?v=984164ed0c" defer></script>
 
 <header class="hdr" id="top">
   <div class="hdr-inner">
-    <a class="brand" href="/" aria-label="Coinbosa — accueil">
-      <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+    <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil">
+      <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa" width="34" height="34">
       <span class="brand-name">Coin<b>bosa</b></span>
     </a>
 
-    <nav class="nav" aria-label="Navigation principale">
-      <a href="/ecosysteme.html">Écosystème</a>
-      <a href="/chaine.html" aria-current="page">Chaîne &amp; BOSA</a>
-      <a href="/developpeurs.html">Développeurs</a>
-      <a href="/a-propos.html">À propos</a>
+    <nav class="nav" aria-label="Navigation principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale">
+      <a href="/ecosysteme.html" data-i18n="nav.ecosysteme">Écosystème</a>
+      <a href="/chaine.html" aria-current="page" data-i18n="nav.chaine">Chaîne &amp; BOSA</a>
+      <a href="/developpeurs.html" data-i18n="nav.developpeurs">Développeurs</a>
+      <a href="/a-propos.html" data-i18n="nav.a-propos">À propos</a>
       <span id="nav-extra"></span>
     </nav>
 
     <div class="hdr-actions">
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" aria-pressed="false">
+      <select class="lang-select" id="lang" aria-label="Language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language"></select>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" aria-pressed="false">
         <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" stroke-linecap="round"/></svg>
       </button>
-      <a class="btn btn-primary btn-sm cta-nav" id="cta-nav" href="/#rejoindre">Rejoindre</a>
-      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-menu">
+      <a class="btn btn-primary btn-sm cta-nav" id="cta-nav" href="/#rejoindre" data-i18n="nav.rejoindre">Rejoindre</a>
+      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" aria-expanded="false" aria-controls="mobile-menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
       </button>
     </div>
   </div>
 
   <div class="mobile-menu" id="mobile-menu">
-    <a href="/ecosysteme.html">Écosystème</a>
-    <a href="/chaine.html" aria-current="page">Chaîne &amp; BOSA</a>
-    <a href="/developpeurs.html">Développeurs</a>
-    <a href="/a-propos.html">À propos</a>
+    <a href="/ecosysteme.html" data-i18n="nav.ecosysteme">Écosystème</a>
+    <a href="/chaine.html" aria-current="page" data-i18n="nav.chaine">Chaîne &amp; BOSA</a>
+    <a href="/developpeurs.html" data-i18n="nav.developpeurs">Développeurs</a>
+    <a href="/a-propos.html" data-i18n="nav.a-propos">À propos</a>
     <span id="mnav-extra"></span>
-    <a class="btn btn-primary" href="/#rejoindre">Rejoindre l'écosystème</a>
+    <a class="btn btn-primary" href="/#rejoindre" data-i18n="nav.rejoindre-long">Rejoindre l'écosystème</a>
   </div>
 </header>
 
 <main id="main">
   <section class="page-head">
     <div class="wrap">
-      <nav class="fil" aria-label="Fil d'Ariane">
+      <nav class="fil" aria-label="Fil d'Ariane" data-i18n-attr-aria-label="chaine.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="chaine.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="chaine.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="chaine.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="chaine.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="chaine.attr.aria-label.fil-d-ariane">
         <a href="/">Accueil</a>
         <span aria-hidden="true">/</span>
         <span>Chaîne &amp; BOSA</span>
       </nav>
-      <h1>Coinbosa Chain &amp; BOSA</h1>
-      <p class="lead">Une chaîne compatible EVM, un coin natif à offre fixe. Tous les chiffres de cette page sont lisibles directement sur le réseau — rien n'est déclaratif.</p>
+      <h1 data-i18n="chaine.h1.coinbosa-chain-bosa">Coinbosa Chain &amp; BOSA</h1>
+      <p class="lead" data-i18n="chaine.p.une-chaine-compatible-evm-un-coin-natif-a">Une chaîne compatible EVM, un coin natif à offre fixe. Tous les chiffres de cette page sont lisibles directement sur le réseau — rien n'est déclaratif.</p>
     </div>
   </section>
-  <section class="scene" aria-label="Caractéristiques du réseau">
+  <section class="scene" aria-label="Caractéristiques du réseau" data-i18n-attr-aria-label="chaine.attr.aria-label.caracteristiques-du-reseau" data-i18n-attr-aria-label="chaine.attr.aria-label.caracteristiques-du-reseau" data-i18n-attr-aria-label="chaine.attr.aria-label.caracteristiques-du-reseau" data-i18n-attr-aria-label="chaine.attr.aria-label.caracteristiques-du-reseau" data-i18n-attr-aria-label="chaine.attr.aria-label.caracteristiques-du-reseau" data-i18n-attr-aria-label="chaine.attr.aria-label.caracteristiques-du-reseau">
     <div class="wrap">
       <div class="stat-grid reveal" id="stat-grid"><!-- rendu depuis CONTENT.network --></div>
     </div>
   </section>
 
-  <section class="scene" aria-label="Paramètres et empreinte">
+  <section class="scene" aria-label="Paramètres et empreinte" data-i18n-attr-aria-label="chaine.attr.aria-label.parametres-et-empreinte" data-i18n-attr-aria-label="chaine.attr.aria-label.parametres-et-empreinte" data-i18n-attr-aria-label="chaine.attr.aria-label.parametres-et-empreinte" data-i18n-attr-aria-label="chaine.attr.aria-label.parametres-et-empreinte" data-i18n-attr-aria-label="chaine.attr.aria-label.parametres-et-empreinte" data-i18n-attr-aria-label="chaine.attr.aria-label.parametres-et-empreinte">
     <div class="wrap">
       <div class="scene-head">
         <span class="eyebrow reveal">Identité du réseau</span>
-        <h2 class="reveal" style="transition-delay:.06s">Ce que la chaîne déclare d'elle-même.</h2>
-        <p class="lead reveal" style="transition-delay:.12s">
+        <h2 class="reveal" style="transition-delay:.06s" data-i18n="chaine.h2.ce-que-la-chaine-declare-d-elle-meme">Ce que la chaîne déclare d'elle-même.</h2>
+        <p class="lead reveal" style="transition-delay:.12s" data-i18n="chaine.p.l-empreinte-du-bloc-0-est-immuable-elle-fi">
           L'empreinte du bloc 0 est immuable : elle fixe pour toujours l'état initial du réseau,
           offre comprise. Deux nœuds qui n'affichent pas la même empreinte ne sont pas sur la même chaîne.
         </p>
@@ -91,26 +93,26 @@
       <div class="kv-wrap">
         <table class="kv">
           <tbody>
-            <tr><th>Nom du réseau</th><td>Coinbosa Chain</td></tr>
-            <tr><th>Chain ID</th><td>26262 <span style="color:var(--faint)">(0x6696)</span></td></tr>
-            <tr><th>Machine virtuelle</th><td>Compatible EVM</td></tr>
-            <tr><th>Consensus</th><td>Parlia — preuve d'autorité aujourd'hui · epoch 200 blocs</td></tr>
-            <tr><th>Temps de bloc</th><td>5 secondes</td></tr>
-            <tr><th>Coin natif</th><td>BOSA · 18 décimales</td></tr>
-            <tr><th>Offre totale</th><td>700 000 000 BOSA — fixe, aucune émission programmée</td></tr>
-            <tr><th>Standard de jeton</th><td>BRC20 (compatible ERC-20)</td></tr>
-            <tr><th>Point d'accès RPC</th><td><code>https://explorer.coinbosa.com/rpc</code> <span style="color:var(--faint)">— point d'API, en POST uniquement</span></td></tr>
-            <tr><th>Explorateur</th><td><a href="https://explorer.coinbosa.com">https://explorer.coinbosa.com</a></td></tr>
-            <tr><th>Empreinte du bloc 0</th><td><span style="word-break:break-all">0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6</span></td></tr>
-            <tr><th>Racine d'état du bloc 0</th><td><span style="word-break:break-all">0x93682eb9182a55531d47014b76a285b45d3e720a2951f9ffbdc67f52995f8c03</span></td></tr>
+            <tr><th data-i18n="chaine.th.nom-du-reseau">Nom du réseau</th><td data-i18n="chaine.td.coinbosa-chain">Coinbosa Chain</td></tr>
+            <tr><th data-i18n="chaine.th.chain-id">Chain ID</th><td>26262 <span style="color:var(--faint)">(0x6696)</span></td></tr>
+            <tr><th data-i18n="chaine.th.machine-virtuelle">Machine virtuelle</th><td data-i18n="chaine.td.compatible-evm">Compatible EVM</td></tr>
+            <tr><th data-i18n="chaine.th.consensus">Consensus</th><td data-i18n="chaine.td.parlia-preuve-d-autorite-aujourd-hui-epoch">Parlia — preuve d'autorité aujourd'hui · epoch 200 blocs</td></tr>
+            <tr><th data-i18n="chaine.th.temps-de-bloc">Temps de bloc</th><td data-i18n="chaine.td.5-secondes">5 secondes</td></tr>
+            <tr><th data-i18n="chaine.th.coin-natif">Coin natif</th><td data-i18n="chaine.td.bosa-18-decimales">BOSA · 18 décimales</td></tr>
+            <tr><th data-i18n="chaine.th.offre-totale">Offre totale</th><td data-i18n="chaine.td.700-000-000-bosa-fixe-aucune-emission-prog">700 000 000 BOSA — fixe, aucune émission programmée</td></tr>
+            <tr><th data-i18n="chaine.th.standard-de-jeton">Standard de jeton</th><td data-i18n="chaine.td.brc20-compatible-erc-20">BRC20 (compatible ERC-20)</td></tr>
+            <tr><th data-i18n="chaine.th.point-d-acces-rpc">Point d'accès RPC</th><td><code>https://explorer.coinbosa.com/rpc</code> <span style="color:var(--faint)">— point d'API, en POST uniquement</span></td></tr>
+            <tr><th data-i18n="chaine.th.explorateur">Explorateur</th><td><a href="https://explorer.coinbosa.com">https://explorer.coinbosa.com</a></td></tr>
+            <tr><th data-i18n="chaine.th.empreinte-du-bloc-0">Empreinte du bloc 0</th><td><span style="word-break:break-all">0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6</span></td></tr>
+            <tr><th data-i18n="chaine.th.racine-d-etat-du-bloc-0">Racine d'état du bloc 0</th><td><span style="word-break:break-all">0x93682eb9182a55531d47014b76a285b45d3e720a2951f9ffbdc67f52995f8c03</span></td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="scene-head" style="margin-top:clamp(56px,8vw,90px)">
         <span class="eyebrow reveal">Se connecter</span>
-        <h2 class="reveal" style="transition-delay:.06s">Ajouter le réseau à ton portefeuille.</h2>
-        <p class="lead reveal" style="transition-delay:.12s">
+        <h2 class="reveal" style="transition-delay:.06s" data-i18n="chaine.h2.ajouter-le-reseau-a-ton-portefeuille">Ajouter le réseau à ton portefeuille.</h2>
+        <p class="lead reveal" style="transition-delay:.12s" data-i18n="chaine.p.trois-champs-suffisent-la-manipulation-est">
           Trois champs suffisent. La manipulation est la même dans MetaMask, Trust Wallet,
           Rabby ou tout portefeuille compatible EVM.
         </p>
@@ -120,13 +122,13 @@
         <li>
           <div>
             <h3>Ouvrir la liste des réseaux</h3>
-            <p>Dans MetaMask : le sélecteur de réseau en haut à gauche, puis « Ajouter un réseau » et « Ajouter manuellement ».</p>
+            <p data-i18n="chaine.p.dans-metamask-le-selecteur-de-reseau-en-ha">Dans MetaMask : le sélecteur de réseau en haut à gauche, puis « Ajouter un réseau » et « Ajouter manuellement ».</p>
           </div>
         </li>
         <li>
           <div>
             <h3>Saisir les paramètres</h3>
-            <p>Recopie exactement ces quatre valeurs. Le chain ID doit correspondre : un portefeuille qui reçoit un chain ID différent de celui annoncé refuse la connexion, et c'est une protection.</p>
+            <p data-i18n="chaine.p.recopie-exactement-ces-quatre-valeurs-le-c">Recopie exactement ces quatre valeurs. Le chain ID doit correspondre : un portefeuille qui reçoit un chain ID différent de celui annoncé refuse la connexion, et c'est une protection.</p>
       <div class="code">
         <div class="code-head">
           <span>Paramètres du réseau</span>
@@ -143,7 +145,7 @@ Explorateur       https://explorer.coinbosa.com</code></pre>
         <li>
           <div>
             <h3>Vérifier que c'est la bonne chaîne</h3>
-            <p>Avant d'y envoyer quoi que ce soit, demande son identité au réseau. La réponse doit être exactement <code>0x6696</code>, la forme hexadécimale de 26262.</p>
+            <p data-i18n="chaine.p.avant-d-y-envoyer-quoi-que-ce-soit-demande">Avant d'y envoyer quoi que ce soit, demande son identité au réseau. La réponse doit être exactement <code>0x6696</code>, la forme hexadécimale de 26262.</p>
       <div class="code">
         <div class="code-head">
           <span>Vérification depuis un terminal</span>
@@ -161,7 +163,7 @@ Explorateur       https://explorer.coinbosa.com</code></pre>
       </ol>
       <p class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg><span><b>Le réseau est jeune et opéré par un seul validateur.</b> Il n'est donc pas présenté comme décentralisé. Aucun audit externe n'a été publié à ce jour. Le code est ouvert et l'empreinte du bloc 0 est vérifiable par quiconque.</span></p>
       <div class="suite">
-        <p><strong>Construire sur la chaîne</strong>Paramètres pour les outils de développement, déploiement d'un jeton BRC20, et surface RPC exposée.</p>
+        <p data-i18n="chaine.p.construire-sur-la-chaineparametres-pour-le"><strong>Construire sur la chaîne</strong>Paramètres pour les outils de développement, déploiement d'un jeton BRC20, et surface RPC exposée.</p>
         <a class="btn btn-primary" href="/developpeurs.html">Documentation développeurs<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:16px;height:16px;vertical-align:-2px;margin-left:6px"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       </div>
     </div>
@@ -173,26 +175,26 @@ Explorateur       https://explorer.coinbosa.com</code></pre>
   <div class="wrap">
     <div class="ft-top">
       <div class="ft-brand">
-        <a class="brand" href="/" aria-label="Coinbosa — accueil">
-          <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="34" height="34">
+        <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2">
+          <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" data-i18n-attr-alt="accueil.attr.alt.coinbosa-2" width="34" height="34">
           <span class="brand-name">Coin<b>bosa</b></span>
         </a>
-        <p>Un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.</p>
+        <p data-i18n="accueil.p.un-ecosysteme-technologique-education-marc">Un écosystème technologique — éducation, marchés, paiements, banque, confidentialité — avec une blockchain souveraine comme socle.</p>
         <div class="ft-socials" id="ft-socials"><!-- icônes sociales depuis CONTENT.links --></div>
       </div>
 
       <div class="ft-col">
-        <h3>Écosystème</h3>
+        <h3 data-i18n="accueil.h3.ecosysteme">Écosystème</h3>
         <ul id="ft-eco"><!-- rendu depuis CONTENT.products --></ul>
       </div>
 
       <div class="ft-col">
-        <h3>Réseau</h3>
+        <h3 data-i18n="accueil.h3.reseau">Réseau</h3>
         <ul id="ft-network"><!-- explorer / whitepaper / github --></ul>
       </div>
 
       <div class="ft-col">
-        <h3>Communauté</h3>
+        <h3 data-i18n="accueil.h3.communaute">Communauté</h3>
         <ul id="ft-community"><!-- socials en texte --></ul>
       </div>
     </div>

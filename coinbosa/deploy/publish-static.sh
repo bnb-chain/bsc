@@ -31,6 +31,8 @@ BASE="$(cd "$(dirname "$0")/.." && pwd)"
 for f in site/index.html site/ecosysteme.html site/chaine.html \
          site/developpeurs.html site/a-propos.html \
          site/app.js site/assets/style.css site/assets/scene.js \
+         site/assets/i18n.js site/assets/i18n-en.js site/assets/i18n-es.js \
+         site/assets/i18n-pt.js site/assets/i18n-ar.js site/assets/i18n-zh.js \
          site/robots.txt site/sitemap.xml site/version.json \
          explorer/index.html explorer/app.js \
          whitepaper/index.html whitepaper/app.js; do
@@ -59,7 +61,11 @@ fi
 COMMUN=(-avz --delete --rsync-path="$RSYNC_PATH"
         --exclude '.well-known/' --exclude 'og-image.jpg'
         --exclude 'favicon-32.png' --exclude 'apple-touch-icon.png'
-        --exclude 'coque.py' --exclude '.DS_Store')
+        # Les outils de construction n'ont rien a faire en ligne : ils
+        # revelent la structure du chantier sans rien apporter au visiteur.
+        # i18n-fr.json est la reference de coque.py, pas une ressource du
+        # site : le francais est deja dans le HTML, le moteur le photographie.
+        --exclude '*.py' --exclude 'i18n-fr.json' --exclude '.DS_Store')
 
 echo "==> Envoi des fichiers vers $SERVER"
 rsync "${COMMUN[@]}" "$BASE/site/"       "$SERVER:/var/www/coinbosa/site/"

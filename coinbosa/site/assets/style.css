@@ -184,6 +184,46 @@
     transition: color .2s ease, border-color .2s ease, background-color .2s ease;
   }
   .theme-toggle:hover { color: var(--gold-soft); border-color: var(--gold); }
+
+  /* ---------- sélecteur de langue ----------
+     Calé sur le bouton de thème : même hauteur, même bordure, même survol.
+     La flèche est dessinée en CSS — appearance:none supprime celle du système,
+     et un fichier image de plus serait une requête de plus pour un triangle. */
+  .lang-select {
+    height: 40px; border-radius: 10px; padding: 0 30px 0 11px;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border-2); cursor: pointer;
+    font: inherit; font-size: .86rem; line-height: 1;
+    appearance: none; -webkit-appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-size: 5px 5px, 5px 5px;
+    background-position: right 14px center, right 9px center;
+    background-repeat: no-repeat;
+    transition: color .2s ease, border-color .2s ease;
+  }
+  .lang-select:hover { color: var(--gold-soft); border-color: var(--gold); }
+  .lang-select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  /* Le menu déroulant est peint par le système : sans couleur explicite, les
+     options ressortaient blanc sur blanc en thème sombre sur certains navigateurs. */
+  .lang-select option { background: var(--panel); color: var(--text); }
+
+  /* ---------- écriture de droite à gauche (arabe) ----------
+     La mise en page est en flex et en grid, donc elle se retourne d'elle-même.
+     Ne restent que les valeurs directionnelles écrites en dur. */
+  [dir="rtl"] .lang-select {
+    padding: 0 11px 0 30px;
+    background-position: left 9px center, left 14px center;
+  }
+  [dir="rtl"] .fil { flex-direction: row-reverse; }
+  [dir="rtl"] .eyebrow { flex-direction: row-reverse; }
+  [dir="rtl"] .note { flex-direction: row-reverse; }
+  [dir="rtl"] .suite p strong { text-align: right; }
+  /* Les blocs de code et les valeurs techniques restent de gauche à droite :
+     une adresse ou une commande retournée serait illisible, voire fausse. */
+  [dir="rtl"] .code, [dir="rtl"] pre, [dir="rtl"] code,
+  [dir="rtl"] .mono, [dir="rtl"] .tnum { direction: ltr; text-align: left; }
   .theme-toggle svg { width: 19px; height: 19px; }
   .theme-toggle .i-sun { display: none; }
   :root[data-theme="light"] .theme-toggle .i-sun { display: block; }

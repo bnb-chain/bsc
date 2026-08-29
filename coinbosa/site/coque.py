@@ -50,7 +50,10 @@ PAGES = {
 }
 
 PARTAGE = {"assets/style.css": "/assets/style.css", "app.js": "/app.js",
-           "assets/scene.js": "/assets/scene.js"}
+           "assets/scene.js": "/assets/scene.js",
+           # Le moteur de traduction. Sans empreinte, un visiteur deja venu
+           # garderait l ancienne version et verrait un site a moitie traduit.
+           "assets/i18n.js": "/assets/i18n.js"}
 
 
 def lire(p):
@@ -179,7 +182,10 @@ def verifier():
 
     # 3. Métadonnées propres à chaque page. Deux canonical identiques disent aux
     #    moteurs que deux pages n'en sont qu'une : l'une des deux disparaît.
-    for champ, motif in [("title", r"<title>([^<]*)</title>"),
+    # <title> porte desormais un data-i18n : le motif doit tolerer des
+    # attributs, sinon le controle conclut « title absent » sur une page qui
+    # en a un — un faux defaut qui masque les vrais.
+    for champ, motif in [("title", r"<title\b[^>]*>([^<]*)</title>"),
                          ("canonical", r'<link rel="canonical" href="([^"]*)"'),
                          ("og:url", r'<meta property="og:url" content="([^"]*)"'),
                          ("description", r'<meta name="description" content="([^"]*)"')]:
@@ -203,6 +209,38 @@ def verifier():
                 defauts.append(f"{p} : script inline — bloqué par la CSP")
         if re.search(r"\son(?:click|load|error|submit|change|input|focus|blur)=", src[p]):
             defauts.append(f"{p} : attribut d'événement inline — bloqué par la CSP")
+
+    # 4 bis. Traduction : toute clé posée dans une page doit exister dans le
+    #    dictionnaire source, et chaque langue doit couvrir les mêmes clés que le
+    #    français. Sans ce contrôle, une clé oubliée passe inaperçue : la page
+    #    s'affiche, simplement le fragment reste en français au milieu du reste.
+    #    C'est le défaut le plus difficile à voir à l'œil et le plus facile à
+    #    laisser filer.
+    fr_json = RACINE / "assets" / "i18n-fr.json"
+    if fr_json.exists():
+        source = json.loads(fr_json.read_text(encoding="utf-8"))
+        posees = set()
+        for p in PAGES:
+            posees |= set(re.findall(r'data-i18n(?:-attr-[a-z-]+)?="([^"]+)"', src[p]))
+        manquantes = posees - set(source)
+        if manquantes:
+            defauts.append(f"clés posées dans les pages mais absentes du "
+                           f"dictionnaire français : {sorted(manquantes)[:5]}")
+        for f in sorted((RACINE / "assets").glob("i18n-*.js")):
+            code = f.stem.split("-")[-1]
+            txt = f.read_text(encoding="utf-8")
+            cles = set(re.findall(r'^\s*"([^"]+)"\s*:', txt, re.M))
+            if not cles:
+                defauts.append(f"i18n-{code}.js : aucune clé lisible")
+                continue
+            absentes = set(source) - cles
+            etrangeres = cles - set(source)
+            if absentes:
+                defauts.append(f"i18n-{code}.js : {len(absentes)} clé(s) non traduite(s), "
+                               f"ex. {sorted(absentes)[:3]}")
+            if etrangeres:
+                defauts.append(f"i18n-{code}.js : {len(etrangeres)} clé(s) inconnue(s), "
+                               f"ex. {sorted(etrangeres)[:3]}")
 
     # 5. Hiérarchie des titres : un saut de niveau fait annoncer par une synthèse
     #    vocale une sous-section qui n'existe pas.
