@@ -180,8 +180,13 @@ class _Orphelins(HTMLParser):
             if nom in self.STRUCTURE and not chaine:
                 continue
             chaine.append((debut, fin, nom))
-        if chaine:
-            self.cibles.append(chaine)
+        if not chaine:
+            # Toute la chaine est structurelle : le texte vit directement dans un
+            # <div>, comme les etiquettes « Jalon 6 · en cours ». Sans ce repli
+            # elles n'etaient jamais marquees et restaient francaises partout.
+            nom, _, debut, fin = self.pile[-1]
+            chaine = [(debut, fin, nom)]
+        self.cibles.append(chaine)
 
 
 def rattraper_orphelins(html, dico, cle_unique, prefixe):
