@@ -128,11 +128,24 @@ var CONTENT = {
   }
 
   var STATUS = {
-    live:     { label: "En production",  cls: "st-live" },
-    building: { label: "En construction", cls: "st-building" },
-    soon:     { label: "À venir",         cls: "st-soon" },
-    external: { label: "Externe",         cls: "st-external" }
+    live:     { label: "En production",   cls: "st-live",     cle: "app.statut.live" },
+    building: { label: "En construction", cls: "st-building", cle: "app.statut.building" },
+    soon:     { label: "À venir",         cls: "st-soon",     cle: "app.statut.soon" },
+    external: { label: "Externe",         cls: "st-external", cle: "app.statut.external" }
   };
+
+  // Ce fichier fabrique une partie de l'interface APRES le chargement : la
+  // grille des produits, l'entree « Explorateur » du menu. assets/i18n.js a
+  // deja fini son travail a ce moment-la, donc ces elements naissaient toujours
+  // en francais — on lisait « Explorateur » et « En production » au milieu
+  // d'une page anglaise. On leur pose une cle, et on previent le moteur une
+  // fois le rendu termine.
+  function cleProduit(nom, champ) {
+    return "app.produit." + nom.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "." + champ;
+  }
+  function prevenirI18n() {
+    if (window.CoinbosaI18n) window.CoinbosaI18n.rafraichir();
+  }
 
   var ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var EXTLINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -184,14 +197,14 @@ var CONTENT = {
       card.style.transitionDelay = (Math.min(i, 6) * 0.06) + 's';
       var html =
         '<div class="card-top">' +
-          '<span class="card-cat">' + esc(p.category) + '</span>' +
-          '<span class="badge ' + st.cls + '"><span class="pip"></span>' + esc(st.label) + '</span>' +
+          '<span class="card-cat" data-i18n="' + cleProduit(p.name, 'cat') + '">' + esc(p.category) + '</span>' +
+          '<span class="badge ' + st.cls + '"><span class="pip"></span><span data-i18n="' + st.cle + '">' + esc(st.label) + '</span></span>' +
         '</div>' +
         '<h3>' + esc(p.name) + '</h3>' +
-        '<p>' + esc(p.desc) + '</p>';
+        '<p data-i18n="' + cleProduit(p.name, 'desc') + '">' + esc(p.desc) + '</p>';
       if (hasUrl) {
         var aff = isExt(p.url) ? EXTLINK : ARROW;
-        html += '<span class="card-link">Découvrir ' + aff + '</span>';
+        html += '<span class="card-link"><span data-i18n="app.carte.decouvrir">Découvrir</span> ' + aff + '</span>';
         card.setAttribute('href', /^(https?:\/\/|\/|#)/.test(p.url) ? p.url : '#');
         card.setAttribute('aria-label', p.name + ' — ouvrir le site' + (isExt(p.url) ? ' (nouvel onglet)' : ''));
         if (isExt(p.url)) { card.target = '_blank'; card.rel = 'noopener noreferrer'; }
@@ -228,7 +241,7 @@ var CONTENT = {
 
     // Nav : lien explorateur (si présent)
     if (L.explorer) {
-      var navHtml = '<a href="' + esc(/^(https?:\/\/|\/|#)/.test(L.explorer) ? L.explorer : '#') + '"' + anchorAttrs(L.explorer) + '>Explorateur</a>';
+      var navHtml = '<a href="' + esc(/^(https?:\/\/|\/|#)/.test(L.explorer) ? L.explorer : '#') + '"' + anchorAttrs(L.explorer) + ' data-i18n="app.lien.explorateur">Explorateur</a>';
       var ne = document.getElementById('nav-extra');
       var mne = document.getElementById('mnav-extra');
       if (ne) ne.outerHTML = navHtml;
@@ -451,6 +464,12 @@ var CONTENT = {
       });
     });
   })();
+
+  // Le rendu est termine : les elements fabriques ici portent leur cle mais
+  // sont encore en francais. On previent le moteur de traduction, qui les
+  // photographie puis les applique dans la langue courante. Sans cet appel,
+  // la grille des produits et l'entree « Explorateur » restaient francaises.
+  prevenirI18n();
 
 })();
   });

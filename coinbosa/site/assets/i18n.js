@@ -52,7 +52,11 @@
   function photographier() {
     var n = document.querySelectorAll("[data-i18n]");
     for (var i = 0; i < n.length; i++) {
-      photo.html[n[i].getAttribute("data-i18n")] = n[i].innerHTML;
+      var c = n[i].getAttribute("data-i18n");
+      // On ne REphotographie jamais une cle deja connue : au second passage le
+      // DOM porte deja la traduction, et l'ecraser ferait passer l'anglais pour
+      // la source francaise. Le retour au francais afficherait alors l'anglais.
+      if (!(c in photo.html)) photo.html[c] = n[i].innerHTML;
     }
     var t = document.querySelectorAll("*");
     for (var j = 0; j < t.length; j++) {
@@ -172,6 +176,22 @@
     sel.innerHTML = html;
     sel.addEventListener("change", function (e) { basculer(e.target.value, true); });
   }
+
+  /* ── Rappel pour le contenu genere apres le chargement ────────────────
+     app.js fabrique une partie de l'interface — la grille des produits, les
+     faits du reseau, l'entree « Explorateur » du menu — apres que ce fichier a
+     deja fait son travail. Ces elements naissaient donc toujours en francais,
+     quelle que soit la langue affichee. app.js appelle cette fonction apres
+     chaque rendu ; elle photographie les nouveaux venus, puis les traduit. */
+  window.CoinbosaI18n = {
+    rafraichir: function () {
+      photographier();
+      appliquer(document.documentElement.getAttribute("data-lang") || SOURCE);
+    },
+    langue: function () {
+      return document.documentElement.getAttribute("data-lang") || SOURCE;
+    }
+  };
 
   function demarrer() {
     photographier();

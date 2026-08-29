@@ -28,6 +28,7 @@ USAGE
 """
 
 import html as H
+from html.parser import HTMLParser
 import json
 import re
 import sys
@@ -70,9 +71,29 @@ def slug(texte, n=42):
     return t[:n].rstrip("-") or "vide"
 
 
+# Le nom de la marque, ses declinaisons, et les valeurs qui n'ont pas de
+# traduction : les traduire serait une faute, pas un oubli.
+JAMAIS = {"coinbosa", "coinbosa, inc.", "bosa", "coin", "brc20", "parlia",
+          "evm", "github", "metamask", "trust wallet", "nextfuture", "neobanq"}
+
+
+IDENTIFIANT = re.compile(
+    r"^(?:[\w./-]+\.(?:js|json|toml|ya?ml|py|sh|sol|html|css|md|txt)"
+    r"|[a-z]+_[A-Za-z]\w*|[a-z]+[A-Z]\w*\(\)?)$")
+
+
 def traduisible(frag):
     """Un fragment mérite-t-il une traduction ?"""
     nu = EN_LIGNE.sub("", frag).strip()
+    if "\x00" in nu:
+        return False
+    nu_texte = H.unescape(re.sub(r"<[^>]+>", "", nu)).strip()
+    if nu_texte.lower() in JAMAIS:
+        return False
+    # foundry.toml, hardhat.config.js, wallet_addEthereumChain : des noms de
+    # fichier et d'API. Les traduire rendrait l'instruction inexecutable.
+    if IDENTIFIANT.match(nu_texte):
+        return False
     nu = H.unescape(nu)
     if not nu:
         return False
@@ -83,6 +104,150 @@ def traduisible(frag):
     if nu.startswith(("http://", "https://", "0x")):
         return False
     return True
+
+
+class _Orphelins(HTMLParser):
+    """Repère les textes qu'aucun ancêtre marqué ne couvre.
+
+    On garde une vraie pile d'éléments ouverts : c'est la seule façon de savoir
+    avec certitude sous quoi vit un fragment. Une fenêtre glissante sur le texte
+    brut se trompe, et se trompe en silence.
+    """
+
+    VIDES = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+             "link", "meta", "source", "track", "wbr"}
+    # Conteneurs de mise en page : ils n'ont jamais vocation a porter une
+    # traduction, ils englobent d'autres blocs.
+    STRUCTURE = {"html", "body", "main", "section", "article", "header",
+                 "footer", "nav", "div", "ul", "ol", "table", "tbody", "thead",
+                 "tr", "form", "figure", "picture"}
+    MUETTES = {"script", "style", "svg", "noscript", "code", "pre", "title"}
+
+    def __init__(self, texte):
+        super().__init__(convert_charrefs=False)
+        self.texte = texte
+        self.lignes = [0]
+        for l in texte.split("\n")[:-1]:
+            self.lignes.append(self.lignes[-1] + len(l) + 1)
+        self.pile = []          # [(nom, marque, debut_balise, fin_balise)]
+        self.muet = 0
+        self.cibles = []        # [(debut_balise, fin_balise, nom)]
+
+    def _abs(self):
+        l, c = self.getpos()
+        return self.lignes[l - 1] + c
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.VIDES:
+            return
+        debut = self._abs()
+        fin = self.texte.find(">", debut)
+        marque = any(a[0] == "data-i18n" for a in attrs)   # PAS startswith : un
+            # data-i18n-attr-aria-label ne traduit que cet attribut, pas le
+            # contenu. Confondre les deux faisait passer toute une section
+            # pour traduite parce que son aria-label l etait — les deux
+            # boutons du heros sont restes francais en arabe a cause de ca.
+        self.pile.append((tag, marque, debut, fin))
+        if tag in self.MUETTES:
+            self.muet += 1
+
+    def handle_endtag(self, tag):
+        if tag in self.VIDES:
+            return
+        for i in range(len(self.pile) - 1, -1, -1):
+            if self.pile[i][0] == tag:
+                if tag in self.MUETTES:
+                    self.muet = max(0, self.muet - 1)
+                del self.pile[i:]
+                return
+
+    def handle_data(self, data):
+        if self.muet or not self.pile:
+            return
+        if not data.strip() or not A_UNE_LETTRE.search(data):
+            return
+        if any(m for _, m, _, _ in self.pile):
+            return
+        # On ne vise pas l'element le plus interne : dans
+        # « <span><b>Aucun membre…</b> Une telle demande…</span> », marquer le
+        # <b> d'abord interdit ensuite de marquer le <span>, et la seconde
+        # moitie de la phrase reste francaise. On remonte donc jusqu'au premier
+        # ancetre NON structurel, et on garde toute la chaine en dessous : le
+        # poseur essaiera du plus englobant au plus interne, et s'arretera au
+        # premier qui ne contient que du texte et du marquage en ligne.
+        chaine = []
+        for nom, _, debut, fin in self.pile:
+            if nom in self.STRUCTURE and not chaine:
+                continue
+            chaine.append((debut, fin, nom))
+        if chaine:
+            self.cibles.append(chaine)
+
+
+def rattraper_orphelins(html, dico, cle_unique, prefixe):
+    """Pose data-i18n sur le parent immédiat de chaque texte non couvert."""
+    s = _Orphelins(html)
+    try:
+        s.feed(html)
+    except Exception:
+        return html                      # analyseur en échec : on ne touche à rien
+
+    # Une cible par chaine : on retient le candidat le plus englobant qui ne
+    # contient que du texte et du marquage en ligne.
+    retenues = []
+    for chaine in s.cibles:
+        for debut, fin, nom in chaine:
+            if fin <= debut:
+                continue
+            ferme = html.find(f"</{nom}>", fin)
+            if ferme < 0:
+                continue
+            inner = html[fin + 1:ferme]
+            # Les zones mortes (svg, script, style) sont rangees le temps de
+            # l'analyse et remplacees par un marqueur \x00N\x00. Sans ce
+            # controle, le marqueur entrait dans le dictionnaire et laissait un
+            # chiffre parasite en tete de la traduction — « 5 Copier ».
+            if "\x00" in inner:
+                continue
+            if re.search(r"<(?!/?(b|i|em|strong|span|br|small|sup|sub|code|a)\b)", inner):
+                continue
+            if not traduisible(inner):
+                continue
+            retenues.append((debut, fin, nom))
+            break
+
+    # De la fin vers le début : insérer décale tout ce qui suit.
+    vues = set()
+    for debut, fin, nom in sorted(set(retenues), reverse=True):
+        if (debut, fin) in vues:
+            continue
+        vues.add((debut, fin))
+        if fin <= debut:
+            continue
+        ferme = html.find(f"</{nom}>", fin)
+        if ferme < 0:
+            continue
+        inner = html[fin + 1:ferme]
+        # Un parent qui contient un autre bloc n'est pas une feuille : le
+        # traduire d'un morceau écraserait la structure interne.
+        # code et a sont admis comme en ligne, comme dans la passe principale :
+        # une phrase du type « appelle <code>x</code> puis <code>y</code> » se
+        # traduit d un bloc. Les traducteurs ont pour consigne de ne pas toucher
+        # au contenu de <code>, et le controle de balisage le verifie.
+        if re.search(r"<(?!/?(b|i|em|strong|span|br|small|sup|sub|code|a)\b)", inner):
+            continue
+        if "data-i18n" in inner:
+            # Un parent et son enfant ne peuvent pas porter chacun une cle :
+            # appliquer la traduction du parent remplace l enfant, dont la cle
+            # devient alors sans objet. Le resultat depend de l ordre de
+            # parcours du DOM — donc il est fragile et invisible a la relecture.
+            continue
+        if not traduisible(inner):
+            continue
+        k = cle_unique(f"{prefixe}.{nom}.{slug(inner)}")
+        dico[k] = inner.strip()
+        html = html[:fin] + f' data-i18n="{k}"' + html[fin:]
+    return html
 
 
 def instrumenter(page):
@@ -146,6 +311,17 @@ def instrumenter(page):
         cle, inner = m.group(3), m.group(4)
         if cle not in dico and "\x00" not in inner:
             dico[cle] = inner.strip()
+
+    # --- 1 ter. rattrapage des orphelins ----------------------------------
+    # Les passes precedentes travaillent sur une liste de balises. Tout texte
+    # qui vit ailleurs — un <a class="btn"> du heros, une etiquette dans un
+    # <div> — leur echappe et reste francais dans toutes les langues.
+    # La capture de la page arabe l'a montre : les deux boutons du heros
+    # s'affichaient en francais au milieu d'une page arabe.
+    #
+    # On ne devine pas : on demande a un vrai analyseur quels textes ne sont
+    # couverts par AUCUN ancetre marque, et on marque leur parent immediat.
+    travail = rattraper_orphelins(travail, dico, cle_unique, prefixe)
 
     # --- 2. attributs visibles -------------------------------------------
     def sur_attr(m):
