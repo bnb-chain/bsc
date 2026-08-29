@@ -249,6 +249,11 @@ def verifier():
 
         sans_texte = []
         for cle, val in source.items():
+            # Les cles app.* sont fabriquees par app.js A L'EXECUTION, a partir
+            # du NOM du produit : elles ne peuvent pas encoder leur texte. Leur
+            # fraicheur est garantie autrement, par le controle qui suit.
+            if cle.startswith("app."):
+                continue
             queue = cle.rsplit(".", 1)[-1]
             queue = re.sub(r"-\d+$", "", queue)          # suffixe d'unicite
             attendu = _slug(val, len(queue) if queue else 42)
@@ -258,6 +263,24 @@ def verifier():
             defauts.append(f"{len(sans_texte)} cle(s) n'encodent pas leur texte, "
                            f"ex. {sorted(sans_texte)[:3]} — une refonte du contenu "
                            f"y laisserait des traductions perimees")
+
+        # Fraicheur des libelles generes : le dictionnaire doit dire EXACTEMENT
+        # ce que app.js contient aujourd'hui. Sinon quelqu'un a modifie une
+        # description de produit sans relancer l'extraction, et le site affiche
+        # l'ancien texte traduit a cote du nouveau texte francais.
+        appjs = RACINE / "app.js"
+        if appjs.exists():
+            js = appjs.read_text(encoding="utf-8")
+            perimees = []
+            for cle, val in source.items():
+                if not cle.startswith("app.produit."):
+                    continue
+                if val not in js:
+                    perimees.append(cle)
+            if perimees:
+                defauts.append(f"{len(perimees)} libelle(s) app.* ne correspondent plus a "
+                               f"app.js, ex. {sorted(perimees)[:3]} — relancer "
+                               f"i18n-extraire.py --ecrire")
 
         for f in sorted((RACINE / "assets").glob("i18n-*.js")):
             code = f.stem.split("-")[-1]

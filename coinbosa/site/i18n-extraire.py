@@ -371,6 +371,50 @@ def instrumenter(page):
     return travail, dico, avert
 
 
+def depuis_app_js():
+    """Releve les libelles que app.js fabrique a l'execution.
+
+    app.js construit la grille des produits, les pastilles d'etat et l'entree
+    « Explorateur » du menu APRES le chargement. Ces textes ne sont dans aucune
+    page : sans cette lecture, ils disparaissent du dictionnaire a chaque
+    reconstruction, et le site affiche « Explorateur » et « Education » en
+    francais au milieu d'une page anglaise. C'est arrive apres la refonte.
+    """
+    src = (RACINE / "app.js")
+    if not src.exists():
+        return {}
+    s = src.read_text(encoding="utf-8")
+    d = {}
+
+    for m in re.finditer(r'cle:\s*"(app\.statut\.\w+)"', s):
+        cle = m.group(1)
+        lab = re.search(r'label:\s*"([^"]+)"[^}]*' + re.escape(cle), s)
+        if not lab:
+            # label precede cle dans l'objet : on relit la ligne entiere
+            ligne = next((l for l in s.split("\n") if cle in l), "")
+            lab = re.search(r'label:\s*"([^"]+)"', ligne)
+        if lab:
+            d[cle] = lab.group(1)
+
+    for m in re.finditer(r'data-i18n="(app\.[\w.-]+)">([^<\']+)', s):
+        d[m.group(1)] = m.group(2).strip()
+
+    try:
+        i = s.index("products: [")
+        bloc = s[i:s.index("// Le socle", i)]
+        for obj in re.findall(r"\{([^{}]*)\}", bloc):
+            nom = re.search(r'name:\s*"([^"]+)"', obj)
+            cat = re.search(r'category:\s*"([^"]+)"', obj)
+            des = re.search(r'desc:\s*"((?:[^"\\]|\\.)*)"', obj)
+            if nom and cat and des:
+                k = re.sub(r"[^a-z0-9]+", "-", nom.group(1).lower())
+                d[f"app.produit.{k}.cat"] = cat.group(1)
+                d[f"app.produit.{k}.desc"] = des.group(1)
+    except ValueError:
+        pass
+    return d
+
+
 def main():
     ecrire = "--ecrire" in sys.argv
     total, tous, avert = {}, 0, []
@@ -384,6 +428,11 @@ def main():
         tous += len(dico)
         if ecrire:
             (RACINE / page).write_text(html, encoding="utf-8")
+
+    depuis_js = depuis_app_js()
+    nouvelles = {k: v for k, v in depuis_js.items() if k not in total}
+    total.update(nouvelles)
+    print(f"  {'app.js (genere)':22} {len(depuis_js):>10}")
 
     print(f"  {'TOTAL':22} {tous:>10}  "
           f"{sum(len(re.sub(r'<[^>]+>', '', v).split()) for v in total.values()):>7}")
