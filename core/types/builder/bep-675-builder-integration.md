@@ -167,8 +167,10 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 The BidBlock path skips validator-side simulation, so the receive deadline is:
 
 ```
-BidMustBefore = parent.MilliTimestamp + BlockInterval - DelayLeftOver  // 15ms
+BidMustBefore = parent.MilliTimestamp + BlockInterval - DelayLeftOver
 ```
+
+`DelayLeftOver` is the validator's `--miner.delayleftover` (default 15ms), exposed as `mev_params.DelayLeftOver`. Builders should read it from `mev_params` rather than assuming 15ms.
 
 As the validator still needs µs-level time for signature recovery, tx decoding, pre-seal verification, and `Extra` overwrite before sealing, arrivals **exactly at** `BidMustBefore` may still miss the seal. We recommend builders leave a buffer of ≈100µs–1ms before `BidMustBefore`.
 
