@@ -5,12 +5,20 @@
 // Pourquoi passer par un xpub
 // ---------------------------
 // Un xpub est une clé PUBLIQUE étendue : il permet de calculer des adresses, jamais de
-// signer. Il ne donne aucun pouvoir de dépense. On peut donc l'exporter d'un portefeuille
-// matériel, le poser sur cette machine, le mettre dans un ticket — sans risque.
+// signer. On peut donc l'exporter d'un portefeuille matériel et le poser sur cette machine.
 //
 // Conséquence directe : la phrase de récupération ne quitte JAMAIS l'appareil, et aucune
 // clé privée n'existe côté logiciel. C'est ce qui distingue une trésorerie sérieuse d'un
 // tas de clés générées sur un poste de travail.
+//
+// MAIS — le xpub n'est PAS un objet anodin, et ne doit pas circuler librement
+// -------------------------------------------------------------------------
+// Les chemins utilisés ici (0/i) sont NON DURCIS. Propriété standard de BIP-32 : qui
+// détient le xpub de compte ET UNE SEULE clé privée enfant reconstitue la clé privée du
+// compte, donc TOUTES les clés enfants — les treize postes de trésorerie ET le gouverneur.
+// Une clé enfant qui fuit ne coûte donc pas un poste : combinée au xpub, elle coûte tout.
+// Traiter le xpub comme un élément sensible : pas de ticket, pas de messagerie, pas de
+// dépôt. Voir coinbosa/GARDE-TRESORERIE.md, section 2.2.
 //
 // Comment obtenir le xpub (Ledger / Trezor) :
 //   - chemin de compte Ethereum : m/44'/60'/0'

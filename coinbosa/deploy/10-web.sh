@@ -185,6 +185,28 @@ $EXPLORER_DOMAIN {
             max_size 32KB
         }
         reverse_proxy 127.0.0.1:8545 {
+            # PLAFOND DE TRAVAIL SIMULTANÉ AU NŒUD.
+            # Compter les requêtes ne suffit pas : mesuré sur 11 536 requêtes /rpc
+            # réelles, la médiane coûte 1,09 ms mais le p99,9 coûte 2,13 s — un
+            # facteur 2000. Un plafond « en nombre de requêtes » laisse donc passer
+            # une charge processeur qui varie de trois ordres de grandeur, alors que
+            # le validateur partage les 4 cœurs de cette machine : c'est par là qu'un
+            # abus arrête la production de blocs.
+            # max_conns_per_host borne le nombre de requêtes SIMULTANÉES atteignant
+            # geth. Au-delà, Caddy fait ATTENDRE — il ne refuse pas : une pointe
+            # légitime est servie plus lentement, elle n'est pas perdue.
+            # Dimensionnement (loi de Little) : à la pointe mesurée, 27,7 req/s pour
+            # une durée moyenne de 7,03 ms, la simultanéité réelle valait 0,195.
+            # 24 laisse donc deux ordres de grandeur de marge, tout en bornant le
+            # pire cas — les appels à 2,13 s — à 24 en parallèle au lieu d'aucune limite.
+            transport http {
+                max_conns_per_host 24
+                dial_timeout 2s
+                # Le plus long appel observé dure 5,83 s (geth s'arrête de lui-même à
+                # --rpc.evmtimeout, 5 s par défaut). 15 s = 2,5 fois ce maximum : la
+                # marge est réelle, et une requête bloquée finit par rendre sa place.
+                response_header_timeout 15s
+            }
             # geth vérifie l'en-tête Host (--http.vhosts) pour se protéger du
             # « DNS rebinding ». On garde cette protection stricte côté nœud et c'est
             # Caddy qui pose le Host attendu ; sans cela geth répond « invalid host

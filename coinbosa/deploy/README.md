@@ -102,6 +102,21 @@ retrouveraient bloquées par la nouvelle CSP : site muet le temps de la bascule.
   prison inerte donnerait une fausse impression de protection.
 - **`20-ssh-hardening.sh`** — coupe l'authentification par mot de passe (voir plus bas).
 
+### Sauvegarde de la clé de scellage
+
+- **`SAUVEGARDE-CLE.md`** — la procédure de sauvegarde **et** de restauration de la clé
+  qui signe les blocs. La chaîne n'a qu'un validateur : cette clé perdue, plus aucun bloc
+  n'est jamais produit sur chainId 26262, et aucune transaction corrective ne peut être
+  minée pour rattraper le coup. **À lire avant toute intervention sur le validateur.**
+- **`verifier-coffre.js`** — vérifie qu'une sauvegarde du coffre est exploitable, **hors
+  ligne**, sans la brancher sur la chaîne : il déchiffre et compare l'adresse obtenue.
+  N'ouvre aucune connexion, n'écrit rien, n'affiche jamais de secret.
+- **`repetition-restauration.sh`** — la répétition. Monte une chaîne **jetable**
+  (chainId 26999), la fait sceller, la sauvegarde, **détruit** le répertoire du validateur,
+  restaure, et prouve que la chaîne repart au même bloc avec la même adresse. Refuse de
+  s'exécuter sur une machine où tourne `coinbosa-validator`.
+  Une sauvegarde jamais restaurée n'est pas une sauvegarde : c'est une hypothèse.
+
 ---
 
 ## Après le déploiement

@@ -1,0 +1,14 @@
+--- /etc/caddy/Caddyfile
++++ /etc/caddy/Caddyfile
+@@ -126,6 +126,11 @@
+             max_size 32KB
+         }
+         reverse_proxy 127.0.0.1:8545 {
++            transport http {
++                max_conns_per_host 24
++                dial_timeout 2s
++                response_header_timeout 15s
++            }
+             # geth vérifie l'en-tête Host (--http.vhosts) pour se protéger du
+             # « DNS rebinding ». On garde cette protection stricte côté nœud et c'est
+             # Caddy qui pose le Host attendu ; sans cela geth répond « invalid host

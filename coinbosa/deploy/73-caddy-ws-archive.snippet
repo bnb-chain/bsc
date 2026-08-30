@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# Coinbosa — fragment Caddyfile : router /rpc vers le nœud ARCHIVE et ouvrir /ws.
+#
+# À INSÉRER À LA MAIN dans le bloc $EXPLORER_DOMAIN de /etc/caddy/Caddyfile,
+# EN REMPLACEMENT du bloc « handle @rpc_post » actuel.
+#
+# NE PAS APPLIQUER avant que 73-node-archive.sh ait rempli SES DEUX critères
+# (eth_syncing = false, et l'état du bloc 1 servi sur 127.0.0.1:8547).
+# Tant que ce n'est pas le cas, /rpc doit continuer de pointer sur 8545.
+#
+# Rappel de la mesure qui motive /ws (2026-08-30) : eth_subscribe renvoie
+# « notifications not supported » et aucun point d'accès WebSocket n'existe
+# (/rpc en upgrade -> HTTP 405, /ws -> HTTP 404). Une intégration privée de
+# WebSocket doit scruter, ce qui multiplie ses requêtes — et la prison fail2ban
+# caddy-rpc bannit à 1500 requêtes/minute.
+# ---------------------------------------------------------------------------
+
+    @rpc_post {
+        path /rpc
+        method POST
+    }
+    handle @rpc_post {
+        rewrite * /
+        request_body {
+            # 32 KB rejetait un lot d'appels un peu gros AVEC un corps « 413 » en
+            # texte brut, que le client JSON-RPC ne sait pas interpréter. 512 KB
+            # laisse passer un lot d'indexeur et un déploiement de contrat.
+            max_size 512KB
+        }
+        reverse_proxy 127.0.0.1:8547 {
+            header_up Host {upstream_hostport}
+        }
+    }
+
+    # --- WebSocket JSON-RPC ---------------------------------------------------
+    # geth sert le WS à la racine de son écouteur : on réécrit /ws en /.
+    @ws {
+        path /ws
+        header Connection *Upgrade*
+        header Upgrade    websocket
+    }
+    handle @ws {
+        rewrite * /
+        reverse_proxy 127.0.0.1:8548 {
+            header_up Host {upstream_hostport}
+        }
+    }
+
+    # Toute autre méthode sur /rpc ou /ws est refusée.
+    handle /rpc* {
+        respond "method not allowed" 405
+    }
+    handle /ws* {
+        respond "method not allowed" 405
+    }
+
+# ---------------------------------------------------------------------------
+# ATTENTION — la CSP de ce bloc porte « connect-src 'self' ». Une page servie par
+# explorer.coinbosa.com peut donc ouvrir wss://explorer.coinbosa.com/ws (même
+# origine) sans modification. Aucun assouplissement de CSP n'est nécessaire.
+#
+# VÉRIFICATION APRÈS RECHARGEMENT (caddy validate puis systemctl reload caddy) :
+#   1) l'état ancien est servi :
+#      curl -s -X POST -H 'Content-Type: application/json' \
+#        --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance",
+#                 "params":["0x0000000000000000000000000000000000001000","0x1"]}' \
+#        https://explorer.coinbosa.com/rpc
+#      -> doit contenir "result", jamais "historical state ... is not available"
+#   2) le WebSocket répond 101 :
+#      curl -s -o /dev/null -w '%{http_code}\n' --http1.1 \
+#        -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+#        -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+#        https://explorer.coinbosa.com/ws
+#      -> 101 attendu (405 aujourd'hui)
+#   3) le contrôle complet repasse au vert :
+#      node coinbosa/scripts/check-exchange-rpc.js
+# ---------------------------------------------------------------------------
