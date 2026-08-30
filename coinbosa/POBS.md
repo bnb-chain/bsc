@@ -150,6 +150,37 @@ automatique de double signature n'existe, la durée du déblocage ne protège de
 rien, quelle qu'elle soit. Le détecteur est donc un prérequis, pas un
 raffinement.
 
+### Décisions du 31 août 2026
+
+**Chemin d'écriture → calcul de vivacité côté client, depuis les en-têtes.**
+Le contrat n'a pas besoin qu'on lui écrive qui a scellé : le client compte
+lui-même les producteurs distincts sur les 200 derniers en-têtes canoniques
+(`header.Coinbase`), donnée qu'il possède déjà. C'est strictement meilleur qu'une
+transaction système par bloc :
+
+- rien de plus n'est ajouté au chemin de consensus, donc aucune façon
+  supplémentaire d'arrêter la chaîne ;
+- la donnée est **déterministe** — mêmes en-têtes, même compte sur tous les
+  nœuds — donc aucun risque de scission ;
+- aucun coût en gaz, aucune transaction à émettre, rien à ordonnancer.
+
+Le client refuse alors tout ensemble de taille supérieure à `2a−1`, où `a` est le
+nombre de producteurs distincts observés. Le contrat garde sa propre garde : deux
+verrous indépendants valent mieux qu'un.
+
+**Capture → le plancher reste à 1 000 BOSA, et la sécurité est dite pour ce
+qu'elle est.**
+Relever le plancher ne réglerait pas le problème de lancement : tant que personne
+n'a immobilisé de BOSA, prendre les places est bon marché **quel que soit le
+minimum**. Ce qui coûte cher à un attaquant, ce n'est pas d'atteindre le
+plancher, c'est de **surenchérir sur les titulaires en place** — et cette
+protection croît d'elle-même à mesure que de l'enjeu réel entre.
+
+Le plancher bas est donc conservé parce qu'il garde l'entrée accessible, ce qui
+est un argument. En contrepartie, le livre blanc doit écrire que **la sécurité
+économique d'une preuve d'enjeu naissante est faible, et qu'elle croît avec
+l'enjeu déposé** — plutôt que de laisser croire à une garantie immédiate.
+
 ### Ce qui reste ouvert
 
 | Point | Question |
