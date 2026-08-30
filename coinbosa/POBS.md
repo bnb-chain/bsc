@@ -115,10 +115,51 @@ recommandée** tant que la voie B est ouverte.
 
 ---
 
-## 4. Les paramètres à trancher
+## 4. Les paramètres — arrêtés le 30 août 2026
 
-Chaque ligne est une décision qui n'appartient pas au code. Mes
-recommandations sont argumentées, pas imposées.
+**Voie retenue : B — bifurcation du client.**
+
+| Paramètre | Valeur arrêtée |
+|---|---|
+| Enjeu minimum | **1 000 BOSA** (10²¹ wei) |
+| Période de déblocage | **7 semaines — 49 jours** |
+| Places | **41**, dont **une occupée à vie** par le validateur de genèse |
+| Délégation | **non ouverte** au premier jalon |
+
+### Réserve énoncée sur le minimum, et ce que la conception en fait
+
+1 000 BOSA représente **0,000143 %** de l'offre. Les 41 places coûtent donc
+41 000 BOSA, soit **0,0059 % de l'offre** — la plus petite adresse de trésorerie
+pourrait les acheter **341 fois**. À ce niveau, l'enjeu ne protège pas
+économiquement le consensus : il rend l'entrée traçable et engage un dépôt, rien
+de plus. Ce n'est pas une objection à la valeur choisie, c'est ce qu'elle
+signifie, et le livre blanc devra le dire ainsi plutôt que laisser croire à une
+garantie économique.
+
+**Conséquence de conception :** le minimum est un **paramètre de gouvernance
+borné**, modifiable sans nouvelle bifurcation. Borné, parce qu'un minimum
+librement modifiable serait une porte dérobée : il suffirait de le porter à
+100 000 000 pour vider les 41 places d'un coup.
+
+### La période de déblocage
+
+49 jours, soit plus que Cosmos (21) et Polkadot (28). C'est un choix
+conservateur, et il est bon : le déblocage ne protège que s'il dépasse le délai
+de **détection** d'une faute. Réserve à traiter : tant qu'aucun détecteur
+automatique de double signature n'existe, la durée du déblocage ne protège de
+rien, quelle qu'elle soit. Le détecteur est donc un prérequis, pas un
+raffinement.
+
+### Ce qui reste ouvert
+
+| Point | Question |
+|---|---|
+| Sévérité des sanctions | Quel montant retiré pour une absence de production, quel montant pour une double signature ? |
+| Destination des fonds sanctionnés | Retrait de circulation, ou redistribution aux validateurs honnêtes ? Ni au gouverneur ni à l'éditeur. |
+| Amorçage du validateur de genèse | Immobilise-t-il 1 000 BOSA comme les autres, ou est-il inscrit d'office ? |
+| Détenteur du pouvoir de sanction | Le client, un contrat, ou une adresse ? |
+
+### Recommandations d'origine, conservées pour mémoire
 
 ### 4.1 Le dépôt
 
