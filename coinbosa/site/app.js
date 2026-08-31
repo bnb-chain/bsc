@@ -137,6 +137,93 @@ var CONTENT = {
   }
   function prevenirI18n() {
     if (window.CoinbosaI18n) window.CoinbosaI18n.rafraichir();
+    appliquerFormatNombres();
+  }
+  // i18n.js previent apres chaque application de langue : sans cela, changer
+  // de langue laisserait les chiffres au format de la langue precedente.
+  document.addEventListener("coinbosa:i18n", function () { appliquerFormatNombres(); });
+
+  /* Libelles poses par setAttribute, donc invisibles dans le HTML : le moteur
+     i18n ne les voit que si on lui donne la cle. Ils sont regroupes ici parce
+     que l'extracteur relit cette table — sans quoi ils resteraient francais
+     dans toutes les langues, comme c'etait le cas du libelle du bouton de
+     theme, qui repassait au francais a chaque changement de theme. */
+  var LIBELLES = {
+    "app.theme.activer-sombre": "Activer le thème sombre",
+    "app.theme.activer-clair": "Activer le thème clair",
+    "app.rejoindre.bientot": "Les canaux officiels seront publiés prochainement."
+  };
+
+  /* ================= FORMAT DES NOMBRES =================
+     Les cellules purement chiffrees — « 700 000 000 », « 5,018 s », les
+     montants de la tokenomique — ne portent aucune cle : l extraction ecarte
+     ce qui n est pas du texte. Elles restaient donc a la francaise dans
+     toutes les langues, et la page anglaise ecrivait le MEME nombre de deux
+     facons : « 700,000,000 » dans une phrase traduite, « 700 000 000 » dans
+     la tuile juste a cote.
+
+     On ne les traduit pas — on les reformate. Les conventions ci-dessous sont
+     relevees dans les fichiers de traduction eux-memes, pas choisies : c est
+     ce que chaque traductrice a effectivement ecrit dans sa prose.
+
+     GARDE-FOU. On ne touche QUE les noeuds de texte qu aucune cle ne couvre.
+     Un nombre deja traduit est deja au bon format ; le reformater le
+     casserait — « 700,000,000 » relu comme un decimal donnerait « 700.000 ».
+     ================================================================= */
+  var FORMATS = {
+    fr: { g: " ", d: "," },   // source
+    en: { g: ",", d: "." },
+    es: { g: " ", d: "," },   // identique au francais : rien a faire
+    pt: { g: ".", d: "," },
+    ar: { g: ",", d: "." },
+    zh: { g: ",", d: "." }
+  };
+
+  // Un nombre francais : chiffres, groupes de 3 separes par une espace,
+  // decimale a la virgule. Le groupage n est REFAIT que s il existait deja,
+  // sinon 26262 deviendrait 26 262 — et ce n est pas une quantite, c est un
+  // identifiant de chaine.
+  var NOMBRE = /\d+(?:[  \u202f]\d{3})+(?:,\d+)?|\d+,\d+/g;
+
+  function reformaterNombres(texte, f) {
+    return texte.replace(NOMBRE, function (n) {
+      var p = n.split(",");
+      var ent = p[0].replace(/[  \u202f]/g, "");
+      if (/[  \u202f]/.test(p[0])) {
+        ent = ent.replace(/\B(?=(\d{3})+(?!\d))/g, f.g);
+      }
+      return p.length > 1 ? ent + f.d + p[1] : ent;
+    });
+  }
+
+  function appliquerFormatNombres() {
+    var lang = document.documentElement.getAttribute("data-lang") || "fr";
+    var f = FORMATS[lang];
+    if (!f || (f.g === " " && f.d === ",")) return;   // rien a changer
+    var marche = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var noeud, aFaire = [];
+    while ((noeud = marche.nextNode())) {
+      // Couvert par une cle ? alors la traduction a deja fixe le format.
+      var p = noeud.parentNode, couvert = false;
+      while (p && p !== document.body) {
+        if (p.nodeType === 1 && p.hasAttribute("data-i18n")) { couvert = true; break; }
+        p = p.parentNode;
+      }
+      if (couvert) continue;
+      // On repart TOUJOURS du francais d origine, jamais du texte affiche.
+      // Applique deux fois, le formateur relirait « 700,000,000 » comme un
+      // decimal et ecrirait « 700.000 ». Memoriser la source rend l operation
+      // rejouable, et permet de passer d une langue a l autre sans degrader.
+      if (noeud.__bosaFr === undefined) {
+        if (!NOMBRE.test(noeud.nodeValue)) { NOMBRE.lastIndex = 0; continue; }
+        NOMBRE.lastIndex = 0;
+        noeud.__bosaFr = noeud.nodeValue;
+      }
+      aFaire.push(noeud);
+    }
+    for (var i = 0; i < aFaire.length; i++) {
+      aFaire[i].nodeValue = reformaterNombres(aFaire[i].__bosaFr, f);
+    }
   }
 
   var ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -167,12 +254,19 @@ var CONTENT = {
     var track = document.getElementById('marquee-track');
     if (!track) return;
     var one = '';
+    // Les categories portent leur cle, comme dans la grille. Sans elles, le
+    // bandeau restait en francais au milieu d'une page anglaise — « Education »,
+    // « Paiements », « Le socle » defilaient sous un texte traduit. Le nom des
+    // produits, lui, ne se traduit pas : c'est une marque.
     CONTENT.products.forEach(function (p) {
       one += '<span class="marquee-item"><span class="dot"></span>' + esc(p.name) +
-             ' <span class="cat">' + esc(p.category) + '</span></span>';
+             ' <span class="cat" data-i18n="' + cleProduit(p.name, 'cat') + '">' +
+             esc(p.category) + '</span></span>';
     });
+    // « Le socle » a deja sa cle, posee par la page d accueil : on la reprend
+    // plutot que d en creer une seconde pour le meme mot.
     one += '<span class="marquee-item"><span class="dot"></span>' + esc(CONTENT.network.name) +
-           ' <span class="cat">Le socle</span></span>';
+           ' <span class="cat" data-i18n="accueil.span.le-socle">Le socle</span></span>';
     // dupliqué pour un défilement continu
     track.innerHTML = one + one;
   })();
@@ -266,7 +360,9 @@ var CONTENT = {
         made++;
       });
       if (made === 0) {
-        join.appendChild(el('p', 'lead', 'Les canaux officiels seront publiés prochainement.'));
+        var vide = el('p', 'lead', LIBELLES['app.rejoindre.bientot']);
+        vide.setAttribute('data-i18n', 'app.rejoindre.bientot');
+        join.appendChild(vide);
       }
     }
 
@@ -324,7 +420,12 @@ var CONTENT = {
     if (cp && e.copyright) cp.textContent = e.copyright;
     var ent = document.getElementById('ft-entity');
     if (ent && e.name) {
-      ent.textContent = 'Édité par ' + e.name + (e.jurisdiction ? ', ' + e.jurisdiction : '') + '.';
+      // Seul le verbe se traduit. « coinbosa, Inc. » et sa juridiction sont
+      // l'identite legale de l'editeur : elle s'ecrit pareil dans toutes les
+      // langues. Avant, la phrase entiere restait francaise sous une page
+      // anglaise.
+      ent.innerHTML = '<span data-i18n="app.pied.edite-par">Édité par</span> ' +
+        esc(e.name) + (e.jurisdiction ? ', ' + esc(e.jurisdiction) : '') + '.';
     }
   })();
 
@@ -335,7 +436,12 @@ var CONTENT = {
     function sync() {
       var t = document.documentElement.getAttribute('data-theme') || 'dark';
       btn.setAttribute('aria-pressed', t === 'light' ? 'true' : 'false');
-      btn.setAttribute('aria-label', t === 'light' ? 'Activer le thème sombre' : 'Activer le thème clair');
+      // On pose la CLE, pas le texte : sinon le libelle repasse au francais a
+      // chaque changement de theme, et ne suit plus la langue choisie.
+      var cle = t === 'light' ? 'app.theme.activer-sombre' : 'app.theme.activer-clair';
+      btn.setAttribute('data-i18n-attr-aria-label', cle);
+      btn.setAttribute('aria-label', LIBELLES[cle]);
+      prevenirI18n();
     }
     sync();
     btn.addEventListener('click', function () {

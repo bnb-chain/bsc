@@ -311,11 +311,21 @@ def instrumenter(page):
     # n'entrait donc JAMAIS dans le dictionnaire : la page affichait la cle
     # correctement en francais et restait francaise dans toutes les autres
     # langues, sans que rien ne le signale. coque.py a attrape exactement ce cas.
+    # Dans un <pre>, les espaces SONT le contenu : ils alignent les colonnes
+    # d une formule. Les rogner comme on rogne de la prose faisait perdre a la
+    # ligne 2 ses sept espaces d indentation — visible seulement en revenant au
+    # francais apres un changement de langue, quand le moteur reecrit la ligne
+    # depuis le dictionnaire. Deux traductrices l ont vu avant nous.
+    pres = [(m.start(), m.end()) for m in re.finditer(r"<pre\b.*?</pre>", travail, re.S)]
+
+    def dans_un_pre(i):
+        return any(d <= i < f for d, f in pres)
+
     for m in re.finditer(r'<(\w+)([^>]*\bdata-i18n="([^"]+)"[^>]*)>(.*?)</\1>',
                          travail, re.S):
         cle, inner = m.group(3), m.group(4)
         if cle not in dico and "\x00" not in inner:
-            dico[cle] = inner.strip()
+            dico[cle] = inner if dans_un_pre(m.start()) else inner.strip()
 
     # --- 1 ter. rattrapage des orphelins ----------------------------------
     # Les passes precedentes travaillent sur une liste de balises. Tout texte
@@ -362,6 +372,14 @@ def instrumenter(page):
             # en anglais de la version precedente sans que rien ne le signale.
             k = f"{prefixe}.meta.{slug(prop)}.{slug(m.group(1), 28)}"
             dico[k] = m.group(1)
+            # La cle etait relevee, traduite... et jamais posee sur la balise.
+            # Le moteur ne traduit que ce qui porte un marqueur : les cinq
+            # metadonnees de chaque page restaient donc francaises dans les
+            # cinq langues, y compris la description que lisent les moteurs de
+            # recherche et l apercu de partage. Traduites dans le dictionnaire,
+            # invisibles a l ecran : rien ne pouvait le signaler.
+            travail = travail.replace(
+                m.group(0), m.group(0) + f' data-i18n-attr-content="{k}"', 1)
 
     # On remet les zones mortes.
     travail = re.sub(r"\x00(\d+)\x00", lambda m: coffre[int(m.group(1))], travail)
@@ -406,6 +424,14 @@ def depuis_app_js():
 
     for m in re.finditer(r'data-i18n="(app\.[\w.-]+)">([^<\']+)', s):
         d[m.group(1)] = m.group(2).strip()
+
+    # Libelles poses par setAttribute : ils n'apparaissent dans aucun HTML, donc
+    # aucune passe ne les voit. app.js les regroupe dans une table LIBELLES pour
+    # qu'ils soient relevables ici.
+    bloc = re.search(r"var LIBELLES = \{(.*?)\};", s, re.S)
+    if bloc:
+        for m in re.finditer(r'"(app\.[\w.-]+)":\s*"([^"]+)"', bloc.group(1)):
+            d[m.group(1)] = m.group(2)
 
     # La fiche du reseau : etiquettes du tableau stats, puis les valeurs
     # correspondantes dans CONTENT.network.

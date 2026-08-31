@@ -130,6 +130,18 @@
     if (sel && sel.value !== code) sel.value = code;
 
     document.documentElement.setAttribute("data-lang", code);
+
+    /* app.js reformate les cellules chiffrees qu aucune cle ne couvre — les
+       montants de la tokenomique, les tuiles de chiffres. Il doit le refaire
+       APRES chaque application de langue, sinon les nombres restent au format
+       de la langue precedente. On previent plutot que d appeler : ce fichier
+       ne doit rien savoir de app.js, qui peut etre absent d une page. */
+    try {
+      document.dispatchEvent(new CustomEvent("coinbosa:i18n", { detail: code }));
+    } catch (e) {
+      /* CustomEvent absent : le site reste utilisable, seuls les separateurs
+         de milliers gardent la forme francaise. */
+    }
   }
 
   /* ── Chargement d'une langue, puis application ─────────────────────────── */

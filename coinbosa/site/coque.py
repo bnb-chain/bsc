@@ -32,6 +32,7 @@ import collections
 import hashlib
 import html
 import json
+import pathlib
 import re
 import subprocess
 import sys
@@ -348,6 +349,36 @@ def verifier():
             if o != f:
                 defauts.append(f"{p} : <{t}> ouvert {o} fois, fermé {f} fois")
 
+    # 5 bis. Toute cle du dictionnaire est reellement posee sur une page.
+    # Les cinq metadonnees de chaque page (description, og:*, twitter:*)
+    # etaient relevees par l extracteur, traduites par les cinq traductrices...
+    # et jamais marquees sur la balise. Le moteur ne traduit que ce qui porte
+    # un marqueur : elles restaient donc francaises dans toutes les langues,
+    # y compris la description que lit un moteur de recherche. Le dictionnaire
+    # etait complet, les traductions justes, l ecran faux. Une cle traduite que
+    # personne ne pose est du travail invisible : on refuse.
+    ref = pathlib.Path(__file__).resolve().parent / "assets" / "i18n-fr.json"
+    if ref.exists():
+        dico = json.loads(ref.read_text(encoding="utf-8"))
+        pose = set()
+        for p in PAGES:
+            pose |= set(re.findall(r'data-i18n(?:-attr-[a-z-]+)?="([^"]+)"', src[p]))
+        js = (pathlib.Path(__file__).resolve().parent / "app.js")
+        texte_js = js.read_text(encoding="utf-8") if js.exists() else ""
+        orphelines = []
+        for cle in dico:
+            if cle in pose:
+                continue
+            # app.js fabrique certaines cles a l execution (cleProduit) : on ne
+            # peut pas les chercher litteralement, on les tient pour posees.
+            if cle.startswith("app.") or cle in texte_js:
+                continue
+            orphelines.append(cle)
+        if orphelines:
+            defauts.append(f"{len(orphelines)} cle(s) traduites mais posees sur "
+                           f"aucune page, ex. {sorted(orphelines)[:3]} — elles "
+                           f"resteront en francais a l ecran")
+
     # 6 bis. Aucun attribut repete dans une meme balise.
     # L'extracteur AJOUTAIT son marqueur data-i18n-attr-* sans retirer le
     # precedent : chaque relance en empilait un de plus. Les pages servies en
@@ -405,6 +436,50 @@ def sceller_traductions():
           f"{len(set(avant) - set(apres))} disparues)")
 
 
+def elaguer(ecrire=True):
+    """Retire des dictionnaires les cles qu aucune page ne pose.
+
+    L extracteur travaille page par page : il fabrique une cle de coque par
+    page (a-propos.attr.aria-label.coinbosa-accueil, chaine.attr..., etc.).
+    Puis propager() recopie la coque de l accueil partout, et ces cles
+    disparaissent des pages — mais restent dans les dictionnaires, traduites
+    en cinq langues pour rien. Vingt-quatre cles, cent vingt traductions
+    inutiles, et un dictionnaire qui ne decrit plus le site.
+
+    On elaguer APRES la propagation, jamais avant : avant, les cles sont
+    encore posees et l elagage ne verrait rien.
+    """
+    assets = RACINE / "assets"
+    src = json.loads((assets / "i18n-fr.json").read_text(encoding="utf-8"))
+    pose = set()
+    for page in PAGES:
+        pose |= set(re.findall(r'data-i18n(?:-attr-[a-z-]+)?="([^"]+)"',
+                               lire(page)))
+    js = RACINE / "app.js"
+    texte_js = js.read_text(encoding="utf-8") if js.exists() else ""
+    a_jeter = [c for c in src
+               if c not in pose and not c.startswith("app.") and c not in texte_js]
+    if not a_jeter or not ecrire:
+        return a_jeter
+
+    for c in a_jeter:
+        src.pop(c, None)
+    (assets / "i18n-fr.json").write_text(
+        json.dumps(src, ensure_ascii=False, indent=1, sort_keys=True) + "\n",
+        encoding="utf-8")
+
+    jeter = set(a_jeter)
+    for f in sorted(assets.glob("i18n-*.js")):
+        txt = f.read_text(encoding="utf-8")
+        gardees = [l for l in txt.split("\n")
+                   if not any(l.lstrip().startswith(f'"{c}"') for c in jeter)]
+        neuf = "\n".join(gardees)
+        # la derniere paire ne doit pas garder de virgule pendante
+        neuf = re.sub(r",(\s*\n\s*\};)", r"\1", neuf)
+        f.write_text(neuf, encoding="utf-8")
+    return a_jeter
+
+
 def main():
     seulement_verifier = "--verifier" in sys.argv
 
@@ -414,6 +489,9 @@ def main():
 
     if not seulement_verifier:
         modifiees = propager()
+        jetees = elaguer()
+        if jetees:
+            print(f"  cles elaguees       : {len(jetees)} posees sur aucune page")
         emp, touchees = versionner()
         print(f"  coque propagée      : {', '.join(modifiees) if modifiees else 'déjà à jour'}")
         print(f"  empreintes          : style={emp['assets/style.css']} script={emp['app.js']}"
