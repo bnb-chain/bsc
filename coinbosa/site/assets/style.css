@@ -510,6 +510,62 @@ tbody tr:hover td, tbody tr:hover th { background: var(--surface-2); }
   color: var(--ink-4); font-size: .845rem;
 }
 
+/* ─────────────────────────── LIVRE BLANC ───────────────────────────
+   Un document long se lit, il ne se parcourt pas : colonne etroite, interligne
+   genereux, titres numerotes, et des formules composees en HTML plutot que par
+   une bibliotheque distante — la CSP les interdit de toute facon. */
+.wp-doc { max-width: 74ch; margin-inline: auto; }
+.wp-doc > section { padding: clamp(30px, 4vw, 46px) 0; }
+.wp-doc > section + section { border-top: 1px solid var(--line); }
+.wp-doc h2 {
+  font-size: clamp(1.5rem, 2.4vw, 2rem); margin-bottom: 18px;
+  display: flex; gap: 14px; align-items: baseline;
+}
+.wp-doc h2 .num {
+  font-size: .78rem; font-weight: 700; color: var(--gold);
+  font-variant-numeric: tabular-nums; flex: 0 0 auto; letter-spacing: .06em;
+}
+.wp-doc h3 { margin: 26px 0 12px; color: var(--ink); }
+.wp-doc p, .wp-doc li { color: var(--ink-2); font-size: 1.01rem; line-height: 1.74; }
+.wp-doc strong { color: var(--ink); font-weight: 640; }
+.wp-doc ul { padding-inline-start: 22px; margin: 0 0 1.05em; }
+.wp-doc li { margin-bottom: 9px; }
+.wp-doc code { color: var(--gold-soft); background: var(--surface-2);
+  padding: 2px 6px; border-radius: 5px; word-break: break-all; }
+.wp-doc .tbl-wrap { margin: 22px 0; }
+
+/* En-tete d'identite : les valeurs qu'un lecteur verifie en premier. */
+.wp-ident {
+  display: grid; gap: 0; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-l); overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); margin-top: 26px;
+}
+.wp-ident > div { padding: 17px 20px; border-inline-end: 1px solid var(--line); border-block-end: 1px solid var(--line); }
+.wp-ident .k { font-size: .67rem; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); font-weight: 660; }
+.wp-ident .v { margin-top: 6px; font-size: .95rem; font-weight: 600; word-break: break-all; }
+
+/* Formule. Composee en HTML : aucune bibliotheque a charger, donc rien que la
+   CSP puisse bloquer, et rien qui puisse ne jamais arriver. */
+.wp-formule {
+  margin: 24px 0; padding: 22px 24px; border-radius: var(--r-m);
+  background: var(--ground-2); border: 1px solid var(--line);
+  text-align: center; overflow-x: auto;
+}
+.wp-formule .expr {
+  font-family: var(--mono); font-size: 1.02rem; color: var(--ink);
+  line-height: 2; white-space: nowrap;
+}
+.wp-formule .note { margin-top: 10px; font-size: .84rem; color: var(--ink-3); }
+.wp-frac { display: inline-flex; flex-direction: column; vertical-align: middle;
+  text-align: center; margin: 0 4px; }
+.wp-frac .haut { border-bottom: 1px solid currentColor; padding: 0 5px 2px; }
+.wp-frac .bas { padding: 2px 5px 0; }
+
+@media (max-width: 620px) {
+  .wp-ident { grid-template-columns: 1fr; }
+  .wp-formule .expr { font-size: .86rem; white-space: normal; }
+}
+
 /* ────────────────────────────── APPARITION ──────────────────────────────
    Le contenu monte de quelques pixels en entrant dans le cadre. Discret : une
    animation qu'on remarque est une animation ratée. */

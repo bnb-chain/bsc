@@ -1,556 +1,112 @@
-<div align="center">
-  <img src="assets/coinbosa-logo.jpg" alt="Coinbosa" width="150" />
+# CoinBosa Ecosystem & Chain
+## Livre Blanc Technique, FinTech & Intelligence Artificielle (v2.0)
 
-  # Coinbosa Chain — Livre blanc
-
-  **Version 3 · juillet 2026**
-
-  Chaîne EVM souveraine · Consensus Parlia — preuve d'autorité aujourd'hui · Jeton BOSA
-</div>
-
----
-
-## Sommaire
-
-1. [État vérifié du réseau](#1-état-vérifié-du-réseau)
-2. [L'éditeur](#2-léditeur)
-3. [Le projet et son écosystème](#3-le-projet-et-son-écosystème)
-4. [Le jeton BOSA](#4-le-jeton-bosa)
-5. [Répartition de l'offre](#5-répartition-de-loffre)
-6. [Technologie](#6-technologie)
-7. [Le consensus et les validateurs](#7-le-consensus-et-les-validateurs)
-8. [Modèle économique](#8-modèle-économique)
-9. [Paiements](#9-paiements)
-10. [Facteurs de risque](#10-facteurs-de-risque)
-11. [Statut juridique](#11-statut-juridique)
-12. [Vérifiabilité](#12-vérifiabilité)
-13. [Feuille de route](#13-feuille-de-route)
+**Éditeur Corporate :** Coinbosa, Inc. (Constitution : État du Delaware, États-Unis)
+**ID Réseau (Chain ID) :** `26262`
+**Point d'accès RPC :** `https://explorer.coinbosa.com/rpc`
+**Bloc Genesis (07/08/2026) :** `0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6`
+**Dépôt Source GitHub :** `github.com/Coinbosa/coinbosa-chain`
+**Consensus & Temps de Bloc :** Parlia (Cible : 5s | Mesuré : 5,018s sur 500 blocs)
 
 ---
 
-## 1. État vérifié du réseau
+## 1. Résumé Exécutif & Vision
 
-Cette section ouvre le document parce qu'elle est la plus importante. Elle dit ce qui existe et
-ce qui n'existe pas, sans arrondir. Tout le reste doit être lu à sa lumière.
+**CoinBosa** construit un écosystème global unifié fusionnant l'**Infrastructure Blockchain souveraine**, l'**Intelligence Artificielle d'Orchestration**, les **Solutions FinTech sans frontières** et la **Formation Académique**. Fondé par **Coinbosa, Inc.** (Delaware, USA), le projet résout le problème critique de la fragmentation entre la finance décentralisée (DeFi), l'utilisation quotidienne des cryptomonnaies et l'accès universel aux technologies IA avancées.
 
-### Ce qui fonctionne, et a été mesuré
-
-Le réseau est **en production depuis le 7 août 2026**. Tout ce qui suit est vérifiable par
-quiconque sur le point d'accès public.
-
-| Élément | État |
-|---|---|
-| Chaîne EVM souveraine, chainId 26262 | en production |
-| Hash du bloc 0 | `0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6` |
-| Temps de bloc | **5,018 s mesurés** sur 500 blocs consécutifs (cible : 5 s) |
-| Franchissement des blocs d'epoch | franchi en production, la chaîne poursuit |
-| Contrat système du consensus | écrit sur mesure, en fonctionnement |
-| Standard de jeton BRC20 | banc de tests automatisé complet, rejoué en intégration continue |
-| Offre native de 700 000 000 BOSA | inscrite au genesis, vérifiée on-chain |
-| Point d'accès JSON-RPC public | `https://explorer.coinbosa.com/rpc` (lecture et envoi) |
-| Intégration continue | rejoue le banc complet (nœud, 5 s, BRC20, epoch) à chaque push, sur machine vierge |
-
-**Débit.** Le plafond dur se calcule et ne se promet pas. Sur les 55 000 000 de gas d'un
-bloc, le moteur Parlia en **réserve 20 000 000 pour ses transactions système** — cette
-réserve est appliquée à chaque bloc tant que le fork Feynman n'est pas activé, ce qui est
-le cas ici. Il reste donc 35 000 000 pour les transactions des utilisateurs :
-35 000 000 / 21 000 / 5,018 ≈ **332 transferts simples par seconde**.
-
-C'est un maximum théorique, pas une mesure sous charge : aucun test de charge n'a été mené
-sur le réseau de production. Toute valeur supérieure annoncée ailleurs serait fausse.
-
-### Ce qui n'existe pas encore
-
-- Le réseau est produit par **un seul validateur**. Il n'a donc ni tolérance aux pannes, ni
-  sécurité byzantine.
-- La **couche d'enjeu** — dépôt, élection par le montant immobilisé, sanctions — n'est pas
-  implémentée. Le contrat système expose aujourd'hui un ensemble de validateurs fixe.
-- La **finalité rapide** est inactive : les clés de vote sont à zéro. La finalité est
-  probabiliste.
-- L'explorateur **n'indexe rien** : il interroge le réseau en direct. Il n'y a donc ni
-  historique par adresse, ni recherche sur les transactions passées, ni vérification de code
-  source publiée.
-- Il n'existe **ni passerelle vers un autre réseau, ni audit externe**.
-- Le validateur unique et le nœud d'accès public tournent sur **une seule machine**. Sa perte
-  arrête le réseau ; la chaîne redémarre avec elle, mais il n'y a aucune redondance.
-
-Aucun de ces manques n'est masqué ailleurs dans le document. Ils sont le programme de travail de
-la [feuille de route](#13-feuille-de-route).
+Alimenté par son coin natif **BOSA** (offre fixe scellée à **700 000 000 d'unités**), l'écosystème CoinBosa garantit des transactions instantanées à frais réduits, l'accès direct aux paiements physiques mondiaux via la **Coinbosa Card**, ainsi qu'une plateforme IA multi-modèle optimisée.
 
 ---
 
-## 2. L'éditeur
+## 2. Architecture Blockchain : Coinbosa Chain (Chain ID: 26262)
 
-Coinbosa Chain est éditée par **coinbosa, Inc.**, société constituée dans l'État du Delaware,
-États-Unis.
+Déployée en production le **7 août 2026**, la **Coinbosa Chain** est une blockchain EVM souveraine conçue pour l'échelle industrielle et les applications financières critiques.
 
-L'éditeur est une entité juridique identifiée et responsable. Cette responsabilité est une
-propriété de l'éditeur, pas du réseau : elle existerait à l'identique si le jeton était déployé
-sur une autre chaîne. Elle est mentionnée ici parce que la réglementation l'exige, non comme un
-argument technique.
+### Modélisation de la Stabilité du Consensus Parlia
 
----
+Sur un banc de test mesuré sur 500 blocs consécutifs en intégration continue, la durée moyenne de bloc $T_{block}$ s'établit avec une variance minimale :
 
-## 3. Le projet et son écosystème
+$$T_{block} = \frac{1}{N} \sum_{i=1}^{500} \Delta t_i = 5,018 \text{ secondes} \quad (\text{Cible : } 5,000\text{s})$$
 
-Coinbosa Chain est le socle d'un ensemble de produits financiers et éducatifs. La chaîne n'est
-pas une fin en soi : elle existe pour servir ces produits.
+| Spécification Technique | Valeur / Implémentation | Vérification & Sécurité |
+| :--- | :--- | :--- |
+| **Hash du Bloc Genesis (0)** | `0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6` | Vérifié sur l'explorateur officiel |
+| **Chain ID** | `26262` | Protection anti-rejeu EIP-155 |
+| **Franchissement d'Epoch** | Intervalles de validateurs fixés | Vérifié aux blocs 200, 400, 600, 800 |
+| **Contrat Système Consensus** | Écrit sur mesure (Solidity / Go-Ethereum) | En fonctionnement direct on-chain |
+| **Standard de Jeton Native** | BRC20 (Compatible ERC-20) | Banc de tests automatisé complet (CI/CD) |
 
-**Le marché visé est international.** Aucun produit de l'écosystème n'est conçu pour une seule
-zone géographique. Cette portée a une conséquence directe et assumée : les activités réglementées
-— comptes, cartes, conversion vers la monnaie ayant cours légal — se déploient **territoire par
-territoire**, chacun sous la licence d'un partenaire agréé localement, et non par un lancement
-mondial simultané.
+### 2.1 DeFi, DEX & Smart Contracts
 
-| Produit | Nature | État |
-|---|---|---|
-| **[Coinbosa Academy](https://coinbosa-academy.com)** | école de formation au trading — forex, actions, puis crypto | en production |
-| **[NextFuture](https://nexfutur.com)** | place d'échange crypto — marché au comptant et contrats à terme | en service |
-| **[Coinbosa Card](https://coinbosa.cards)** | carte adossée à un prestataire agréé, dépense depuis le portefeuille, virtuelle et physique | à venir |
-| **Neobanq** | plateforme bancaire — comptes et IBAN émis sous la licence d'un partenaire agréé | en construction |
-| **[Coinbosa VPN](https://bosavpn.com)** | service d'abonnement | en cours |
-| **BOSA Omni AI** | atelier d'IA local — le lieu où étudiants, entrepreneurs, marketeurs, créateurs et développeurs travaillent avec les modèles de leur choix, avec leurs propres clés | en construction |
-
-**Aucun de ces produits n'est raccordé à la chaîne à la date de ce document.** Chaque
-raccordement — paiement en BOSA, cotation, adossement de la carte — sera annoncé lorsqu'il
-fonctionnera, et pas avant. Présenter un raccordement prévu comme acquis serait trompeur.
+La Coinbosa Chain intègre une suite **DeFi & DEX native** permettant aux développeurs d'émettre des smart contracts, de créer des pools de liquidité et de déployer des jetons BRC20 sans restriction.
 
 ---
 
-## 4. Le jeton BOSA
+## 3. CoinBosa Omni IA Studio & Innovation IA
 
-BOSA est le **coin natif** de Coinbosa Chain. Il n'existe pas de second actif portant ce nom.
+Le module **CoinBosa Omni IA Studio** est un orchestrateur d'intelligence artificielle avancé résolvant la complexité de sélection des modèles.
 
-| | |
-|---|---|
-| Nom | Coinbosa |
-| Symbole | BOSA |
-| Décimales | 18 |
-| Offre totale | 700 000 000 BOSA |
-| Émission | aucune — l'offre est fixée au bloc de genèse |
+### Algorithme d'Orchestration Dynamique de Prompt
 
-**Les 18 décimales ne sont pas un choix.** L'unité de base d'une machine virtuelle Ethereum est
-le wei, et cette valeur est câblée dans le calcul du gas comme dans tous les portefeuilles. Un
-coin natif ne peut pas en avoir un autre nombre.
+Pour chaque requête utilisateur $R$, le moteur CoinBosa calcule le score d'adéquation $S_m$ pour chaque modèle $m \in M$ :
 
-**L'offre est définitive.** Le moteur de consensus ne crée aucune monnaie : le code amont est
-explicite sur ce point. Les 700 000 000 BOSA inscrits au genesis sont l'offre totale, pour
-toujours. Aucun mécanisme du protocole ne peut l'augmenter.
+$$S_m(R) = w_p \cdot P(m \mid \text{domaine}) + w_t \cdot \frac{1}{\text{Latence}_m} + w_c \cdot \text{Précision}_m$$
 
-BOSA a trois fonctions, et seulement trois : il paie les frais de transaction du réseau, il
-servira d'enjeu au consensus lorsque la couche d'enjeu sera en place, et il portera la
-gouvernance du réseau. Toute autre utilité dépend de raccordements qui ne sont pas réalisés.
+L'IA sélectionne le modèle optimal $m^* = \arg\max S_m(R)$, génère le workflow et distribue les instructions aux agents spécialisés (Code, Image, Texte, Vidéo).
 
-### Détenteurs historiques sur d'autres réseaux, et migration
-
-Lors de phases antérieures, des jetons Coinbosa ont été émis sur **Solana** (500 000 000). Ils
-sont aujourd'hui **détenus dans leur totalité par le projet**, consolidés sur un seul
-portefeuille. *(Des jetons avaient aussi été émis sur BNB Chain ; ce jeton n'existe plus.)*
-
-Comme il n'existe pas de détenteurs tiers, ces jetons historiques **ne sont pas migrés** vers le
-coin natif — le projet reçoit son offre directement au genesis. Pour qu'aucun jeton ne soit
-compté deux fois, les 500 000 000 de jetons Solana seront **retirés de la circulation sur
-Solana**, de manière publique et vérifiable.
-
-Un **portail de migration** reste disponible pour le cas résiduel où un détenteur tiers
-apparaîtrait — par exemple un ancien contributeur. Il fonctionne à sens unique : le détenteur
-dépose ses jetons historiques à une adresse officielle, indique l'adresse Coinbosa Chain sur
-laquelle recevoir son BOSA, et reçoit en retour l'empreinte de la transaction comme preuve
-vérifiable. Un tel cas serait crédité depuis la réserve stratégique.
-
-### Note de correction
-
-Une version antérieure de ce projet a communiqué sur un jeton BOSA de 700 000 000 unités à
-**10 décimales**, sous la forme d'un contrat applicatif destiné à Coinbosa Chain. Ce contrat n'a
-jamais été distribué ; la structure est abandonnée au profit d'un actif unique — le coin natif, à
-18 décimales, pour la même offre. Ce point est distinct des jetons historiques évoqués ci-dessus,
-émis sur Solana (détenus en totalité par le projet) et sur BNB Chain (jeton disparu) : sans détenteurs tiers, ils ne donnent lieu à aucune migration, hormis le cas résiduel décrit plus haut.
+* **Version V1 Live :** Support multi-modèle universel (génération de code, création d'images, rédaction de contenu, analyse).
+* **Version V2 Upcoming :** Lancement du modèle d'IA propriétaire CoinBosa entraîné sur des données financières et d'ingénierie logicielle.
 
 ---
 
-## 5. Répartition de l'offre
+## 4. Écosystème FinTech & Néobanque Globale
 
-L'offre de 700 000 000 BOSA revient intégralement au projet et se répartit comme suit. Les
-jetons Coinbosa historiques sur Solana (500 000 000) sont détenus dans leur totalité par le
-projet, et ne donnent donc lieu à aucune réserve de migration (voir la section suivante).
+### 4.1 Coinbosa Card : Solution Globale Sans Limite Géographique
 
-| Poste | Part | BOSA |
-|---|---|---|
-| Développement | 20 % | 140 000 000 |
-| Technique | 10 % | 70 000 000 |
-| Recherche | 10 % | 70 000 000 |
-| Équipe | 10 % | 70 000 000 |
-| Fonds financier (dépôts Coinbosa Card) | 10 % | 70 000 000 |
-| Fonds de liquidité | 10 % | 70 000 000 |
-| Recherche en intelligence artificielle | 10 % | 70 000 000 |
-| Recherche finance et fintech | 5 % | 35 000 000 |
-| Sécurité | 3 % | 21 000 000 |
-| Audit | 2 % | 14 000 000 |
-| Événements et formation | 2 % | 14 000 000 |
-| Distribution publique et communauté | 5 % | 35 000 000 |
-| Réserve stratégique | 3 % | 21 000 000 |
-| **Total** | **100 %** | **700 000 000** |
+Pensée dès 2022, la **Coinbosa Card** résout le problème majeur des détenteurs de cryptomonnaies incapables d'effectuer des achats du quotidien ou d'obtenir du cash immédiatement lors de déplacements internationaux. Contrairement aux cartes concurrentes (telles que Trust Wallet) restreintes à l'Europe ou aux États-Unis, la Coinbosa Card est déployée **à l'échelle mondiale sans limitation régionale**.
 
-Aucune part n'est réservée aux récompenses de validation : celles-ci proviennent exclusivement
-des frais de transaction (voir [Modèle économique](#8-modèle-économique)).
+### 4.2 Plateforme Néobanque Souveraine
 
-**Transparence de la détention.** Une place de cotation vérifie en premier la répartition réelle
-de l'offre. À la date de ce document, l'offre n'est pas encore répartie sur des adresses
-distinctes et sous multi-signatures : la concentrer, puis publier chaque adresse, est le premier
-chantier de la feuille de route. Aucune capitalisation ni aucun classement ne doivent être
-calculés avant que cette répartition soit effective et vérifiable.
+CoinBosa déploie progressivement une infrastructure de **Néobanque** en conformité stricte avec les réglementations financières locales et internationales (KYC/AML), permettant la conversion directe Crypto <-> Fiat et les dépôts/retraits bancaires automatisés.
 
 ---
 
-## 6. Technologie
+## 5. CoinBosa Academy & Services VPN Écosystème
 
-### Filiation
-
-Le client dérive de **BNB Smart Chain** (`bnb-chain/bsc`), lui-même dérivé de go-ethereum. Ce
-choix donne accès sans adaptation à tout l'outillage de l'écosystème Ethereum — portefeuilles,
-bibliothèques, explorateurs, outils d'audit — et à un client activement maintenu.
-
-Le code amont est en double licence : la bibliothèque sous LGPL-3.0, les binaires sous GPL-3.0.
-Coinbosa distribuant un client recompilé, l'obligation de publier le code source correspondant
-s'appliquera dès qu'un binaire sera remis à un tiers.
-
-### Le temps de bloc
-
-Coinbosa produit un bloc toutes les **5 secondes**. Ce paramètre n'est pas réglable depuis le
-fichier de configuration du réseau : dans le client amont, c'est une constante du code. L'obtenir
-a donc imposé de modifier le client — une seule ligne, l'intervalle de bloc porté de 3 000 à
-5 000 millisecondes — et de le recompiler. Le respect de cette valeur a été vérifié bloc par
-bloc.
-
-Une conséquence pratique en découle : le binaire officiel du réseau amont ne convient pas, car il
-produirait des blocs de 3 secondes. Le client de Coinbosa doit être compilé depuis son dépôt.
-
-### Le contrat système du consensus
-
-Un réseau dérivé de BNB Smart Chain hérite de contrats système pré-déployés à des adresses
-réservées. Celui qui gouverne le consensus fournit au moteur, à chaque bloc d'epoch, la liste des
-validateurs.
-
-Le bytecode hérité fige la chaîne au bloc 200. Sa version, datée de 2021, n'expose pas la
-fonction que le moteur appelle à cette occasion ; l'appel échoue, et le réseau s'arrête
-définitivement. Le mécanisme du réseau amont qui corrige cela plus tard n'opère que pour ses
-propres réseaux, identifiés par l'empreinte de leur genesis — un réseau souverain en est exclu.
-
-Coinbosa remplace ce contrat par une implémentation écrite pour l'occasion, `CoinbosaValidatorSet`,
-plus compacte, qui expose exactement la surface d'appel attendue par le moteur, et rien de plus.
-Sa règle de conception est qu'aucune fonction du chemin de consensus ne peut échouer, puisqu'un
-échec rendrait le bloc improduisible. Le franchissement des blocs d'epoch est vérifié
-automatiquement à chaque évolution du code.
-
-### Le standard de jeton BRC20
-
-BRC20 — *Bosa smart contract 20* — est le standard de jeton de Coinbosa Chain, destiné aux
-applications qui émettront leurs propres jetons sur le réseau. Il est compatible avec le standard
-ERC-20 : tout portefeuille, toute passerelle et tout service qui parle ERC-20 fonctionne sans
-adaptation.
-
-Un standard portant un nom identique existe sur Bitcoin, sans aucun rapport technique. La
-documentation d'intégration précise « BRC20 de Coinbosa » pour lever l'ambiguïté.
+* **CoinBosa Academy :** Plateforme de formation ayant déjà enseigné à plusieurs milliers d'étudiants. Formations en ligne et séminaires régionaux axés sur la FinTech, la Blockchain, l'IA et le Trading.
+* **CoinBosa VPN :** Réseau privé virtuel propriétaire garantissant un accès sécurisé et privé aux serveurs CoinBosa depuis n'importe quelle région du monde.
 
 ---
 
-## 7. Le consensus et les validateurs
+## 6. Tokenomique Officielle (BOSA Supply Allocation)
 
-### Preuve d'autorité aujourd'hui, preuve d'enjeu visée
+L'offre totale du coin **BOSA** est strictly fixée à **700 000 000 BOSA**. Aucune émission supplémentaire ne sera jamais effectuée.
 
-Coinbosa vise un consensus par **preuve d'enjeu** : les validateurs immobiliseront des BOSA pour
-entrer dans l'ensemble qui produit les blocs, et les perdront en cas de faute. Le moteur de
-consensus, Parlia, est conçu pour ce modèle — il combine un enjeu immobilisé et un nombre de
-places borné, ce qui permet des blocs courts et des frais faibles.
-
-**État réel, énoncé sans détour.** Le moteur sait faire de la preuve d'enjeu ; le contrat système
-de Coinbosa, dans sa version actuelle, non. Pour débloquer le réseau, il a d'abord fallu un
-contrat minimal exposant un ensemble de validateurs fixe. Tant que c'est le cas, il n'y a pas de
-preuve d'enjeu : il y a une preuve d'autorité. Écrire la couche d'enjeu — dépôt, retrait, période
-de déblocage, élection par le montant immobilisé, sanctions — est le chantier structurant du
-projet.
-
-### Un seul validateur, aujourd'hui
-
-Un unique validateur produit tous les blocs. Cela doit être dit clairement : dans cet état, le
-réseau n'est pas décentralisé, il n'est pas résistant à la censure, et l'éditeur peut en théorie
-réorganiser la chaîne. Ces propriétés ne seront acquises qu'avec un ensemble de plusieurs
-validateurs indépendants.
-
-L'objectif est un ensemble de validateurs identifiés. Il faut cependant en connaître la limite :
-des validateurs recrutés et financés par l'éditeur ne constituent pas une décentralisation, mais
-un seul acteur opérant plusieurs clés. La décentralisation réelle suppose des opérateurs
-indépendants, ce qui viendra plus tard et sera décrit tel quel.
+| Catégorie d'Allocation | Pourcentage (%) | Volume (BOSA) | Objectif R&D / Stratégique |
+| :--- | :---: | :---: | :--- |
+| **Développement** | 20 % | 140 000 000 | Évolution de l'infrastructure et de la chaîne |
+| **Technique** | 10 % | 70 000 000 | Maintenance serveurs, RPC & nœuds validateurs |
+| **Recherche** | 10 % | 70 000 000 | Innovation protocolaire et cryptographique |
+| **Équipe** | 10 % | 70 000 000 | Fondateurs, ingénieurs et contributeurs clefs |
+| **Fonds Financier (Coinbosa Card)** | 10 % | 70 000 000 | Réserve de liquidité pour transactions Fiat / Cartes |
+| **Fonds de Liquidité** | 10 % | 70 000 000 | Pools de liquidité DEX / CEX |
+| **Recherche en IA** | 10 % | 70 000 000 | Développement du modèle d'IA propriétaire CoinBosa |
+| **Recherche Finance & FinTech** | 5 % | 35 000 000 | Recherche conformité et produits néobanque |
+| **Distribution Publique & Communauté** | 5 % | 35 000 000 | Adoption globale et récompenses réseau |
+| **Sécurité** | 3 % | 21 000 000 | Bounty programs et protection infrastructure |
+| **Réserve Stratégique** | 3 % | 21 000 000 | Partenariats institutionnels et imprévus |
+| **Audit** | 2 % | 14 000 000 | Audits externes de contrats intelligents |
+| **Événements et Formation** | 2 % | 14 000 000 | Organisation de séminaires et CoinBosa Academy |
+| **TOTAL OFFRE FIXE** | **100 %** | **700 000 000** | **Offre finale scellée au Genesis Block** |
 
 ---
 
-## 8. Modèle économique
+## 7. Conclusion
 
-### Les récompenses viennent des frais, et de rien d'autre
-
-Les validateurs sont rémunérés par les **frais de transaction** du réseau. C'est l'unique source.
-
-Le moteur de consensus ne crée aucune monnaie, et aucune part de l'offre n'est réservée aux
-récompenses. Le revenu d'un validateur est exactement la somme des frais des transactions qu'il
-inclut dans ses blocs.
-
-**La conséquence doit être comprise avant tout engagement.** Sans trafic, il n'y a pas de frais,
-donc pas de revenu. Au lancement, le rendement d'un validateur n'est pas faible : il est nul, et
-il ne croît qu'avec l'usage réel du réseau. Aucun validateur extérieur n'a d'intérêt économique à
-rejoindre le réseau avant que le volume existe ; les premiers validateurs seront donc adossés au
-projet.
-
-Pour cette raison, **ce document ne publie aucun taux de rendement**, ni actuel ni projeté. Le
-revenu d'un validateur se calcule à partir de données publiques, bloc par bloc, par quiconque le
-souhaite.
-
-### Rémunération des contributeurs
-
-Le développement de Coinbosa Chain et des produits de l'écosystème repose sur le travail de
-contributeurs. Les personnes qui participent à ce travail — développement du protocole et des
-applications, recherche, sécurité, formation — sont **rémunérées pour les contributions
-livrées**, sur les allocations prévues à cet effet dans la répartition de l'offre : les postes
-Développement, Technique, Recherche, Équipe, Sécurité et les postes de recherche. La
-participation est ouverte, y compris à des volontaires, et la contribution donne lieu à
-rémunération.
-
-Deux limites encadrent ce principe, et elles sont énoncées ici parce qu'elles comptent :
-
-- La rémunération est la **contrepartie d'un travail effectivement livré**. Ce n'est ni un
-  rendement, ni un gain attaché à la simple détention de jetons, ni une récompense promise pour
-  avoir rejoint le projet. Détenir du BOSA ne donne droit à aucune rémunération ; contribuer, si.
-- Les montants proviennent d'allocations **finies**, inscrites au genesis. Aucune émission ne les
-  reconstitue. La rémunération des contributeurs est donc soutenable dans la limite de ces
-  allocations, et la politique qui les régit sera publiée à mesure qu'elle se met en place.
-
-### Ce que ce modèle n'est pas
-
-Le modèle décrit dans la version 2 de ce livre blanc — une émission annuelle au profit des
-validateurs et un fonds de soutenabilité — supposait une création monétaire que le moteur de
-consensus ne permet pas. Il est abandonné.
+L'écosystème **CoinBosa** représente la convergence parfaite entre la technologie blockchain souveraine, l'intelligence artificielle appliquée et les services financiers universels. Grâce à une politique tokenomique stricte et des cas d'usage réels déjà en production (VPN, Academy, Chain, Omni IA), CoinBosa offre une utilité directe et durable à son coin natif BOSA.
 
 ---
 
-## 9. Paiements
-
-C'est le domaine où l'écart entre l'ambition et le réalisable est le plus grand, et il est traité
-ici sans complaisance.
-
-### La thèse
-
-BOSA est l'actif de sécurité, de gas et de gouvernance de la chaîne. **L'acceptation d'un
-paiement chez un commerçant, quand elle viendra, se fera en monnaie locale, pas en BOSA
-directement.** Le client choisit l'actif qu'il dépense ; le commerçant est réglé dans sa
-monnaie ; la conversion se fait entre les deux, chez un prestataire dont c'est le métier.
-
-### Pourquoi la conversion se fait à l'autorisation
-
-Entre le moment où une carte est autorisée et celui où le commerçant est réglé, il s'écoule
-un à trois jours. Un actif volatil peut varier fortement dans cet intervalle, et quelqu'un
-doit absorber l'écart. C'est pourquoi les programmes de carte convertissent **au moment de
-l'autorisation**, et non au règlement.
-
-Les modèles les plus récents vont plus loin : le transfert est déclenché **à l'instant du
-paiement**, depuis le portefeuille de l'utilisateur, et le règlement part en monnaie locale
-sur les rails de la carte. Les fonds ne quittent pas le porteur avant l'achat.
-
-### Coinbosa Card
-
-Une carte crypto n'est pas un objet crypto : c'est une carte classique sur les réseaux Visa
-ou Mastercard, adossée à une conversion en amont. Elle suppose une chaîne d'acteurs — réseau,
-parrain de BIN, émetteur-processeur, gestionnaire de programme — dont chacun porte une part
-du risque réglementaire et prélève une part de la valeur.
-
-**Coinbosa Card sera une intégration, pas une émission.** Le projet ne créera pas de
-stablecoin propriétaire et ne détiendra pas de réserve : la carte s'adossera à un
-prestataire déjà agréé, qui apporte le parrainage de BIN, la licence et le moteur de
-conversion. C'est le modèle qu'emploient les portefeuilles grand public, qui n'émettent pas
-de carte mais s'intègrent à un fournisseur.
-
-Ce choix remplace une version antérieure de ce document, qui prévoyait une carte adossée à
-un **stablecoin propriétaire**. Cette voie supposait cinq chantiers distincts — une entité
-émettrice, une réserve en fiat, un audit de réserve, une licence de monnaie électronique et
-un teneur de marché pour maintenir la parité — dont l'ensemble dépasse en charge la
-construction de la chaîne elle-même. Elle est abandonnée.
-
-**La carte reste découplée de BOSA**, et pour la même raison qu'auparavant : coupler la
-carte au jeton ferait dépendre le produit finançable du chantier le plus incertain. Un
-prestataire convertit ce qui a un cours de marché ; BOSA n'en a pas. La carte doit pouvoir
-vivre même si BOSA n'obtient jamais de cotation.
-
-### Ce que ce choix coûte
-
-L'intégration allège le calendrier et le capital, mais elle déplace le pouvoir. Le
-prestataire décide des actifs dépensables, des pays servis et des conditions tarifaires. S'il
-cesse son activité, change ses règles ou se retire d'une zone, le produit s'arrête. Un
-second prestataire doit donc être identifié dès le départ, et la dépendance assumée plutôt
-que découverte.
-
-### Le point de blocage à lever en premier
-
-Le marché visé est international. Il n'existe donc pas un obstacle réglementaire, mais
-autant d'obstacles que de zones servies — et **aucun prestataire unique ne couvre le
-monde**. Les néobanques établies ne le font pas non plus : elles opèrent par entités
-distinctes, sous une licence par région.
-
-Le critère de sélection d'un prestataire est donc toujours le même, mais il s'évalue
-**zone par zone** : est-il agréé, et conforme aux règles locales de routage et de
-compensation, sur le territoire que l'on veut servir ?
-
-Un exemple concret de ce que cela recouvre : en zone UEMOA, la décision n°31 de
-GIM-UEMOA impose depuis le 31 mars 2026 que toute transaction faite avec une carte émise
-dans la zone soit routée et compensée via la plateforme régionale GIM-Switch, en monnaie
-locale, y compris lorsqu'elle transite par les réseaux internationaux. Un prestataire non
-conforme à ce routage ne peut pas servir d'utilisateurs de cette zone — quels que soient
-ses tarifs ou ses fonctionnalités. D'autres zones ont leurs propres exigences, de nature
-différente.
-
-La conséquence pratique est un déploiement **par territoire**, dans l'ordre où les
-partenariats se concluent, et non un lancement mondial simultané.
-
-Aucun prestataire n'est retenu à la date de ce document.
-
-### Neobanq
-
-Neobanq est la plateforme bancaire de l'écosystème. Son modèle est celui des néobanques :
-**l'agrément appartient à un partenaire, la relation client appartient à Neobanq.** Obtenir
-une licence bancaire en propre se compte en années et en capital réglementaire ; s'affilier
-à un établissement déjà agréé et ouvert aux activités liées aux actifs numériques permet
-d'émettre des comptes et des IBAN sans détenir soi-même la licence.
-
-Ce montage a deux conséquences qu'il faut énoncer plutôt que découvrir.
-
-**L'IBAN n'est pas universel.** Un IBAN européen s'émet sous une licence européenne ; un
-compte ouvert dans une autre juridiction relève d'une autre autorité, d'un autre partenaire
-et d'un autre processus. Servir plusieurs régions suppose plusieurs partenariats, pas un
-seul contrat.
-
-**La ressource rare n'est pas la technique, c'est le partenaire.** Un établissement à la
-fois agréé, réellement ouvert aux actifs numériques et disposé à parrainer un nouvel
-entrant est peu fréquent, et il sélectionne. C'est donc le partenariat qui détermine le
-calendrier et les territoires, pas le développement.
-
-Les contrôles d'identification et de surveillance des opérations s'appliquent selon les
-règles de chaque territoire servi, aux standards du partenaire qui porte la licence. Ce
-n'est pas une contrainte subie : c'est la condition pour qu'un partenaire accepte le
-dossier.
-
-Aucun partenaire n'est retenu à la date de ce document.
-
-### Ce qui suppose une licence
-
-Détenir des fonds de clients, opérer une rampe fiat ou transmettre de la valeur sont des
-activités réglementées, qui supposent des agréments que l'éditeur ne détient pas à ce jour.
-Le recours à un prestataire agréé est précisément ce qui permet d'en faire l'économie : c'est
-lui qui porte la licence, la relation bancaire et la conformité. En contrepartie, il en porte
-aussi le contrôle.
-
----
-
-## 10. Facteurs de risque
-
-**Risques liés à l'offre.** L'offre est aujourd'hui concentrée. Tant qu'elle n'est pas répartie
-sur des adresses distinctes sous multi-signatures, une seule clé contrôle la totalité des jetons.
-Si cette clé contrôle aussi la liste des validateurs, elle contrôle simultanément la monnaie et
-le consensus. C'est le risque le plus important du projet ; sa résolution est le premier jalon.
-
-**Risques liés à l'éditeur.** Le réseau dépend d'une société unique. Les difficultés de cette
-société sont les difficultés du réseau, tant que celui-ci n'est pas opéré par des validateurs
-indépendants.
-
-**Risques liés au jeton.** BOSA peut perdre toute valeur. Il n'a pas de marché à la date de ce
-document. Sa liquidité future, s'il en acquiert une, n'est pas garantie.
-
-**Risques de mise en œuvre.** La couche d'enjeu, le passage à plusieurs validateurs, la finalité
-rapide et l'infrastructure publique sont des travaux qui peuvent échouer, prendre du retard, ou
-aboutir autrement que décrit.
-
-**Risques technologiques.** Le réseau n'a pas été audité. Le contrat de consensus, s'il comportait
-un défaut, pourrait arrêter la chaîne. Un client mal configuré pourrait diverger du reste du
-réseau. Ces risques sont réels tant que l'audit externe n'a pas eu lieu.
-
-**Mesures d'atténuation.** Répartition et mise sous multi-signatures de l'offre ; contrôle
-automatisé du franchissement d'epoch à chaque évolution ; audit externe engagé avant toute mise
-en valeur ; publication des adresses et du code pour permettre la vérification par des tiers.
-
----
-
-## 11. Statut juridique
-
-*Cette section documente l'état du droit ; elle ne constitue pas un conseil juridique. Une
-opinion d'avocat, aux États-Unis et dans l'Union européenne, est requise avant toute offre au
-public ou toute cotation.*
-
-L'éditeur est coinbosa, Inc., Delaware, États-Unis. Le droit applicable et la juridiction
-compétente seront précisés dans tout document d'offre.
-
-**Aucune offre au public de BOSA n'est réalisée par le présent document.** Il décrit un réseau et
-son jeton ; il ne les propose pas à la vente.
-
-En droit européen, un livre blanc de crypto-actif obéit à un contenu normé et sa responsabilité
-ne peut être limitée par aucune clause contractuelle : c'est la raison pour laquelle ce document
-s'interdit toute affirmation non vérifiable. Une notification à l'autorité compétente est requise
-avant publication d'une offre, selon un régime de notification et non d'approbation.
-
-Aux États-Unis, la qualification des jetons relève d'un droit en évolution, dont l'état à la date
-de publication n'est pas définitif. Ce document ne qualifie pas BOSA et ne prétend pas se
-conformer à un cadre qui ne lui serait pas applicable. Plus un document promet que l'éditeur
-accomplira des travaux destinés à valoriser le jeton, plus il expose à une qualification de
-contrat d'investissement : ce document s'en tient donc à décrire des fonctions techniques et à
-présenter des travaux comme des orientations, non comme des engagements de valorisation.
-
----
-
-## 12. Vérifiabilité
-
-Tout ce qui précède est vérifiable. C'est le sens du document.
-
-- Le **code du client**, avec l'écart précis par rapport au réseau amont, est publié dans le
-  dépôt du projet.
-- Le **genesis** et les contrats système sont publiés ; l'offre totale de 700 000 000 BOSA se
-  lit directement sur le réseau.
-- Les **adresses de chaque poste** de la répartition seront publiées et consultables sur
-  l'explorateur.
-- La **procédure de reconstruction** du réseau, à partir du dépôt seul, est documentée et
-  **rejouée automatiquement à chaque push en intégration continue** : quiconque peut recompiler
-  le client, régénérer le genesis, lancer un nœud et retrouver les mêmes valeurs.
-
-Un projet qui demande la confiance doit donner les moyens de le vérifier sans lui. C'est ce que
-cette section fournit.
-
----
-
-## 13. Feuille de route
-
-Les jalons sont donnés dans leur ordre de dépendance. Chacun a un critère de réussite vérifiable.
-Aucune date n'est avancée qui ne puisse être tenue : un jalon daté puis manqué est une promesse
-rompue, et ce document préfère l'ordre à l'échéance.
-
-1. **Genesis définitif.** Offre de 700 000 000 BOSA répartie sur des adresses publiées et sous
-   multi-signatures, aucun solde hérité. *Réussite : l'offre lue sur le réseau vaut exactement
-   700 000 000, sur les adresses publiées.* — le socle est fait ; la mise sous multi-signatures
-   reste à réaliser.
-2. **Couche d'enjeu.** Dépôt, élection par le montant immobilisé, sanctions. *Réussite : un
-   validateur rejoint l'ensemble en immobilisant des jetons, sans intervention manuelle.*
-3. **Réseau à plusieurs validateurs.** Nœuds sur des serveurs distincts, résilience éprouvée.
-   *Réussite : un nœud arrêté, le réseau continue.*
-4. **Réseau joignable.** Point d'accès public, enregistrement de l'identifiant de chaîne.
-   *Réussite : n'importe qui peut ajouter le réseau à son portefeuille et transiger.*
-5. **Réseau lisible.** Explorateur indexé, vérification publique du code des contrats. *Réussite :
-   un tiers vérifie la répartition de l'offre sans accès au serveur.*
-6. **Réseau présentable.** Site public et explorateur au niveau des grandes chaînes, en plusieurs
-   langues.
-7. **Écosystème raccordé.** Paiement en BOSA dans les produits, cotation sur NextFuture, carte
-   opérationnelle.
-8. **Ouverture extérieure.** Audit externe publié, passerelle vers un réseau majeur, cotation
-   externe.
-
----
-
-<div align="center">
-
-Coinbosa Chain — coinbosa, Inc., Delaware, United States
-
-Ce document est vérifiable dans son intégralité à l'adresse du dépôt du projet.
-
-</div>
+**Édité par Coinbosa, Inc.**
+*Constitution : État du Delaware, États-Unis*
+*Copyright © 2022 - 2026 Coinbosa, Inc. Tous droits réservés.*

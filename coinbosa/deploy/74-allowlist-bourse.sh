@@ -22,7 +22,7 @@
 #   * si le service de retrait de la bourse partage l'IP de l'indexeur, les
 #     retraits s'arrêtent aussi pendant le bannissement.
 #
-# RÉVERSIBLE : supprimer /etc/fail2ban/jail.d/coinbosa-bourse.conf puis
+# RÉVERSIBLE : supprimer /etc/fail2ban/jail.d/zz-coinbosa-bourse.conf puis
 #              systemctl reload fail2ban.
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -48,7 +48,7 @@ OP_IP=""
 
 # jail.d est lu par ordre alphabétique : ce fichier passe APRÈS coinbosa-web.conf
 # et redéfinit ignoreip pour les deux prisons concernées.
-cat > /etc/fail2ban/jail.d/coinbosa-bourse.conf <<CONF
+cat > /etc/fail2ban/jail.d/zz-coinbosa-bourse.conf <<CONF
 # Coinbosa — exemption des intégrateurs (places d'échange). Généré par 74-allowlist-bourse.sh
 # Ce fichier SURCHARGE ignoreip défini dans coinbosa-web.conf.
 [caddy-rpc]
@@ -57,7 +57,7 @@ ignoreip = $BASE $IPS
 [caddy-status]
 ignoreip = $BASE $IPS
 CONF
-chmod 0644 /etc/fail2ban/jail.d/coinbosa-bourse.conf
+chmod 0644 /etc/fail2ban/jail.d/zz-coinbosa-bourse.conf
 
 echo "==> Rechargement de fail2ban"
 systemctl reload fail2ban || systemctl restart fail2ban
@@ -86,4 +86,4 @@ done
 echo ""
 echo "==> Exemption active pour : $IPS"
 echo "    État des prisons :  fail2ban-client status caddy-rpc"
-echo "    Retirer l'exemption : rm /etc/fail2ban/jail.d/coinbosa-bourse.conf && systemctl reload fail2ban"
+echo "    Retirer l'exemption : rm /etc/fail2ban/jail.d/zz-coinbosa-bourse.conf && systemctl reload fail2ban"

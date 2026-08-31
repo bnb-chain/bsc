@@ -35,7 +35,8 @@ for f in site/index.html site/ecosysteme.html site/chaine.html \
          site/assets/i18n-pt.js site/assets/i18n-ar.js site/assets/i18n-zh.js \
          site/robots.txt site/sitemap.xml site/version.json \
          explorer/index.html explorer/app.js \
-         whitepaper/index.html whitepaper/app.js; do
+         whitepaper/index.html whitepaper/app.js \
+         whitepaper/en/index.html; do
   [ -f "$BASE/$f" ] || { echo "Introuvable : $BASE/$f" >&2; exit 1; }
 done
 
