@@ -133,16 +133,15 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 
 						typeOK := txType == types.LegacyTxType || txType == types.AccessListTxType || txType == types.DynamicFeeTxType
 						isListed := dest.name == "listed" || dest.name == "listed-system"
-						wantRead := dest.addr != nil && typeOK && !withAL &&
-							!isListed && !withData && withValue
+						wantRead := dest.addr != nil && typeOK && !isListed && withValue
 
 						var wantLaneType LaneType
 						switch {
-						case dest.addr == nil, !typeOK, withAL:
+						case dest.addr == nil, !typeOK:
 							wantLaneType = GeneralLane
 						case isListed:
 							wantLaneType = PaymentLane
-						case withData, !withValue:
+						case !withValue:
 							wantLaneType = GeneralLane
 						default:
 							wantLaneType = PaymentLane // reaches the code gate; the account is absent below
@@ -210,10 +209,9 @@ func TestCodeHashBoundaryCases(t *testing.T) {
 	}
 }
 
-// Listed membership must win over calldata/value heuristics, and must short-circuit so that no
-// listed destination is ever decided by the live state.
-func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
-	// ERC-20 transfer(address,uint256): calldata present, zero value.
+// The list lookup must short-circuit, so that no listed destination is decided by the live state.
+func TestListedContractDecidesBeforeValueAndCode(t *testing.T) {
+	// ERC-20 transfer(address,uint256) calldata, zero value.
 	calldata := make([]byte, 68)
 	copy(calldata, []byte{0xa9, 0x05, 0x9c, 0xbb})
 

@@ -24,12 +24,7 @@ import (
 )
 
 // 55M matches mainnet and keeps expansion observable in the harness.
-const (
-	laneTestGasLimit = 55_000_000
-	laneTestData     = 4 // non-zero calldata bytes on a general transaction
-	paymentTxGas     = params.TxGas
-	generalTxGas     = params.TxGas + laneTestData*params.TxDataNonZeroGasEIP2028
-)
+const laneTestGasLimit = 55_000_000
 
 // laneGenesis builds a faker-backed BSC lane harness and preallocates 0x2007.
 func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
@@ -88,8 +83,7 @@ func laneRequiredTxGas(t testing.TB, config *params.ChainConfig, data []byte) ui
 // TestPaymentLaneRoundTripsThroughAGeneratedChain checks write, replay, and quota evolution together.
 func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
-	paymentTxGas := laneRequiredTxGas(t, config, nil)
-	generalTxGas := laneRequiredTxGas(t, config, []byte{1, 2, 3, 4})
+	txGas := laneRequiredTxGas(t, config, []byte{1, 2, 3, 4})
 
 	const (
 		wantFloor    = 2_000_000
@@ -98,22 +92,23 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 	)
 
 	var (
-		nExpand = int(laneTestGasLimit*8_000/10_000/generalTxGas) + 1   // >= 80% general
-		nHold   = int(laneTestGasLimit * 7_500 / 10_000 / generalTxGas) // inside [70%, 80%)
+		nExpand = int(laneTestGasLimit*8_000/10_000/txGas) + 1   // >= 80% general
+		nHold   = int(laneTestGasLimit * 7_500 / 10_000 / txGas) // inside [70%, 80%)
 		nPay    = 3
 	)
 
 	var nonce uint64
 	signer := types.LatestSigner(config)
+	// The general fixture must stay zero-value, or the value gate makes it a payment.
 	general := func(b *BlockGen, n int) {
 		for i := 0; i < n; i++ {
-			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), generalTxGas, []byte{1, 2, 3, 4}))
+			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, common.Big0, txGas, []byte{1, 2, 3, 4}))
 			nonce++
 		}
 	}
 	payment := func(b *BlockGen, n int) {
 		for i := 0; i < n; i++ {
-			b.AddTx(key.sign(t, signer, nonce, common.Address{byte(i + 1), 0xbb}, big.NewInt(1), paymentTxGas, nil))
+			b.AddTx(key.sign(t, signer, nonce, common.Address{byte(i + 1), 0xbb}, big.NewInt(1), txGas, []byte{1, 2, 3, 4}))
 			nonce++
 		}
 	}
@@ -136,9 +131,9 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 		payment   uint64
 		regime    string
 	}{
-		{3, wantFloor, uint64(nExpand) * generalTxGas, 0, "bootstrap: the zero signal maps to the floor"},
-		{4, wantExpanded, uint64(nHold) * generalTxGas, 0, "expand, unclamped - so it is not the ceiling"},
-		{5, wantExpanded, 0, uint64(nPay) * paymentTxGas, "hold: neither branch taken, and both would differ"},
+		{3, wantFloor, uint64(nExpand) * txGas, 0, "bootstrap: the zero signal maps to the floor"},
+		{4, wantExpanded, uint64(nHold) * txGas, 0, "expand, unclamped - so it is not the ceiling"},
+		{5, wantExpanded, 0, uint64(nPay) * txGas, "hold: neither branch taken, and both would differ"},
 		{6, wantExpanded - shrinkStep, 0, 0, "shrink: neither floor nor ceiling"},
 	} {
 		block := blocks[tc.number-1]
@@ -247,7 +242,7 @@ func TestVerifyHeaderQuotaDirectly(t *testing.T) {
 			return
 		}
 		for n := 0; n < nExpand; n++ {
-			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), generalTxGas, []byte{1, 2, 3, 4}))
+			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, common.Big0, generalTxGas, []byte{1, 2, 3, 4}))
 			nonce++
 		}
 	})
@@ -267,6 +262,8 @@ func TestVerifyHeaderQuotaDirectly(t *testing.T) {
 
 	commitment, err := paymentlane.Decode(header.UncleHash)
 	require.NoError(t, err)
+	// The derivation accepts a self-generated header at any quota, so pin it or nExpand proves nothing.
+	require.EqualValues(t, 3_100_000, commitment.PaymentLaneQuota, "the fixture must have driven a real expansion")
 	commitment.PaymentLaneQuota += 150_000
 	header.UncleHash = paymentlane.Encode(commitment)
 
@@ -409,9 +406,9 @@ func TestPaymentLaneReportsAFailedReadAsLocal(t *testing.T) {
 		gasLimit:   laneTestGasLimit,
 	}
 	// The flip itself: the block booked this gas as general, the failed read books it as payment.
-	ls.Budget.PaymentLaneUsed = paymentTxGas
+	ls.Budget.PaymentLaneUsed = params.TxGas
 
-	err := ls.VerifyImported(paymentTxGas, paymentTxGas, paymentlane.Commitment{})
+	err := ls.VerifyImported(params.TxGas, params.TxGas, paymentlane.Commitment{})
 	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable, "a failed read is this node's fault, not the block's")
 	require.ErrorIs(t, err, broken, "the cause has to survive for whoever reads the log")
 	require.NotErrorIs(t, err, paymentlane.ErrUntruthy, "calling a good block untruthful is what costs peers")
@@ -515,7 +512,7 @@ func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 			return
 		}
 		for n := 0; n < nGeneral; n++ {
-			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), generalTxGas, []byte{1, 2, 3, 4}))
+			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, common.Big0, generalTxGas, []byte{1, 2, 3, 4}))
 			nonce++
 		}
 	})

@@ -40,14 +40,8 @@ func (c *Classifier) Classify(tx *types.Transaction) LaneType {
 	default:
 		return GeneralLane
 	}
-	if len(tx.AccessList()) != 0 {
-		return GeneralLane
-	}
 	if _, ok := c.listed[*to]; ok {
 		return PaymentLane
-	}
-	if len(tx.Data()) != 0 {
-		return GeneralLane
 	}
 	if tx.Value().Sign() == 0 {
 		return GeneralLane
