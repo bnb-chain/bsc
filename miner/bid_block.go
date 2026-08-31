@@ -242,6 +242,19 @@ func (w *worker) revokeBidBlockBuilder(builder common.Address, reason string, ha
 
 func (w *worker) revokeBidBlockBuilderFor(builder common.Address, reason string, hash common.Hash, blockNum uint64, duration time.Duration) {
 	w.permMgr.RevokeFor(builder, reason, hash, blockNum, duration)
+	w.afterBidBlockRevoke()
+}
+
+// revokeBidBlockBuilderEscalating is for builders whose block failed on chain:
+// the lockout grows with each repeat so the same attack cannot be replayed at a
+// flat daily price. Returns the applied lockout and strike number for logging.
+func (w *worker) revokeBidBlockBuilderEscalating(builder common.Address, reason string, hash common.Hash, blockNum uint64) (time.Duration, int) {
+	duration, strike := w.permMgr.RevokeEscalating(builder, reason, hash, blockNum)
+	w.afterBidBlockRevoke()
+	return duration, strike
+}
+
+func (w *worker) afterBidBlockRevoke() {
 	bidBlockRevokeGauge.Inc(1)
 	bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
 }
@@ -278,6 +291,23 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	_, insertErr := w.chain.InsertChain(types.Blocks{block})
 	bidBlockVerifyTimer.UpdateSince(verifyStart)
 	if insertErr != nil {
+		bidBlockVerifyFailedGauge.Inc(1)
+		reason := fmt.Sprintf("InsertChain err: %v", insertErr)
+		// Escalate only when the chain rejected the block. InsertChain also fails
+		// on this node's own state or database trouble, which must not cost the
+		// builder a persisted 7-day lockout.
+		var (
+			duration time.Duration
+			strike   int
+		)
+		if w.chain.IsRejectedBidBlock(hash) {
+			duration, strike = w.revokeBidBlockBuilderEscalating(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
+		} else {
+			duration = bidBlockRevokeDuration
+			w.revokeBidBlockBuilderFor(task.bidBlockInfo.builder, reason, hash, block.NumberU64(), duration)
+			log.Warn("[BID BLOCK VERIFY FAILED] not attributable to builder, no strike recorded",
+				"number", block.Number(), "hash", hash, "builder", task.bidBlockInfo.builder, "err", insertErr)
+		}
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
@@ -288,9 +318,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"stateRoot", block.Root(),
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
+			"strike", strike,
+			"revokeDuration", duration,
 			"err", insertErr)
-		bidBlockVerifyFailedGauge.Inc(1)
-		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.
