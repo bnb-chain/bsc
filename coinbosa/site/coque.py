@@ -389,8 +389,18 @@ def verifier():
     # bruyant plutot que silencieux.
     _bal = re.compile(r"<[a-zA-Z][^>]*>", re.S)
     _att = re.compile(r"\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=")
-    for p in PAGES:
-        for t in _bal.findall(src[p]):
+    # Le livre blanc a sa propre coque, ecrite a la main en deux langues : les
+    # controles de coque ne s y appliquent pas. Celui-ci, si — il y portait
+    # SOIXANTE-CINQ marqueurs pour cinq valeurs utiles, soit 4 ko de repetition
+    # par page, que rien ne signalait puisque le rendu restait juste.
+    _autres = {}
+    for rel in ("../whitepaper/index.html", "../whitepaper/en/index.html"):
+        f = (RACINE / rel).resolve()
+        if f.exists():
+            _autres[rel.replace("../", "")] = f.read_text(encoding="utf-8")
+    for p in list(PAGES) + list(_autres):
+        contenu = src[p] if p in src else _autres[p]
+        for t in _bal.findall(contenu):
             for nom, n in collections.Counter(_att.findall(t)).items():
                 if n > 1:
                     defauts.append(f"{p} : attribut {nom} repete {n} fois dans "
