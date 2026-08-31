@@ -100,7 +100,7 @@ func unpackGetPaymentLaneParams(ret []byte) (paymentlane.GovernanceParams, error
 	if err != nil {
 		return paymentlane.GovernanceParams{}, err
 	}
-	return paymentlane.GovernanceParams{
+	params := paymentlane.GovernanceParams{
 		MinRatio:      minRatio,
 		MaxRatio:      maxRatio,
 		ExpandTrigger: expandTrigger,
@@ -109,7 +109,11 @@ func unpackGetPaymentLaneParams(ret []byte) (paymentlane.GovernanceParams, error
 		ShrinkStep:    shrinkStep,
 		MinGas:        minGas,
 		MaxGas:        maxGas,
-	}, nil
+	}
+	if err := params.Validate(); err != nil {
+		return paymentlane.GovernanceParams{}, err
+	}
+	return params, nil
 }
 
 func unpackGetPaymentContracts(ret []byte) ([]common.Address, uint64, error) {

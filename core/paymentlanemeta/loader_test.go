@@ -169,3 +169,12 @@ func TestLoadGovernanceParamsForQuotaStaysOnParentRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3_000_000), got.MinGas)
 }
+
+// Slot 1 is paymentLaneMaxRatio; a direct write is the only way past updateParam's validation.
+func TestLoadMetaRejectsATupleViolatingTheGuards(t *testing.T) {
+	statedb := deployedContractState(t)
+	statedb.SetState(paymentlane.ContractAddress, paramSlot(1), word(paymentlane.MaxLaneRatio+1))
+
+	_, err := LoadMeta(params.BSCChainConfig, laneHeader(1), statedb)
+	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
+}
