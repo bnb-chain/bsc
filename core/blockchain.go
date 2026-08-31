@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/monitor"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -3385,6 +3386,22 @@ func (bc *BlockChain) skipBlock(err error, it *insertIterator) bool {
 
 // reportBadBlock logs a bad block error.
 func (bc *BlockChain) reportBadBlock(block *types.Block, res *ProcessResult, err error) {
+	if errors.Is(err, paymentlane.ErrStateUnavailable) {
+		var parentRoot common.Hash
+		if parent := bc.GetHeaderByHash(block.ParentHash()); parent != nil {
+			parentRoot = parent.Root
+		}
+		var headNumber uint64
+		if head := bc.CurrentBlock(); head != nil {
+			headNumber = head.Number.Uint64()
+		}
+		log.Error("Payment lane state unavailable, block left unjudged",
+			"number", block.NumberU64(), "hash", block.Hash(), "parent", block.ParentHash(),
+			"parentroot", parentRoot, "root", block.Root(), "head", headNumber,
+			"scheme", bc.triedb.Scheme(), "notries", bc.NoTries(), "snapshots", bc.snaps != nil,
+			"err", err)
+		return
+	}
 	var receipts types.Receipts
 	if res != nil {
 		receipts = res.Receipts
