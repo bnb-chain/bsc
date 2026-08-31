@@ -288,6 +288,47 @@ code, kbd, samp, pre { font-family: var(--mono); font-size: .875em; }
 .jauge .v { margin-top: 6px; font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; }
 .jauge .v.vif { color: var(--cyan-soft); }
 
+/* ─────────────────────── SCENE DE LA PLANETE ───────────────────────
+   Seconde scene WebGL : la planete a anneaux, le logo en son coeur. Elle vit
+   dans une section a hauteur bornee, le contenu par-dessus. Comme le heros,
+   elle est peinte par assets/scene.js — donc en WebGL brut, parce que la CSP
+   interdit toute bibliotheque distante et qu'embarquer un moteur 3D couterait
+   plus lourd que les deux scenes reunies. */
+.scene-planete {
+  position: relative; overflow: hidden;
+  min-height: min(76vh, 700px); display: flex; align-items: center;
+  padding: clamp(56px, 7vw, 92px) 0;
+}
+#anneaux { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+/* Le voile doit etre BEAUCOUP plus dense que celui du heros : la lune du heros
+   est un croissant sombre, la planete est un disque clair borde d anneaux
+   lumineux. Un voile calque sur celui du heros laissait le texte illisible
+   par-dessus les anneaux — verifie au rendu. */
+.voile-planete {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--ground) 96%, transparent) 0%,
+    color-mix(in srgb, var(--ground) 91%, transparent) 28%,
+    color-mix(in srgb, var(--ground) 40%, transparent) 46%,
+    transparent 66%);
+}
+.scene-planete .wrap { position: relative; z-index: 2; }
+/* La colonne reste dans la zone voilee : au-dela, elle repasse sur les anneaux. */
+.scene-planete .scene-head { max-width: 46ch; margin-bottom: 0; }
+[dir="rtl"] .voile-planete {
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--ground) 92%, transparent) 0%,
+    color-mix(in srgb, var(--ground) 76%, transparent) 34%, transparent 68%);
+}
+@media (max-width: 860px) {
+  .scene-planete { min-height: auto; }
+  .voile-planete, [dir="rtl"] .voile-planete {
+    background: linear-gradient(180deg, transparent 0%,
+      color-mix(in srgb, var(--ground) 70%, transparent) 46%,
+      color-mix(in srgb, var(--ground) 92%, transparent) 100%);
+  }
+}
+
 /* ──────────────────────────────── SECTIONS ──────────────────────────────── */
 .scene { padding: clamp(62px, 8vw, 106px) 0; position: relative; }
 .scene + .scene { border-top: 1px solid var(--line); }

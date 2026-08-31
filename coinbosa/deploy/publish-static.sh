@@ -66,7 +66,11 @@ COMMUN=(-avz --delete --rsync-path="$RSYNC_PATH"
         # revelent la structure du chantier sans rien apporter au visiteur.
         # i18n-fr.json est la reference de coque.py, pas une ressource du
         # site : le francais est deja dans le HTML, le moteur le photographie.
-        --exclude '*.py' --exclude 'i18n-fr.json' --exclude '.DS_Store')
+        # i18n-source.json fige le francais que les traductions traduisent.
+        # C'est une barriere de chantier, comme coque.py : la publier n'apporte
+        # rien au visiteur et expose l'etat interne du site.
+        --exclude '*.py' --exclude 'i18n-fr.json' --exclude 'i18n-source.json'
+        --exclude '.DS_Store')
 
 echo "==> Envoi des fichiers vers $SERVER"
 rsync "${COMMUN[@]}" "$BASE/site/"       "$SERVER:/var/www/coinbosa/site/"

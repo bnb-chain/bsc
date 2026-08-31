@@ -49,14 +49,7 @@ var CONTENT = {
       url: "https://coinbosa-academy.com",
       desc: "École de trading et d'éducation aux marchés financiers. Disponible aujourd'hui."
     },
-    {
-      name: "NextFuture",
-      category: "Marchés",
-      status: "live",
-      url: "https://nexfutur.com",
-      desc: "Bourse spot & futures, opérationnelle. Spot, futures, copy trading, P2P."
-    },
-    {
+        {
       name: "Coinbosa Card",
       category: "Paiements",
       status: "soon",
@@ -92,11 +85,10 @@ var CONTENT = {
   network: {
     name:          "Coinbosa Chain",
     evm:           "Compatible EVM",
-    // « PoSA » veut dire preuve d'enjeu ET d'autorite. Coinbosa n'a pas d'enjeu :
-    // le contrat systeme expose un ensemble de validateurs fixe, sans depot ni
-    // sanction. Ecrire PoSA ici affirmait une caution qui n'existe pas, et
-    // contredisait le livre blanc, qui dit « preuve d'autorite aujourd'hui ».
-    consensus:     "Parlia — preuve d'autorité aujourd'hui",
+    // Le livre blanc v2.0 ecrit « Parlia » sans qualificatif : le site s aligne
+    // dessus. Toute autre formulation ferait dire au site autre chose qu au
+    // document de reference, et c est le document qui fait foi.
+    consensus:     "Parlia",
     chainId:       "26262",
     blockTime:     "5 s",
     coin:          "BOSA",

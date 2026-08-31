@@ -337,6 +337,14 @@ def instrumenter(page):
         dico[k] = val
         return f'{avant}{nom}="{val}" data-i18n-attr-{nom}="{k}"'
 
+    # sur_attr AJOUTE le marqueur. Relancer l'extraction sur une page deja
+    # marquee en empilait donc un de plus a chaque passage : les pages servies
+    # portaient jusqu'a 16 copies de data-i18n-attr-aria-label sur un meme
+    # element, pour une seule valeur utile. Le navigateur garde la premiere et
+    # ignore le reste — rien ne cassait a l'ecran, et la page grossissait a
+    # chaque publication. On efface donc les marqueurs avant de les reposer :
+    # l'extraction devient idempotente, relancable sans degrader la page.
+    travail = re.sub(r'\s+data-i18n-attr-[a-z-]+="[^"]*"', "", travail)
     for a in ATTRS:
         travail = re.sub(r'(\s)(' + a + r')="([^"]{2,})"', sur_attr, travail)
 

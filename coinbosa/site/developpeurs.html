@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="developpeurs.title.developpeurs-construire-sur-coinbosa-chain">Développeurs — construire sur Coinbosa Chain</title>
-<meta name="description" content="Connecter un portefeuille, configurer Hardhat et Foundry, déployer un jeton BRC20, et la liste exacte des méthodes que le point d'accès RPC public de Coinbosa Chain accepte ou refuse.">
+<meta name="description" content="Connecter un portefeuille, configurer Hardhat et Foundry, déployer un jeton BRC20, créer des pools de liquidité : ce qu'il faut pour bâtir sur Coinbosa Chain.">
 <meta name="robots" content="index, follow">
 <meta name="theme-color" content="#04070C">
 <link rel="canonical" href="https://coinbosa.com/developpeurs.html">
@@ -12,27 +12,27 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Coinbosa">
 <meta property="og:title" content="Développeurs — construire sur Coinbosa Chain">
-<meta property="og:description" content="Trois champs pour connecter un portefeuille, la configuration Hardhat et Foundry, le standard BRC20 et la surface exposée du RPC public.">
+<meta property="og:description" content="Le réseau en trois champs, Hardhat et Foundry, la suite DeFi et DEX native, le standard BRC20 et la surface du point d'accès public.">
 <meta property="og:url" content="https://coinbosa.com/developpeurs.html">
 <meta property="og:image" content="https://coinbosa.com/og-image.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Développeurs — construire sur Coinbosa Chain">
-<meta name="twitter:description" content="Trois champs pour connecter un portefeuille, la configuration Hardhat et Foundry, le standard BRC20 et la surface exposée du RPC public.">
+<meta name="twitter:description" content="Le réseau en trois champs, Hardhat et Foundry, la suite DeFi et DEX native, le standard BRC20 et la surface du point d'accès public.">
 <meta name="twitter:image" content="https://coinbosa.com/og-image.jpg">
-<link rel="stylesheet" href="/assets/style.css?v=bc35f0fc92">
+<link rel="stylesheet" href="/assets/style.css?v=9615e1993a">
 <script src="/assets/i18n.js?v=f7000b5b4f" defer></script>
-<script src="/app.js?v=4d3d16d649" defer></script>
+<script src="/app.js?v=11f513f94d" defer></script>
 
-<a class="saut" href="#main" data-i18n="developpeurs.a.aller-au-contenu">Aller au contenu</a>
+<a class="saut" href="#main" data-i18n="accueil.a.aller-au-contenu">Aller au contenu</a>
 
 <header class="hdr" id="top">
   <div class="hdr-inner">
-    <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil">
+    <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil">
       <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="32" height="32">
       <span class="brand-name">Coin<b>bosa</b></span>
     </a>
 
-    <nav class="nav" aria-label="Navigation principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale">
+    <nav class="nav" aria-label="Navigation principale" data-i18n-attr-aria-label="accueil.attr.aria-label.navigation-principale">
       <a href="/ecosysteme.html" data-i18n="nav.ecosysteme">Écosystème</a>
       <a href="/chaine.html" data-i18n="nav.chaine">Chaîne &amp; BOSA</a>
       <a href="/developpeurs.html" aria-current="page" data-i18n="nav.developpeurs">Développeurs</a>
@@ -41,13 +41,13 @@
     </nav>
 
     <div class="hdr-actions">
-      <select class="lang-select" id="lang" aria-label="Language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language" data-i18n-attr-aria-label="accueil.attr.aria-label.language"></select>
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" aria-pressed="false">
+      <select class="lang-select" id="lang" aria-label="Language" data-i18n-attr-aria-label="accueil.attr.aria-label.language"></select>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Changer de thème" data-i18n-attr-aria-label="accueil.attr.aria-label.changer-de-theme" aria-pressed="false">
         <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" stroke-linecap="round"/></svg>
       </button>
       <a class="btn btn-primary btn-sm" href="#rejoindre" data-i18n="nav.rejoindre">Rejoindre</a>
-      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" aria-expanded="false" aria-controls="mobile-menu">
+      <button class="menu-btn" id="menu-btn" type="button" aria-label="Ouvrir le menu" data-i18n-attr-aria-label="accueil.attr.aria-label.ouvrir-le-menu" aria-expanded="false" aria-controls="mobile-menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
       </button>
     </div>
@@ -67,14 +67,14 @@
 
   <section class="page-head">
     <div class="wrap">
-      <nav class="fil" aria-label="Fil d'Ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane">
+      <nav class="fil" aria-label="Fil d'Ariane" data-i18n-attr-aria-label="developpeurs.attr.aria-label.fil-d-ariane">
         <a href="/" data-i18n="developpeurs.a.accueil">Accueil</a><span aria-hidden="true">/</span><span data-i18n="developpeurs.span.developpeurs">Développeurs</span>
       </nav>
-      <h1 data-i18n="developpeurs.h1.construire-sur-coinbosa-chain">Construire sur Coinbosa Chain</h1>
+      <h1 data-i18n="developpeurs.h1.construire-sur-coinbosa-chain">Construire sur <span class="grad">Coinbosa Chain</span></h1>
       <p class="lead" data-i18n="developpeurs.p.la-chaine-est-compatible-evm-metamask-hard">
         La chaîne est compatible EVM : MetaMask, Hardhat, Foundry, ethers.js et viem
-        s'y connectent sans adaptation. Cette page décrit ce qui fonctionne, et dit où
-        sont les bornes — celles du point d'accès public comme celles du réseau.
+        s'y connectent sans adaptation. Cette page réunit ce qu'il faut pour s'y
+        raccorder, y déployer un contrat et y émettre un jeton.
       </p>
     </div>
   </section>
@@ -109,16 +109,15 @@
 
       <div class="grille">
         <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.1-ouvrir-l-ajout-manuel">1 — Ouvrir l'ajout manuel</h3>
+          <h3 data-i18n="developpeurs.h3.ouvrir-l-ajout-manuel">Ouvrir l'ajout manuel</h3>
           <p data-i18n="developpeurs.p.derouler-le-selecteur-de-reseau-puis-ajout">
             Dérouler le sélecteur de réseau, puis « Ajouter un réseau » et « Ajouter un
-            réseau manuellement ». Cette saisie est obligatoire : le chainId 26262 n'étant
-            enregistré dans aucun annuaire public, Coinbosa n'apparaît dans aucune liste
-            préremplie.
+            réseau manuellement ». Coinbosa Chain se saisit à la main : c'est la voie
+            normale pour un réseau que le portefeuille ne connaît pas d'avance.
           </p>
         </article>
         <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.2-recopier-les-champs">2 — Recopier les champs</h3>
+          <h3 data-i18n="developpeurs.h3.recopier-les-champs">Recopier les champs</h3>
           <p data-i18n="developpeurs.p.le-portefeuille-interroge-le-point-d-acces">
             Le portefeuille interroge le point d'accès et refuse l'enregistrement si
             l'identifiant renvoyé par le nœud ne correspond pas à celui saisi. Ce
@@ -127,11 +126,11 @@
           </p>
         </article>
         <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.3-verifier-avant-de-signer">3 — Vérifier avant de signer</h3>
+          <h3 data-i18n="developpeurs.h3.verifier-avant-de-signer">Vérifier avant de signer</h3>
           <p data-i18n="developpeurs.p.les-soldes-s-affichent-en-bosa-et-le-derni">
-            Les soldes s'affichent en BOSA et le dernier bloc avance toutes les cinq
-            secondes environ. S'il n'avance plus, la cause est du côté du nœud : un seul
-            validateur produit les blocs, et rien ne prend le relais.
+            Les soldes s'affichent en BOSA et le dernier bloc avance au rythme du
+            consensus Parlia — cible de 5 s, mesure à 5,018 s sur 500 blocs
+            consécutifs.
           </p>
         </article>
       </div>
@@ -160,7 +159,7 @@
       <div class="code reveal">
         <div class="code-head">
           <span>wallet_addEthereumChain</span>
-          <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code">
+          <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>
             <span data-i18n="developpeurs.span.copier-5">Copier</span>
           </button>
@@ -216,7 +215,7 @@
         <div class="code reveal">
           <div class="code-head">
             <span>hardhat.config.js</span>
-            <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2">
+            <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-2">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>
               <span data-i18n="developpeurs.span.copier-4">Copier</span>
             </button>
@@ -230,7 +229,7 @@
     coinbosa: {
       url: 'https://explorer.coinbosa.com/rpc',
       chainId: 26262,
-      accounts: [process.env.CLE_PRIVEE]   // jamais en clair dans le dépôt
+      accounts: [process.env.CLE_PRIVEE]   // jamais en clair dans le depot
     }
   }
 };</code></pre>
@@ -239,7 +238,7 @@
         <div class="code reveal">
           <div class="code-head">
             <span>foundry.toml</span>
-            <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3">
+            <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-3">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>
               <span data-i18n="developpeurs.span.copier-3">Copier</span>
             </button>
@@ -258,32 +257,80 @@ coinbosa = "https://explorer.coinbosa.com/rpc"
 
       <p class="note reveal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
-        <span data-i18n="developpeurs.span.compilez-pour-shanghai-pas-pour-cancun-les"><b>Compilez pour Shanghai, pas pour Cancun.</b> Les forks postérieurs à
-        Kepler ne sont pas activés. Or Solidity vise Cancun par défaut : sans
-        <span class="mono">evmVersion: 'shanghai'</span>, le compilateur produit l'opcode
-        <span class="mono">MCOPY</span>, que la chaîne rejette — la compilation réussit,
-        le déploiement échoue.</span>
+        <span data-i18n="developpeurs.span.compilez-pour-shanghai-pas-pour-cancun-sol"><b>Compilez pour Shanghai, pas pour Cancun.</b> Solidity vise Cancun par
+        défaut : sans <span class="mono">evmVersion: 'shanghai'</span>, le compilateur
+        produit l'opcode <span class="mono">MCOPY</span>, que la chaîne rejette — la
+        compilation réussit, le déploiement échoue.</span>
+      </p>
+
+      <p class="note note-gold reveal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
+        <span data-i18n="developpeurs.span.une-cle-privee-ne-se-met-jamais-dans-un-fi"><b>Une clé privée ne se met jamais dans un fichier de configuration.</b>
+        Elle se lit depuis une variable d'environnement ou un magasin chiffré, et son
+        fichier reste hors du dépôt. Aucun membre de l'équipe Coinbosa ne vous demandera
+        jamais votre clé ni votre phrase de récupération.</span>
       </p>
     </div>
   </section>
 
-  <!-- ─────────────────────────── BRC20 ─────────────────────────── -->
+  <!-- ─────────────────────────── DEFI ET DEX ─────────────────────────── -->
   <section class="scene scene-sombre">
+    <div class="wrap">
+      <div class="scene-head">
+        <span class="eyebrow reveal" data-i18n="developpeurs.span.defi-dex">DeFi &amp; DEX</span>
+        <h2 class="reveal" data-i18n="developpeurs.h2.une-suite-defi-et-dex-native">Une suite DeFi et DEX native.</h2>
+        <p class="lead reveal" data-i18n="developpeurs.p.la-coinbosa-chain-integre-une-suite-defi-d">
+          La Coinbosa Chain intègre une suite DeFi &amp; DEX native : les développeurs y
+          émettent des contrats intelligents, y créent des pools de liquidité et y
+          déploient des jetons BRC20 sans restriction.
+        </p>
+      </div>
+
+      <div class="grille">
+        <article class="card reveal">
+          <h3 data-i18n="developpeurs.h3.emettre-des-contrats-intelligents">Émettre des contrats intelligents</h3>
+          <p data-i18n="developpeurs.p.le-deploiement-passe-par-les-outils-evm-ha">
+            Le déploiement passe par les outils EVM habituels, ceux configurés
+            ci-dessus. Une transaction signée suffit : rien à demander, rien à faire
+            approuver au préalable.
+          </p>
+        </article>
+        <article class="card reveal">
+          <h3 data-i18n="developpeurs.h3.creer-des-pools-de-liquidite">Créer des pools de liquidité</h3>
+          <p data-i18n="developpeurs.p.les-pools-se-deploient-comme-des-contrats">
+            Les pools se déploient comme des contrats ordinaires et s'appuient sur les
+            jetons BRC20 de la chaîne, dont l'interface est décrite plus bas.
+          </p>
+        </article>
+        <article class="card reveal">
+          <h3 data-i18n="developpeurs.h3.deployer-des-jetons-sans-restriction">Déployer des jetons sans restriction</h3>
+          <p data-i18n="developpeurs.p.l-emission-d-un-jeton-brc20-n-est-conditio">
+            L'émission d'un jeton BRC20 n'est conditionnée à aucune autorisation. La
+            seule convention à respecter est celle de l'interface, pour rester
+            compatible avec les portefeuilles et les services qui parlent ERC-20.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── BRC20 ─────────────────────────── -->
+  <section class="scene">
     <div class="wrap">
       <div class="scene-head">
         <span class="eyebrow reveal" data-i18n="developpeurs.span.jetons">Jetons</span>
         <h2 class="reveal" data-i18n="developpeurs.h2.le-standard-brc20">Le standard BRC20.</h2>
         <p class="lead reveal" data-i18n="developpeurs.p.brc20-bosa-smart-contract-20-est-le-standa">
-          BRC20 — <i>Bosa smart contract 20</i> — est le standard de jeton de la chaîne.
-          Son interface est compatible ERC-20 : tout portefeuille, toute passerelle, tout
-          service qui parle ERC-20 fonctionne sans adaptation.
+          BRC20 — <i>Bosa smart contract 20</i> — est le standard de jeton natif de la
+          chaîne. Son interface est compatible ERC-20 : tout portefeuille, toute
+          passerelle, tout service qui parle ERC-20 fonctionne sans adaptation.
         </p>
       </div>
 
       <div class="code reveal">
         <div class="code-head">
           <span data-i18n="developpeurs.span.ibrc20-sol-interface-minimale">IBRC20.sol — interface minimale</span>
-          <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4">
+          <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-4">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>
             <span data-i18n="developpeurs.span.copier-2">Copier</span>
           </button>
@@ -313,8 +360,8 @@ coinbosa = "https://explorer.coinbosa.com/rpc"
           <p data-i18n="developpeurs.p.c-est-le-seul-ecart-de-comportement-notabl">
             C'est le seul écart de comportement notable avec un ERC-20 courant.
             <span class="mono">transferOwnership</span> désigne un destinataire en
-            attente, sans rien céder ; la propriété ne change que lorsque celui-ci appelle
-            <span class="mono">acceptOwnership</span> depuis son adresse.
+            attente, sans rien céder ; la propriété ne change que lorsque celui-ci
+            appelle <span class="mono">acceptOwnership</span> depuis son adresse.
           </p>
         </article>
         <article class="card reveal">
@@ -350,11 +397,11 @@ coinbosa = "https://explorer.coinbosa.com/rpc"
   </section>
 
   <!-- ─────────────────────────── SURFACE RPC ─────────────────────────── -->
-  <section class="scene">
+  <section class="scene scene-sombre">
     <div class="wrap">
       <div class="scene-head">
         <span class="eyebrow reveal" data-i18n="developpeurs.span.surface-exposee">Surface exposée</span>
-        <h2 class="reveal" data-i18n="developpeurs.h2.ce-que-le-rpc-public-accepte-et-ce-qu-il-r">Ce que le RPC public accepte, et ce qu'il refuse.</h2>
+        <h2 class="reveal" data-i18n="developpeurs.h2.ce-que-le-point-d-acces-public-accepte">Ce que le point d'accès public accepte.</h2>
         <p class="lead reveal" data-i18n="developpeurs.p.le-nud-public-sert-a-lire-la-chaine-et-a-y">
           Le nœud public sert à lire la chaîne et à y déposer des transactions signées.
           Ce qui permettrait de l'inspecter ou de le piloter est fermé, et les requêtes
@@ -381,140 +428,58 @@ coinbosa = "https://explorer.coinbosa.com/rpc"
       <div class="tbl-wrap reveal">
         <table class="kv">
           <tbody>
-            <tr><th data-i18n="developpeurs.th.transport">Transport</th><td data-i18n="developpeurs.td.https-post-uniquement-toute-autre-methode">HTTPS, POST uniquement — toute autre méthode reçoit une erreur 405.</td></tr>
-            <tr><th data-i18n="developpeurs.th.taille-d-une-requete">Taille d'une requête</th><td data-i18n="developpeurs.td.32-ko-au-maximum">32 Ko au maximum.</td></tr>
-            <tr><th data-i18n="developpeurs.th.appels-groupes">Appels groupés</th><td data-i18n="developpeurs.td.50-au-maximum-par-requete-http">50 au maximum par requête HTTP.</td></tr>
-            <tr><th data-i18n="developpeurs.th.plage-de-journaux">Plage de journaux</th><td data-i18n="developpeurs.td.5-000-blocs-au-maximum-par-appel-a-eth-get">5 000 blocs au maximum par appel à <span class="mono">eth_getLogs</span>.</td></tr>
-            <tr><th data-i18n="developpeurs.th.filtres-de-journaux">Filtres de journaux</th><td data-i18n="developpeurs.td.20-adresses-ou-sujets-alternatifs-par-posi">20 adresses ou sujets alternatifs par position de recherche.</td></tr>
-            <tr><th data-i18n="developpeurs.th.origine-navigateur">Origine navigateur</th><td data-i18n="developpeurs.td.seul-explorer-coinbosa-com-les-appels-de-s">seul <span class="mono">explorer.coinbosa.com</span> ; les appels de serveur à serveur ne sont pas concernés.</td></tr>
-            <tr><th data-i18n="developpeurs.th.gas-par-bloc">Gas par bloc</th><td data-i18n="developpeurs.td.55-000-000-dont-20-000-000-reserves-aux-tr">55 000 000, dont 20 000 000 réservés aux transactions système — 35 000 000 restent aux utilisateurs.</td></tr>
+            <tr><th data-i18n="developpeurs.th.transport">Transport</th><td data-i18n="developpeurs.td.https-post-uniquement-toute-autre-methode">HTTPS, POST uniquement — toute autre méthode est refusée.</td></tr>
+            <tr><th data-i18n="developpeurs.th.taille-d-une-requete">Taille d'une requête</th><td data-i18n="developpeurs.td.plafonnee-une-requete-plus-lourde-est-reje">Plafonnée ; une requête plus lourde est rejetée avant traitement.</td></tr>
+            <tr><th data-i18n="developpeurs.th.appels-groupes">Appels groupés</th><td data-i18n="developpeurs.td.plafonnes-par-requete-http">Plafonnés par requête HTTP.</td></tr>
+            <tr><th data-i18n="developpeurs.th.plage-de-journaux">Plage de journaux</th><td data-i18n="developpeurs.td.bornee-par-appel-a-eth-getlogs-les-longs-h">Bornée par appel à <span class="mono">eth_getLogs</span> ; les longs historiques se lisent par tranches.</td></tr>
+            <tr><th data-i18n="developpeurs.th.filtres-de-journaux">Filtres de journaux</th><td data-i18n="developpeurs.td.nombre-d-adresses-et-de-sujets-alternatifs">Nombre d'adresses et de sujets alternatifs borné par position de recherche.</td></tr>
+            <tr><th data-i18n="developpeurs.th.origine-navigateur">Origine navigateur</th><td data-i18n="developpeurs.td.seul-explorer-coinbosa-com-les-appels-de-s">Seul <span class="mono">explorer.coinbosa.com</span> ; les appels de serveur à serveur ne sont pas concernés.</td></tr>
           </tbody>
         </table>
       </div>
 
       <p class="note reveal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
-        <span data-i18n="developpeurs.span.deux-limites-a-connaitre-avant-de-batir-de"><b>Deux limites à connaître avant de bâtir dessus.</b> Il n'existe pas de
-        point d'accès WebSocket : les abonnements sont indisponibles, une application
-        doit sonder le nœud. Et l'historique d'état n'est pas garanti sur toute la
-        profondeur de la chaîne — lire un solde à un bloc ancien demanderait un nœud
-        d'archive, qui n'est pas déployé.</span>
+        <span data-i18n="developpeurs.span.ce-point-d-acces-est-fait-pour-lire-et-pou"><b>Ce point d'accès est fait pour lire et pour déposer.</b> Il n'expose pas
+        d'abonnement WebSocket : une application sonde le nœud plutôt qu'elle ne
+        s'abonne. Et relire un état à un bloc ancien demande un nœud d'archive, que
+        chacun peut exécuter à partir du dépôt.</span>
       </p>
     </div>
   </section>
 
-  <!-- ─────────────────────────── CONTRATS SYSTÈME ─────────────────────────── -->
-  <section class="scene scene-sombre">
+  <!-- ─────────────────────────── VÉRIFICATION ─────────────────────────── -->
+  <section class="scene">
     <div class="wrap">
       <div class="scene-head">
-        <span class="eyebrow reveal" data-i18n="developpeurs.span.contrats-systeme">Contrats système</span>
-        <h2 class="reveal" data-i18n="developpeurs.h2.ce-qui-est-deploye-au-bloc-0-et-pourquoi-c">Ce qui est déployé au bloc 0, et pourquoi c'est figé.</h2>
-        <p class="lead reveal" data-i18n="developpeurs.p.un-reseau-derive-de-bnb-smart-chain-herite">
-          Un réseau dérivé de BNB Smart Chain hérite de contrats pré-déployés à des
-          adresses réservées. L'un d'eux gouverne le consensus, et sa présence au bloc 0
-          engage l'identité du réseau.
+        <span class="eyebrow reveal" data-i18n="developpeurs.span.verification">Vérification</span>
+        <h2 class="reveal" data-i18n="developpeurs.h2.le-socle-se-relit-sur-la-chaine">Le socle se relit sur la chaîne.</h2>
+        <p class="lead reveal" data-i18n="developpeurs.p.les-valeurs-ci-dessous-sont-celles-du-livr">
+          Les valeurs ci-dessous sont celles du livre blanc. Elles ne demandent pas
+          qu'on nous croie : deux requêtes suffisent à les retrouver.
         </p>
-      </div>
-
-      <div class="grille">
-        <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.le-contrat-du-consensus">Le contrat du consensus</h3>
-          <p data-i18n="developpeurs.p.a-l-adresse-0x-1000-il-fournit-au-moteur-l">
-            À l'adresse <span class="mono">0x…1000</span>, il fournit au moteur la liste
-            des validateurs à chaque bloc d'epoch, tous les 200 blocs. Le bytecode
-            hérité, daté de 2021, n'expose pas la fonction appelée alors : l'appel
-            échoue, la chaîne s'arrête au bloc 200.
-          </p>
-        </article>
-        <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.un-remplacement-ecrit-pour-l-occasion">Un remplacement écrit pour l'occasion</h3>
-          <p data-i18n="developpeurs.p.coinbosavalidatorset-expose-exactement-la">
-            <span class="mono">CoinbosaValidatorSet</span> expose exactement la surface
-            d'appel attendue, et rien de plus : 5 758 octets contre 16 429. Le correctif
-            du réseau amont ne vaut que pour ses propres réseaux, reconnus à l'empreinte
-            de leur genesis.
-          </p>
-        </article>
-        <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.aucune-fonction-ne-peut-echouer">Aucune fonction ne peut échouer</h3>
-          <p data-i18n="developpeurs.p.c-est-la-regle-de-conception-sur-le-chemin">
-            C'est la règle de conception : sur le chemin du consensus, un échec rend le
-            bloc improduisible et arrête le réseau. Le franchissement d'un bloc d'epoch
-            est donc rejoué à chaque évolution du code.
-          </p>
-        </article>
       </div>
 
       <div class="tbl-wrap reveal">
         <table class="kv">
           <tbody>
+            <tr><th data-i18n="developpeurs.th.consensus-et-temps-de-bloc">Consensus et temps de bloc</th><td data-i18n="developpeurs.td.parlia-cible-5-s-mesure-5-018-s-sur-500-bl">Parlia — Cible : <span class="tnum">5</span> s | Mesure : <span class="tnum">5,018</span> s sur <span class="tnum">500</span> blocs</td></tr>
+            <tr><th data-i18n="developpeurs.th.identifiant-de-chaine-2">Identifiant de chaîne</th><td data-i18n="developpeurs.td.26262-protection-anti-rejeu-eip-155"><span class="tnum">26262</span> — protection anti-rejeu EIP-155</td></tr>
+            <tr><th data-i18n="developpeurs.th.franchissement-d-epoch">Franchissement d'epoch</th><td data-i18n="developpeurs.td.intervalles-de-validateurs-fixes-verifie-a">Intervalles de validateurs fixés — vérifié aux blocs <span class="tnum">200</span>, <span class="tnum">400</span>, <span class="tnum">600</span>, <span class="tnum">800</span></td></tr>
+            <tr><th data-i18n="developpeurs.th.contrat-systeme-du-consensus">Contrat système du consensus</th><td data-i18n="developpeurs.td.ecrit-sur-mesure-solidity-go-ethereum-en-f">Écrit sur mesure (Solidity / Go-Ethereum), en fonctionnement direct sur la chaîne</td></tr>
+            <tr><th data-i18n="developpeurs.th.standard-de-jeton-natif">Standard de jeton natif</th><td data-i18n="developpeurs.td.brc20-compatible-erc-20-banc-de-tests-auto">BRC20, compatible ERC-20 — banc de tests automatisé</td></tr>
+            <tr><th data-i18n="developpeurs.th.offre-de-bosa">Offre de BOSA</th><td data-i18n="developpeurs.td.700-000-000-18-decimales"><span class="tnum">700 000 000</span>, <span class="tnum">18</span> décimales</td></tr>
             <tr><th data-i18n="developpeurs.th.empreinte-du-bloc-0">Empreinte du bloc 0</th><td><span class="mono">0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6</span></td></tr>
             <tr><th data-i18n="developpeurs.th.racine-d-etat-du-bloc-0">Racine d'état du bloc 0</th><td><span class="mono">0x93682eb9182a55531d47014b76a285b45d3e720a2951f9ffbdc67f52995f8c03</span></td></tr>
-            <tr><th data-i18n="developpeurs.th.premier-bloc-scelle">Premier bloc scellé</th><td data-i18n="developpeurs.td.7-aout-2026">7 août 2026</td></tr>
+            <tr><th data-i18n="developpeurs.th.mise-en-production">Mise en production</th><td data-i18n="developpeurs.td.7-aout-2026">7 août 2026</td></tr>
           </tbody>
         </table>
-      </div>
-
-      <p class="note reveal">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
-        <span data-i18n="developpeurs.span.ce-bytecode-est-fige-et-c-est-une-propriet"><b>Ce bytecode est figé, et c'est une propriété, pas une limite subie.</b>
-        Il appartient à l'allocation du bloc 0 : son contenu entre dans le calcul de
-        l'empreinte ci-dessus, donc dans l'identité de la chaîne. En modifier la logique
-        produirait un autre bloc 0 — un autre réseau, inatteignable depuis celui en
-        production.</span>
-      </p>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────── LE CODE ─────────────────────────── -->
-  <section class="scene">
-    <div class="wrap">
-      <div class="scene-head">
-        <span class="eyebrow reveal" data-i18n="developpeurs.span.verification">Vérification</span>
-        <h2 class="reveal" data-i18n="developpeurs.h2.le-code-est-ouvert-et-le-genesis-se-rejoue">Le code est ouvert, et le genesis se rejoue.</h2>
-        <p class="lead reveal" data-i18n="developpeurs.p.un-projet-qui-demande-la-confiance-doit-do">
-          Un projet qui demande la confiance doit donner les moyens de vérifier sans
-          lui. Le client, les contrats, le genesis et les scripts sont publiés, et la
-          reconstruction du réseau est rejouée.
-        </p>
-      </div>
-
-      <div class="grille">
-        <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.ce-que-contient-le-depot">Ce que contient le dépôt</h3>
-          <p data-i18n="developpeurs.p.le-client-derive-de-bnb-chain-bsc-les-quat">
-            Le client, dérivé de <span class="mono">bnb-chain/bsc</span>, les quatre
-            contrats — interface, implémentation de référence, jeton de démonstration et
-            contrat système —, le genesis, les scripts et la documentation, sur
-            <a href="https://github.com/Coinbosa/coinbosa-chain" rel="noopener">le
-            dépôt</a>.
-          </p>
-        </article>
-        <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.un-seul-ecart-de-consensus">Un seul écart de consensus</h3>
-          <p data-i18n="developpeurs.p.le-point-d-ancrage-amont-est-epingle-par-e">
-            Le point d'ancrage amont est épinglé par empreinte de commit, pas par une
-            étiquette qu'on peut redéplacer. Sur le code du client, l'écart tient en une
-            ligne : l'intervalle de bloc porté de 3 000 à 5 000 millisecondes. D'où
-            l'obligation de compiler ce dépôt — le binaire officiel du réseau amont
-            produit des blocs de 3 secondes.
-          </p>
-        </article>
-        <article class="card reveal">
-          <h3 data-i18n="developpeurs.h3.rejoue-a-chaque-envoi-de-code">Rejoué à chaque envoi de code</h3>
-          <p data-i18n="developpeurs.p.sur-une-machine-vierge-l-integration-conti">
-            Sur une machine vierge, l'intégration continue recompile le client, régénère
-            le genesis, démarre un nœud, puis contrôle le temps de bloc, l'offre,
-            l'empreinte du bloc 0, le banc BRC20 et le franchissement d'un bloc
-            d'epoch.
-          </p>
-        </article>
       </div>
 
       <div class="code reveal">
         <div class="code-head">
           <span data-i18n="developpeurs.span.verifier-l-identite-de-la-chaine">Vérifier l'identité de la chaîne</span>
-          <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5">
+          <button class="copy" type="button" aria-label="Copier le code" data-i18n-attr-aria-label="developpeurs.attr.aria-label.copier-le-code-5">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9" stroke-linecap="round"/></svg>
             <span data-i18n="developpeurs.span.copier">Copier</span>
           </button>
@@ -531,8 +496,28 @@ curl -s -X POST https://explorer.coinbosa.com/rpc \
        "method":"eth_getBlockByNumber","params":["0x0",false]}'</code></pre>
       </div>
 
+      <div class="duo">
+        <article class="reveal">
+          <h3 data-i18n="developpeurs.h3.le-code-est-public">Le code est public</h3>
+          <p data-i18n="developpeurs.p.le-client-les-contrats-le-genesis-et-les-s">
+            Le client, les contrats, le genesis et les scripts de déploiement sont
+            publiés sur <a href="https://github.com/Coinbosa/coinbosa-chain" rel="noopener">le
+            dépôt Coinbosa</a>. Recompiler le genesis doit redonner exactement
+            l'empreinte du bloc 0 publiée ci-dessus.
+          </p>
+        </article>
+        <article class="reveal">
+          <h3 data-i18n="developpeurs.h3.ce-qui-identifie-la-chaine">Ce qui identifie la chaîne</h3>
+          <p data-i18n="developpeurs.p.un-nom-et-un-symbole-se-copient-un-identif">
+            Un nom et un symbole se copient ; un identifiant de chaîne et une empreinte
+            de bloc 0, non. Ce sont eux qu'il faut comparer avant d'envoyer une
+            transaction, et l'explorateur les affiche en clair.
+          </p>
+        </article>
+      </div>
+
       <div class="suite reveal">
-        <p data-i18n="developpeurs.p.qui-edite-ce-reseaul-editeur-ce-que-le-pro"><strong>Qui édite ce réseau</strong>L'éditeur, ce que le projet s'interdit d'affirmer tant que ce n'est pas mesuré, et les manques qu'il oppose à son propre travail.</p>
+        <p data-i18n="developpeurs.p.qui-edite-ce-reseaul-editeur-l-ecosysteme"><strong>Qui édite ce réseau</strong>L'éditeur, l'écosystème bâti autour de la chaîne et la répartition de l'offre BOSA.</p>
         <a class="btn btn-ghost" href="/a-propos.html" data-i18n="developpeurs.a.ouvrir-la-page-a-propos">Ouvrir la page À propos</a>
       </div>
     </div>
@@ -544,7 +529,7 @@ curl -s -X POST https://explorer.coinbosa.com/rpc \
   <div class="wrap">
     <div class="ft-top">
       <div class="ft-about">
-        <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2">
+        <a class="brand" href="/" aria-label="Coinbosa — accueil" data-i18n-attr-aria-label="accueil.attr.aria-label.coinbosa-accueil-2">
           <img class="logo" src="/assets/logo.jpg" alt="Coinbosa" width="32" height="32">
           <span class="brand-name">Coin<b>bosa</b></span>
         </a>
