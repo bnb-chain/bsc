@@ -62,7 +62,7 @@ type Miner struct {
 }
 
 func New(eth Backend, config *minerconfig.Config, eventMux *event.TypeMux, engine consensus.Engine) *Miner {
-	bidBlockPermMgr := NewBidBlockPermissionManager()
+	bidBlockPermMgr := NewBidBlockPermissionManager(config.BidBlockRevokesJournal)
 	miner := &Miner{
 		mux:     eventMux,
 		eth:     eth,

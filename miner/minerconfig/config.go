@@ -36,6 +36,9 @@ var (
 	// Extra time for finalizing and committing blocks (excludes writing to disk).
 	defaultDelayLeftOver         = 15 * time.Millisecond
 	defaultBidSimulationLeftOver = 20 * time.Millisecond
+
+	// defaultBidBlockRevokesJournal is resolved relative to the node's datadir.
+	defaultBidBlockRevokesJournal = "bidblockrevokes.json"
 )
 
 func getDefaultNoInterruptLeftOver() *time.Duration {
@@ -73,6 +76,12 @@ type Config struct {
 	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
 	MaxBlobsPerBlock       int            `toml:",omitempty"` // Maximum number of blobs per block (0 for unset uses protocol default)
 
+	// BidBlockRevokesJournal is the file BidBlock revoke lockouts are persisted
+	// to so they survive restarts (BEP-675). A relative path is resolved under
+	// the node's datadir; empty disables persistence. It is validator-local MEV
+	// policy, deliberately kept out of chaindata.
+	BidBlockRevokesJournal string `toml:",omitempty"`
+
 	Mev MevConfig // Mev configuration
 }
 
@@ -90,6 +99,8 @@ var DefaultConfig = Config{
 	// The default value is set to 45 seconds.
 	// Because the avg restart time in mainnet could be 30+ seconds, so the node try to wait for the next multi-proposals to be done.
 	MaxWaitProposalInSecs: &defaultMaxWaitProposalInSecs,
+
+	BidBlockRevokesJournal: defaultBidBlockRevokesJournal,
 
 	Mev: DefaultMevConfig,
 }
