@@ -13,8 +13,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/params/forks"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -177,4 +179,47 @@ func TestLoadMetaRejectsATupleViolatingTheGuards(t *testing.T) {
 
 	_, err := LoadMeta(params.BSCChainConfig, laneHeader(1), statedb)
 	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
+}
+
+// A full page is the most one getter call can cost: the walk pages at pageSize, so this figure
+// does not grow with the list. Every rule set the lane can run under has to leave room for it.
+func TestPageGasStaysFarBelowTheGetterBudget(t *testing.T) {
+	zero := uint64(0)
+	fromJenner := []struct {
+		fork     forks.Fork
+		activate func(*params.ChainConfig)
+	}{
+		{forks.Jenner, func(c *params.ChainConfig) { c.JennerTime = &zero }},
+		{forks.BPO1, func(c *params.ChainConfig) { c.BPO1Time = &zero }},
+		{forks.BPO2, func(c *params.ChainConfig) { c.BPO2Time = &zero }},
+		{forks.BPO3, func(c *params.ChainConfig) { c.BPO3Time = &zero }},
+		{forks.BPO4, func(c *params.ChainConfig) { c.BPO4Time = &zero }},
+		{forks.BPO5, func(c *params.ChainConfig) { c.BPO5Time = &zero }},
+		{forks.Amsterdam, func(c *params.ChainConfig) { c.AmsterdamTime = &zero }},
+	}
+	last := fromJenner[len(fromJenner)-1].fork
+	require.Equal(t, "Unknown fork", (last + 1).String(), "a fork was added after %s; append it here", last)
+
+	cfg := *params.BSCChainConfig
+	for _, tc := range fromJenner {
+		tc.activate(&cfg)
+		header := laneHeader(60_000_000)
+		require.Equal(t, tc.fork, cfg.LatestFork(header.Time))
+
+		statedb := deployedContractState(t)
+		statedb.SetState(paymentlane.ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(pageSize))
+		for i := uint64(0); i < pageSize; i++ {
+			statedb.SetState(paymentlane.ContractAddress, paymentContractSlot(i), word(i+1))
+		}
+
+		evm := vm.NewEVM(blockContext(header), statedb, &cfg, vm.Config{NoBaseFee: true})
+		budget := vm.NewGasBudget(getterGasLimit)
+		_, left, err := evm.StaticCall(common.Address{}, paymentlane.ContractAddress, packGetPaymentContracts(0, pageSize), budget)
+		evm.Release()
+		require.NoError(t, err, tc.fork)
+
+		used := left.Used(budget)
+		require.EqualValues(t, 356_819, used, "%s: getter gas moved; confirm getterGasLimit still leaves room, then update this figure", tc.fork)
+		require.Less(t, used*10, getterGasLimit, "%s: getterGasLimit no longer leaves an order of magnitude", tc.fork)
+	}
 }
