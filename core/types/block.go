@@ -552,7 +552,7 @@ func isBEP703Commitment(h common.Hash) bool {
 	return true
 }
 
-// IsEmptyUncleHash reports whether this header commits to no uncles.
+// IsEmptyUncleHash reports whether this header carries the empty-uncle-list hash.
 func (h *Header) IsEmptyUncleHash() bool { return h.UncleHash == EmptyUncleHash }
 
 // BEP703CommitsNoUncles reports whether this header encodes an empty uncle list through either the
