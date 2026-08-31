@@ -149,8 +149,15 @@ def versionner(ecrire=True):
                                  capture_output=True, text=True, check=True).stdout.strip()
         except Exception:
             rev = "inconnue"
+        # « revision » nommait le commit courant — donc, fatalement, celui
+        # d AVANT le commit qui contient la construction : le tampon est ecrit
+        # avant d etre commite. Il annoncait ainsi une revision qui n etait pas
+        # celle du contenu en ligne. On nomme le champ pour ce qu il est : le
+        # commit DEPUIS lequel la construction a ete faite. Ce qui identifie le
+        # contenu servi, ce sont les deux empreintes ci-dessous, verifiables en
+        # telechargeant les fichiers.
         (RACINE / "version.json").write_text(
-            json.dumps({"site": "coinbosa.com", "revision": rev,
+            json.dumps({"site": "coinbosa.com", "construit_depuis": rev,
                         "style": emp["assets/style.css"], "script": emp["app.js"],
                         "pages": ["/" if p == "index.html" else "/" + p for p in PAGES]},
                        ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
