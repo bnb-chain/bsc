@@ -390,6 +390,8 @@ func allowBEP703UncleHash(chain *core.BlockChain, header *types.Header) bool {
 	if !config.IsInBSC() {
 		return false
 	}
+	// Blocks arrive out of order while syncing, so the parent may not be local yet. Staying
+	// permissive is safe: this is not the consensus check, verifyCascadingFields is.
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
 	if parent != nil {
 		return config.IsJenner(parent.Number, parent.Time)

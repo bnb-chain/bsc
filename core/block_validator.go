@@ -51,10 +51,10 @@ func (v *BlockValidator) allowBEP703UncleHash(block *types.Block) bool {
 		return false
 	}
 	parent := v.bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
-	if parent != nil {
-		return v.config.IsJenner(parent.Number, parent.Time)
+	if parent == nil {
+		return false
 	}
-	return v.config.IsJenner(block.Number(), block.Time())
+	return v.config.IsJenner(parent.Number, parent.Time)
 }
 
 // ValidateBody validates the given block's uncles and verifies the block

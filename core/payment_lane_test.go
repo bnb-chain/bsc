@@ -603,3 +603,39 @@ func TestPaymentLaneReadsReachTheWitness(t *testing.T) {
 	n, err := chain.InsertChain(blocks)
 	require.NoError(t, err, "witness replay must serve the lane's 0x2007 reads; failed after %d blocks", n)
 }
+
+func TestAllowBEP703UncleHashRefusesAnUnknownParent(t *testing.T) {
+	config, gspec, _ := laneGenesis(t)
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFullFaker(), 4, func(int, *BlockGen) {})
+
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFullFaker(), DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+
+	// Locate the activation block: Jenner by its own timestamp, pre-Jenner by its parent's.
+	var activation *types.Block
+	for i, b := range blocks {
+		parentTime := gspec.Timestamp
+		if i > 0 {
+			parentTime = blocks[i-1].Time()
+		}
+		if config.IsJenner(b.Number(), b.Time()) && !config.IsJenner(new(big.Int).Sub(b.Number(), common.Big1), parentTime) {
+			activation = b
+			break
+		}
+	}
+	require.NotNil(t, activation, "fixture must straddle JennerTime")
+
+	v := NewBlockValidator(config, chain)
+
+	require.False(t, v.allowBEP703UncleHash(activation),
+		"an unknown parent must refuse the allowance, not fall back to the block's own fork status")
+
+	_, err = chain.InsertChain(blocks[:activation.NumberU64()])
+	require.NoError(t, err)
+	require.False(t, v.allowBEP703UncleHash(activation),
+		"the activation block is outside the mechanism and must still carry EmptyUncleHash")
+
+	require.True(t, v.allowBEP703UncleHash(blocks[activation.NumberU64()]),
+		"a Jenner parent must grant the allowance")
+}
