@@ -21,11 +21,11 @@ func newEscalationTestManager() (*BidBlockPermissionManager, *time.Time) {
 	return m, &now
 }
 
-func requireEscalatedRevoke(t *testing.T, m *BidBlockPermissionManager, wantStrike int, wantDuration time.Duration) {
+func requireEscalatedRevoke(t *testing.T, m *BidBlockPermissionManager, wantCount int, wantDuration time.Duration) {
 	t.Helper()
-	duration, strike := m.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, uint64(wantStrike))
-	if strike != wantStrike || duration != wantDuration {
-		t.Fatalf("got strike=%d duration=%v, want %d/%v", strike, duration, wantStrike, wantDuration)
+	duration, violationCount := m.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, uint64(wantCount))
+	if violationCount != wantCount || duration != wantDuration {
+		t.Fatalf("got violationCount=%d duration=%v, want %d/%v", violationCount, duration, wantCount, wantDuration)
 	}
 }
 
@@ -43,60 +43,60 @@ func seedRevokeJournal(t *testing.T, path string, rec BidBlockRevokeRecord) {
 	}
 }
 
-func waitForJournalStrikes(t *testing.T, path string, want int) {
+func waitForJournalViolations(t *testing.T, path string, want int) {
 	t.Helper()
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
 		blob, err := os.ReadFile(path)
 		var journal bidBlockRevokeJournal
-		if err == nil && json.Unmarshal(blob, &journal) == nil && journal.Revokes[escalationTestBuilder].Strikes == want {
+		if err == nil && json.Unmarshal(blob, &journal) == nil && journal.Revokes[escalationTestBuilder].ViolationCount == want {
 			if _, err := os.Stat(path + ".tmp"); os.IsNotExist(err) {
 				return
 			}
 		}
 	}
-	t.Fatalf("timed out waiting for journal to record %d strikes", want)
+	t.Fatalf("timed out waiting for journal to record %d violations", want)
 }
 
 func TestEscalatedRevokeDuration(t *testing.T) {
 	for _, tc := range []struct {
-		strike int
-		want   time.Duration
+		violationCount int
+		want           time.Duration
 	}{
 		{0, 24 * time.Hour}, {1, 24 * time.Hour}, {2, 36 * time.Hour},
 		{3, 48 * time.Hour}, {5, 72 * time.Hour}, {12, 156 * time.Hour},
 		{13, bidBlockRevokeMaxDuration}, {50, bidBlockRevokeMaxDuration},
 	} {
-		if got := escalatedRevokeDuration(tc.strike); got != tc.want {
-			t.Errorf("strike %d: got %v, want %v", tc.strike, got, tc.want)
+		if got := escalatedRevokeDuration(tc.violationCount); got != tc.want {
+			t.Errorf("violation count %d: got %v, want %v", tc.violationCount, got, tc.want)
 		}
 	}
 }
 
 func TestRevokeEscalationAndRetention(t *testing.T) {
 	m, now := newEscalationTestManager()
-	for strike, want := range []time.Duration{24 * time.Hour, 36 * time.Hour, 48 * time.Hour} {
-		requireEscalatedRevoke(t, m, strike+1, want)
+	for violation, want := range []time.Duration{24 * time.Hour, 36 * time.Hour, 48 * time.Hour} {
+		requireEscalatedRevoke(t, m, violation+1, want)
 		*now = now.Add(want)
 		if !m.IsAllowed(escalationTestBuilder) {
-			t.Fatalf("strike %d did not expire", strike+1)
+			t.Fatalf("violation %d did not expire", violation+1)
 		}
 	}
 
 	for _, tc := range []struct {
-		name       string
-		offset     time.Duration
-		wantStrike int
+		name      string
+		offset    time.Duration
+		wantCount int
 	}{
-		{"retained", bidBlockStrikeRetention - time.Second, 2},
-		{"reset", bidBlockStrikeRetention + time.Second, 1},
+		{"retained", bidBlockViolationRetention - time.Second, 2},
+		{"reset", bidBlockViolationRetention + time.Second, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tm, testNow := newEscalationTestManager()
 			requireEscalatedRevoke(t, tm, 1, 24*time.Hour)
 			*testNow = testNow.Add(24*time.Hour + tc.offset)
-			_, strike := tm.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, 2)
-			if strike != tc.wantStrike {
-				t.Fatalf("got strike %d, want %d", strike, tc.wantStrike)
+			_, violationCount := tm.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, 2)
+			if violationCount != tc.wantCount {
+				t.Fatalf("got violation count %d, want %d", violationCount, tc.wantCount)
 			}
 		})
 	}
@@ -109,7 +109,7 @@ func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
 
 	m.RevokeFor(escalationTestBuilder, "gas price too low", common.Hash{}, 2, bidBlockGasPriceLowRevokeDuration)
 	rec, _ := getBidBlockPermissionRecord(m, escalationTestBuilder)
-	if rec.Strikes != 1 || !revokeResetAt(rec).Equal(resetAt) {
+	if rec.ViolationCount != 1 || !revokeResetAt(rec).Equal(resetAt) {
 		t.Fatalf("flat revoke changed ladder: %+v", rec)
 	}
 
@@ -118,7 +118,7 @@ func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
 	resetAt = now.Add(36 * time.Hour)
 	m.SetAllowed(escalationTestBuilder, false)
 	rec, _ = getBidBlockPermissionRecord(m, escalationTestBuilder)
-	if rec.Strikes != 2 || !revokeResetAt(rec).Equal(resetAt) {
+	if rec.ViolationCount != 2 || !revokeResetAt(rec).Equal(resetAt) {
 		t.Fatalf("manual deny changed ladder: %+v", rec)
 	}
 
@@ -129,31 +129,31 @@ func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
 	requireEscalatedRevoke(t, m, 1, 24*time.Hour)
 }
 
-func TestStrikeJournalRetention(t *testing.T) {
+func TestViolationJournalRetention(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		age        time.Duration
-		oldStrikes int
-		wantStrike int
+		name      string
+		age       time.Duration
+		oldCount  int
+		wantCount int
 	}{
 		{"retained", 25 * time.Hour, 2, 3},
-		{"stale", bidBlockRevokeDuration + bidBlockStrikeRetention + time.Hour, 5, 1},
+		{"stale", bidBlockRevokeDuration + bidBlockViolationRetention + time.Hour, 5, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := testJournalPath(t)
 			seedRevokeJournal(t, path, BidBlockRevokeRecord{
 				RevokedAt: time.Now().Add(-tc.age), Duration: bidBlockRevokeDuration,
-				Reason: testInsertChainReason, Strikes: tc.oldStrikes,
+				Reason: testInsertChainReason, ViolationCount: tc.oldCount,
 			})
 			m := NewBidBlockPermissionManager(path)
 			if !m.IsAllowed(escalationTestBuilder) {
 				t.Fatal("expired lockout was restored")
 			}
-			duration, strike := m.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, 1)
-			if strike != tc.wantStrike || duration != escalatedRevokeDuration(tc.wantStrike) {
-				t.Fatalf("got strike=%d duration=%v", strike, duration)
+			duration, violationCount := m.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, 1)
+			if violationCount != tc.wantCount || duration != escalatedRevokeDuration(tc.wantCount) {
+				t.Fatalf("got violationCount=%d duration=%v", violationCount, duration)
 			}
-			waitForJournalStrikes(t, path, tc.wantStrike)
+			waitForJournalViolations(t, path, tc.wantCount)
 		})
 	}
 }

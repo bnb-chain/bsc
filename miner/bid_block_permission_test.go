@@ -570,7 +570,7 @@ func TestBidBlockPermission_RejectsUnknownVersion(t *testing.T) {
 func TestBidBlockPermission_JournalKeysAreStable(t *testing.T) {
 	path := testJournalPath(t)
 	m := NewBidBlockPermissionManager(path)
-	m.Revoke(common.HexToAddress("0x1"), testInsertChainReason, common.HexToHash("0xabc"), 100)
+	m.RevokeEscalating(common.HexToAddress("0x1"), testInsertChainReason, common.HexToHash("0xabc"), 100)
 	waitForBidBlockPersist(t, path)
 
 	blob, err := os.ReadFile(path)
@@ -579,7 +579,7 @@ func TestBidBlockPermission_JournalKeysAreStable(t *testing.T) {
 	}
 	for _, key := range []string{
 		`"version"`, `"revokes"`,
-		`"revokedAt"`, `"duration"`, `"reason"`, `"blockHash"`, `"blockNum"`,
+		`"revokedAt"`, `"duration"`, `"reason"`, `"blockHash"`, `"blockNum"`, `"violationCount"`,
 	} {
 		if !strings.Contains(string(blob), key) {
 			t.Errorf("journal is missing the stable key %s; a tag change needs a version bump\ngot: %s", key, blob)
