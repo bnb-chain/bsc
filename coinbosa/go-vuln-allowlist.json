@@ -44,7 +44,8 @@
       "pourquoi": "Pile QUIC tirée par la découverte de pairs de l'amont. Les DEUX nœuds — validateur et nœud RPC public — tournent avec --nodiscover : aucun port de découverte n'est ouvert et la pile QUIC n'est jamais sollicitée. Cette dérogation ne vaut QUE tant que c'est vrai des deux ; l'audit du 2026-08-10 a justement trouvé que le nœud RPC faisait encore de la découverte, ce qui rendait cette justification fausse. Corrigé.",
       "a_reexaminer": "BLOQUANT avant d'ouvrir la découverte de pairs ou d'exposer un nœud public au P2P.",
       "ajoute_le": "2026-08-06",
-      "expire_le": "2026-10-06"
+      "expire_le": "2026-10-06",
+      "reverifie_le": "2026-09-02"
     },
     {
       "avis": "GO-2026-4488",
@@ -65,7 +66,8 @@
       "pourquoi": "Avis publié le 2026-08-18, donc absent du scan du 2026-08-06 : c'est la barrière qui l'a arrêté au premier push suivant, comme prévu. Même module et même condition d'exposition que GO-2026-4488, 4485 et 4483. Condition RE-VÉRIFIÉE sur le serveur le 2026-08-23 avant d'écrire cette dérogation : les deux processus geth (nœud RPC pid 820639, validateur pid 821035) portent --nodiscover, et `ss -lunp` ne montre AUCUN socket UDP en écoute — la pile QUIC n'a aucun point d'entrée joignable. La dérogation ne vaut que tant que cela reste vrai.",
       "a_reexaminer": "v0.11.1 corrige aussi GO-2026-4488, 4485 et 4483 : une seule remontée de webtransport-go solde quatre des neuf failles. BLOQUANT avant d'ouvrir la découverte de pairs.",
       "ajoute_le": "2026-08-23",
-      "expire_le": "2026-10-06"
+      "expire_le": "2026-10-06",
+      "reverifie_le": "2026-09-02"
     },
     {
       "avis": "GO-2026-4485",
@@ -91,12 +93,14 @@
       "avis": "GO-2026-4479",
       "module": "github.com/pion/dtls/v2",
       "present": "v2.2.12",
-      "corrige_dans": "AUCUN correctif publié à ce jour pour la branche v2",
+      "corrige_dans": "AUCUN correctif en v2 : l'avis declare la branche v2 atteinte depuis l'origine, sans evenement « fixed ». Corrige uniquement en v3 (>= 3.0.11 et >= 3.1.1 ; derniere publiee v3.1.8).",
       "classe": "CRYPTOGRAPHIQUE — nonce aléatoire avec AES-GCM, risque de fuite de la clé d'authentification",
-      "pourquoi": "La plus sérieuse des huit : ce n'est PAS un déni de service mais une faiblesse cryptographique. DTLS est tiré par la pile STUN/NAT de l'amont (p2p/nat/stun.go). Elle ne concerne que des sessions DTLS réellement établies : les validateurs Coinbosa n'utilisent pas la traversée de NAT (--nodiscover, --maxpeers 0), aucune session DTLS n'est donc négociée. Aucune clé du consensus ni de trésorerie ne transite par DTLS — les clés de scellage ne touchent jamais cette pile.",
-      "a_reexaminer": "Aucune version corrigée en v2 : suivre la migration amont vers pion/dtls/v3. BLOQUANT si la traversée de NAT/STUN devait être activée sur un nœud.",
+      "pourquoi": "La plus serieuse des neuf : ce n'est pas un deni de service mais une faiblesse cryptographique. DTLS est tire par la pile STUN/NAT de l'amont (p2p/nat/stun.go). Elle ne concerne que des sessions DTLS reellement etablies. Mesure le 2026-09-02 : les deux noeuds tournent avec --nodiscover et n'ouvrent AUCUN socket UDP — aucune session DTLS ne peut etre negociee. Aucune cle du consensus ni de tresorerie ne transite par cette pile.",
+      "a_reexaminer": "Suivre la migration de bnb-chain/bsc vers pion/webrtc v4. BLOQUANT si la traversee de NAT/STUN devait etre activee sur un noeud : la condition qui rend cette faille inoffensive tombe alors.",
       "ajoute_le": "2026-08-06",
-      "expire_le": "2026-10-06"
+      "expire_le": "2026-10-06",
+      "pourquoi_pas_corrige": "La remontee n'est pas a notre portee : pion/dtls/v2 est tire par tout l'arbre pion/webrtc v3 -> ice v2 -> turn v2. Passer en dtls/v3 impose webrtc v4 / ice v3 / turn v3, c'est-a-dire diverger de bnb-chain/bsc sur sa pile P2P. C'est une migration amont, pas un correctif local.",
+      "reverifie_le": "2026-09-02"
     },
     {
       "avis": "GO-2025-4233",
@@ -108,5 +112,17 @@
       "ajoute_le": "2026-08-06",
       "expire_le": "2026-10-06"
     }
-  ]
+  ],
+  "$verification_execution": {
+    "date": "2026-09-02",
+    "pourquoi": "Toutes les derogations QUIC/WebTransport/DTLS reposent sur UNE condition d'execution : la pile n'a aucun point d'entree joignable. Une condition ne se suppose pas, elle se mesure — l'audit du 2026-08-10 avait justement trouve que le noeud RPC faisait encore de la decouverte, ce qui rendait la justification fausse. On la remesure donc, et on ecrit ce qu'on a vu.",
+    "mesure": {
+      "noeud_rpc": "pid 1620958 — --nodiscover --maxpeers 4 --syncmode full",
+      "validateur": "pid 1621205 — --nodiscover --netrestrict 127.0.0.0/8 --mine",
+      "sockets_udp_geth": "aucun (ss -lunp : seuls systemd-resolve:53 et caddy:443)"
+    },
+    "correction": "Les justifications ecrites le 2026-08-06 affirmaient « --nodiscover, --maxpeers 0 ». C'est FAUX : le noeud RPC tourne avec --maxpeers 4 et le validateur ne fixe pas --maxpeers du tout (defaut geth), il borne ses pairs par --netrestrict 127.0.0.0/8. La conclusion ne change pas — sans decouverte et sans socket UDP, ni QUIC ni DTLS n'ont de point d'entree — mais elle repose desormais sur ce qui est mesure, pas sur un parametre imagine.",
+    "hors_perimetre": "caddy 2.11.4 ecoute en UDP 443 : c'est SA pile QUIC (HTTP/3), dans son propre binaire, sans rapport avec les dependances de geth listees ici.",
+    "dependance_a_la_chaine_go": "Ce releve n'est valable que pour la chaine Go epinglee dans go.mod (go1.25.13). Lance avec un autre Go, govulncheck decrit un binaire different : audit-go.js force donc GOTOOLCHAIN sur la valeur de go.mod et le verifie."
+  }
 }
