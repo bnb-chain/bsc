@@ -314,6 +314,7 @@ type MevParams struct {
 	GasPrice              *big.Int // Minimum avg gas price for bid block
 	BuilderFeeCeil        *big.Int
 	BidBlockEnabled       bool // whether mev_sendBidBlock is accepted
+	GRPCEnabled           bool // whether the MEV gRPC transport is enabled
 	Version               string
 }
 

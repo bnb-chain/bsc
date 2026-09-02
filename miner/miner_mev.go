@@ -269,6 +269,7 @@ func (miner *Miner) MevParams() *buildertypes.MevParams {
 		GasPrice:              miner.worker.config.GasPrice,
 		BuilderFeeCeil:        builderFeeCeil,
 		BidBlockEnabled:       miner.bidBlockEnabled(),
+		GRPCEnabled:           !miner.worker.config.Mev.GRPCDisabled && miner.worker.config.Mev.GRPCPort != 0,
 		Version:               version.Semantic,
 	}
 }
