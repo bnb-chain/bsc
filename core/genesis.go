@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -771,11 +770,6 @@ func DeveloperGenesisBlock(gasLimit uint64, faucet *common.Address) *Genesis {
 			params.HistoryStorageAddress:     {Nonce: 1, Code: params.HistoryStorageCode, Balance: common.Big0},
 			params.WithdrawalQueueAddress:    {Nonce: 1, Code: params.WithdrawalQueueCode, Balance: common.Big0},
 			params.ConsolidationQueueAddress: {Nonce: 1, Code: params.ConsolidationQueueCode, Balance: common.Big0},
-			// The B20 registries hold storage and no code, so they need their
-			// sentinels from the start on a chain that is born past the fork: the
-			// boundary hook that plants them never runs here (BEP-702 3.16).
-			vm.B20ActivationRegistryAddress: {Code: vm.B20MarkerCode, Balance: common.Big0},
-			vm.B20PolicyRegistryAddress:     {Code: vm.B20MarkerCode, Balance: common.Big0},
 		},
 	}
 	if faucet != nil {

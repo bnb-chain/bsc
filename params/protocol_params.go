@@ -243,7 +243,7 @@ var (
 	// EIP-2935 - Serve historical block hashes from state
 	HistoryStorageAddress = common.HexToAddress("0x0000F90827F1C53a10cb7A02335B175320002935")
 
-	// B20GovHubAddress is BSC's GovHub, the only account the B20 ActivationRegistry
+	// CAS20GovHubAddress is BSC's GovHub, the only account the CAS20 ActivationRegistry
 	// accepts a parameter change from (BEP-702 3.15). It is duplicated from
 	// core/systemcontracts, which imports core/vm and so cannot be imported back.
 	//
@@ -252,7 +252,7 @@ var (
 	// own updateParam(key, value, target) takes an arbitrary target, though, and
 	// forwards to updateParam(key, value) on it — which is how every system
 	// contract is configured and how this registry is reached.
-	B20GovHubAddress   = common.HexToAddress("0x0000000000000000000000000000000000001007")
+	CAS20GovHubAddress = common.HexToAddress("0x0000000000000000000000000000000000001007")
 	HistoryStorageCode = common.FromHex("3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500")
 
 	// EIP-7002 - Execution layer triggerable withdrawals

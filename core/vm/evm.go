@@ -47,28 +47,28 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	if p, ok := evm.precompiles[addr]; ok {
 		return p, ok
 	}
-	// B20 native token family: the factory has a fixed address and every token
+	// CAS20 native token family: the factory has a fixed address and every token
 	// address is resolved dynamically from its prefix (there is no fixed-address
 	// entry for tokens, so they cannot live in the static precompiles map).
-	if evm.b20Enabled() {
-		return resolveB20(addr)
+	if evm.cas20Enabled() {
+		return resolveCAS20(addr)
 	}
 	return nil, false
 }
 
-// b20Enabled reports whether the B20 native token family is active for the
+// cas20Enabled reports whether the CAS20 native token family is active for the
 // current block.
 //
 // Jenner (BEP-706) is the fork that ships it. IsJenner embeds the IsInBSC gate,
 // so no separate check is needed: a non-BSC config that set jennerTime would
 // still not route the reserved address space, and its registries would never be
 // seeded either.
-func (evm *EVM) b20Enabled() bool {
+func (evm *EVM) cas20Enabled() bool {
 	return evm.chainRules.IsJenner
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles
-// (the B20 family) through runStatefulPrecompiledContract and everything else
+// (the CAS20 family) through runStatefulPrecompiledContract and everything else
 // through the plain, stateless RunPrecompiledContract.
 //
 // readOnly is the read-only state of the current frame; directCall is true for

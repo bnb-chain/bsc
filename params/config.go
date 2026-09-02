@@ -1460,15 +1460,27 @@ func (c *ChainConfig) IsPasteur(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.PasteurTime, time)
 }
 
-// IsOnJenner reports whether currentBlockTime is the first to be at or past the
-// Jenner fork time — the boundary block, which is where the B20 activation state
-// is seeded (BEP-702 3.15).
+// IsOnJenner reports whether this block is the one that crosses into Jenner, the
+// single block on which the fork's state changes are applied.
+//
+// Block 1 counts as that block on a chain whose genesis is already Jenner-active,
+// where no false-to-true transition exists to find. Without it such a chain would
+// never plant the registries' account sentinels, and because GovHub refuses a
+// target carrying no code, the activation admin could then never be appointed —
+// leaving the reserved address space routed to precompiles that nothing can ever
+// open, correctable only by another fork.
 func (c *ChainConfig) IsOnJenner(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	if !c.IsJenner(currentBlockNumber, currentBlockTime) {
+		return false
+	}
+	if currentBlockNumber.Cmp(big.NewInt(1)) == 0 {
+		return true
+	}
 	lastBlockNumber := new(big.Int)
 	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
 		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
 	}
-	return !c.IsJenner(lastBlockNumber, lastBlockTime) && c.IsJenner(currentBlockNumber, currentBlockTime)
+	return !c.IsJenner(lastBlockNumber, lastBlockTime)
 }
 
 // IsOnPasteur eturns whether currentBlockTime is either equal to the Pasteur fork time or greater firstly.

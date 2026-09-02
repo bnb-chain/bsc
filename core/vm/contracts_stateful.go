@@ -27,7 +27,7 @@ import (
 // state. Unlike the plain PrecompiledContract, whose Run is a pure function of
 // its input, a stateful precompile is handed a PrecompileContext carrying the
 // StateDB, the caller, the call mode, and dynamic gas metering. It is the host
-// primitive the B20 token family is built on.
+// primitive the CAS20 token family is built on.
 type StatefulPrecompiledContract interface {
 	// RequiredGas returns the flat gas charged up-front, before RunStateful.
 	// Additional, data-dependent cost is charged inside RunStateful via
@@ -51,7 +51,7 @@ type PrecompileContext struct {
 	// enclosing call frame's snapshot when RunStateful returns an error.
 	StateDB StateDB
 
-	// Self is the address the precompile is bound to. For the B20 dynamic
+	// Self is the address the precompile is bound to. For the CAS20 dynamic
 	// family this is the token address, and is the storage root for its state.
 	Self common.Address
 
@@ -67,7 +67,7 @@ type PrecompileContext struct {
 	// Self is always the genuine callee and can be trusted as the storage root.
 	DirectCall bool
 
-	// Value is the wei attached to the frame (nil means zero). Every B20 entry
+	// Value is the wei attached to the frame (nil means zero). Every CAS20 entry
 	// point is nonpayable and rejects a non-zero value with NonPayable
 	// (BEP-702 section 3.2).
 	Value *uint256.Int
@@ -147,7 +147,7 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
 // chargeGas charges cost against the frame and reports whether it may continue.
-// Every B20 charge arrives here, state access and computation alike.
+// Every CAS20 charge arrives here, state access and computation alike.
 //
 // False means stop: the caller must return before the operation this charge pays
 // for, the way the interpreter checks UseGas before executing an opcode rather

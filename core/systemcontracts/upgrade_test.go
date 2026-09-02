@@ -73,11 +73,11 @@ func TestUpgradeBuildInSystemContractNilValue(t *testing.T) {
 	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
 }
 
-// TestB20SentinelsPlantedAtFork pins the boundary hook: the two registries get
+// TestCAS20SentinelsPlantedAtFork pins the boundary hook: the two registries get
 // their account sentinels on the block that crosses Jenner, and on no other. The
 // hook writes nothing else — the activation authority is a constant, so there is
 // no admin to seed.
-func TestB20SentinelsPlantedAtFork(t *testing.T) {
+func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
 	const forkTime = 1000
 	// The fork is timestamp-based but still requires London, which on BSC is at
 	// block 31302048 — a block number below it would make the predicate false for
@@ -98,24 +98,41 @@ func TestB20SentinelsPlantedAtFork(t *testing.T) {
 		return &cfg
 	}
 	planted := func(statedb *state.StateDB) bool {
-		return len(statedb.GetCode(vm.B20ActivationRegistryAddress)) != 0 &&
-			len(statedb.GetCode(vm.B20PolicyRegistryAddress)) != 0
+		return len(statedb.GetCode(vm.CAS20ActivationRegistryAddress)) != 0 &&
+			len(statedb.GetCode(vm.CAS20PolicyRegistryAddress)) != 0
+	}
+
+	// A chain whose genesis is already Jenner-active. Nothing about it ever
+	// crosses the fork, so block 1 has to stand in for the boundary: without it
+	// the registries keep no code, GovHub refuses them as a proposal target, and
+	// the activation admin can never be appointed.
+	bornActive := func() *params.ChainConfig {
+		cfg := *params.BSCChainConfig
+		zero := uint64(0)
+		cfg.JennerTime = &zero
+		cfg.LondonBlock = big.NewInt(0)
+		return &cfg
 	}
 
 	for _, tc := range []struct {
 		name                     string
 		cfg                      *params.ChainConfig
+		number                   *big.Int
 		lastBlockTime, blockTime uint64
 		atBlockBegin             bool
 		want                     bool
 	}{
-		{"the block crossing the fork", bscConfig(), forkTime - 1, forkTime, true, true},
-		{"wholly before the fork", bscConfig(), forkTime - 2, forkTime - 1, true, false},
-		{"wholly after the boundary", bscConfig(), forkTime + 1, forkTime + 2, true, false},
-		{"the block-end pass", bscConfig(), forkTime - 1, forkTime, false, false},
+		{"the block crossing the fork", bscConfig(), postLondon, forkTime - 1, forkTime, true, true},
+		{"wholly before the fork", bscConfig(), postLondon, forkTime - 2, forkTime - 1, true, false},
+		{"wholly after the boundary", bscConfig(), postLondon, forkTime + 1, forkTime + 2, true, false},
+		{"the block-end pass", bscConfig(), postLondon, forkTime - 1, forkTime, false, false},
+
+		{"block 1 of a chain born active", bornActive(), big.NewInt(1), 100, 200, true, true},
+		{"block 2 of a chain born active", bornActive(), big.NewInt(2), 200, 300, true, false},
+		{"block 1 before the fork is scheduled", bscConfig(), big.NewInt(1), 1, 2, true, false},
 	} {
 		statedb := newState()
-		TryUpdateBuildInSystemContract(tc.cfg, postLondon, tc.lastBlockTime, tc.blockTime, statedb, tc.atBlockBegin)
+		TryUpdateBuildInSystemContract(tc.cfg, tc.number, tc.lastBlockTime, tc.blockTime, statedb, tc.atBlockBegin)
 		if got := planted(statedb); got != tc.want {
 			t.Errorf("%s: sentinels planted = %v, want %v", tc.name, got, tc.want)
 		}

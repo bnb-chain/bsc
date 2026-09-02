@@ -12,7 +12,7 @@ import (
 
 // probePrecompile records the context it was handed instead of doing work.
 type probePrecompile struct {
-	b20StatefulBase
+	cas20StatefulBase
 	got PrecompileContext
 }
 
