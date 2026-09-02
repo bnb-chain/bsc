@@ -242,6 +242,10 @@ func (w *worker) revokeBidBlockBuilder(builder common.Address, reason string, ha
 
 func (w *worker) revokeBidBlockBuilderFor(builder common.Address, reason string, hash common.Hash, blockNum uint64, duration time.Duration) {
 	w.permMgr.RevokeFor(builder, reason, hash, blockNum, duration)
+	w.afterBidBlockRevoke()
+}
+
+func (w *worker) afterBidBlockRevoke() {
 	bidBlockRevokeGauge.Inc(1)
 	bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
 }
@@ -278,6 +282,10 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	_, insertErr := w.chain.InsertChain(types.Blocks{block})
 	bidBlockVerifyTimer.UpdateSince(verifyStart)
 	if insertErr != nil {
+		bidBlockVerifyFailedGauge.Inc(1)
+		reason := fmt.Sprintf("InsertChain err: %v", insertErr)
+		violationCount := w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
+		w.afterBidBlockRevoke()
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
@@ -288,9 +296,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"stateRoot", block.Root(),
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
+			"violationCount", violationCount,
+			"revokeDuration", bidBlockRevokeDuration,
 			"err", insertErr)
-		bidBlockVerifyFailedGauge.Inc(1)
-		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.

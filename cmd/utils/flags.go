@@ -861,6 +861,11 @@ var (
 		Usage:    "Disable the IPC-RPC server",
 		Category: flags.APICategory,
 	}
+	MevGRPCDisabledFlag = &cli.BoolFlag{
+		Name:     "mev.grpc.disable",
+		Usage:    "Disable the MEV gRPC server",
+		Category: flags.APICategory,
+	}
 	IPCPathFlag = &flags.DirectoryFlag{
 		Name:     "ipcpath",
 		Usage:    "Filename for IPC socket/pipe within the datadir (explicit paths escape it)",
@@ -2043,6 +2048,9 @@ func setBlobPool(ctx *cli.Context, cfg *blobpool.Config) {
 }
 
 func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
+	if ctx.Bool(MevGRPCDisabledFlag.Name) {
+		cfg.Mev.GRPCDisabled = true
+	}
 	if ctx.IsSet(MinerExtraDataFlag.Name) {
 		cfg.ExtraData = []byte(ctx.String(MinerExtraDataFlag.Name))
 	}

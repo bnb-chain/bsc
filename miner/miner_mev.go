@@ -259,6 +259,8 @@ func (miner *Miner) MevParams() *buildertypes.MevParams {
 		log.Error("failed to parse builder fee ceil", "BuilderFeeCeil", *miner.worker.config.Mev.BuilderFeeCeil)
 		return nil
 	}
+	grpcEnabled := !miner.worker.config.Mev.GRPCDisabled &&
+		*miner.worker.config.Mev.Enabled && *miner.worker.config.Mev.BidBlockEnabled
 
 	return &buildertypes.MevParams{
 		ValidatorCommission:   *miner.worker.config.Mev.ValidatorCommission,
@@ -269,6 +271,7 @@ func (miner *Miner) MevParams() *buildertypes.MevParams {
 		GasPrice:              miner.worker.config.GasPrice,
 		BuilderFeeCeil:        builderFeeCeil,
 		BidBlockEnabled:       miner.bidBlockEnabled(),
+		GRPCEnabled:           grpcEnabled,
 		Version:               version.Semantic,
 	}
 }

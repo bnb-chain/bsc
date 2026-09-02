@@ -22,7 +22,7 @@ import (
 const RevokeReasonManual = "manual"
 
 const (
-	// bidBlockRevokeDuration is the default lockout window for invalid BidBlocks.
+	// bidBlockRevokeDuration is the lockout window for invalid BidBlocks.
 	bidBlockRevokeDuration = 24 * time.Hour
 	// bidBlockGasPriceLowRevokeDuration is one epoch for gas-price policy revokes.
 	bidBlockGasPriceLowRevokeDuration = 450 * time.Second
@@ -74,12 +74,15 @@ type BidBlockRevokeRecord struct {
 	Reason    string        `json:"reason"` // err detail for auto revokes (InsertChain failure), or RevokeReasonManual
 	BlockHash common.Hash   `json:"blockHash"`
 	BlockNum  uint64        `json:"blockNum"`
+	// ViolationCount tracks on-chain violations for logging and persistence.
+	ViolationCount int `json:"violationCount,omitempty"`
 }
 
 // BidBlockPermissionManager tracks per-builder SendBidBlock revokes.
 //
-// Revokes are kept in memory and expire lazily after their lockout window.
-// They are also mirrored to a journal file under the datadir (best-effort,
+// Revoke records are kept in memory for their violation count, while their
+// lockout expires after its duration. They are also mirrored to a journal file
+// under the datadir (best-effort,
 // asynchronously) so that a lockout is not silently cleared when the validator
 // restarts within its window — the RPC advertises resetAt = revokedAt +
 // duration as a wall-clock promise, which must hold across restarts.
@@ -98,7 +101,7 @@ type BidBlockPermissionManager struct {
 	// map under mu and hand it to a background writer, never blocking the
 	// mining path on disk I/O. Losing the newest write on a crash is
 	// acceptable (at worst one lockout is not restored); what must never happen
-	// is a disk hiccup stalling Revoke/SetAllowed.
+	// is a disk hiccup stalling permission updates.
 	persistMu    sync.Mutex // serialises background writers so they don't interleave
 	persistSeq   uint64     // bumped under mu on every mutation; identifies the latest snapshot
 	persistedSeq uint64     // highest seq handled by a writer (guarded by persistMu); advanced before the write, so a failed newer write still blocks older ones
@@ -106,8 +109,8 @@ type BidBlockPermissionManager struct {
 
 // NewBidBlockPermissionManager returns a manager journalling to journalPath
 // (may be empty for a purely in-memory manager). Any revokes persisted by a
-// previous process that are still within their lockout window are restored;
-// expired ones are dropped.
+// previous process are restored; only records still within their lockout window
+// deny builders.
 func NewBidBlockPermissionManager(journalPath string) *BidBlockPermissionManager {
 	m := &BidBlockPermissionManager{
 		revoked:     make(map[common.Address]BidBlockRevokeRecord),
@@ -118,9 +121,9 @@ func NewBidBlockPermissionManager(journalPath string) *BidBlockPermissionManager
 	return m
 }
 
-// load restores persisted revokes at startup, dropping any whose window has
-// already elapsed (including time spent offline). It runs once, synchronously,
-// off the hot path. Any error leaves the manager empty — same as a fresh node.
+// load restores persisted revoke records at startup. It runs once,
+// synchronously, off the hot path. Any error leaves the manager empty — same as
+// a fresh node.
 func (m *BidBlockPermissionManager) load() {
 	if m.journalPath == "" {
 		return
@@ -144,13 +147,16 @@ func (m *BidBlockPermissionManager) load() {
 		return
 	}
 	now := m.clock()
+	active := 0
 	for builder, rec := range journal.Revokes {
+		m.revoked[builder] = rec
 		if isRevokeActive(rec, now) {
-			m.revoked[builder] = rec
+			active++
 		}
 	}
 	if len(m.revoked) > 0 {
-		log.Info("Restored BidBlock revokes from journal", "path", m.journalPath, "count", len(m.revoked))
+		log.Info("Restored BidBlock revokes from journal",
+			"path", m.journalPath, "active", active, "inactive", len(m.revoked)-active)
 	}
 }
 
@@ -222,18 +228,24 @@ func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 	return !found
 }
 
-// Revoke denies builder and records the reason exposed by the permission RPC.
-func (m *BidBlockPermissionManager) Revoke(
+// RevokeForViolation records a violation and applies the standard lockout.
+func (m *BidBlockPermissionManager) RevokeForViolation(
 	builder common.Address,
 	reason string,
 	blockHash common.Hash,
 	blockNum uint64,
-) {
-	m.RevokeFor(builder, reason, blockHash, blockNum, bidBlockRevokeDuration)
+) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := m.clock()
+	violationCount := m.revoked[builder].ViolationCount + 1
+	m.applyRevokeLocked(builder, reason, blockHash, blockNum, bidBlockRevokeDuration, violationCount, now)
+	return violationCount
 }
 
 // RevokeFor denies builder for the supplied duration and records the reason
-// exposed by the permission RPC.
+// exposed by the permission RPC. The violation count is carried over unchanged.
 func (m *BidBlockPermissionManager) RevokeFor(
 	builder common.Address,
 	reason string,
@@ -246,12 +258,36 @@ func (m *BidBlockPermissionManager) RevokeFor(
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	now := m.clock()
+	m.applyRevokeLocked(builder, reason, blockHash, blockNum, duration, m.revoked[builder].ViolationCount, now)
+}
+
+// applyRevokeLocked stores one revoke and schedules persistence. Must be called
+// with m.mu held.
+//
+// An active lockout is never shortened by a shorter policy revoke.
+func (m *BidBlockPermissionManager) applyRevokeLocked(
+	builder common.Address,
+	reason string,
+	blockHash common.Hash,
+	blockNum uint64,
+	duration time.Duration,
+	violationCount int,
+	now time.Time,
+) {
+	if rec, found := m.revoked[builder]; found && isRevokeActive(rec, now) {
+		if remaining := revokeResetAt(rec).Sub(now); remaining > duration {
+			duration = remaining
+		}
+	}
 	m.revoked[builder] = BidBlockRevokeRecord{
-		RevokedAt: m.clock(),
-		Duration:  duration,
-		Reason:    reason,
-		BlockHash: blockHash,
-		BlockNum:  blockNum,
+		RevokedAt:      now,
+		Duration:       duration,
+		Reason:         reason,
+		BlockHash:      blockHash,
+		BlockNum:       blockNum,
+		ViolationCount: violationCount,
 	}
 	m.markDirtyLocked()
 }
@@ -289,6 +325,7 @@ func (m *BidBlockPermissionManager) ActiveRevokeCount() int {
 	return count
 }
 
+// SetAllowed is the operator override; allowing clears the lockout and violation count.
 func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -297,17 +334,18 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 		m.markDirtyLocked()
 		return
 	}
-	m.revoked[builder] = BidBlockRevokeRecord{
-		RevokedAt: m.clock(),
-		Duration:  bidBlockRevokeDuration,
-		Reason:    RevokeReasonManual,
-	}
-	m.markDirtyLocked()
+	// Do not let a manual denial shorten an active lockout.
+	now := m.clock()
+	m.applyRevokeLocked(builder, RevokeReasonManual, common.Hash{}, 0, bidBlockRevokeDuration, m.revoked[builder].ViolationCount, now)
 }
 
 // isRevokeActive reports whether now is before the revoke reset time.
 func isRevokeActive(rec BidBlockRevokeRecord, now time.Time) bool {
-	return now.Before(rec.RevokedAt.Add(rec.Duration))
+	return now.Before(revokeResetAt(rec))
+}
+
+func revokeResetAt(rec BidBlockRevokeRecord) time.Time {
+	return rec.RevokedAt.Add(rec.Duration)
 }
 
 func (m *BidBlockPermissionManager) activeRecord(builder common.Address, now time.Time) (BidBlockRevokeRecord, bool) {

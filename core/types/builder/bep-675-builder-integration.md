@@ -160,7 +160,7 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 **Recommended practice:**
 
 - Poll `mev_getBidBlockPermission` once every 5–10 seconds and cache the current validator's BidBlock permission for that builder.
-- For each validator, periodically query `mev_params` to check whether that validator has BidBlock enabled (`BidBlockEnabled` field). When disabled, treat it the same as permission denied and fall back to legacy `mev_sendBid`.
+- For each validator, periodically query `mev_params`. Use gRPC only when both `BidBlockEnabled` and `GRPCEnabled` are true; otherwise fall back to legacy `mev_sendBid`.
 
 ### BidBlock send window
 
@@ -180,6 +180,6 @@ The transmission latency on the wire is not constant: the number of transactions
 2. The validator overwrites `Extra` and recomputes `TxHash` after bind-signing the system tx; all other header fields are used as-is from the builder.
 3. The BidBlock send window is later than legacy `mev_sendBid` because no validator-side simulation is needed (see [BidBlock send window](#bidblock-send-window)).
 4. BidBlock and the legacy bid share the same per-block quota, exposed via `mev_params.MaxBidsPerBuilder`.
-5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". When `mev_params.BidBlockEnabled == false`, treat it the same as permission denied.
+5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". Use gRPC only when both `mev_params.BidBlockEnabled` and `mev_params.GRPCEnabled` are true.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
