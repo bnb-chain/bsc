@@ -533,9 +533,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	stack.RegisterAPIs(eth.APIs())
 	stack.RegisterProtocols(eth.Protocols())
 	stack.RegisterLifecycle(eth)
-	grpcEnabled := !config.Miner.Mev.GRPCDisabled && config.Miner.Mev.BidBlockEnabled != nil && *config.Miner.Mev.BidBlockEnabled
-	if grpcEnabled && config.Miner.Mev.GRPCPort != 0 {
-		if config.Miner.Mev.GRPCPort < 0 || config.Miner.Mev.GRPCPort > 65535 {
+	grpcEnabled := !config.Miner.Mev.GRPCDisabled &&
+		config.Miner.Mev.Enabled != nil && *config.Miner.Mev.Enabled &&
+		config.Miner.Mev.BidBlockEnabled != nil && *config.Miner.Mev.BidBlockEnabled
+	if grpcEnabled {
+		if config.Miner.Mev.GRPCPort <= 0 || config.Miner.Mev.GRPCPort > 65535 {
 			return nil, fmt.Errorf("invalid MEV gRPC port %d", config.Miner.Mev.GRPCPort)
 		}
 		grpcHost := stack.Config().HTTPHost
