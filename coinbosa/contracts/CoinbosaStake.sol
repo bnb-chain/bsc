@@ -222,9 +222,18 @@ contract CoinbosaStake {
         uint8 quarantainesRecentes;
         // emplacement 3
         bytes32 voteA;
-        // emplacement 4
+        // emplacement 4 — 128 + 64 + 64 = exactement 256 bits
         bytes16 voteB;
         uint64 dateDerniereQuarantaine;
+        /// Bloc ou l'argent a ete MIS EN JEU. Un enjeu ne repond pas d'une
+        /// faute commise AVANT d'etre depose : signalerDoubleSignature refuse
+        /// une preuve de hauteur inferieure. Ecrit a la CREATION de l'entree
+        /// uniquement — jamais par ajouterEnjeu(), jamais par
+        /// sortirDeQuarantaine(), sans quoi il suffirait de se faire mettre en
+        /// quarantaine pour blanchir son passe. Vaut 0 pour une entree qui n'a
+        /// rien depose, et 0 est la valeur la PLUS sanctionnable : le defaut
+        /// penche du cote sur.
+        uint64 blocEngagement;
     }
 
     mapping(address => Entree) internal entrees;
@@ -239,7 +248,9 @@ contract CoinbosaStake {
     uint256 public primesDues;
     mapping(address => uint256) public primeDe;
     mapping(address => uint64) public primeDisponibleLe;
-    mapping(bytes32 => bool) public preuveUtilisee;
+    /// Cle = (fautif, hauteur), PAS le hash de la preuve : voir le long
+    /// commentaire de signalerDoubleSignature, section 10.
+    mapping(bytes32 => bool) public infractionSanctionnee;
 
     // --- gouvernance du minimum d'enjeu ---
     uint96 internal _enjeuMinimum;      // 0 == plancher (etat vide valide)
@@ -309,8 +320,9 @@ contract CoinbosaStake {
     error TransfertEchoue();
     error RienAReclamer();
     error PreuveInvalide();
-    error PreuveDejaUtilisee();
+    error InfractionDejaSanctionnee();
     error PreuveHorsFenetre();
+    error PreuveAnterieureAuDepot();
     error NonAutorise();
     error HorsBornes();
     error TropRapide();
@@ -1029,6 +1041,7 @@ contract CoinbosaStake {
         e.enjeuMinAdmission = uint96(min); // non-retroactivite : voir _eligible
         e.dateCandidature = uint64(block.timestamp);
         e.etat = EN_ATTENTE;
+        e.blocEngagement = uint64(block.number);
         e.voteA = cleA;
         e.voteB = cleB;
         proprietaireCleVote[h] = msg.sender;
@@ -1071,6 +1084,9 @@ contract CoinbosaStake {
         uint256 nv = uint256(e.enjeu) + msg.value;
         if (nv > type(uint96).max) revert EnjeuTropGrand();
         e.enjeu = uint96(nv);
+        // JAMAIS repousse : une caution reversee apres une sanction ne doit pas
+        // effacer l'exposition acquise au premier depot.
+        if (e.blocEngagement == 0) e.blocEngagement = uint64(block.number);
         // ACTIF le rend sanctionnable par slash() comme les autres. C'est la
         // seule facon de dire « son argent est engage » sans mentir sur sa place.
         if (e.etat == INEXISTANT || e.etat == EN_DEBLOCAGE) e.etat = ACTIF;
@@ -1169,9 +1185,115 @@ contract CoinbosaStake {
     // 10. LA SANCTION LOURDE — double signature, hors consensus
     // =====================================================================
 
-    /// Ouverte a tous, sans condition de gaz : la preuve est cryptographique,
-    /// elle n'a pas besoin d'etre autorisee. `preuve` est le RLP de
-    /// DoubleSignEvidence{ChainId, HeaderBytes1, HeaderBytes2}.
+    // --- L'ENCODEUR RLP DE LA PREUVE -------------------------------------
+    //
+    // Ces quatre fonctions n'existent que pour que le contrat construise
+    // LUI-MEME l'enveloppe remise au precompile 0x68, au lieu de relayer un
+    // blob fourni par l'appelant. La raison est detaillee juste en dessous.
+    // Elles produisent de la RLP CANONIQUE, la seule que geth accepte :
+    // longueurs minimales, aucun zero de tete, et raccourci « octet nu »
+    // reserve aux chaines de LONGUEUR 1 valant moins de 0x80.
+
+    /// Nombre d'octets significatifs de x (0 pour x == 0).
+    function _longueurOctets(uint256 x) internal pure returns (uint256 n) {
+        while (x != 0) {
+            unchecked { ++n; }
+            x >>= 8;
+        }
+    }
+
+    /// Les n octets de poids faible de x, en gros-boutien.
+    function _octetsDe(uint256 x, uint256 n) internal pure returns (bytes memory b) {
+        b = new bytes(n);
+        for (uint256 i = 0; i < n; ) {
+            b[i] = bytes1(uint8(x >> (8 * (n - 1 - i))));
+            unchecked { ++i; }
+        }
+    }
+
+    /// Prefixe de longueur RLP. base = 0x80 pour une chaine, 0xc0 pour une liste.
+    function _prefixeRlp(uint256 len, uint256 base) internal pure returns (bytes memory) {
+        if (len <= 55) return abi.encodePacked(uint8(base + len));
+        uint256 n = _longueurOctets(len);
+        // La RLP ne definit pas de longueur-de-longueur au-dela de 8 octets
+        // (0xb7 + 8 = 0xbf, 0xf7 + 8 = 0xff). Inatteignable ici — il faudrait
+        // 2^64 octets de calldata — mais la borne rend l'encodeur TOTAL : au
+        // dela, le prefixe deborderait sur la plage voisine au lieu de refuser.
+        if (n > 8) revert PreuveInvalide();
+        return abi.encodePacked(uint8(base + 55 + n), _octetsDe(len, n));
+    }
+
+    /// RLP d'un entier. Go encode le ChainId comme un *big.Int, donc comme une
+    /// chaine d'octets minimale. ZERO -> chaine VIDE (0x80), JAMAIS 0x00 : geth
+    /// rejette 0x00 (« rlp: non-canonical integer »).
+    function _rlpEntier(uint256 x) internal pure returns (bytes memory) {
+        if (x == 0) return hex"80";
+        // LE PIEGE, ET COINBOSA EST LE CAS QUI LE REVELE. Le raccourci « octet
+        // nu » vaut pour une chaine de LONGUEUR 1 dont l'octet est < 0x80 — pas
+        // pour un PREMIER OCTET < 0x80. Notre chainId 26262 vaut 0x6696 : son
+        // premier octet 0x66 est bien inferieur a 0x80, et pourtant l'encodage
+        // correct est « 82 66 96 ». Emettre « 66 96 » ferait mal parser la liste
+        // entiere. C'est le test x <= 0x7f, et non un test sur le premier octet,
+        // qui separe les deux cas. Le chainId 56 de BSC, lui, tient sur un octet
+        // nu : la branche multi-octets n'est jamais exercee chez eux, donc
+        // recopier leur code sans la comprendre ne suffisait pas.
+        if (x <= 0x7f) return abi.encodePacked(uint8(x));
+        uint256 n = _longueurOctets(x);
+        return abi.encodePacked(uint8(0x80 + n), _octetsDe(x, n));
+    }
+
+    /// RLP d'une chaine d'octets.
+    function _rlpOctets(bytes calldata s) internal pure returns (bytes memory) {
+        if (s.length == 1 && uint8(s[0]) <= 0x7f) return s;
+        return abi.encodePacked(_prefixeRlp(s.length, 0x80), s);
+    }
+
+    /// L'ACCIDENT QUE CETTE FORME EVITE : LE PRECOMPILE CROIT LA PREUVE SUR
+    /// PAROLE QUANT A LA CHAINE OU LA FAUTE A ETE COMMISE.
+    ///
+    /// Le precompile 0x68 attend le RLP d'un DoubleSignEvidence
+    /// {ChainId, HeaderBytes1, HeaderBytes2}. Pour retrouver la cle qui a scelle
+    /// chaque entete, il calcule (core/vm/contracts.go) :
+    ///
+    ///     msgHash1 := types.SealHash(header1, evidence.ChainId)
+    ///
+    /// Il utilise donc le ChainId ECRIT DANS LA PREUVE. Il ne le compare jamais
+    /// a celui de la chaine qui l'execute, et aucun autre endroit du client Go
+    /// ne fait cette comparaison a sa place. Or le ChainId est le PREMIER champ
+    /// scelle (core/types/block.go, EncodeSigHeader) : il fait partie du message
+    /// signe, si bien qu'une signature ne vaut QUE pour une chaine — mais c'est
+    /// la preuve elle-meme qui declare laquelle.
+    ///
+    /// CE QUI ARRIVERAIT SANS CETTE GARDE. Si la fonction acceptait un blob RLP
+    /// deja assemble, c'est l'APPELANT qui choisirait ce ChainId. Il lui
+    /// suffirait alors d'une equivocation parfaitement AUTHENTIQUE commise par
+    /// le validateur vise sur n'importe quelle AUTRE chaine Parlia — un reseau
+    /// d'essai, ou une chaine montee pour l'occasion — des lors que ce
+    /// validateur y reutilise sa cle de scellage. Le precompile certifierait la
+    /// preuve sans broncher, et cette fonction confisquerait l'INTEGRALITE de
+    /// l'enjeu d'un validateur qui n'a jamais rien fait de mal sur Coinbosa. La
+    /// reutilisation d'une meme cle entre un banc d'essai et la production est
+    /// un piege classique, et PoBS accueille jusqu'a 41 validateurs, chacun
+    /// avec ses habitudes. Les deux bornes existantes n'y suffisent pas :
+    /// « hauteur > block.number » n'ecarte qu'une chaine PLUS HAUTE que la
+    /// notre, et FENETRE_PREUVE_BLOCS laisse 21 jours — un reseau jeune passe
+    /// les deux.
+    ///
+    /// D'OU CETTE FORME ETRANGE. La fonction ne recoit PAS de preuve toute
+    /// faite. Elle recoit les deux entetes bruts et REASSEMBLE elle-meme
+    /// rlp([block.chainid, enTete1, enTete2]). Le ChainId cesse d'etre une
+    /// donnee de l'appelant pour devenir une donnee de la chaine : il n'y a plus
+    /// rien a falsifier. C'est exactement pour cette raison que le
+    /// SlashIndicator de bnb-chain/bsc construit lui aussi son RLP au lieu
+    /// d'accepter un blob. Et le sens de la panne est le bon : un defaut de
+    /// notre encodeur ne peut produire qu'un FAUX NEGATIF — le precompile
+    /// refuse un RLP malforme, la sanction echoue bruyamment — jamais un faux
+    /// positif.
+    ///
+    /// block.chainid plutot qu'une constante gravee : c'est litteralement la
+    /// propriete recherchee, « la chaine qui EXECUTE » ; et le produit est en
+    /// marque blanche, donc un partenaire qui redeploie sur son propre chainId
+    /// obtient un contrat juste sans avoir a reecrire cette ligne.
     ///
     /// LE CONTROLE ret.length != 52 N'EST PAS DECORATIF, IL EST INDISPENSABLE.
     /// Le precompile 0x68 ne figure PAS dans PrecompiledContractsHertz
@@ -1181,15 +1303,56 @@ contract CoinbosaStake {
     /// quelles donnees passeraient pour une preuve valide et permettraient de
     /// confisquer l'enjeu d'un validateur honnete. La bifurcation doit activer
     /// 0x68 a pobsTime ; ce controle de longueur reste le filet si l'ordre de
-    /// deploiement etait inverse.
+    /// deploiement etait inverse. Noter que le SlashIndicator de BSC, lui, ne
+    /// verifie PAS cette longueur : sur ce point precis il ne faut pas le
+    /// copier, parce que chez eux Feynman est actif depuis longtemps.
     ///
     /// Le format de retour est fixe par le precompile : 20 octets d'adresse de
     /// signataire, puis 32 octets de hauteur, soit 52 exactement.
-    function signalerDoubleSignature(bytes calldata preuve) external {
-        bytes32 h = keccak256(preuve);
-        if (preuveUtilisee[h]) revert PreuveDejaUtilisee();
+    ///
+    /// CE QUE CETTE FONCTION NE PEUT PAS FAIRE, ET QU'IL FAUT SAVOIR.
+    /// Reconstruire le RLP ne protege de rien contre une chaine qui PARTAGE
+    /// notre chainId : une equivocation authentique commise la-bas est, par
+    /// construction, une equivocation valide ici, et aucun contrat ne peut les
+    /// distinguer. Le precompile ne verifie ni que ParentHash appartient a notre
+    /// histoire, ni que la hauteur correspond a un bloc reel : la regle
+    /// reellement appliquee est « il a signe deux entetes en conflit POUR NOTRE
+    /// CHAINID », pas « il a double-signe sur la chaine canonique ». La parade
+    /// est hors contrat, et elle est double : donner un chainId DISTINCT a tout
+    /// genesis autre que la production (genesis-coinbosa-dev.json porte
+    /// aujourd'hui le meme 26262 que la production), et interdire par regle
+    /// d'exploitation qu'une cle de scellage de production soit chargee sur un
+    /// noeud qui n'est pas la production. Une cle volee reste, elle aussi,
+    /// indiscernable — comme sur BSC.
+    ///
+    /// Ouverte a tous, sans condition de gaz : la preuve est cryptographique,
+    /// elle n'a pas besoin d'etre autorisee. En revanche un refus du precompile
+    /// n'est pas un revert ordinaire : errInvalidEvidence remonte comme une
+    /// erreur, donc le staticcall CONSOMME tout le gaz transmis. Le denonciateur
+    /// doit prevoir large.
+    /// Assemble rlp([block.chainid, enTete1, enTete2]) : l'enveloppe EXACTE
+    /// remise au precompile. Le chainId n'est PAS un parametre de cette
+    /// fonction et NE DOIT JAMAIS LE DEVENIR — c'est toute la propriete de
+    /// surete de cette section. Isolee ici pour etre confrontable octet par
+    /// octet au rlp.EncodeToBytes de Go par un harnais de test.
+    function _enveloppePreuve(bytes calldata enTete1, bytes calldata enTete2)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes memory idc = _rlpEntier(block.chainid);
+        bytes memory e1 = _rlpOctets(enTete1);
+        bytes memory e2 = _rlpOctets(enTete2);
+        return bytes.concat(
+            _prefixeRlp(idc.length + e1.length + e2.length, 0xc0), idc, e1, e2
+        );
+    }
 
-        (bool ok, bytes memory ret) = address(0x68).staticcall(preuve);
+    function signalerDoubleSignature(bytes calldata enTete1, bytes calldata enTete2) external {
+        // L'enveloppe est CONSTRUITE ICI, jamais recue : rlp([chainId, h1, h2]).
+        bytes memory enveloppe = _enveloppePreuve(enTete1, enTete2);
+
+        (bool ok, bytes memory ret) = address(0x68).staticcall(enveloppe);
         if (!ok || ret.length != 52) revert PreuveInvalide();
 
         address fautif;
@@ -1204,12 +1367,61 @@ contract CoinbosaStake {
             revert PreuveHorsFenetre();
         }
 
-        Entree storage e = entrees[fautif];
-        uint8 s = e.etat;
-        // EN_DEBLOCAGE est inclus : la periode de purge sert EXACTEMENT a cela.
-        if (s != ACTIF && s != EN_QUARANTAINE && s != EN_DEBLOCAGE) revert EtatIncompatible();
+        // LA CLE ANTI-REJEU PORTE SUR LA FAUTE, PAS SUR SES OCTETS.
+        //
+        // L'ancienne cle, keccak256(preuve), etait contournable. Le hash de
+        // scellement ne couvre pas tout l'entete : EncodeSigHeader n'ajoute
+        // BaseFee, WithdrawalsHash, BlobGasUsed, ExcessBlobGas et RequestsHash
+        // QUE si ParentBeaconRoot != nil — et Coinbosa n'a pas de cancunTime,
+        // donc ParentBeaconRoot est TOUJOURS nil. Modifier BaseFee, ou le
+        // retirer purement (les champs sont `rlp:"optional"` et le decodeur Go
+        // met a zero ceux qui manquent), changeait donc les octets, donc leur
+        // keccak, sans changer le SealHash, ni la signature, ni la cle
+        // recuperee. Intervertir les deux entetes, ou remplacer (r, s, v) par
+        // (r, n-s, v^1), avaient le meme effet. La famille d'encodages d'une
+        // MEME faute est infinie : l'ancienne garde ne gardait rien.
+        //
+        // (fautif, hauteur) est exactement ce que le precompile CERTIFIE, et la
+        // seule chose que l'attaquant ne peut pas faire varier : la hauteur est
+        // scellee, et le precompile impose deja que les deux entetes portent la
+        // meme. Deux equivocations distinctes a la meme hauteur comptent donc
+        // pour une seule — sans consequence, la confiscation est deja totale.
+        //
+        // Ce n'est pas une redondance avec le bannissement. BSC se passe d'une
+        // telle table parce que sa sanction est terminale pour tous ; ici le
+        // VALIDATEUR_GENESE reste ACTIF apres sanction (sa place est figee au
+        // bloc 0, voir plus bas), donc sans cette table une seule faute prouvee
+        // resterait reencaissable a chaque deposerCaution() ulterieur.
+        bytes32 k = keccak256(abi.encode(fautif, hauteur));
+        if (infractionSanctionnee[k]) revert InfractionDejaSanctionnee();
 
-        preuveUtilisee[h] = true;
+        Entree storage e = entrees[fautif];
+
+        // TOUT ETAT SAUF INEXISTANT. L'ancienne liste — ACTIF, EN_QUARANTAINE,
+        // EN_DEBLOCAGE — laissait deux echappatoires. EN_ATTENTE d'abord :
+        // deposer() y place tout entrant, et sortirDeQuarantaine() y ramene.
+        // BANNI ensuite, et c'est le plus grave, parce que retirer() rend
+        // l'INTEGRALITE de l'enjeu a un banni (§9). Un validateur qui venait
+        // d'equivoquer pouvait donc se faire mettre en quarantaine trois fois —
+        // BLOCS_SILENCE, puis DUREE_QUARANTAINE, puis les 7 jours de
+        // DELAI_CANDIDATURE que sortirDeQuarantaine() reenclenche, soit environ
+        // huit jours par cycle — atteindre BANNI en moins de 21 jours, devenir
+        // insaisissable AVANT l'expiration de FENETRE_PREUVE_BLOCS, puis
+        // repartir avec tout son enjeu au 49e jour. La sanction porte sur
+        // l'ARGENT ENGAGE, pas sur le siege : les sieges, c'est l'affaire de la
+        // machine a etats.
+        if (e.etat == INEXISTANT) revert EtatIncompatible();
+
+        // UN ENJEU NE REPOND QUE DE CE QUI SUIT SA MISE EN JEU. Sans cette
+        // ligne, une equivocation ANTERIEURE au depot — commise dans une vie
+        // anterieure de la meme cle, ou sur un banc d'essai qui partagerait
+        // notre chainId — permettrait de saisir un enjeu qui ne la couvrait pas.
+        // Elle ne ferme PAS le cas d'un attaquant qui controle une replique de
+        // notre chaine et choisit donc ses hauteurs (voir la note de limites
+        // ci-dessus) ; elle ferme le cas de la faute preexistante.
+        if (hauteur < uint256(e.blocEngagement)) revert PreuveAnterieureAuDepot();
+
+        infractionSanctionnee[k] = true;
         uint256 saisi = e.enjeu;
         e.enjeu = 0;
 

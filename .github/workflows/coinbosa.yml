@@ -134,6 +134,19 @@ jobs:
           GETH: ${{ github.workspace }}/build/bin/geth
         run: node scripts/test-selection-validateurs.js
 
+      # Le precompile 0x68 calcule le hash de scellement avec le ChainId CONTENU
+      # DANS LA PREUVE, jamais avec celui de la chaine qui execute. Passer le blob
+      # de l appelant tel quel rendait donc valide ici une equivocation commise
+      # sur une AUTRE chaine Parlia — et signalerDoubleSignature confisque la
+      # TOTALITE de l enjeu. Le contrat construit desormais l enveloppe lui-meme
+      # avec block.chainid. Ce banc verifie les deux sens : preuve etrangere
+      # refusee, preuve locale toujours sanctionnee.
+      - name: Double signature (rejeu inter-chaines)
+        working-directory: coinbosa
+        env:
+          GETH: ${{ github.workspace }}/build/bin/geth
+        run: node scripts/test-double-signature.js
+
       # --- genesis et démarrage ---
       - name: Générer le validateur et le genesis
         working-directory: coinbosa
