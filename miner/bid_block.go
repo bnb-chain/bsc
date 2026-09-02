@@ -270,7 +270,7 @@ func (w *worker) handleBadBidBlockEvidence(ev core.BadBidBlockEvent) {
 	}
 	// At the parent, the state that decided this sealer's role. Not head: delivery
 	// is async, and head may already have crossed a breathe block.
-	role, err := p.SealerRole(ev.ParentHash, ev.Sealer)
+	role, cabinetCount, totalCount, err := p.SealerRole(ev.ParentHash, ev.Sealer)
 	if err != nil {
 		log.Warn("[BID BLOCK EVIDENCE] validator lookup failed",
 			"sealer", ev.Sealer, "builder", ev.Builder, "err", err)
@@ -278,13 +278,17 @@ func (w *worker) handleBadBidBlockEvidence(ev core.BadBidBlockEvent) {
 	}
 	if role == parlia.ValidatorRoleNone {
 		// The seal was already verified, so this means a stale view, not a forgery.
-		log.Debug("[BID BLOCK EVIDENCE] sealer not in working validator set",
+		log.Debug("[BID BLOCK EVIDENCE] sealer not in validator set",
 			"sealer", ev.Sealer, "builder", ev.Builder, "number", ev.Number)
 		return
 	}
 
 	cabinetVotes, totalVotes := w.badBidBlocks.add(ev.Builder, ev.Sealer, role == parlia.ValidatorRoleCabinet)
-	if cabinetVotes < badBidBlockCabinetThreshold && totalVotes < badBidBlockTotalThreshold {
+	// Thresholds follow this event's parent state. Valid sightings remain in the
+	// rolling window across validator-set changes, including jailing.
+	cabinetThreshold := majorityThreshold(cabinetCount)
+	totalThreshold := majorityThreshold(totalCount)
+	if cabinetVotes < cabinetThreshold && totalVotes < totalThreshold {
 		log.Info("[BID BLOCK EVIDENCE]",
 			"builder", ev.Builder,
 			"sealer", ev.Sealer,
@@ -292,15 +296,20 @@ func (w *worker) handleBadBidBlockEvidence(ev core.BadBidBlockEvent) {
 			"number", ev.Number,
 			"hash", ev.Hash,
 			"cabinetVotes", cabinetVotes,
-			"totalVotes", totalVotes)
+			"cabinetThreshold", cabinetThreshold,
+			"totalVotes", totalVotes,
+			"totalThreshold", totalThreshold)
 		return
 	}
 
-	reason := fmt.Sprintf("bad BidBlocks from %d cabinet / %d total validators", cabinetVotes, totalVotes)
+	reason := fmt.Sprintf("bad BidBlocks from %d/%d cabinet and %d/%d total validators",
+		cabinetVotes, cabinetThreshold, totalVotes, totalThreshold)
 	log.Error("[BID BLOCK EVIDENCE REVOKE]",
 		"builder", ev.Builder,
 		"cabinetVotes", cabinetVotes,
+		"cabinetThreshold", cabinetThreshold,
 		"totalVotes", totalVotes,
+		"totalThreshold", totalThreshold,
 		"lastSealer", ev.Sealer,
 		"number", ev.Number,
 		"hash", ev.Hash)

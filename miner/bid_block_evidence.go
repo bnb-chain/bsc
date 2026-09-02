@@ -14,17 +14,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const (
-	// Distinct validators that must have sealed a builder's failing blocks before
-	// it is revoked, counted over the cabinet alone and over every role. The
-	// cabinet threshold sits above the Byzantine tolerance of a 21-seat cabinet
-	// (f = 6), so framing a builder needs a colluding set larger than consensus
-	// already assumes could exist. Do not lower it back to f or below.
-	badBidBlockCabinetThreshold = 7
-	badBidBlockTotalThreshold   = 15
-	// badBidBlockEvidenceWindow keeps incidents months apart from accumulating.
-	badBidBlockEvidenceWindow = 24 * time.Hour
-)
+// badBidBlockEvidenceWindow keeps incidents months apart from accumulating.
+const badBidBlockEvidenceWindow = 24 * time.Hour
+
+func majorityThreshold(validators int) int { return validators/2 + 1 }
 
 // isTrue reports whether an optional config flag is set and enabled.
 func isTrue(flag *bool) bool { return flag != nil && *flag }

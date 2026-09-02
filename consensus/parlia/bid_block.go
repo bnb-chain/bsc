@@ -207,11 +207,9 @@ func (p *Parlia) selectorFor(methodName string) [4]byte {
 type ValidatorRole uint8
 
 const (
-	// ValidatorRoleNone means the address is not a working validator.
+	// ValidatorRoleNone means the address is not in the validator set.
 	ValidatorRoleNone ValidatorRole = iota
 	ValidatorRoleCabinet
-	// ValidatorRoleCandidate also covers cabinet validators selected into the
-	// rotating tail, which are conservatively counted as candidates.
 	ValidatorRoleCandidate
 )
 
@@ -230,45 +228,35 @@ func (r ValidatorRole) String() string {
 // while numOfCabinets is unset.
 const initNumOfCabinets = 21
 
-// SealerRole classifies addr against the mining validator set at blockHash. The
-// fixed prefix is guaranteed to contain cabinets; the rotating tail is
-// conservatively treated as candidates.
-func (p *Parlia) SealerRole(blockHash common.Hash, addr common.Address) (ValidatorRole, error) {
+// SealerRole classifies addr against the validator set at blockHash and returns
+// the cabinet and full validator-set sizes used for majority thresholds.
+func (p *Parlia) SealerRole(blockHash common.Hash, addr common.Address) (ValidatorRole, int, int, error) {
 	var validators []common.Address
-	var voteAddrs []types.BLSPublicKey
-	if err := p.callValidatorSet(blockHash, "getMiningValidators", &validators, &voteAddrs); err != nil {
-		return ValidatorRoleNone, fmt.Errorf("getMiningValidators: %w", err)
+	if err := p.callValidatorSet(blockHash, "getValidators", &validators); err != nil {
+		return ValidatorRoleNone, 0, 0, fmt.Errorf("getValidators: %w", err)
 	}
 	idx := slices.Index(validators, addr)
 	if idx < 0 {
-		return ValidatorRoleNone, nil
+		return ValidatorRoleNone, 0, 0, nil
 	}
 
 	var numOfCabinets *big.Int
 	if err := p.callValidatorSet(blockHash, "numOfCabinets", &numOfCabinets); err != nil {
-		return ValidatorRoleNone, fmt.Errorf("numOfCabinets: %w", err)
+		return ValidatorRoleNone, 0, 0, fmt.Errorf("numOfCabinets: %w", err)
 	}
 	cabinets := initNumOfCabinets
 	if numOfCabinets != nil && numOfCabinets.IsInt64() && numOfCabinets.Sign() > 0 {
 		cabinets = int(numOfCabinets.Int64())
 	}
-	var maxWorkingCandidates *big.Int
-	if err := p.callValidatorSet(blockHash, "maxNumOfWorkingCandidates", &maxWorkingCandidates); err != nil {
-		return ValidatorRoleNone, fmt.Errorf("maxNumOfWorkingCandidates: %w", err)
+	cabinets = min(cabinets, len(validators))
+	if idx < cabinets {
+		return ValidatorRoleCabinet, cabinets, len(validators), nil
 	}
-	guaranteedCabinets := min(len(validators), cabinets)
-	if maxWorkingCandidates != nil && maxWorkingCandidates.IsInt64() && maxWorkingCandidates.Sign() > 0 {
-		workingCandidates := min(int(maxWorkingCandidates.Int64()), guaranteedCabinets)
-		guaranteedCabinets -= workingCandidates
-	}
-	if idx < guaranteedCabinets {
-		return ValidatorRoleCabinet, nil
-	}
-	return ValidatorRoleCandidate, nil
+	return ValidatorRoleCandidate, cabinets, len(validators), nil
 }
 
 // callValidatorSet performs a no-argument view call on the validator contract.
-func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out ...interface{}) error {
+func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out interface{}) error {
 	data, err := p.validatorSetABI.Pack(method)
 	if err != nil {
 		return err
@@ -288,18 +276,12 @@ func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out ...i
 	if err != nil {
 		return err
 	}
-	return unpackValidatorSet(p.validatorSetABI, method, result, out...)
+	return unpackValidatorSet(p.validatorSetABI, method, result, out)
 }
 
-// unpackValidatorSet decodes a validator-contract return value. A single output
-// must be decoded into the destination itself: the abi package routes that case
-// through copyAtomic, which cannot write into a []interface{} and fails with
-// "cannot unmarshal ... in to []interface {}".
-func unpackValidatorSet(contractABI abi.ABI, method string, result []byte, out ...interface{}) error {
-	if len(out) == 1 {
-		return contractABI.UnpackIntoInterface(out[0], method, result)
-	}
-	return contractABI.UnpackIntoInterface(&out, method, result)
+// unpackValidatorSet decodes a single-output validator-contract return value.
+func unpackValidatorSet(contractABI abi.ABI, method string, result []byte, out interface{}) error {
+	return contractABI.UnpackIntoInterface(out, method, result)
 }
 
 func (p *Parlia) BlockTimeUpperCheck(chain consensus.ChainHeaderReader, header *types.Header) error {

@@ -41,3 +41,20 @@ func TestBadBidBlockTracker(t *testing.T) {
 		t.Fatalf("stale sightings must be dropped: got cabinet=%d total=%d, want 0/1", cabinet, total)
 	}
 }
+
+func TestMajorityThreshold(t *testing.T) {
+	tests := []struct {
+		validators int
+		want       int
+	}{
+		{validators: 21, want: 11},
+		{validators: 45, want: 23},
+		{validators: 3, want: 2},
+		{validators: 4, want: 3},
+	}
+	for _, test := range tests {
+		if got := majorityThreshold(test.validators); got != test.want {
+			t.Errorf("majorityThreshold(%d) = %d, want %d", test.validators, got, test.want)
+		}
+	}
+}
