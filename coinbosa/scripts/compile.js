@@ -6,8 +6,17 @@ const solc = require('solc');
 const SRC = path.join(__dirname, '..', 'contracts');
 const OUT = path.join(__dirname, '..', 'build');
 
+// Les harnais de test (Essai*.sol) ne sont PAS compiles ici. Ils exposent des
+// ecritures d'etat arbitraires sans controle d'appelant — EssaiSelection permet
+// a quiconque de se nommer validateur — et n'existent que pour etre poses par
+// surcharge de code dans un eth_call, ou l'etat est jete a la fin de l'appel.
+// Produire leur artefact dans build/, a cote de ceux de production, mettrait un
+// contrat dangereux a une commande de deploiement d'un contrat legitime. La
+// suite de tests les compile en memoire et n'ecrit rien sur disque.
+const EST_HARNAIS = (f) => /^Essai/.test(f);
+
 const sources = {};
-for (const f of fs.readdirSync(SRC).filter((f) => f.endsWith('.sol'))) {
+for (const f of fs.readdirSync(SRC).filter((f) => f.endsWith('.sol') && !EST_HARNAIS(f))) {
   sources[f] = { content: fs.readFileSync(path.join(SRC, f), 'utf8') };
 }
 

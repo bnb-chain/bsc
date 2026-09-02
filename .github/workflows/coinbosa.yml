@@ -119,6 +119,21 @@ jobs:
         working-directory: coinbosa
         run: node scripts/compile.js
 
+      # Le jeu de validateurs ne tient debout que si N <= 2q-1, ou q est le nombre
+      # de membres qu'on a VU sceller. Depasser cette borne fait passer le quorum
+      # Parlia au-dessus du nombre de producteurs reels et ARRETE LA CHAINE, sans
+      # retour possible : une chaine qui ne produit plus ne peut plus recevoir la
+      # transaction qui la reparerait. Cette suite tient la garde de _construire.
+      # Sa valeur a ete etablie par mutation : retirer la garde fait tomber 42
+      # tests, inverser l'ordre du test de debordement en fait tomber d'autres.
+      # Elle demarre son propre noeud sur le port 8599, elle n'entre donc pas en
+      # conflit avec celui des etapes suivantes.
+      - name: Selection des validateurs (invariant N <= 2q-1)
+        working-directory: coinbosa
+        env:
+          GETH: ${{ github.workspace }}/build/bin/geth
+        run: node scripts/test-selection-validateurs.js
+
       # --- genesis et démarrage ---
       - name: Générer le validateur et le genesis
         working-directory: coinbosa
