@@ -147,6 +147,18 @@ jobs:
           GETH: ${{ github.workspace }}/build/bin/geth
         run: node scripts/test-double-signature.js
 
+      # mintingFinished() est la fonction qu une place d echange interroge pour
+      # confirmer qu un jeton a une offre fixe. Il y a DEUX facons de clore
+      # l emission : poser le drapeau, ou abandonner la propriete — mint() etant
+      # onlyOwner, un proprietaire nul la ferme aussi surement. Ne rapporter que
+      # le drapeau sous-declarait la garantie sur le standard dont herite CHAQUE
+      # jeton de la chaine. Le banc le prouve par mutation.
+      - name: BRC20 — cloture de l emission
+        working-directory: coinbosa
+        env:
+          GETH: ${{ github.workspace }}/build/bin/geth
+        run: node scripts/test-brc20-emission.js
+
       # --- genesis et démarrage ---
       - name: Générer le validateur et le genesis
         working-directory: coinbosa

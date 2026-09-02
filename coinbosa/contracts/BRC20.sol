@@ -113,7 +113,22 @@ contract BRC20 is IBRC20 {
         emit MintingFinished();
     }
 
-    function mintingFinished() public view returns (bool) { return _mintingFinished; }
+    /// @notice L'emission est-elle DEFINITIVEMENT close ?
+    ///
+    /// Deux facons de la clore, pas une. finishMinting() pose le drapeau ; mais
+    /// abandonner la propriete la ferme tout aussi surement, puisque mint() est
+    /// onlyOwner et qu'aucun appelant ne peut plus etre le proprietaire nul.
+    ///
+    /// Ne rapporter que le drapeau repondait donc « false » sur un jeton dont
+    /// l'offre etait pourtant scellee pour toujours. C'est cette fonction qu'une
+    /// place d'echange ou un agregateur interroge pour confirmer une offre fixe :
+    /// leur repondre « l'emission peut reprendre » quand elle ne le peut plus,
+    /// c'est sous-declarer la garantie du jeton.
+    ///
+    /// Aucune ecriture ne change : seule la lecture dit maintenant la verite.
+    function mintingFinished() public view returns (bool) {
+        return _mintingFinished || _owner == address(0);
+    }
 
     /// @notice Détruit `amount` jetons du solde de l'appelant.
     function burn(uint256 amount) public returns (bool) {
