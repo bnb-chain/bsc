@@ -1,5 +1,19 @@
 Contact: https://github.com/Coinbosa/coinbosa-chain/security/advisories/new
-Contact: mailto:security@coinbosa.com
+# Contact: mailto:security@coinbosa.com
+#
+# ADRESSE RETIREE, PAS SUPPRIMEE — a retablir des que le courrier fonctionne.
+#
+# Mesure le 2026-09-03 : coinbosa.com ne publie AUCUN enregistrement MX. Un
+# expediteur retombe alors sur l enregistrement A (RFC 5321, MX implicite), soit
+# 168.231.113.53 — le VPS — ou les ports 25 et 587 sont FERMES et ou aucun
+# serveur de messagerie n est installe. Le courrier vers cette adresse rebondit.
+#
+# Annoncer un canal de signalement qui n aboutit pas est pire que de n en
+# annoncer qu un seul : un chercheur qui trouve une faille ecrit, n obtient rien,
+# et considere avoir prevenu. Le canal GitHub ci-dessus, lui, repond.
+#
+# Pour retablir : publier un MX sur coinbosa.com, verifier qu un message y
+# arrive reellement, puis decommenter cette ligne.
 Expires: 2027-07-26T00:00:00Z
 Preferred-Languages: fr, en
 Canonical: https://coinbosa.com/.well-known/security.txt

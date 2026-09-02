@@ -48,7 +48,7 @@
     "$comment": "Aucune part de l'offre n'est réservée aux récompenses et aucune émission n'est créée. Sans trafic, le revenu d'un validateur est nul. Ne jamais publier de taux de rendement."
   },
   "migration": {
-    "$comment": "Le projet contrôle la totalité des 500 M de jetons Solana (consolidés sur projectWallet). Il n'y a pas de détenteurs tiers : la réserve de migration est donc nulle et le projet reçoit l'intégralité de l'offre native. Les 500 M Solana seront retirés de la circulation (non migrés) pour éviter tout double compte. Le portail reste disponible pour un éventuel détenteur résiduel (ancien contributeur), crédité depuis la réserve stratégique.",
+    "$comment": "MESURE, pas suppose — voir DOSSIER-COTATION.md section 8, remesure le 2026-09-03 sur Solana mainnet. Le portefeuille projet 5pdFbZ...edQf detient 479 990 400 unites, soit 96,00 % de l'offre de 499 999 940. Les 4,00 % restants — plus de 20 millions d'unites — sont HORS de ce portefeuille ; on ignore s'ils appartiennent a d'autres portefeuilles du projet ou a des tiers (getTokenLargestAccounts est refuse par les points d'acces publics). L'autorite de frappe ET l'autorite de gel sont ACTIVES sur 3zADMB...2Pkq, une adresse qui n'est pas le portefeuille projet : d'autres unites peuvent etre creees a tout moment. La reserve de migration reste a 0 : c'est une DECISION de l'editeur, a reexaminer si des detenteurs tiers se manifestent — elle ne repose plus sur l'affirmation qu'il n'y en a pas. Le portail reste disponible pour un detenteur residuel, credite depuis la reserve strategique.",
     "sourceChain": "solana",
     "sourceContract": "8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf",
     "sourceSupply": "500000000",
