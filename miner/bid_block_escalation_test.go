@@ -21,9 +21,9 @@ func newEscalationTestManager() (*BidBlockPermissionManager, *time.Time) {
 	return m, &now
 }
 
-func requireEscalatedRevoke(t *testing.T, m *BidBlockPermissionManager, wantCount int, wantDuration time.Duration) {
+func requireRevokeForViolation(t *testing.T, m *BidBlockPermissionManager, wantCount int, wantDuration time.Duration) {
 	t.Helper()
-	duration, violationCount := m.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, uint64(wantCount))
+	duration, violationCount := m.RevokeForViolation(escalationTestBuilder, testInsertChainReason, common.Hash{}, uint64(wantCount))
 	if violationCount != wantCount || duration != wantDuration {
 		t.Fatalf("got violationCount=%d duration=%v, want %d/%v", violationCount, duration, wantCount, wantDuration)
 	}
@@ -75,7 +75,7 @@ func TestEscalatedRevokeDuration(t *testing.T) {
 func TestRevokeEscalationAndRetention(t *testing.T) {
 	m, now := newEscalationTestManager()
 	for violation, want := range []time.Duration{24 * time.Hour, 36 * time.Hour, 48 * time.Hour} {
-		requireEscalatedRevoke(t, m, violation+1, want)
+		requireRevokeForViolation(t, m, violation+1, want)
 		*now = now.Add(want)
 		if !m.IsAllowed(escalationTestBuilder) {
 			t.Fatalf("violation %d did not expire", violation+1)
@@ -92,9 +92,9 @@ func TestRevokeEscalationAndRetention(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tm, testNow := newEscalationTestManager()
-			requireEscalatedRevoke(t, tm, 1, 24*time.Hour)
+			requireRevokeForViolation(t, tm, 1, 24*time.Hour)
 			*testNow = testNow.Add(24*time.Hour + tc.offset)
-			_, violationCount := tm.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, 2)
+			_, violationCount := tm.RevokeForViolation(escalationTestBuilder, testInsertChainReason, common.Hash{}, 2)
 			if violationCount != tc.wantCount {
 				t.Fatalf("got violation count %d, want %d", violationCount, tc.wantCount)
 			}
@@ -104,7 +104,7 @@ func TestRevokeEscalationAndRetention(t *testing.T) {
 
 func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
 	m, now := newEscalationTestManager()
-	requireEscalatedRevoke(t, m, 1, 24*time.Hour)
+	requireRevokeForViolation(t, m, 1, 24*time.Hour)
 	resetAt := now.Add(24 * time.Hour)
 
 	m.RevokeFor(escalationTestBuilder, "gas price too low", common.Hash{}, 2, bidBlockGasPriceLowRevokeDuration)
@@ -114,7 +114,7 @@ func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
 	}
 
 	*now = resetAt
-	requireEscalatedRevoke(t, m, 2, 36*time.Hour)
+	requireRevokeForViolation(t, m, 2, 36*time.Hour)
 	resetAt = now.Add(36 * time.Hour)
 	m.SetAllowed(escalationTestBuilder, false)
 	rec, _ = getBidBlockPermissionRecord(m, escalationTestBuilder)
@@ -126,7 +126,7 @@ func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
 	if !m.IsAllowed(escalationTestBuilder) {
 		t.Fatal("manual allow did not clear lockout")
 	}
-	requireEscalatedRevoke(t, m, 1, 24*time.Hour)
+	requireRevokeForViolation(t, m, 1, 24*time.Hour)
 }
 
 func TestViolationJournalRetention(t *testing.T) {
@@ -149,7 +149,7 @@ func TestViolationJournalRetention(t *testing.T) {
 			if !m.IsAllowed(escalationTestBuilder) {
 				t.Fatal("expired lockout was restored")
 			}
-			duration, violationCount := m.RevokeEscalating(escalationTestBuilder, testInsertChainReason, common.Hash{}, 1)
+			duration, violationCount := m.RevokeForViolation(escalationTestBuilder, testInsertChainReason, common.Hash{}, 1)
 			if violationCount != tc.wantCount || duration != escalatedRevokeDuration(tc.wantCount) {
 				t.Fatalf("got violationCount=%d duration=%v", violationCount, duration)
 			}

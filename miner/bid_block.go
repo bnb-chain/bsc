@@ -245,15 +245,6 @@ func (w *worker) revokeBidBlockBuilderFor(builder common.Address, reason string,
 	w.afterBidBlockRevoke()
 }
 
-// revokeBidBlockBuilderEscalating is for builders whose block failed on chain:
-// the lockout grows with each repeat so the same attack cannot be replayed at a
-// flat daily price. Returns the applied lockout and violation count for logging.
-func (w *worker) revokeBidBlockBuilderEscalating(builder common.Address, reason string, hash common.Hash, blockNum uint64) (time.Duration, int) {
-	duration, violationCount := w.permMgr.RevokeEscalating(builder, reason, hash, blockNum)
-	w.afterBidBlockRevoke()
-	return duration, violationCount
-}
-
 func (w *worker) afterBidBlockRevoke() {
 	bidBlockRevokeGauge.Inc(1)
 	bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
@@ -293,21 +284,8 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	if insertErr != nil {
 		bidBlockVerifyFailedGauge.Inc(1)
 		reason := fmt.Sprintf("InsertChain err: %v", insertErr)
-		// Escalate only when the chain rejected the block. InsertChain also fails
-		// on this node's own state or database trouble, which must not cost the
-		// builder a persisted 7-day lockout.
-		var (
-			duration       time.Duration
-			violationCount int
-		)
-		if w.chain.IsRejectedBidBlock(hash) {
-			duration, violationCount = w.revokeBidBlockBuilderEscalating(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
-		} else {
-			duration = bidBlockRevokeDuration
-			w.revokeBidBlockBuilderFor(task.bidBlockInfo.builder, reason, hash, block.NumberU64(), duration)
-			log.Warn("[BID BLOCK VERIFY FAILED] not attributable to builder, no violation recorded",
-				"number", block.Number(), "hash", hash, "builder", task.bidBlockInfo.builder, "err", insertErr)
-		}
+		duration, violationCount := w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
+		w.afterBidBlockRevoke()
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,

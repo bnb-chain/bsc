@@ -102,10 +102,7 @@ type BidBlockRevokeRecord struct {
 	Reason    string        `json:"reason"` // err detail for auto revokes (InsertChain failure), or RevokeReasonManual
 	BlockHash common.Hash   `json:"blockHash"`
 	BlockNum  uint64        `json:"blockNum"`
-	// ViolationCount counts the escalating revokes (blocks that failed on chain) on
-	// record for this builder. Flat revokes carry it forward without adding to
-	// it, so a cheap policy revoke cannot be used to wipe the escalation; a
-	// record whose retention window has passed is dropped and starts over at 0.
+	// ViolationCount tracks retained on-chain violations used to escalate future revokes.
 	ViolationCount int `json:"violationCount,omitempty"`
 }
 
@@ -131,7 +128,7 @@ type BidBlockPermissionManager struct {
 	// map under mu and hand it to a background writer, never blocking the
 	// mining path on disk I/O. Losing the newest write on a crash is
 	// acceptable (at worst one lockout is not restored); what must never happen
-	// is a disk hiccup stalling Revoke/SetAllowed.
+	// is a disk hiccup stalling permission updates.
 	persistMu    sync.Mutex // serialises background writers so they don't interleave
 	persistSeq   uint64     // bumped under mu on every mutation; identifies the latest snapshot
 	persistedSeq uint64     // highest seq handled by a writer (guarded by persistMu); advanced before the write, so a failed newer write still blocks older ones
@@ -176,10 +173,7 @@ func (m *BidBlockPermissionManager) load() {
 			"path", m.journalPath, "version", journal.Version, "supported", bidBlockRevokeJournalVersion)
 		return
 	}
-	// Records are kept until their violation retention elapses, not just while
-	// the lockout is active: an expired record still carries the violation count
-	// that prices the next revoke, and dropping it here would let a builder reset
-	// the ladder by waiting for a validator restart.
+	// Retain expired revokes while their violation count is still retained.
 	now := m.clock()
 	active := 0
 	for builder, rec := range journal.Revokes {
@@ -265,22 +259,8 @@ func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 	return !found
 }
 
-// Revoke denies builder and records the reason exposed by the permission RPC.
-func (m *BidBlockPermissionManager) Revoke(
-	builder common.Address,
-	reason string,
-	blockHash common.Hash,
-	blockNum uint64,
-) {
-	m.RevokeFor(builder, reason, blockHash, blockNum, bidBlockRevokeDuration)
-}
-
-// RevokeEscalating denies builder for a window that grows with its violation
-// count and returns the applied duration along with that count. Use it only for
-// builders whose block reached the chain and failed there: the ladder exists to
-// price repeat offences, and cheaper failures caught before sealing must not
-// feed it.
-func (m *BidBlockPermissionManager) RevokeEscalating(
+// RevokeForViolation records a violation and applies the corresponding escalating lockout.
+func (m *BidBlockPermissionManager) RevokeForViolation(
 	builder common.Address,
 	reason string,
 	blockHash common.Hash,
@@ -292,7 +272,7 @@ func (m *BidBlockPermissionManager) RevokeEscalating(
 	now := m.clock()
 	violationCount := m.carriedViolationCount(builder, now) + 1
 	duration := escalatedRevokeDuration(violationCount)
-	m.writeRevokeLocked(builder, reason, blockHash, blockNum, duration, violationCount, now)
+	m.applyRevokeLocked(builder, reason, blockHash, blockNum, duration, violationCount, now)
 	return duration, violationCount
 }
 
@@ -313,15 +293,15 @@ func (m *BidBlockPermissionManager) RevokeFor(
 	defer m.mu.Unlock()
 
 	now := m.clock()
-	m.writeRevokeLocked(builder, reason, blockHash, blockNum, duration, m.carriedViolationCount(builder, now), now)
+	m.applyRevokeLocked(builder, reason, blockHash, blockNum, duration, m.carriedViolationCount(builder, now), now)
 }
 
-// writeRevokeLocked stores one revoke and schedules persistence. Must be called
+// applyRevokeLocked stores one revoke and schedules persistence. Must be called
 // with m.mu held.
 //
 // An active lockout is never shortened, so a 450s gas-price revoke landing on a
 // builder serving a multi-day one only refreshes its reason and violation count.
-func (m *BidBlockPermissionManager) writeRevokeLocked(
+func (m *BidBlockPermissionManager) applyRevokeLocked(
 	builder common.Address,
 	reason string,
 	blockHash common.Hash,
@@ -392,10 +372,10 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 		m.markDirtyLocked()
 		return
 	}
-	// Via writeRevokeLocked so denying an already-denied builder — a natural
+	// Via applyRevokeLocked so denying an already-denied builder — a natural
 	// operator action — cannot cut short a longer escalated lockout.
 	now := m.clock()
-	m.writeRevokeLocked(builder, RevokeReasonManual, common.Hash{}, 0, bidBlockRevokeDuration, m.carriedViolationCount(builder, now), now)
+	m.applyRevokeLocked(builder, RevokeReasonManual, common.Hash{}, 0, bidBlockRevokeDuration, m.carriedViolationCount(builder, now), now)
 }
 
 // isRevokeActive reports whether now is before the revoke reset time.

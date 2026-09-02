@@ -3412,14 +3412,6 @@ func countBadBidBlock(block *types.Block) {
 	}
 }
 
-// IsRejectedBidBlock reports whether the chain judged this BidBlock invalid,
-// rather than merely failing to import it. Only reportBadBlock records here,
-// and never on a state or database failure — so unlike an InsertChain error,
-// this attributes the fault to the builder rather than to an unhealthy node.
-func (bc *BlockChain) IsRejectedBidBlock(hash common.Hash) bool {
-	return badBidBlockCounted.Contains(hash)
-}
-
 // badBidBlockBuilder returns the builder encoded in the header of a block produced
 // through the MEV v2 (BEP-675 SendBidBlock) path. The tag is self-declared and no
 // consensus rule checks its value, so treat the builder as a lead, not as proof.
