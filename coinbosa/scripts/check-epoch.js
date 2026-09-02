@@ -44,7 +44,9 @@
 //   5. Le script sait sur quel réseau il parle : le chainId est comparé avant
 //      tout le reste. 8545 et 18545 hébergent deux réseaux différents dans ce
 //      dépôt (CI et répétition POBS) ; auditer le mauvais nœud et publier le
-//      résultat comme celui de Coinbosa serait une fausse déclaration.
+//      résultat comme celui de Coinbosa serait une fausse déclaration. La chaîne
+//      de DÉVELOPPEMENT porte désormais un chainId distinct (voir CHAIN_ID_DEV) :
+//      elle n'est acceptée que sur PREUVE, jamais sur déclaration.
 //   6. La frontière elle-même est confirmée par le CLIENT interrogé
 //      (parlia_getSnapshot → epoch_length), pas seulement par le fichier de
 //      documentation, qui « ne configure pas le client » de son propre aveu.
@@ -52,6 +54,7 @@
 // Aucun de ces contrôles ne peut « se taire » : quand une preuve manque, le
 // script échoue en disant laquelle et quoi faire.
 const { ethers } = require('ethers');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -61,6 +64,38 @@ const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'coinbosa.config.json'
 const EPOCH = config.network.epochLength;
 const CHAIN_ID = config.network.chainId;
 const BLOC_MS = config.network.blockIntervalMs;
+// ------------------------------------------------------------------------
+// LE CHAINID DE DÉVELOPPEMENT — et pourquoi il ne suffit pas de l'autoriser
+// ------------------------------------------------------------------------
+// La chaîne de développement ne partage plus le chainId de la production
+// (build-genesis.js, CHAIN_ID_DEV). Ce n'est pas cosmétique : le précompilé de
+// double signature scelle son empreinte avec le ChainId (core/vm/contracts.go),
+// pas avec le networkId. Deux chaînes qui partagent un chainId partagent leurs
+// signatures — une équivocation commise sur la chaîne de CI vaudrait preuve
+// valide en production, et signalerDoubleSignature ne ponctionne pas : elle met
+// l'enjeu à zéro.
+//
+// La valeur ATTENDUE reste celle de coinbosa.config.json — la PRODUCTION. Ce
+// script n'a pas de « mode dév » qu'on active en le déclarant : CHAIN_ID_DEV
+// n'est accepté que si la chaîne interrogée PROUVE qu'elle est celle de
+// développement (voir prouverChaineDeDeveloppement). Assouplir la comparaison
+// sur simple déclaration — variable d'environnement, port, nom d'hôte — rendrait
+// ce contrôle capable d'auditer n'importe quel réseau en l'annonçant comme
+// Coinbosa : c'est exactement le faux vert dont ce fichier vient d'être purgé.
+const CHAIN_ID_DEV = 262620;
+// Le genesis DÉSIGNÉ en entrée : celui qu'on a passé à `geth init`. C'est le
+// même choix de fichier que recouperEpochAvecGenesis, et le même que
+// check-genesis-hash.js — la CI ne fournit rien et vise donc le genesis de dév
+// que ce dépôt vient de produire.
+const GENESIS_DESIGNE = process.env.GENESIS
+  ? path.resolve(process.env.GENESIS)
+  : path.join(ROOT, 'genesis', 'genesis-coinbosa-dev.json');
+// Un chemin hors du dépôt s'affiche en entier : « ../../../../tmp/x.json » se lit mal, et
+// un message d'échec qu'on déchiffre est un message qu'on finit par ignorer.
+const GENESIS_AFFICHE = (() => {
+  const r = path.relative(ROOT, GENESIS_DESIGNE);
+  return r && !r.startsWith('..') ? r : GENESIS_DESIGNE;
+})();
 const VALSET = '0x0000000000000000000000000000000000001000';
 const ADRESSE_NULLE = '0x0000000000000000000000000000000000000000';
 
@@ -113,6 +148,86 @@ if (!Number.isFinite(BLOC_MS) || BLOC_MS < 100) {
     `Cette valeur sert à calculer le délai d'attente maximal du franchissement.`,
     `À faire : rétablir "blockIntervalMs": 5000 dans coinbosa/coinbosa.config.json.`
   );
+}
+
+// ------------------------------------------------------------------------
+// PREUVE — et non permission — qu'on parle bien à la chaîne de développement.
+//
+// Trois conditions, toutes nécessaires, aucune déclarative :
+//
+//   1. le genesis DÉSIGNÉ porte le marqueur coinbosaDev — un fichier de
+//      production ne l'a jamais ;
+//   2. ce fichier déclare exactement CHAIN_ID_DEV, et c'est ce que le nœud
+//      annonce — sinon les deux ne parlent pas de la même chaîne ;
+//   3. le bloc 0 SERVI PAR LE NŒUD est celui que ce fichier produit — hash,
+//      stateRoot, extraData, gasLimit et chainId — vérifié en déléguant à
+//      check-genesis-hash.js, qui reconstruit l'empreinte hors-ligne (arbre de
+//      Merkle-Patricia recalculé depuis l'alloc), refuse tout point d'accès non
+//      bouclé, et refuse une empreinte égale à celle de la production.
+//
+// C'est la 3e qui fait le travail : sans elle, n'importe quel nœud annonçant
+// 262620 — un autre genesis, une allocation ajoutée, un réseau tiers — serait
+// audité puis rapporté comme la chaîne de ce dépôt. Le marqueur et le chainId
+// sont des affirmations du FICHIER ; seul le bloc 0 lie le fichier à la CHAÎNE.
+//
+// On délègue au lieu de recopier : check-genesis-hash.js est déjà le contrôle
+// durci de cette question, la CI l'exécute sur ce même nœud, et une deuxième
+// implémentation de l'empreinte serait une deuxième occasion de se tromper.
+// Sortie 0 = comparaisons faites ET concordantes ; toute autre sortie (1
+// divergence, 2 contrôle impossible) laisse l'attendu à CHAIN_ID.
+// ------------------------------------------------------------------------
+function prouverChaineDeDeveloppement(chainIdObserve) {
+  const refus = [];
+
+  if (!fs.existsSync(GENESIS_DESIGNE)) {
+    return { prouve: false, refus: [`aucun genesis désigné à ${GENESIS_AFFICHE} : rien ne décrit la chaîne de développement.`] };
+  }
+  let genesis;
+  try {
+    genesis = JSON.parse(fs.readFileSync(GENESIS_DESIGNE, 'utf8'));
+  } catch (e) {
+    return { prouve: false, refus: [`${GENESIS_AFFICHE} illisible (${e.message}) : une preuve ne se déduit pas d'un fichier cassé.`] };
+  }
+  if (genesis.coinbosaDev !== true) {
+    refus.push(`${GENESIS_AFFICHE} ne porte pas le marqueur coinbosaDev : ce n'est pas un genesis de développement.`);
+  }
+  const chainIdFichier = Number(genesis.config && genesis.config.chainId);
+  if (chainIdFichier !== CHAIN_ID_DEV) {
+    refus.push(`${GENESIS_AFFICHE} déclare chainId ${JSON.stringify(genesis.config && genesis.config.chainId)}, ${CHAIN_ID_DEV} attendu`);
+    refus.push(`  (CHAIN_ID_DEV ici et dans scripts/build-genesis.js : les deux doivent nommer la même chaîne).`);
+  } else if (chainIdFichier !== chainIdObserve) {
+    refus.push(`le nœud annonce ${chainIdObserve}, ${GENESIS_AFFICHE} déclare ${chainIdFichier} : deux chaînes différentes.`);
+  }
+  if (refus.length) return { prouve: false, refus };
+
+  // Le nœud doit servir LE bloc 0 de ce fichier. Tout est dans ce sous-processus :
+  // on ne réinterprète pas son verdict, on ne retient que sa sortie.
+  const enfant = path.join(__dirname, 'check-genesis-hash.js');
+  const env = { ...process.env, ALLOW_DEV_HASH: '1', RPC, GENESIS: GENESIS_DESIGNE };
+  delete env.SANS_CHAINE; // « hors-ligne » ne prouverait rien sur la chaîne interrogée
+  try {
+    const sortie = execFileSync(process.execPath, [enfant], {
+      env, encoding: 'utf8', timeout: 180000, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    // On rapporte la ligne de conclusion de l'enfant, pas un résumé qu'on aurait
+    // écrit soi-même : ce qui est affirmé ici doit être ce qu'il a réellement conclu.
+    const lignes = sortie.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+    const conclusion = lignes.filter((l) => /conforme au genesis/i.test(l)).pop() || lignes.pop();
+    return { prouve: true, detail: conclusion || 'bloc 0 conforme au genesis de développement désigné' };
+  } catch (e) {
+    // Ne pas surqualifier l'échec : sortie 1 = divergence PROUVÉE ; toute autre
+    // sortie = contrôle impossible (nœud muet, point d'accès distant, script absent).
+    // Les deux refusent, mais dire « le bloc 0 diffère » quand on n'a pas pu le lire
+    // serait une affirmation fausse — le défaut même que ce fichier traque.
+    const code = e.status === undefined ? 'interrompu' : `sortie ${e.status}`;
+    refus.push(e.status === 1
+      ? `le bloc 0 servi par ${RPC} n'est PAS celui de ${GENESIS_AFFICHE} (check-genesis-hash.js : ${code}) :`
+      : `la preuve n'a PAS pu être faite sur ${RPC} — check-genesis-hash.js n'a pas conclu (${code}) :`);
+    for (const ligne of `${e.stdout || ''}${e.stderr || ''}`.split('\n').map((l) => l.trimEnd()).filter(Boolean).slice(-12)) {
+      refus.push(`  | ${ligne}`);
+    }
+    return { prouve: false, refus };
+  }
 }
 
 // ------------------------------------------------------------------------
@@ -274,13 +389,24 @@ const listeTriee = (t) => t.map((x) => x.toLowerCase()).slice().sort().join(', '
       `(8545 = nœud de CI, 18545 = répétition POBS).`
     );
   }
-  if (Number(reseau.chainId) !== CHAIN_ID) {
-    echec(
-      `chainId ${reseau.chainId} sur ${RPC}, ${CHAIN_ID} attendu — ce n'est pas Coinbosa Chain`,
-      `Tout ce que ce script aurait affirmé aurait porté sur un autre réseau.`,
-      `À faire : pointer RPC sur le nœud Coinbosa (RPC=http://127.0.0.1:8545 en CI,`,
-      `RPC=http://127.0.0.1:18545 pour la répétition POBS).`
-    );
+  const chainIdObserve = Number(reseau.chainId);
+  let preuveDev = null;
+  if (chainIdObserve !== CHAIN_ID) {
+    // Une seule dérogation existe, et elle se mérite : la chaîne de
+    // développement, qui doit prouver son bloc 0. Tout autre chainId — y compris
+    // un 262620 non prouvé — échoue exactement comme avant.
+    if (chainIdObserve === CHAIN_ID_DEV) preuveDev = prouverChaineDeDeveloppement(chainIdObserve);
+    if (!preuveDev || !preuveDev.prouve) {
+      echec(
+        `chainId ${reseau.chainId} sur ${RPC}, ${CHAIN_ID} attendu — ce n'est pas Coinbosa Chain`,
+        ...(preuveDev
+          ? [`Ce chainId est celui de la chaîne de développement, mais elle ne l'a pas PROUVÉ :`, ...preuveDev.refus, '']
+          : []),
+        `Tout ce que ce script aurait affirmé aurait porté sur un autre réseau.`,
+        `À faire : pointer RPC sur le nœud Coinbosa (RPC=http://127.0.0.1:8545 en CI,`,
+        `RPC=http://127.0.0.1:18545 pour la répétition POBS).`
+      );
+    }
   }
 
   const sourceEpoch = recouperEpochAvecGenesis();
@@ -320,6 +446,12 @@ const listeTriee = (t) => t.map((x) => x.toLowerCase()).slice().sort().join(', '
   if (sourceEpoch) sources.push(`recoupé avec ${sourceEpoch}`);
 
   console.log(`  réseau : chainId ${reseau.chainId} sur ${RPC}`);
+  if (preuveDev) {
+    console.log(`  chaîne de DÉVELOPPEMENT (chainId ${CHAIN_ID_DEV} ≠ ${CHAIN_ID} en production) — PROUVÉE, pas déclarée :`);
+    console.log(`    ${GENESIS_AFFICHE} porte coinbosaDev et déclare ${CHAIN_ID_DEV},`);
+    console.log(`    et le bloc 0 servi par ce nœud est celui de ce fichier — ${preuveDev.detail}`);
+    console.log(`  Ce run ne dit donc RIEN de la production : il contrôle la mécanique d'epoch de la chaîne de dév.`);
+  }
   console.log(`  epoch  : ${EPOCH} blocs — ${sources.join(' ; ')}`);
   console.log(`  tête au démarrage : bloc ${h0}`);
   console.log(`  franchissement à observer : bloc d'epoch ${epochNum}, confirmé jusqu'au bloc ${cible}`);

@@ -224,11 +224,35 @@ g.extraData = '0x' + '00'.repeat(32) + '01' + VALIDATOR.slice(2).toLowerCase() +
 // start-node.sh est lui volontairement DEV-only : il sert justement ce genesis de dev.
 if (ALLOW_DEV) g.coinbosaDev = true;
 
+// --- chainId de developpement : DISTINCT de la production, et ce n'est pas cosmetique ---
+// Le networkId ne suffit pas. Il separe les reseaux P2P, mais il n'entre dans RIEN de ce
+// qui est signe. Le chainId, lui, y entre : le precompile de double signature (0x68)
+// calcule le hash de scellement A PARTIR DU ChainId (core/vm/contracts.go), et c'est ce
+// hash qu'un validateur signe. Deux chaines qui partagent un chainId partagent donc leurs
+// signatures, quel que soit leur networkId.
+// CE QU'ON EVITE : la chaine de developpement est demarree a chaque poussee par la CI,
+// AVEC un validateur qui mine. Une equivocation authentique commise la-bas — deux entetes
+// differents scelles a la meme hauteur par la meme cle — constituerait, tant que les deux
+// chainId coincident, une preuve parfaitement VALIDE en PRODUCTION. Et
+// signalerDoubleSignature ne prend pas une ponction : elle met l'enjeu du signataire A
+// ZERO. Le contrat construit desormais son enveloppe lui-meme avec block.chainid ; ce
+// correctif ne tient sa promesse que si les deux chaines portent des chainId differents.
+// C'est ici que cela se decide.
+// La production garde 26262 — valeur de genesis-base.json et de coinbosa.config.json,
+// enregistree au registre public des chainId au nom de Coinbosa Chain. 262620 y est libre.
+// Le { ...g.config } produit une COPIE : l'objet lu depuis genesis-base.json n'est jamais
+// mute, et la production se regenere octet pour octet a l'identique.
+const CHAIN_ID_DEV = 262620;
+if (ALLOW_DEV) g.config = { ...g.config, chainId: CHAIN_ID_DEV };
+
 fs.writeFileSync(OUT, JSON.stringify(g, null, 1));
 fs.writeFileSync(path.join(ROOT, 'genesis', 'CoinbosaValidatorSet.abi.json'), JSON.stringify(contract.abi, null, 2));
 
 const extraLen = (g.extraData.length - 2) / 2;
 console.log('solc              :', solc.version().split('+')[0]);
+console.log('chainId           :', g.config.chainId, ALLOW_DEV
+  ? '(developpement — isole de la production 26262 : le chainId entre dans ce qui est signe)'
+  : '(PRODUCTION)');
 console.log('validateur        :', ethers.getAddress(VALIDATOR), '(clé de scellage, en ligne)');
 console.log('gouverneur        :', GOV, GOV.toLowerCase() === VALIDATOR.toLowerCase()
   ? '⚠  IDENTIQUE au validateur — développement uniquement'

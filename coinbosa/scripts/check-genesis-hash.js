@@ -349,9 +349,14 @@ const estBoucleLocale = (url) => {
         'Un réseau de développement tourne en local ; une chaîne distante est une vraie chaîne.',
         'Retirer ALLOW_DEV_HASH de l\'environnement (unset ALLOW_DEV_HASH) et relancer la comparaison stricte.');
     }
-    // Le chainId ne peut PAS servir de garde ici : le genesis de dév porte le même (26262)
-    // et la CI démarre le nœud avec --networkid 26262. C'est l'empreinte, elle, qui doit
-    // différer — sinon le « mode dév » s'appliquerait à la chaîne de production elle-même.
+    // Le chainId ne suffit PAS comme garde ici, et il ne remplace pas celle qui suit.
+    // Il est désormais DISTINCT de celui de la production — le genesis de dév porte 262620
+    // (build-genesis.js), pour qu'une signature produite ici ne vaille rien là-bas — et il
+    // est comparé plus bas comme les autres champs, dérivé du FICHIER genesis désigné, pas
+    // d'une valeur de configuration. Mais un chainId se DÉCLARE : n'importe quel nœud peut
+    // annoncer 262620. L'empreinte du bloc 0, elle, ne se déclare pas ; c'est donc elle qui
+    // doit différer de la production, sinon le « mode dév » s'appliquerait à la chaîne de
+    // production elle-même.
     if (ref && horsLigne.hash.toLowerCase() === String(ref.hash).toLowerCase()) {
       impossible('l\'empreinte attendue est celle de la PRODUCTION : ce n\'est pas un réseau de développement.',
         'Retirer ALLOW_DEV_HASH=1 : la production se vérifie en mode strict, contre genesis-reference.json.');

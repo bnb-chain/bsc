@@ -24,6 +24,10 @@
 //      traîne sur la machine, et la répétition POBS fait tourner ce script sur
 //      18545 : une inversion de port validerait silencieusement une autre chaîne.
 //      D'où la comparaison du chainId annoncé avec celui de la configuration.
+//      La chaîne de DÉVELOPPEMENT porte, elle, un chainId distinct de la production
+//      — le chainId entre dans ce qui est signé, voir build-genesis.js. Elle reste
+//      mesurable ici, mais jamais sur sa seule déclaration : elle doit démontrer son
+//      bloc 0 contre le genesis de dév de ce dépôt (section 1bis).
 //
 //   5. LA RÉFÉRENCE DISPARUE. Si la valeur attendue s'évapore de la
 //      configuration, une comparaison avec NaN est toujours fausse : le contrôle
@@ -162,6 +166,234 @@ if (forksActifs.length) {
     'Retirer ces clés du genesis, ou revoir la période attendue ET ce contrôle avant de les activer.');
 }
 
+// --- 1bis. Les outils qui permettront de RECONNAÎTRE une chaîne de développement -------
+//
+// POURQUOI CE BLOC EXISTE. Le genesis de développement ne porte plus le chainId de la
+// production : build-genesis.js lui en donne un distinct (262620), parce que le chainId
+// entre dans le hash de scellage d'un en-tête — le précompilé de double signature scelle
+// avec lui (core/vm/contracts.go) — et que deux chaînes qui le partagent partagent leurs
+// signatures. Une équivocation commise sur la chaîne de CI vaudrait alors preuve en
+// production, où la sanction n'est pas une ponction mais la mise à zéro de l'enjeu.
+//
+// CE QU'IL NE FAUT SURTOUT PAS FAIRE POUR AUTANT : ajouter 262620 à une liste de valeurs
+// tolérées. Le chainId annoncé par un nœud est une DÉCLARATION — une ligne de
+// configuration, rien de plus. La garde du point 4 (le mauvais nœud sur le bon port)
+// tomberait pour de bon : n'importe quel geth, anvil ou hardhat traînant sur 8545 n'aurait
+// qu'à annoncer ce nombre pour se faire mesurer à la place de la nôtre.
+//
+// La règle retenue est donc : la valeur attendue reste celle de la production, et un autre
+// chainId n'est reçu que si la chaîne PROUVE être née du genesis de développement de ce
+// dépôt. La preuve est son bloc 0 — voir exigerPreuveDeDeveloppement() plus bas.
+//
+// Le genesis de dév est celui qu'on DÉSIGNE : GENESIS=… ou, par défaut, le fichier que
+// build-genesis.js écrit en mode ALLOW_DEV et que `geth init` reçoit.
+const CHEMIN_GENESIS_DEV = process.env.GENESIS || path.join(RACINE_COINBOSA, 'genesis', 'genesis-coinbosa-dev.json');
+const CHEMIN_REFERENCE = path.join(RACINE_COINBOSA, 'genesis', 'genesis-reference.json');
+
+const K = ethers.keccak256;
+const RLP = ethers.encodeRlp;
+
+// RLP encode les quantités en gros-boutiste MINIMAL : 0 s'encode comme chaîne vide. Se
+// tromper ici donne un hash faux, donc une accusation fausse — d'où la normalisation
+// systématique de tout ce qui vient d'un nœud ou d'un fichier.
+const qte = (v) => {
+  const n = BigInt(v ?? 0);
+  if (n === 0n) return '0x';
+  let h = n.toString(16);
+  if (h.length % 2) h = '0' + h;
+  return '0x' + h;
+};
+const octets = (v) => ethers.hexlify(ethers.getBytes(v));      // champ de longueur libre
+const cale = (v, n) => ethers.toBeHex(BigInt(v ?? 0), n);      // champ de longueur fixe
+
+// L'en-tête d'un bloc, dans l'ordre exact où il est haché (core/types/block.go). Les
+// champs optionnels ne sont ajoutés que s'ils sont présents, et dans cet ordre-là.
+const ORDRE_ENTETE = [
+  ['parentHash', 'd'], ['sha3Uncles', 'd'], ['miner', 'd'], ['stateRoot', 'd'],
+  ['transactionsRoot', 'd'], ['receiptsRoot', 'd'], ['logsBloom', 'd'],
+  ['difficulty', 'q'], ['number', 'q'], ['gasLimit', 'q'], ['gasUsed', 'q'], ['timestamp', 'q'],
+  ['extraData', 'd'], ['mixHash', 'd'], ['nonce', 'd'],
+];
+const ORDRE_OPTIONNELS = [
+  ['baseFeePerGas', 'q'], ['withdrawalsRoot', 'd'], ['blobGasUsed', 'q'],
+  ['excessBlobGas', 'q'], ['parentBeaconBlockRoot', 'd'], ['requestsHash', 'd'],
+];
+// keccak256(RLP(en-tête)) recalculé depuis les champs SERVIS. Ce que ça attrape : un nœud
+// — ou un proxy devant lui — qui recopie quelques valeurs attendues dans un en-tête par
+// ailleurs incohérent. Un en-tête rapiécé ne peut pas hacher vers le hash qu'il annonce.
+const hashDepuisEnTete = (b) => {
+  const champs = [];
+  for (const [cle, type] of ORDRE_ENTETE) {
+    if (b[cle] === undefined || b[cle] === null) return { erreur: `champ ${cle} absent de la réponse du nœud` };
+    try { champs.push(type === 'q' ? qte(b[cle]) : octets(b[cle])); }
+    catch { return { erreur: `champ ${cle} mal formé (${b[cle]})` }; }
+  }
+  for (const [cle, type] of ORDRE_OPTIONNELS) {
+    if (b[cle] === undefined || b[cle] === null) continue;
+    try { champs.push(type === 'q' ? qte(b[cle]) : octets(b[cle])); }
+    catch { return { erreur: `champ ${cle} mal formé (${b[cle]})` }; }
+  }
+  return { hash: K(RLP(champs)) };
+};
+
+// Les champs du bloc 0 qui viennent DIRECTEMENT du fichier genesis : geth les recopie tels
+// quels dans l'en-tête (core/genesis.go, toBlockWithRoot). Chacun se compare donc au
+// fichier sans rien recalculer. `extraData` est le plus discriminant : il porte l'adresse
+// du validateur, tirée à neuf à chaque génération.
+const NORMALISER = {
+  q: (v) => BigInt(v ?? 0).toString(),
+  b: (v) => ethers.hexlify(ethers.getBytes(v)).toLowerCase(),
+  h32: (v) => cale(v, 32), h20: (v) => cale(v, 20), h8: (v) => cale(v, 8),
+};
+const CHAMPS_ISSUS_DU_GENESIS = [
+  ['parentHash', 'parentHash', 'h32'],
+  ['coinbase', 'miner', 'h20'],
+  ['difficulty', 'difficulty', 'q'],
+  ['gasLimit', 'gasLimit', 'q'],
+  ['gasUsed', 'gasUsed', 'q'],
+  ['timestamp', 'timestamp', 'q'],
+  ['extraData', 'extraData', 'b'],
+  ['mixHash', 'mixHash', 'h32'],
+  ['nonce', 'nonce', 'h8'],
+];
+
+// --- La preuve, et rien d'autre --------------------------------------------------------
+//
+// Appelée UNIQUEMENT quand le nœud annonce un chainId différent de celui de la production.
+// Elle ne rend la main qu'après avoir établi les cinq points ci-dessous ; sinon elle sort
+// en échec, avec le même verdict qu'avant ce mode : « ce n'est pas la chaîne attendue ».
+//
+//   1. un genesis de développement est DÉSIGNÉ (GENESIS=…, sinon genesis-coinbosa-dev.json) ;
+//   2. il porte le marqueur coinbosaDev — que seul build-genesis.js en mode ALLOW_DEV écrit ;
+//   3. le chainId annoncé est celui de CE fichier, et il n'est pas celui de la production ;
+//   4. le bloc 0 SERVI est celui de CE fichier : les neuf champs d'en-tête issus du genesis
+//      sont comparés un à un, et l'empreinte annoncée est redémontrée par
+//      keccak256(RLP(en-tête)) sur les champs servis ;
+//   5. cette empreinte DIFFÈRE de celle figée pour la production (genesis-reference.json) —
+//      dernier verrou : ce chemin ne peut jamais s'appliquer à la chaîne publiée.
+//
+// CE QUE LA PREUVE NE COUVRE PAS, et il faut le dire : le `stateRoot` est pris tel que
+// servi, donc l'allocation initiale n'est pas vérifiée ici. Elle l'est par
+// check-genesis-hash.js, qui reconstruit l'arbre de Merkle hors-ligne et tourne sur la même
+// chaîne dans le même job. Ce script-ci prouve l'IDENTITÉ du nœud mesuré, pas l'intégrité
+// de son état — c'est tout ce dont il a besoin pour que sa mesure porte sur la bonne chaîne.
+async function exigerPreuveDeDeveloppement(provider, chainIdVu) {
+  const nom = path.basename(CHEMIN_GENESIS_DEV);
+  // Le verdict reste celui d'avant : la chaîne n'est pas celle attendue. Les lignes de
+  // conduite disent en plus ce qui manquait à la preuve de développement.
+  const refuser = (...conduite) => echec(`${RPC} annonce chainId ${chainIdVu}, attendu ${CHAIN_ID_ATTENDU}.`,
+    'Ce n’est pas Coinbosa Chain : mesurer son temps de bloc ne prouverait rien sur le nôtre.',
+    'Corriger RPC= (la répétition POBS écoute sur 18545, la production sur 8545),',
+    'ou vérifier quel nœud occupe ce port.',
+    ...conduite);
+
+  if (!fs.existsSync(CHEMIN_GENESIS_DEV)) {
+    refuser('',
+      `Aucun genesis de développement n’est désigné (cherché à : ${CHEMIN_GENESIS_DEV}).`,
+      'Une chaîne de DÉVELOPPEMENT porte un autre chainId (262620) et reste mesurable ici, mais',
+      'elle doit d’abord prouver être née du genesis de ce dépôt : le régénérer',
+      '(VALIDATOR=0x… ALLOW_DEV=1 node scripts/build-genesis.js) ou le désigner avec GENESIS=…');
+  }
+  let dev;
+  try { dev = JSON.parse(fs.readFileSync(CHEMIN_GENESIS_DEV, 'utf8')); }
+  catch (e) {
+    refuser('', `Le genesis désigné est illisible (${CHEMIN_GENESIS_DEV} : ${e.message}).`,
+      'Un fichier illisible n’atteste rien : sans lui, aucun autre chainId n’est recevable.');
+  }
+
+  if (dev.coinbosaDev !== true) {
+    refuser('', `${nom} ne porte pas le marqueur coinbosaDev.`,
+      'Seul build-genesis.js en mode ALLOW_DEV l’écrit. Sans lui, ce fichier n’atteste aucun',
+      'réseau de développement, et un chainId qui n’est pas celui de la production reste un refus.');
+  }
+  const chainIdDev = Number(((dev.config) || {}).chainId);
+  if (!Number.isInteger(chainIdDev) || chainIdDev <= 0) {
+    refuser('', `${nom} ne déclare pas de config.chainId exploitable (lu : ${JSON.stringify((dev.config || {}).chainId)}).`,
+      'Un genesis sans chainId ne désigne aucun réseau : fichier tronqué ou mal formé.');
+  }
+  if (chainIdDev === CHAIN_ID_ATTENDU) {
+    refuser('', `${nom} porte le chainId de la PRODUCTION (${chainIdDev}) : il ne peut justifier aucun autre.`,
+      'Le régénérer avec le build-genesis.js de ce dépôt, qui isole le chainId de développement.');
+  }
+  if (chainIdVu !== chainIdDev) {
+    refuser('', `${nom} porte le chainId ${chainIdDev}, le nœud en annonce ${chainIdVu} : ce n’est pas cette chaîne-là.`,
+      'Le nœud n’a pas été initialisé avec ce genesis, ou RPC= vise un autre nœud.');
+  }
+
+  // Le chainId concorde — mais il se déclare. Le bloc 0, lui, se démontre.
+  let b0;
+  try { b0 = await provider.send('eth_getBlockByNumber', ['0x0', false]); }
+  catch (e) {
+    refuser('', `Le nœud ne sert pas son bloc 0 (${e.message}) : son identité reste indémontrable.`);
+  }
+  if (!b0 || !b0.hash) {
+    refuser('', 'Le nœud ne renvoie pas de bloc 0 exploitable : nœud en synchronisation, ou point',
+      'd’accès qui n’est pas une chaîne Coinbosa. Rien ne peut être prouvé sans ce bloc.');
+  }
+  if (BigInt(b0.number ?? -1) !== 0n) {
+    refuser('', `Le nœud renvoie number=${b0.number} pour le bloc 0 : réponse incohérente, preuve impossible.`);
+  }
+
+  const ecarts = [];
+  let comparees = 0;
+  for (const [cleFichier, cleBloc, type] of CHAMPS_ISSUS_DU_GENESIS) {
+    if (b0[cleBloc] === undefined || b0[cleBloc] === null) {
+      refuser('', `Le bloc 0 servi n’expose pas ${cleBloc} : la comparaison avec ${nom} ne peut pas avoir lieu.`,
+        'Une comparaison sautée est un contrôle qui n’a rien vérifié — elle ne peut pas conclure au vert.');
+    }
+    if (type === 'b' && (dev[cleFichier] === undefined || dev[cleFichier] === null)) {
+      refuser('', `${nom} ne déclare pas ${cleFichier} : rien à comparer, donc rien de prouvé.`);
+    }
+    let attendu; let obtenu;
+    try { attendu = NORMALISER[type](dev[cleFichier]); obtenu = NORMALISER[type](b0[cleBloc]); }
+    catch (e) { refuser('', `Champ ${cleFichier} mal formé dans ${nom} ou dans le bloc 0 servi (${e.message}).`); }
+    comparees++;
+    if (attendu !== obtenu) ecarts.push(`${cleBloc} : nœud ${obtenu}, ${nom} ${attendu}`);
+  }
+  if (comparees !== CHAMPS_ISSUS_DU_GENESIS.length) {
+    refuser('', `Seuls ${comparees} champs sur ${CHAMPS_ISSUS_DU_GENESIS.length} ont été comparés : preuve incomplète, donc absente.`);
+  }
+  if (ecarts.length) {
+    refuser('', `Le bloc 0 servi n’est PAS celui de ${nom} — ${ecarts.length} champ(s) divergent(s) :`,
+      ...ecarts.map((l) => `  ${l}`),
+      'Ce nœud annonce le chainId de développement sans être né de ce genesis : c’est exactement',
+      'ce que cette porte existe pour refuser. Vérifier quel nœud occupe ce port, ou réinitialiser',
+      'le nœud de développement sur le genesis que ce dépôt vient de produire (`geth init`).');
+  }
+
+  // L'empreinte annoncée doit se redémontrer depuis les champs servis.
+  const recalcul = hashDepuisEnTete(b0);
+  if (recalcul.erreur) {
+    refuser('', `L’empreinte du bloc 0 n’est pas recalculable : ${recalcul.erreur}.`,
+      'Sans elle, les champs comparés ne sont qu’un écho : rien ne les relie au bloc annoncé.');
+  }
+  if (recalcul.hash.toLowerCase() !== String(b0.hash).toLowerCase()) {
+    refuser('', `Le bloc 0 servi n’est pas cohérent : il annonce ${b0.hash},`,
+      `mais keccak256(RLP(en-tête)) de ses propres champs vaut ${recalcul.hash}.`,
+      'Un en-tête rapiécé — quelques valeurs attendues recopiées au-dessus d’un autre bloc —',
+      'ne peut pas hacher vers le hash qu’il annonce. Ce nœud ne sert pas un bloc 0 authentique.');
+  }
+
+  // Dernier verrou : la production ne passe jamais par ici, quoi qu'elle annonce.
+  if (fs.existsSync(CHEMIN_REFERENCE)) {
+    let ref = null;
+    try { ref = JSON.parse(fs.readFileSync(CHEMIN_REFERENCE, 'utf8')); } catch { /* traité juste après */ }
+    if (!ref || !ref.hash) {
+      refuser('', `${path.basename(CHEMIN_REFERENCE)} est illisible ou sans hash : impossible de vérifier que`,
+        'cette chaîne n’est pas la production. Un verrou qu’on ne peut pas poser ne se saute pas.');
+    }
+    if (String(ref.hash).toLowerCase() === String(b0.hash).toLowerCase()) {
+      refuser('', 'Le bloc 0 de ce nœud est celui de la PRODUCTION (empreinte figée dans',
+        `${path.basename(CHEMIN_REFERENCE)}) : le mode développement ne s’applique pas à la chaîne publiée.`);
+    }
+  } else {
+    refuser('', `${path.basename(CHEMIN_REFERENCE)} est introuvable : impossible de vérifier que cette chaîne`,
+      'n’est pas la production. Rétablir le fichier depuis le dépôt publié avant de mesurer.');
+  }
+
+  return { chainId: chainIdDev, hashBloc0: b0.hash, fichier: nom, champs: comparees };
+}
+
 (async () => {
   const provider = new ethers.JsonRpcProvider(RPC);
 
@@ -178,21 +410,32 @@ if (forksActifs.length) {
       'ou pointer RPC= sur le bon point d’entrée.');
   }
   const chainIdVu = Number(reseauRpc.chainId);
+  // La valeur attendue par défaut reste celle de la PRODUCTION, lue dans
+  // coinbosa.config.json. Un chainId différent n'est ni refusé d'office ni accepté
+  // d'office : il doit être PROUVÉ. exigerPreuveDeDeveloppement() ne rend la main
+  // qu'après avoir établi que la chaîne est née du genesis de développement de ce
+  // dépôt ; sinon elle sort en échec, sur le même verdict qu'avant ce mode.
+  let identite = `attendu ${CHAIN_ID_ATTENDU}, celui de la production (coinbosa.config.json)`;
+  let preuveDev = null;
   if (chainIdVu !== CHAIN_ID_ATTENDU) {
-    echec(`${RPC} annonce chainId ${chainIdVu}, attendu ${CHAIN_ID_ATTENDU}.`,
-      'Ce n’est pas Coinbosa Chain : mesurer son temps de bloc ne prouverait rien sur le nôtre.',
-      'Corriger RPC= (la répétition POBS écoute sur 18545, la production sur 8545),',
-      'ou vérifier quel nœud occupe ce port.');
+    preuveDev = await exigerPreuveDeDeveloppement(provider, chainIdVu);
+    identite = `chaîne de DÉVELOPPEMENT prouvée (production : ${CHAIN_ID_ATTENDU})`;
   }
-  // Le networkId ne conditionne rien : la répétition POBS tourne volontairement
-  // avec le même chainId 26262 et un networkId 262620, et ce script doit y
-  // passer. On l'affiche pour que la trace dise sur quel réseau on a mesuré.
+  // Le networkId ne conditionne rien, et ne saurait rien garantir : il sépare les
+  // réseaux P2P, mais il n'entre dans RIEN de ce qui est signé. On l'affiche pour que
+  // la trace dise sur quel réseau on a mesuré, pas comme élément de preuve.
   let networkId = 'non exposé (API net désactivée)';
   try { networkId = String(await provider.send('net_version', [])); } catch { /* information, pas verdict */ }
   console.log(`  nœud                : ${RPC}`);
-  console.log(`  chainId             : ${chainIdVu} (attendu ${CHAIN_ID_ATTENDU}) — networkId ${networkId}`);
-  // Le chainId ne distingue pas la répétition POBS de la production. L'identité
-  // complète, c'est le hash du bloc 0 : voir check-genesis-hash.js.
+  console.log(`  chainId             : ${chainIdVu} — ${identite} — networkId ${networkId}`);
+  if (preuveDev) {
+    console.log(`  identité prouvée    : bloc 0 ${preuveDev.hashBloc0}`);
+    console.log(`                        conforme à ${preuveDev.fichier} (${preuveDev.champs} champs d'en-tête + empreinte`);
+    console.log('                        redémontrée), marqueur coinbosaDev présent, empreinte ≠ production.');
+  }
+  // L'identité COMPLÈTE d'une chaîne — allocation initiale comprise — reste le travail
+  // de check-genesis-hash.js, qui reconstruit le stateRoot hors-ligne. Ici on établit
+  // qu'on mesure la BONNE chaîne, pas que son état est intègre.
 
   // --- 3. Mesure en direct : on n'échantillonne que ce qu'on a vu naître ----
   const depart = await provider.getBlockNumber();

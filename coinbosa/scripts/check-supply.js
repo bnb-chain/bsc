@@ -121,6 +121,10 @@ if (ALLOW_DEV_SUPPLY && !genesis.coinbosaDev) {
     'Cette dérogation ne s\'applique qu\'à un genesis de développement.',
     'Retirer ALLOW_DEV_SUPPLY, ou viser le genesis de dév avec GENESIS=genesis/genesis-coinbosa-dev.json.');
 }
+// Les deux refus ci-dessus rendent marqueur et dérogation indissociables : l'un sans l'autre
+// est déjà sorti. DEV veut donc dire « genesis de dév explicitement désigné ET dérogation
+// assumée » — jamais « une variable d'environnement l'a dit ».
+const DEV = !!genesis.coinbosaDev;
 
 if (BigInt(config.nativeCoin.totalSupply) !== OFFRE_FIGEE) {
   refus(`coinbosa.config.json annonce une offre de ${config.nativeCoin.totalSupply} BOSA, ${OFFRE_FIGEE} figés dans ce contrôle.`,
@@ -145,11 +149,42 @@ if (declareTotal !== EXPECTED) {
     'Le fichier lui-même ne boucle pas sur l\'offre : régénérer le genesis (scripts/build-genesis.js) et recommencer.');
 }
 
-const CHAINID_ATTENDU = BigInt(config.network.chainId);
+// chainId attendu. La valeur par défaut est celle de la PRODUCTION, et elle le reste.
+//
+// La chaîne de développement porte désormais un chainId DISTINCT (build-genesis.js sous
+// ALLOW_DEV=1). Ce n'est pas un confort : le précompilé de double signature scelle ses
+// preuves avec le ChainId — pas avec le networkId, qui ne sépare que le P2P et n'entre dans
+// rien de ce qui est signé. Deux chaînes qui partagent un chainId partagent leurs
+// signatures : une équivocation commise sur la chaîne de CI, qui mine à chaque poussée,
+// vaudrait preuve en production, où le signalement met l'enjeu du signataire à zéro. Les
+// deux réseaux doivent donc être séparés là, et ce contrôle doit savoir le lire — sans
+// pour autant accepter le premier nœud qui annonce le numéro de développement.
+//
+// La valeur de dév est FIGÉE ICI, comme l'offre plus haut et pour la même raison : la lire
+// dans le fichier vérifié serait tautologique (le fichier se validerait lui-même), la lire
+// dans coinbosa.config.json ferait suivre docilement un changement de configuration. Elle
+// n'est retenue que sur le chemin DEV, et elle ne conclut rien à elle seule : le nœud devra
+// encore présenter un bloc 0 dont l'en-tête est celui de CE fichier (§1) et dont l'empreinte
+// DIFFÈRE de la production, puis les 23 comptes devront répondre (§3).
+const CHAINID_PROD = BigInt(config.network.chainId);
+const CHAINID_DEV = 262620n;
+if (CHAINID_DEV === CHAINID_PROD) {
+  refus(`coinbosa.config.json annonce chainId ${CHAINID_PROD} — la valeur réservée au développement.`,
+    'Production et développement partageraient de nouveau leur chainId : les signatures de l\'une',
+    'vaudraient sur l\'autre, et ce contrôle n\'aurait plus de quoi les distinguer.',
+    'network.chainId doit rester la valeur de production (26262).');
+}
+const CHAINID_ATTENDU = DEV ? CHAINID_DEV : CHAINID_PROD;
+
 const chainIdFichier = genesis.config ? genesis.config.chainId : null;
 if (chainIdFichier == null || BigInt(chainIdFichier) !== CHAINID_ATTENDU) {
   refus(`${path.basename(GENESIS_FILE)} déclare chainId ${chainIdFichier === null ? '(absent)' : chainIdFichier}, ${CHAINID_ATTENDU} attendu.`,
-    'Ce fichier n\'est pas un genesis de Coinbosa Chain — vérifier GENESIS.');
+    ...(DEV
+      ? ['Ce genesis porte le marqueur coinbosaDev : il doit porter le chainId de DÉVELOPPEMENT,',
+         'pas celui de la production — un genesis de dév qui partage le chainId de production',
+         'produit des signatures rejouables sur elle.',
+         'Régénérer : VALIDATOR=... ALLOW_DEV=1 node scripts/build-genesis.js']
+      : ['Ce fichier n\'est pas un genesis de Coinbosa Chain — vérifier GENESIS.']));
 }
 
 // Empreinte publiée du bloc 0 de production. Elle sert dans les DEUX sens :
@@ -176,9 +211,15 @@ if (fs.existsSync(REF_FILE)) {
       'Vérifier que le nœud est démarré et que RPC pointe sur lui.');
   }
   if (reseau.chainId !== CHAINID_ATTENDU) {
-    refus(`le nœud ${rpcAffiche} annonce chainId ${reseau.chainId}, ${CHAINID_ATTENDU} attendu (Coinbosa Chain).`,
-      'Ce n\'est PAS la chaîne à vérifier : rien de ce qui suit n\'aurait de valeur.',
-      'Corriger RPC pour viser un nœud Coinbosa.');
+    refus(`le nœud ${rpcAffiche} annonce chainId ${reseau.chainId}, ${CHAINID_ATTENDU} attendu (${DEV ? 'chaîne de développement' : 'Coinbosa Chain'}).`,
+      // Cas particulier qui mérite d'être nommé : la dérogation de dév braquée sur la
+      // PRODUCTION. Le refus tomberait de toute façon, mais « corriger RPC » enverrait
+      // chercher un défaut de configuration là où il n'y en a pas.
+      ...(DEV && reseau.chainId === CHAINID_PROD
+        ? ['Ce nœud annonce le chainId de PRODUCTION : la dérogation de développement ne s\'y applique pas.',
+           'Retirer ALLOW_DEV_SUPPLY et viser le genesis de production, ou pointer RPC sur le nœud de dév.']
+        : ['Ce n\'est PAS la chaîne à vérifier : rien de ce qui suit n\'aurait de valeur.',
+           'Corriger RPC pour viser un nœud Coinbosa.']));
   }
 
   const b0 = await provider.send('eth_getBlockByNumber', ['0x0', false]);
@@ -214,7 +255,7 @@ if (fs.existsSync(REF_FILE)) {
     process.exit(1);
   }
 
-  const dev = !!genesis.coinbosaDev;
+  const dev = DEV;
   if (!ref) {
     refus(`aucune empreinte de référence figée dans ${path.basename(REF_FILE)}.`,
       dev ? 'Sans elle, impossible d\'établir que ce nœud n\'est PAS la production : la dérogation de dév serait crue sur parole.'
@@ -247,6 +288,13 @@ if (fs.existsSync(REF_FILE)) {
   console.log(`    genesis    : ${path.basename(GENESIS_FILE)} (en-tête du bloc 0 : ${enTete.length}/${champs.length} champs comparés, tous conformes)`);
   if (dev) {
     console.log(`    empreinte  : DIFFÉRENTE de la production (${String(ref.hash).slice(0, 18)}…) — réseau de développement confirmé`);
+    // Ce que cette ligne affirme est exactement ce qui vient d'être établi, ni plus : le
+    // marqueur du fichier désigné, les champs d'en-tête comparés, l'empreinte distincte de
+    // la production. L'ÉTAT du bloc 0, lui, n'est pas engagé ici — il l'est compte par
+    // compte au §3, et le dire d'avance serait un vert avancé sur une vérification à venir.
+    console.log(`    chainId ${CHAINID_DEV} admis sur le chemin de DÉV : ${path.basename(GENESIS_FILE)} porte coinbosaDev,`);
+    console.log('    en-tête du bloc 0 conforme à ce fichier, empreinte distincte de la production.');
+    console.log('    Jamais sur simple déclaration ni sur variable d\'environnement seule.');
     console.warn('\n⚠  MODE DÉVELOPPEMENT (ALLOW_DEV_SUPPLY=1) : contrôle mécanique sur un genesis de DÉV.');
     console.warn('   Ce rapport n\'est PAS une preuve de production.');
   } else {

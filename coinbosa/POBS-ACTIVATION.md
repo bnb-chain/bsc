@@ -831,9 +831,17 @@ done
 ```
 
 `--networkid 262620` ≠ 26262 : **isolation p2p dure**, en plus d'un hash de bloc 0
-différent. Le `chainId` reste 26262 — il entre dans le hash de scellage, le changer
-perdrait la fidélité de la répétition. `--gcmode archive` : les `eth_call`
-historiques du contrôle de parité exigent l'état des blocs passés.
+différent. Le `chainId` du genesis de dév vaut lui aussi **262620** depuis que
+`build-genesis.js` le force en mode `ALLOW_DEV` (constante `CHAIN_ID_DEV`), et c'est le
+point le plus important de cette section. Le `networkId` sépare les réseaux p2p mais
+n'entre dans **rien** de ce qui est signé ; le `chainId`, lui, entre dans le hash de
+scellage. Deux chaînes qui le partagent partagent leurs signatures : une équivocation
+commise sur cette chaîne de répétition constituerait une preuve **valide en
+production**, où `signalerDoubleSignature` ne prend pas une ponction mais met l'enjeu du
+signataire à zéro. La fidélité de la répétition n'en souffre pas : la structure du
+hash de scellage est identique, seule la valeur d'un champ change.
+`--gcmode archive` : les `eth_call` historiques du contrôle de parité exigent l'état
+des blocs passés.
 
 **Critère :** `admin.peers.length == 2` sur chacun des trois nœuds.
 

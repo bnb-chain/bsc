@@ -10,9 +10,17 @@
  * jetable, donc empreinte du bloc 0 différente par construction) :
  *   ALLOW_DEV_HASH=1 GENESIS=genesis/genesis-coinbosa-dev.json \
  *   RPC=http://127.0.0.1:8545 node coinbosa/scripts/check-exchange-rpc.js
- * Cette dérogation ne se contente PAS d'être crue : elle exige que le fichier de
- * genesis désigné porte le marqueur coinbosaDev ET que l'en-tête du bloc 0 servi
- * corresponde à ce fichier. Voir « dérogation de développement » plus bas.
+ * Cette dérogation ne se contente PAS d'être crue : elle exige que le RPC soit local,
+ * que le fichier de genesis désigné porte le marqueur coinbosaDev, ET que l'en-tête du
+ * bloc 0 servi corresponde à ce fichier. Voir « dérogation de développement » plus bas.
+ *
+ * chainId : la valeur attendue reste 26262 (coinbosa.config.json, valeur de PRODUCTION).
+ * Le réseau de développement en porte un autre depuis que les deux chaînes ont été
+ * séparées — elles ne devaient plus partager le nombre qui entre dans le hash de scellage
+ * d'une double signature. Ce script n'accepte cette autre valeur que si la chaîne a
+ * d'abord PROUVÉ être celle de développement, et il la LIT alors dans le fichier genesis
+ * dont le bloc 0 servi porte la trace : jamais sur déclaration, jamais sur la seule
+ * présence d'ALLOW_DEV_HASH.
  *
  * LECTURE SEULE : n'envoie aucune transaction et ne déplace aucun fonds. Une seule
  * ressource est créée sur le nœud — le filtre de eth_newBlockFilter — et elle est
@@ -65,12 +73,33 @@ function lireJson(chemin, role) {
   }
 }
 const CONFIG = lireJson(path.join(RACINE, 'coinbosa.config.json'), 'coinbosa.config.json');
-const CHAIN_ID_ATTENDU = Number(CONFIG.network.chainId);
+// chainId de PRODUCTION. C'est la référence par défaut, et la seule qui vaille tant que la
+// chaîne interrogée n'a pas prouvé être autre chose : voir analyserIdentite().
+const CHAIN_ID_CONFIG = Number(CONFIG.network.chainId);
 
 // ALLOW_DEV_HASH : même variable que check-genesis-hash.js, même sens — « la chaîne
 // interrogée est un réseau de développement ». Elle n'est PAS un laissez-passer :
-// elle bascule vers une preuve différente (cf. verdictBloc0), pas vers l'absence de preuve.
+// elle bascule vers une preuve différente (cf. analyserIdentite), pas vers l'absence de preuve.
 const ALLOW_DEV = process.env.ALLOW_DEV_HASH === '1';
+
+const estBoucleLocale = (url) => {
+  let hote;
+  try { hote = new URL(url).hostname; } catch { return false; }
+  return hote === 'localhost' || hote === '::1' || hote === '[::1]' || /^127\./.test(hote);
+};
+// Première condition de la dérogation, posée AVANT le moindre appel : un réseau de
+// développement tourne sur la machine qui l'interroge. Ce qu'elle attrape est un accident
+// réel — ALLOW_DEV_HASH resté exporté dans le shell (les modes opératoires en donnent une
+// ligne à copier-coller), puis vérification d'une chaîne PUBLIQUE lancée dans la foulée :
+// la dérogation aurait alors pu faire accepter le chainId du genesis de dév sur la chaîne
+// de production. Même règle que check-genesis-hash.js, pour la même raison.
+if (ALLOW_DEV && !estBoucleLocale(RPC)) {
+  console.error(`ÉCHEC DU CONTRÔLE : ALLOW_DEV_HASH=1 vise un point d'accès DISTANT (${RPC}).`);
+  console.error('  Un réseau de développement s\'interroge en local ; une chaîne distante est une vraie chaîne,');
+  console.error('  et aucune dérogation de développement ne doit pouvoir s\'y appliquer.');
+  console.error('  Retirer la variable (unset ALLOW_DEV_HASH) pour vérifier une chaîne distante.');
+  process.exit(2);
+}
 
 // Fichier de genesis servant de référence d'allocation. Même convention que
 // check-supply.js : GENESIS= le désigne, sinon production / dév selon ALLOW_DEV.
@@ -150,6 +179,16 @@ const nbEgal = (a, b) => { try { return BigInt(a) === BigInt(b); } catch { retur
 // Une valeur de solde/quantité doit être une chaîne hexadécimale : null et undefined
 // ne sont pas des états « servis », ce sont des absences.
 const estHex = (v) => typeof v === 'string' && /^0x[0-9a-f]+$/i.test(v);
+// Deux extraData de 166 octets qui ne diffèrent qu'au 33e (l'adresse du validateur) se
+// résumaient l'un et l'autre en « 0x000000000000000000000000… » : le message nommait un
+// écart que le lecteur ne pouvait pas voir. On situe donc l'écart au lieu de le tronquer.
+const ecartHex = (recu, fichier) => {
+  const a = String(recu).toLowerCase(), b = String(fichier).toLowerCase();
+  if (a.length !== b.length) return `longueurs différentes (${a.length} vs ${b.length} caractères) — reçu ${a.slice(0, 20)}…, fichier ${b.slice(0, 20)}…`;
+  let i = 2; while (i < a.length && a[i] === b[i]) i++;
+  const fen = (s) => s.slice(Math.max(2, i - 4), i + 40);
+  return `1er écart à l'octet ${Math.floor((i - 2) / 2)} : reçu …${fen(a)}…, fichier …${fen(b)}…`;
+};
 
 // Vérifie qu'un lot JSON-RPC est revenu ENTIER. Un lot tronqué (proxy qui coupe, limite
 // de taille) laissait les sondes manquantes sans réponse et le verdict se prononçait
@@ -182,15 +221,29 @@ function allocationTemoin() {
 }
 
 // ---------------------------------------------------------------------------
-// Identité : la seule preuve qui distingue la production d'une chaîne de dév.
+// Identité : ce qui distingue la production d'une chaîne de développement.
 // ---------------------------------------------------------------------------
-// genesis-base.json fige chainId=26262 pour la PRODUCTION comme pour le DÉVELOPPEMENT
-// (build-genesis.js, ALLOW_DEV -> genesis-coinbosa-dev.json). eth_chainId vaut donc 26262
-// dans les deux cas et ne les sépare pas. Seule l'empreinte du bloc 0 le fait : elle
-// dépend du stateRoot, donc de TOUTE l'allocation initiale. C'est le même raisonnement
-// que check-genesis-hash.js, appliqué ici parce qu'un rapport remis à une bourse ne peut
-// pas décrire une chaîne sans avoir prouvé LAQUELLE il décrit.
-function verdictBloc0(entete, chainIdVu) {
+// L'empreinte du bloc 0 dépend du stateRoot, donc de TOUTE l'allocation initiale : c'est
+// elle qui dit LAQUELLE des chaînes répond. Le chainId, lui, vit dans la section `config`
+// du genesis et n'entre PAS dans le hash du bloc — deux réseaux peuvent avoir un bloc 0
+// rigoureusement identique et n'être pas la même chaîne. Les deux se vérifient donc
+// ensemble, et dans cet ordre : d'abord laquelle, ensuite le chainId qu'elle a le droit
+// d'annoncer. C'est le même raisonnement que check-genesis-hash.js, appliqué ici parce
+// qu'un rapport remis à une bourse ne peut pas décrire une chaîne sans avoir prouvé
+// LAQUELLE il décrit.
+//
+// La production porte 26262 ; le réseau de développement porte désormais un autre chainId
+// (build-genesis.js) — les deux chaînes ne devaient plus partager le nombre qui entre dans
+// le hash de scellage d'une double signature, sans quoi une équivocation commise sur la
+// chaîne de CI vaudrait preuve en production. Cette fonction en tire la seule règle
+// admissible : la valeur attendue reste celle de coinbosa.config.json, et une autre n'est
+// retenue QUE si la chaîne a prouvé être celle de développement — elle est alors LUE dans
+// le fichier genesis dont le bloc 0 servi porte la trace, jamais déclarée.
+//
+// Renvoie { verdict, detail, infos, chainIdAttendu, prouveDev }.
+function analyserIdentite(entete, chainIdVu) {
+  const sortie = (verdict, detail, extra) => Object.assign(
+    { verdict, detail, infos: [], chainIdAttendu: CHAIN_ID_CONFIG, prouveDev: false }, extra || {});
   const refFichier = path.join(RACINE, 'genesis', 'genesis-reference.json');
   let ref = null;
   if (fs.existsSync(refFichier)) {
@@ -204,21 +257,27 @@ function verdictBloc0(entete, chainIdVu) {
                        (!ref.extraData || hexEgal(entete.extraData, ref.extraData));
 
   if (conformeProd) {
-    note('empreinte du bloc 0 (identité de la chaîne)', 'OK',
+    // Le CLONE : bloc 0 rigoureusement identique à la production — hash, stateRoot,
+    // extraData — mais autre chainId. C'est possible parce que le chainId n'est pas dans
+    // l'en-tête ; c'est aussi le montage qui permettrait de faire passer une chaîne
+    // parallèle pour la nôtre. Il n'y a rien à déroger ici : une chaîne qui porte le bloc 0
+    // de la production n'est PAS un réseau de développement, ALLOW_DEV_HASH ou non.
+    if (chainIdVu !== null && chainIdVu !== CHAIN_ID_CONFIG) {
+      return sortie('BLOQUEUR',
+        `bloc 0 identique à la PRODUCTION mais chainId ${chainIdVu} servi au lieu de ${CHAIN_ID_CONFIG} — c'est un CLONE : le chainId vit dans la section config du genesis et n'entre pas dans le hash du bloc, deux réseaux peuvent donc partager leur bloc 0 sans être la même chaîne ; aucune dérogation n'ouvre ce cas`);
+    }
+    return sortie('OK',
       `hash et stateRoot conformes à genesis-reference.json (figé le ${ref.fige_le || '?'})` +
       (ALLOW_DEV ? ' — ALLOW_DEV_HASH=1 était inutile : cette chaîne EST la production' : ''));
-    return;
   }
 
   if (!ALLOW_DEV) {
     if (!ref) {
-      note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
+      return sortie('BLOQUEUR',
         'NON VÉRIFIÉ : aucune empreinte figée dans genesis/genesis-reference.json — impossible d\'affirmer QUELLE chaîne ce RPC sert ; figer l\'empreinte de production, ou lancer avec ALLOW_DEV_HASH=1 s\'il s\'agit d\'un réseau de développement');
-      return;
     }
-    note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
-      `la chaîne servie N'EST PAS celle qui a été publiée — bloc 0 reçu hash=${String(entete.hash).slice(0, 18)}… stateRoot=${String(entete.stateRoot).slice(0, 18)}… ; attendu hash=${String(ref.hash).slice(0, 18)}… ; corriger RPC=, ou rebrancher le nœud sur le bon datadir (un resync depuis genesis-coinbosa-dev.json porte le MÊME chainId 26262)`);
-    return;
+    return sortie('BLOQUEUR',
+      `la chaîne servie N'EST PAS celle qui a été publiée — bloc 0 reçu hash=${String(entete.hash).slice(0, 18)}… stateRoot=${String(entete.stateRoot).slice(0, 18)}… ; attendu hash=${String(ref.hash).slice(0, 18)}… ; corriger RPC=, ou rebrancher le nœud sur le bon datadir`);
   }
 
   // --- dérogation de développement : elle doit se PROUVER ---------------------
@@ -230,37 +289,60 @@ function verdictBloc0(entete, chainIdVu) {
   // L'extraData contient l'adresse du validateur jetable, tirée au sort à chaque
   // génération : c'est un lien fort entre la chaîne interrogée et ce fichier précis.
   if (!fs.existsSync(GENESIS_FILE)) {
-    note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
+    return sortie('BLOQUEUR',
       `NON VÉRIFIÉ : ALLOW_DEV_HASH=1 mais le genesis de développement est introuvable (${GENESIS_FILE}) — la dérogation ne peut pas prouver qu'elle porte bien sur un réseau de dév ; indiquer GENESIS=chemin/vers/genesis-coinbosa-dev.json`);
-    return;
   }
   let dev; try { dev = JSON.parse(fs.readFileSync(GENESIS_FILE, 'utf8')); } catch (e) {
-    note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
+    return sortie('BLOQUEUR',
       `NON VÉRIFIÉ : ${path.basename(GENESIS_FILE)} illisible (${e.message}) — dérogation de développement non prouvable`);
-    return;
   }
   if (dev.coinbosaDev !== true) {
-    note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
+    return sortie('BLOQUEUR',
       `ALLOW_DEV_HASH=1 refusé : ${path.basename(GENESIS_FILE)} ne porte PAS le marqueur coinbosaDev — ce n'est pas un genesis de développement, la dérogation ne s'applique pas ; retirer ALLOW_DEV_HASH ou désigner le bon fichier`);
-    return;
+  }
+  // Le chainId attendu sera LU dans ce fichier : il doit donc y être, et être exploitable.
+  // Un genesis sans config.chainId ne peut fonder aucune attente — on ne se rabat pas en
+  // silence sur la valeur de production, on refuse la dérogation.
+  const cidDev = dev.config ? Number(dev.config.chainId) : NaN;
+  if (!Number.isInteger(cidDev) || cidDev <= 0) {
+    return sortie('BLOQUEUR',
+      `ALLOW_DEV_HASH=1 refusé : ${path.basename(GENESIS_FILE)} ne déclare pas de config.chainId exploitable (${dev.config ? JSON.stringify(dev.config.chainId) : 'section config absente'}) — sans lui, aucun chainId ne peut être attendu de cette chaîne`);
+  }
+  // Sans eth_chainId, le lien entre la chaîne servie et ce fichier resterait incomplet :
+  // la dérogation ne s'accorde pas sur une comparaison qui n'a pas eu lieu.
+  if (chainIdVu === null) {
+    return sortie('BLOQUEUR',
+      `NON VÉRIFIÉ : eth_chainId n'a pas répondu — le chainId servi ne peut pas être confronté à ${path.basename(GENESIS_FILE)}, la dérogation de développement reste refusée`);
   }
 
   const ecarts = [];
-  if (!hexEgal(entete.extraData, dev.extraData)) ecarts.push(`extraData (validateur inscrit au bloc 0) : reçu ${String(entete.extraData).slice(0, 26)}…, fichier ${String(dev.extraData).slice(0, 26)}…`);
+  if (!hexEgal(entete.extraData, dev.extraData)) ecarts.push(`extraData (il porte l'adresse du validateur inscrite au bloc 0) — ${ecartHex(entete.extraData, dev.extraData)}`);
   if (!nbEgal(entete.gasLimit, dev.gasLimit)) ecarts.push(`gasLimit : reçu ${entete.gasLimit}, fichier ${dev.gasLimit}`);
   if (dev.difficulty && !nbEgal(entete.difficulty, dev.difficulty)) ecarts.push(`difficulty : reçu ${entete.difficulty}, fichier ${dev.difficulty}`);
   if (dev.nonce && !nbEgal(entete.nonce, dev.nonce)) ecarts.push(`nonce : reçu ${entete.nonce}, fichier ${dev.nonce}`);
-  const cidDev = dev.config && Number(dev.config.chainId);
-  if (cidDev && chainIdVu !== null && cidDev !== chainIdVu) ecarts.push(`chainId : servi ${chainIdVu}, fichier ${cidDev}`);
+  // Le reste de l'en-tête écrit par `geth init` : chaque champ du fichier qui n'est comparé
+  // à rien est un champ par lequel une autre chaîne pourrait passer. On les prend tous,
+  // sauf stateRoot — voir la ligne (info) rendue avec le verdict.
+  if (dev.timestamp !== undefined && !nbEgal(entete.timestamp, dev.timestamp)) ecarts.push(`timestamp : reçu ${entete.timestamp}, fichier ${dev.timestamp}`);
+  if (dev.mixHash && !hexEgal(entete.mixHash, dev.mixHash)) ecarts.push(`mixHash : reçu ${entete.mixHash}, fichier ${dev.mixHash}`);
+  if (dev.coinbase && !hexEgal(entete.miner, dev.coinbase)) ecarts.push(`coinbase : reçu ${entete.miner}, fichier ${dev.coinbase}`);
+  if (dev.parentHash && !hexEgal(entete.parentHash, dev.parentHash)) ecarts.push(`parentHash : reçu ${entete.parentHash}, fichier ${dev.parentHash}`);
+  if (dev.gasUsed !== undefined && !nbEgal(entete.gasUsed, dev.gasUsed)) ecarts.push(`gasUsed : reçu ${entete.gasUsed}, fichier ${dev.gasUsed}`);
+  if (cidDev !== chainIdVu) ecarts.push(`chainId : servi ${chainIdVu}, fichier ${cidDev}`);
 
   if (ecarts.length) {
-    note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
+    return sortie('BLOQUEUR',
       `le bloc 0 servi ne correspond NI à la production NI au genesis de développement local (${path.basename(GENESIS_FILE)}) : ${ecarts.join(' ; ')} — le nœud interrogé a été initialisé avec un autre genesis`);
-    return;
   }
-  note('empreinte du bloc 0 (identité de la chaîne)', 'OK',
-    `réseau de DÉVELOPPEMENT prouvé : marqueur coinbosaDev + en-tête du bloc 0 liée à ${path.basename(GENESIS_FILE)} (extraData, gasLimit, chainId)`);
-  info('stateRoot NON comparé en mode développement (il change à chaque génération) : ce contrôle ne prouve donc RIEN sur la production — seul check-genesis-hash.js sans ALLOW_DEV_HASH le fait.');
+  // Seulement ICI le chainId du fichier devient la valeur attendue : après que l'en-tête du
+  // bloc 0 SERVI a lié la chaîne à ce fichier précis (l'extraData porte l'adresse du
+  // validateur jetable, tirée au sort à chaque génération). Ce n'est pas la variable
+  // d'environnement qui l'accorde, c'est la chaîne qui l'a démontré.
+  return sortie('OK',
+    `réseau de DÉVELOPPEMENT prouvé : marqueur coinbosaDev + en-tête du bloc 0 liée à ${path.basename(GENESIS_FILE)} (extraData, gasLimit, difficulty, nonce, timestamp, mixHash, coinbase, parentHash, gasUsed) — chainId ${cidDev} DÉRIVÉ de ce fichier, non déclaré`,
+    { chainIdAttendu: cidDev, prouveDev: true,
+      infos: ['stateRoot NON comparé en mode développement (le recalculer exige de reconstruire l\'arbre de Merkle de l\'allocation : c\'est le travail de check-genesis-hash.js). L\'allocation servie est tout de même confrontée au fichier en section 3 (« allocation du genesis servie au bloc 0 »), et ce contrôle-là est BLOQUEUR.',
+              'Ce que ce mode prouve : le nœud local a démarré sur CE fichier. Ce qu\'il ne prouve pas : quoi que ce soit sur la production — seul check-genesis-hash.js sans ALLOW_DEV_HASH le fait.'] });
 }
 
 // ---------------------------------------------------------------------------
@@ -390,7 +472,7 @@ function essaiWebSocket(cible, msMax) {
 
 (async () => {
   console.log(`RPC interrogé : ${RPC}`);
-  console.log(`Références    : coinbosa.config.json (chainId ${CHAIN_ID_ATTENDU}), genesis-reference.json, ${path.basename(GENESIS_FILE)}${ALLOW_DEV ? '  [ALLOW_DEV_HASH=1]' : ''}`);
+  console.log(`Références    : coinbosa.config.json (chainId ${CHAIN_ID_CONFIG}), genesis-reference.json, ${path.basename(GENESIS_FILE)}${ALLOW_DEV ? '  [ALLOW_DEV_HASH=1]' : ''}`);
   console.log(`Pause entre appels : ${PAUSE_MS} ms (lecture seule, aucun envoi de transaction)\n`);
 
   // ---- 1. Identité ------------------------------------------------------
@@ -401,28 +483,54 @@ function essaiWebSocket(cible, msMax) {
   console.log('1. IDENTITÉ DE LA CHAÎNE');
   let chainIdVu = null;
   const cid = await rpc('eth_chainId'); await pause(PAUSE_MS);
+  if (ok(cid)) chainIdVu = parseInt(cid.json.result, 16);
+  const nv = await rpc('net_version'); await pause(PAUSE_MS);
+
+  // Le bloc 0 est demandé ICI, avant que le chainId ne soit jugé. L'ordre n'est pas
+  // cosmétique : c'est l'en-tête du bloc 0 qui établit LAQUELLE des chaînes répond, donc
+  // quel chainId elle a le droit d'annoncer. Juger le chainId d'abord reviendrait à
+  // trancher l'identité avant de l'avoir établie — et à devoir croire sur parole celui
+  // qui lance le contrôle. Les lignes restent affichées dans l'ordre habituel.
+  const b0 = await rpc('eth_getBlockByNumber', ['0x0', false]); await pause(PAUSE_MS);
+  const identite = okv(b0)
+    ? analyserIdentite(b0.json.result, chainIdVu)
+    : { verdict: 'BLOQUEUR',
+        detail: `NON VÉRIFIÉ : le bloc 0 n'est pas servi (${cause(b0)}) — sans lui, impossible de prouver QUELLE chaîne ce RPC dessert`,
+        infos: [], chainIdAttendu: CHAIN_ID_CONFIG, prouveDev: false };
+  // Valeur de PRODUCTION par défaut. Elle n'est remplacée que par analyserIdentite(), et
+  // seulement après que la chaîne a prouvé être celle de développement.
+  const chainIdAttendu = identite.chainIdAttendu;
+  const source = identite.prouveDev ? path.basename(GENESIS_FILE) : 'coinbosa.config.json';
+
   if (!ok(cid)) {
     note('eth_chainId', 'BLOQUEUR', `${errMsg(cid)} — identité NON VÉRIFIÉE`);
   } else {
-    chainIdVu = parseInt(cid.json.result, 16);
-    const bon = chainIdVu === CHAIN_ID_ATTENDU;
+    const bon = chainIdVu === chainIdAttendu;
     note('eth_chainId', bon ? 'OK' : 'BLOQUEUR', bon
-      ? `${cid.json.result} (${chainIdVu}) = chainId attendu`
-      : `${chainIdVu} servi, ${CHAIN_ID_ATTENDU} attendu (coinbosa.config.json) — ce RPC ne sert PAS Coinbosa Chain : corriger RPC= ou rebrancher le nœud`);
+      ? `${cid.json.result} (${chainIdVu}) = chainId attendu` + (identite.prouveDev ? ` (dérivé de ${source}, réseau de développement PROUVÉ ci-dessous)` : '')
+      : `${chainIdVu} servi, ${chainIdAttendu} attendu (${source}) — ce RPC ne sert PAS Coinbosa Chain : corriger RPC= ou rebrancher le nœud`);
   }
 
-  const nv = await rpc('net_version'); await pause(PAUSE_MS);
   if (!ok(nv)) {
     note('net_version', 'BLOQUEUR', `${errMsg(nv)} — identité NON VÉRIFIÉE`);
+  } else if (identite.prouveDev) {
+    // Sur le réseau de développement, networkId et chainId sont DÉLIBÉRÉMENT dissociés —
+    // c'est même l'objet de la séparation des deux chaînes. Or le networkId n'est écrit
+    // dans AUCUN fichier de genesis : c'est un drapeau de ligne de commande. Il n'existe
+    // donc ici rien à quoi le comparer. Le déclarer OK serait un verdict sans comparaison
+    // (exactement le faux vert qu'on a chassé de ces scripts) ; le déclarer BLOQUEUR serait
+    // un faux rouge sur une chaîne de dév saine. On le MESURE et on dit ce qu'il ne prouve
+    // pas — une ligne (info) ne compte dans aucun décompte et ne verdit rien.
+    info(`net_version = ${nv.json.result} (eth_chainId annonce ${chainIdVu}) — réseau de développement : le networkId ne figure dans aucun genesis, rien ne permet de l'attendre, cette valeur ne vaut donc PAS verdict`);
   } else {
     // Recoupement des deux méthodes : un intermédiaire qui réécrit l'une sans l'autre
     // (ou un nœud mal configuré) se trahit ici, alors que chaque valeur prise seule
     // pouvait sembler plausible.
     const nvNum = Number(nv.json.result);
-    const bon = nvNum === CHAIN_ID_ATTENDU && (chainIdVu === null || nvNum === chainIdVu);
+    const bon = nvNum === chainIdAttendu && (chainIdVu === null || nvNum === chainIdVu);
     note('net_version', bon ? 'OK' : 'BLOQUEUR', bon
       ? `${nv.json.result} — cohérent avec eth_chainId et avec coinbosa.config.json`
-      : `${nv.json.result} servi, ${CHAIN_ID_ATTENDU} attendu (eth_chainId annonce ${chainIdVu}) — réseau incohérent : les deux méthodes ne décrivent pas la même chaîne`);
+      : `${nv.json.result} servi, ${chainIdAttendu} attendu (eth_chainId annonce ${chainIdVu}) — réseau incohérent : les deux méthodes ne décrivent pas la même chaîne`);
   }
 
   const sy = await rpc('eth_syncing'); await pause(PAUSE_MS);
@@ -438,15 +546,11 @@ function essaiWebSocket(cible, msMax) {
   const head = parseInt(bn.json.result, 16);
   note('eth_blockNumber', 'OK', `tête = ${head}`);
 
-  // Le bloc 0 n'était JAMAIS demandé : c'est pourtant le seul discriminant entre la
-  // production et une chaîne de développement, puisque toutes deux portent chainId 26262.
-  const b0 = await rpc('eth_getBlockByNumber', ['0x0', false]); await pause(PAUSE_MS);
-  if (!okv(b0)) {
-    note('empreinte du bloc 0 (identité de la chaîne)', 'BLOQUEUR',
-      `NON VÉRIFIÉ : le bloc 0 n'est pas servi (${cause(b0)}) — sans lui, impossible de prouver QUELLE chaîne ce RPC dessert`);
-  } else {
-    verdictBloc0(b0.json.result, chainIdVu);
-  }
+  // Le verdict d'identité, établi plus haut (le bloc 0 a été lu avant que le chainId ne
+  // soit jugé), est rendu ici pour que la lecture reste dans l'ordre : ce que le nœud
+  // annonce, puis la preuve de ce qu'il est.
+  note('empreinte du bloc 0 (identité de la chaîne)', identite.verdict, identite.detail);
+  identite.infos.forEach((t) => info(t));
 
   // ---- 2. Méthodes exigées par un indexeur ------------------------------
   // Ce que cette section attrape : un nœud qui répond « 200 OK » mais ne sert pas de quoi
