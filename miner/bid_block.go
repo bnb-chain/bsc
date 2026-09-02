@@ -284,7 +284,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	if insertErr != nil {
 		bidBlockVerifyFailedGauge.Inc(1)
 		reason := fmt.Sprintf("InsertChain err: %v", insertErr)
-		duration, violationCount := w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
+		violationCount := w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
 		w.afterBidBlockRevoke()
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
@@ -297,7 +297,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
 			"violationCount", violationCount,
-			"revokeDuration", duration,
+			"revokeDuration", bidBlockRevokeDuration,
 			"err", insertErr)
 		return
 	}
