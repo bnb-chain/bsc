@@ -566,7 +566,7 @@ func TestB20StorageRefunds(t *testing.T) {
 		token := b20Addr(b20VariantAsset, 1)
 		// Without the sentinel the token is an EIP-161 empty account and
 		// Finalise below would reap it, storage included (BEP-702 3.16).
-		statedb.SetCode(token, b20MarkerCode, tracing.CodeChangeContractCreation)
+		statedb.SetCode(token, B20MarkerCode, tracing.CodeChangeContractCreation)
 		gas := NewGasBudget(10_000_000)
 		ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 		return statedb, newMeteredB20Storage(ctx), ctx

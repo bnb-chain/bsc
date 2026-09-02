@@ -272,7 +272,7 @@ func TestB20CalldataGasMatchesTheBEP(t *testing.T) {
 // the function, and nothing after the refusal should execute at all.
 func TestB20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 	statedb, evm := newB20EVM(t)
-	admin := b20ActivationAdmin
+	admin := b20TestCaller
 	ret, _, err := evm.Call(admin, B20FactoryAddress,
 		encodeCreateB20(b20VariantAsset, common.HexToHash("0xaa11"), admin, [][]byte{
 			b20Call(selGrantRole, roleOperator, addrKey(admin)),
@@ -339,7 +339,7 @@ func TestB20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 // error and gas still in hand. That combination is what this test refuses.
 func TestB20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
 	_, evm := newB20EVM(t)
-	admin := b20ActivationAdmin
+	admin := b20TestCaller
 	ret, _, err := evm.Call(admin, B20FactoryAddress,
 		encodeCreateB20(b20VariantAsset, common.HexToHash("0xbb22"), admin, [][]byte{
 			b20Call(selGrantRole, roleOperator, addrKey(admin)),

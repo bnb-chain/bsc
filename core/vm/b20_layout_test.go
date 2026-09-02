@@ -176,7 +176,6 @@ func TestB20SlotNumbers(t *testing.T) {
 		{"core.seizePolicies", b20SlotSeizePolicies, 14},
 
 		{"activation.features", actSlotFeatures, 0},
-		{"activation.admin", actSlotAdmin, 1},
 
 		{"policy.policies", polSlotPolicies, 0},
 		{"policy.members", polSlotMembers, 1},

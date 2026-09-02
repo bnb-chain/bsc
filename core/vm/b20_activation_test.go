@@ -25,17 +25,71 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
+// encodeUpdateParam builds the governance call: a canonical feature name and a
+// 32-byte value, non-zero to activate.
+func encodeUpdateParam(key string, on bool) []byte {
+	var v common.Hash
+	if on {
+		v[31] = 1
+	}
+	out := append([]byte{}, selUpdateParam[:]...)
+	out = append(out, u256hash(0x40).Bytes()...)                         // offset: key
+	out = append(out, u256hash(0x40+32+32*wordsOf(len(key))).Bytes()...) // offset: value
+	out = append(out, u256hash(uint64(len(key))).Bytes()...)
+	out = append(out, padRight32([]byte(key))...)
+	out = append(out, u256hash(32).Bytes()...)
+	out = append(out, v.Bytes()...)
+	return out
+}
+
+// encodeUpdateParamRaw builds updateParam(string,bytes) with the value passed
+// through verbatim, so a test can submit a wrong-length one.
+func encodeUpdateParamRaw(key string, value []byte) []byte {
+	out := append([]byte{}, selUpdateParam[:]...)
+	out = append(out, u256hash(0x40).Bytes()...)
+	out = append(out, u256hash(0x40+32+32*wordsOf(len(key))).Bytes()...)
+	out = append(out, u256hash(uint64(len(key))).Bytes()...)
+	out = append(out, padRight32([]byte(key))...)
+	out = append(out, u256hash(uint64(len(value))).Bytes()...)
+	out = append(out, padRight32(value)...)
+	return out
+}
+
+func wordsOf(n int) uint64 {
+	if n == 0 {
+		return 0
+	}
+	return uint64((n + 31) / 32)
+}
+
+func padRight32(b []byte) []byte {
+	if len(b) == 0 {
+		return nil
+	}
+	out := make([]byte, 32*((len(b)+31)/32))
+	copy(out, b)
+	return out
+}
+
+// featureNameAsset and featureNameStablecoin are the canonical names the feature
+// identifiers hash from, spelled here so a rename has to change the tests too.
+const (
+	featureNameAsset      = "bsc.b20_asset"
+	featureNameStablecoin = "bsc.b20_stablecoin"
+	featureNamePolicy     = "bsc.policy_registry"
+)
+
 // TestB20ActivationRegistry exercises the switch itself: reads never revert,
-// writes are admin-only, no-op governance actions are surfaced, and the admin
-// is rotatable.
+// writes are governance-only, and a no-op is surfaced rather than accepted.
 func TestB20ActivationRegistry(t *testing.T) {
 	_, evm := newB20EVM(t)
 	reg := B20ActivationRegistryAddress
-	admin := b20ActivationAdmin
+	gov := params.B20GovHubAddress
 	stranger := common.HexToAddress("0x5747a9e")
 
 	call := func(caller common.Address, input []byte) ([]byte, error) {
@@ -43,75 +97,51 @@ func TestB20ActivationRegistry(t *testing.T) {
 		return ret, err
 	}
 	// A feature the harness did not seed, so it starts inactive.
-	feature := common.HexToHash("0xf1")
+	const name = "bsc.something_later"
+	feature := crypto.Keccak256Hash([]byte(name))
 
 	// Reads never revert, whatever the flag.
 	if ret, err := call(stranger, b20Call(selIsActivated, feature)); err != nil {
 		t.Fatalf("isActivated: %v", err)
 	} else if !bytes.Equal(ret, encBool(false)) {
-		t.Fatalf("isActivated = %x, want false", ret)
+		t.Errorf("isActivated = %x, want false", ret)
 	}
-	if ret, err := call(stranger, b20Call(selActivationAdm)); err != nil {
-		t.Fatalf("admin(): %v", err)
-	} else if !bytes.Equal(ret, addrKey(admin).Bytes()) {
-		t.Fatalf("admin() = %x, want %x", ret, addrKey(admin))
-	}
-
-	// checkActivated is the assertion form.
 	if _, err := call(stranger, b20Call(selCheckActivated, feature)); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("checkActivated on an inactive feature err = %v, want revert", err)
-	}
-	if _, err := call(stranger, b20Call(selCheckActivated, featureB20Asset)); err != nil {
-		t.Fatalf("checkActivated on an active feature: %v", err)
+		t.Errorf("checkActivated on an inactive feature: err = %v, want a revert", err)
 	}
 
-	// Only the admin may flip a flag.
-	if _, err := call(stranger, b20Call(selActivate, feature)); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("activate by a stranger err = %v, want revert", err)
+	// Only GovHub may write.
+	if _, err := call(stranger, encodeUpdateParam(name, true)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("updateParam from a stranger: err = %v, want a revert", err)
 	}
-	if _, err := call(admin, b20Call(selActivate, feature)); err != nil {
-		t.Fatalf("activate: %v", err)
+	if _, err := call(gov, encodeUpdateParam(name, true)); err != nil {
+		t.Fatalf("updateParam from GovHub: %v", err)
 	}
 	if ret, _ := call(stranger, b20Call(selIsActivated, feature)); !bytes.Equal(ret, encBool(true)) {
-		t.Fatal("feature should be active")
+		t.Errorf("isActivated after activation = %x, want true", ret)
 	}
 
-	// No-op governance actions are surfaced, not silently accepted.
-	if _, err := call(admin, b20Call(selActivate, feature)); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("re-activate err = %v, want AlreadyActivated", err)
+	// No-ops are surfaced in both directions.
+	if _, err := call(gov, encodeUpdateParam(name, true)); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("activating an active feature: err = %v, want AlreadyActivated", err)
 	}
-	if _, err := call(admin, b20Call(selDeactivate, feature)); err != nil {
+	if _, err := call(gov, encodeUpdateParam(name, false)); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
-	if _, err := call(admin, b20Call(selDeactivate, feature)); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("re-deactivate err = %v, want FeatureNotActivated", err)
+	if _, err := call(gov, encodeUpdateParam(name, false)); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("deactivating an inactive feature: err = %v, want FeatureNotActivated", err)
 	}
 
-	// The admin is rotatable, and the zero address is never a valid admin.
-	if _, err := call(admin, b20Call(selSetAdmin, common.Hash{})); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("setAdmin(0) err = %v, want ZeroAdminAddress", err)
-	}
-	newAdmin := common.HexToAddress("0x0ead11")
-	if _, err := call(stranger, b20Call(selSetAdmin, addrKey(newAdmin))); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("setAdmin by a stranger err = %v, want revert", err)
-	}
-	if _, err := call(admin, b20Call(selSetAdmin, addrKey(newAdmin))); err != nil {
-		t.Fatalf("setAdmin: %v", err)
-	}
-	if _, err := call(admin, b20Call(selActivate, feature)); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatal("the previous admin must lose authority after rotation")
-	}
-	if _, err := call(newAdmin, b20Call(selActivate, feature)); err != nil {
-		t.Fatalf("activate by the new admin: %v", err)
+	// An empty name and a mis-sized value are both rejected.
+	if _, err := call(gov, encodeUpdateParam("", true)); !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("empty key: err = %v, want InvalidValue", err)
 	}
 }
 
-// TestB20ActivationGates checks what the switch reaches: creation of tokens and
 // policies, and nothing on a token that already exists (BEP-702 3.15).
 func TestB20ActivationGates(t *testing.T) {
 	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
-	admin := b20ActivationAdmin
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
@@ -130,7 +160,7 @@ func TestB20ActivationGates(t *testing.T) {
 	token := common.BytesToAddress(ret)
 
 	// Deactivate the Asset variant.
-	if _, err := call(admin, B20ActivationRegistryAddress, b20Call(selDeactivate, featureB20Asset)); err != nil {
+	if _, err := call(params.B20GovHubAddress, B20ActivationRegistryAddress, encodeUpdateParam(featureNameAsset, false)); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
 
@@ -153,7 +183,7 @@ func TestB20ActivationGates(t *testing.T) {
 	}
 
 	// PolicyRegistry: reads stay open, writes stop.
-	if _, err := call(admin, B20ActivationRegistryAddress, b20Call(selDeactivate, featurePolicyRegistry)); err != nil {
+	if _, err := call(params.B20GovHubAddress, B20ActivationRegistryAddress, encodeUpdateParam(featureNamePolicy, false)); err != nil {
 		t.Fatalf("deactivate policy registry: %v", err)
 	}
 	if _, err := call(creator, B20PolicyRegistryAddress, b20Call(selIsAuthorized, u256hash(0), addrKey(b20Alice))); err != nil {
@@ -170,7 +200,6 @@ func TestB20ActivationGates(t *testing.T) {
 // take every flag and policy with it (BEP-702 3.16).
 func TestB20RegistrySentinel(t *testing.T) {
 	statedb, evm := newB20EVM(t)
-	admin := b20ActivationAdmin
 	creator := common.HexToAddress("0xc0ffee")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
@@ -202,15 +231,17 @@ func TestB20RegistrySentinel(t *testing.T) {
 	// The activation registry is the same story. Idempotence in gas terms is
 	// asserted precisely by TestB20EnsureSentinelIdempotent; here the point is
 	// only that a later write leaves the planted sentinel alone.
-	feature := common.HexToHash("0xf2")
-	if _, err := call(admin, B20ActivationRegistryAddress, b20Call(selActivate, feature)); err != nil {
+	const laterName = "bsc.something_else"
+	if _, err := call(params.B20GovHubAddress, B20ActivationRegistryAddress,
+		encodeUpdateParam(laterName, true)); err != nil {
 		t.Fatalf("activate: %v", err)
 	}
 	planted := statedb.GetCodeHash(B20ActivationRegistryAddress)
 	if planted != b20MarkerCodeHash {
 		t.Fatalf("activation registry code hash = %x, want the sentinel %x", planted, b20MarkerCodeHash)
 	}
-	if _, err := call(admin, B20ActivationRegistryAddress, b20Call(selDeactivate, feature)); err != nil {
+	if _, err := call(params.B20GovHubAddress, B20ActivationRegistryAddress,
+		encodeUpdateParam(laterName, false)); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
 	if after := statedb.GetCodeHash(B20ActivationRegistryAddress); after != planted {
@@ -240,7 +271,7 @@ func TestB20EnsureSentinelIdempotent(t *testing.T) {
 	}
 
 	codeWrite := params.CreateGas +
-		params.CreateDataGas*uint64(len(b20MarkerCode)) +
+		params.CreateDataGas*uint64(len(B20MarkerCode)) +
 		params.Keccak256Gas + params.Keccak256WordGas
 	first := charged(ctx.ensureSentinel)
 	if first < codeWrite {
@@ -296,41 +327,38 @@ func TestB20NeverOverwritesForeignCode(t *testing.T) {
 	}
 }
 
-// TestB20ActivationAdminSlotMustBeSet covers the clause that stops the zero
-// address from matching an unset admin. Nothing else did: the neighbouring gate
-// test pins the chain-config admin, which decides whether the precompiles resolve
-// at all, while this one is the storage slot requireAdmin actually reads. BEP-702
-// 3.15 requires both directions — the zero address is never a valid admin, and a
-// zero caller is Unauthorized.
-func TestB20ActivationAdminSlotMustBeSet(t *testing.T) {
-	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	if err != nil {
-		t.Fatal(err)
+// TestB20ParamKeySpaceIsBounded pins the parameter key space. The namespace is
+// open inside the feature prefix so a later BEP can add one by naming it, and
+// closed outside it — GovHub reports a target's revert in an event and leaves the
+// proposal successful, so a key accepted by accident would read as a deliberate
+// governance action that in fact gated nothing.
+func TestB20ParamKeySpaceIsBounded(t *testing.T) {
+	_, evm := newB20EVM(t)
+	gov := params.B20GovHubAddress
+	call := func(input []byte) error {
+		_, _, err := evm.Call(gov, B20ActivationRegistryAddress, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		return err
 	}
-	cfg := *b20TestChainConfig()
-	evm := NewEVM(b20BlockContext(1), statedb, &cfg, Config{})
-	// Deliberately unseeded: the precompiles resolve, but the registry's admin slot
-	// is empty, which is the state a network is in before governance sets one.
-	if _, ok := evm.precompile(B20ActivationRegistryAddress); !ok {
-		t.Fatal("the activation registry does not resolve; the config gate is in the way")
-	}
-	reg := b20Storage{state: statedb, token: B20ActivationRegistryAddress}
-	if got := reg.getWord(actSlot(actSlotAdmin)); got != (common.Hash{}) {
-		t.Fatalf("the admin slot is %x, want empty for this test to mean anything", got)
-	}
+	word := func(n byte) []byte { var h common.Hash; h[31] = n; return h.Bytes() }
 
-	for _, caller := range []common.Address{{}, common.HexToAddress("0x57ra9e")} {
-		_, _, err := evm.Call(caller, B20ActivationRegistryAddress,
-			b20Call(selActivate, featureB20Asset), NewGasBudget(5_000_000), uint256.NewInt(0))
-		if !errors.Is(err, ErrExecutionReverted) {
-			t.Errorf("activate from %s on a registry with no admin: err = %v, want a revert. "+
-				"An empty admin slot must not be matchable, least of all by the zero address",
-				caller.Hex(), err)
+	for _, tc := range []struct {
+		name   string
+		key    string
+		value  []byte
+		accept bool
+	}{
+		{"a feature under the prefix", "bsc.something_later", word(1), true},
+		{"an unprefixed key", "something_later", word(1), false},
+		{"the bare prefix", "bsc.", word(1), false},
+		{"an empty key", "", word(1), false},
+		{"a wrong-length value", "bsc.another", make([]byte, 20), false},
+	} {
+		err := call(encodeUpdateParamRaw(tc.key, tc.value))
+		if tc.accept && err != nil {
+			t.Errorf("%s: err = %v, want accepted", tc.name, err)
 		}
-	}
-
-	// And the feature stayed off, so nothing was activated on the way to the revert.
-	if got := reg.getWord(mappingSlot(actSlot(actSlotFeatures), featureB20Asset)); got != (common.Hash{}) {
-		t.Errorf("the Asset feature reads %x, want off", got)
+		if !tc.accept && !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want a revert", tc.name, err)
+		}
 	}
 }

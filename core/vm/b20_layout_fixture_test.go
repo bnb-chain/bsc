@@ -57,7 +57,7 @@ func TestB20LayoutFixtureFollowsTheCode(t *testing.T) {
 			"pendingAdmins": polSlotPendingAdmins, "counter": polSlotCounter,
 			"children": polSlotChildren,
 		},
-		b20ActivationNamespace: {"features": actSlotFeatures, "admin": actSlotAdmin},
+		b20ActivationNamespace: {"features": actSlotFeatures},
 	}
 
 	var ref struct {

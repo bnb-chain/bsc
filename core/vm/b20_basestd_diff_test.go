@@ -144,10 +144,17 @@ type refEntry struct {
 // not, with the reason. A bare list would become a dumping ground; requiring a
 // sentence makes adding one a decision.
 var b20IntentionalAddition = map[string]string{
-	"setAdmin(address)": "BSC rotates the activation admin; Base returns a hardcoded constant " +
-		"from admin() and stores none, so it needs no setter (BEP-702 3.15).",
-	"AdminChanged(address,address,address)": "emitted by setAdmin, which Base does not have.",
-	"ZeroAdminAddress()":                    "setAdmin rejects the zero address; Base has no setter to reject it in.",
+	"ParamChange(string,bytes)": "every BSC system contract logs the raw governance key and value " +
+		"alongside its own event, so operator tooling reads one stream across all of them.",
+	"UnknownParam(string,bytes)": "refuses a key outside the feature prefix. Base needs no such error " +
+		"because it has no parameter surface — and GovHub reports a target's revert in an event while " +
+		"leaving the proposal successful, so a key accepted by accident would read as deliberate.",
+	"updateParam(string,bytes)": "the activation switch is held by BSC governance, so it is " +
+		"reached the way every BSC system parameter is: a proposal targets GovHub, which " +
+		"forwards updateParam(key, value) to us. Base holds the switch in a constant its own " +
+		"admin() returns, so it needs no governance entry point at all.",
+	"InvalidValue(string,bytes)": "updateParam's revert for an empty key or a value that is " +
+		"not 32 bytes, in the shape BSC's system contracts already use.",
 	"variantOf(address)": "a convenience read derived from the address alone. Base's callers use " +
 		"B20FactoryLib off-chain instead of a precompile call.",
 	"Panic(uint256)": "Solidity's built-in, not an interface declaration — base-std does not " +
@@ -157,6 +164,14 @@ var b20IntentionalAddition = map[string]string{
 // b20IntentionalOmission records Beryl signatures we deliberately do not
 // implement. Same rule: a reason, not a checkbox.
 var b20IntentionalOmission = map[string]string{
+	"activate(bytes32)": "governance is the only authority, and a proposal can only ever " +
+		"reach us through GovHub's updateParam(key, value, target) — so an activate() that " +
+		"only GovHub could call, and GovHub would never call, would be unreachable ABI. " +
+		"The feature identifier is still keccak256 of the canonical name, so the namespace " +
+		"stays as open as Base's.",
+	"deactivate(bytes32)": "the same entry point with a zero value; see activate(bytes32).",
+	"admin()": "there is no admin. The authority is the GovHub constant, which removes the " +
+		"seeded slot, its one-shot configuration risk, and the rotation setter with it.",
 	"burnBlocked(address,uint256)": "the legacy burn-based freeze-and-seize. base-std removed it " +
 		"from IB20 and keeps the selector only for back-compat, recommending seizeWithMemo then " +
 		"burn — which we implement. A chain launching after the deprecation carries no callers.",

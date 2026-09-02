@@ -80,7 +80,7 @@ func IsB20Address(addr common.Address) bool {
 // b20MarkerCodeHash is keccak256(0xEF), the code hash of the factory's sentinel.
 // EIP-3541 makes 0xEF-prefixed code undeployable, so nothing an attacker installs
 // can hash to it (BEP-702 3.3).
-var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
+var b20MarkerCodeHash = crypto.Keccak256Hash(B20MarkerCode)
 
 // b20InitializedMetered reports whether a B20 token exists at addr, charged as an
 // account access. Exact-hash, not non-empty: foreign code is not a token.
@@ -119,10 +119,10 @@ func (ctx *PrecompileContext) ensureSentinel() {
 	if !hadNoCode(ctx.StateDB, ctx.Self) {
 		return
 	}
-	if !ctx.chargeCodeWrite(ctx.Self, b20MarkerCode) {
+	if !ctx.chargeCodeWrite(ctx.Self, B20MarkerCode) {
 		return
 	}
-	ctx.StateDB.SetCode(ctx.Self, b20MarkerCode, tracing.CodeChangeContractCreation)
+	ctx.StateDB.SetCode(ctx.Self, B20MarkerCode, tracing.CodeChangeContractCreation)
 }
 
 // b20EnterCall applies the guards every B20 entry point shares: direct calls

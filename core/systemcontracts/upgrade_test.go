@@ -73,48 +73,11 @@ func TestUpgradeBuildInSystemContractNilValue(t *testing.T) {
 	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
 }
 
-// TestB20ActivationAdminIsConfigured pins that the seeded admin comes from chain
-// configuration (BEP-702 3.15) rather than being fixed in the fork hook. It has
-// to: the public networks name a governance timelock, which is a contract and so
-// cannot sign anything, while a QA network needs the switch held by a key it can
-// actually transact from. Hard-coding the timelock made the post-activation path
-// reachable only through a governance proposal or a state override.
-func TestB20ActivationAdminIsConfigured(t *testing.T) {
-	const forkTime = 1000
-	postLondon := big.NewInt(50_000_000)
-
-	seedWith := func(admin *common.Address) common.Address {
-		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-		if err != nil {
-			t.Fatal(err)
-		}
-		cfg := *params.BSCChainConfig
-		ft := uint64(forkTime)
-		cfg.JennerTime = &ft
-		cfg.B20ActivationAdmin = admin
-		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)
-		return vm.B20ActivationAdmin(statedb)
-	}
-
-	// A QA network can hold the switch with an ordinary account.
-	qa := common.HexToAddress("0x0ead11")
-	if got := seedWith(&qa); got != qa {
-		t.Errorf("seeded admin = %s, want the configured %s", got.Hex(), qa.Hex())
-	}
-
-	// An unset setting ships the code with the switch shut, which is a valid choice
-	// rather than an error. TestB20NotSeededWithAnUnusableAdmin covers the rest of
-	// that case: nothing at all is written, sentinels included.
-	if got := seedWith(nil); got != (common.Address{}) {
-		t.Errorf("seeded admin = %s, want zero when unconfigured", got.Hex())
-	}
-}
-
-// TestB20ActivationSeededAtFork covers the fork wiring, not the seeding
-// itself: that the boundary predicate fires on exactly the first activating
-// block, that it is gated to BSC, and that the timelock is what gets installed.
-// Without this the seeding could silently never run and B20 would ship inert.
-func TestB20ActivationSeededAtFork(t *testing.T) {
+// TestB20SentinelsPlantedAtFork pins the boundary hook: the two registries get
+// their account sentinels on the block that crosses Jenner, and on no other. The
+// hook writes nothing else — the activation authority is a constant, so there is
+// no admin to seed.
+func TestB20SentinelsPlantedAtFork(t *testing.T) {
 	const forkTime = 1000
 	// The fork is timestamp-based but still requires London, which on BSC is at
 	// block 31302048 — a block number below it would make the predicate false for
@@ -128,110 +91,42 @@ func TestB20ActivationSeededAtFork(t *testing.T) {
 		}
 		return statedb
 	}
-	// A usable admin, because that is now half the gate: the built-in configs name
-	// the placeholder, which schedules nothing (ChainConfig.B20Scheduled).
-	wantAdmin := common.HexToAddress("0xb20ad3111")
 	bscConfig := func() *params.ChainConfig {
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
 		cfg.JennerTime = &ft
-		admin := wantAdmin
-		cfg.B20ActivationAdmin = &admin
 		return &cfg
 	}
-
-	// The block that crosses the fork time seeds; the one after it does not have
-	// to, and must not disturb what is already there.
-	statedb := newState()
-	TryUpdateBuildInSystemContract(bscConfig(), postLondon, forkTime-1, forkTime, statedb, true)
-	if got := vm.B20ActivationAdmin(statedb); got != wantAdmin {
-		t.Errorf("admin after the fork block = %s, want the configured admin %s", got.Hex(), wantAdmin.Hex())
+	planted := func(statedb *state.StateDB) bool {
+		return len(statedb.GetCode(vm.B20ActivationRegistryAddress)) != 0 &&
+			len(statedb.GetCode(vm.B20PolicyRegistryAddress)) != 0
 	}
-	if len(statedb.GetCode(vm.B20ActivationRegistryAddress)) == 0 {
-		t.Error("activation registry carries no sentinel after the fork block")
-	}
-	if len(statedb.GetCode(vm.B20PolicyRegistryAddress)) == 0 {
-		t.Error("policy registry carries no sentinel after the fork block")
-	}
-
-	// A block wholly before the fork seeds nothing.
-	statedb = newState()
-	TryUpdateBuildInSystemContract(bscConfig(), postLondon, forkTime-2, forkTime-1, statedb, true)
-	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
-		t.Errorf("admin before the fork = %s, want zero", got.Hex())
-	}
-	if len(statedb.GetCode(vm.B20ActivationRegistryAddress)) != 0 {
-		t.Error("activation registry seeded before the fork")
-	}
-
-	// A block wholly after it seeds nothing either: the predicate is a boundary,
-	// not a "fork is active" test.
-	statedb = newState()
-	TryUpdateBuildInSystemContract(bscConfig(), postLondon, forkTime+1, forkTime+2, statedb, true)
-	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
-		t.Errorf("admin after the boundary = %s, want zero", got.Hex())
-	}
-
-	// Seeding is BSC-only: a non-Parlia chain gets nothing even at the boundary.
-	statedb = newState()
-	nonBSC := *params.BSCChainConfig
-	ft := uint64(forkTime)
-	nonBSC.JennerTime = &ft
-	nonBSC.Parlia = nil
-	TryUpdateBuildInSystemContract(&nonBSC, postLondon, forkTime-1, forkTime, statedb, true)
-	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
-		t.Errorf("non-BSC chain seeded an admin: %s", got.Hex())
-	}
-
-	// The seeding belongs to block begin; the block-end pass must not do it.
-	statedb = newState()
-	TryUpdateBuildInSystemContract(bscConfig(), postLondon, forkTime-1, forkTime, statedb, false)
-	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
-		t.Errorf("block-end pass seeded an admin: %s", got.Hex())
-	}
-}
-
-// TestB20NotSeededWithAnUnusableAdmin is the state-side half of the release gate.
-//
-// Seeding is one-shot and setAdmin requires the current admin to call, so a
-// network that crosses the boundary with an admin nobody holds would carry
-// registry state for a switch that can never be thrown. It must write nothing at
-// all — not even the sentinels — so that shipping this code to a network whose
-// Pasteur has already passed changes no state root, and a fresh sync agrees with
-// nodes that ran the released client through that block.
-func TestB20NotSeededWithAnUnusableAdmin(t *testing.T) {
-	const forkTime = 1000
-	postLondon := big.NewInt(50_000_000)
 
 	for _, tc := range []struct {
-		name  string
-		admin *common.Address
+		name                     string
+		cfg                      *params.ChainConfig
+		lastBlockTime, blockTime uint64
+		atBlockBegin             bool
+		want                     bool
 	}{
-		{"no admin", nil},
-		{"the zero address", &common.Address{}},
-		{"the placeholder", &params.B20ActivationAdminPlaceholder},
+		{"the block crossing the fork", bscConfig(), forkTime - 1, forkTime, true, true},
+		{"wholly before the fork", bscConfig(), forkTime - 2, forkTime - 1, true, false},
+		{"wholly after the boundary", bscConfig(), forkTime + 1, forkTime + 2, true, false},
+		{"the block-end pass", bscConfig(), forkTime - 1, forkTime, false, false},
 	} {
-		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-		if err != nil {
-			t.Fatal(err)
+		statedb := newState()
+		TryUpdateBuildInSystemContract(tc.cfg, postLondon, tc.lastBlockTime, tc.blockTime, statedb, tc.atBlockBegin)
+		if got := planted(statedb); got != tc.want {
+			t.Errorf("%s: sentinels planted = %v, want %v", tc.name, got, tc.want)
 		}
-		cfg := *params.BSCChainConfig
-		ft := uint64(forkTime)
-		cfg.JennerTime = &ft
-		cfg.B20ActivationAdmin = tc.admin
+	}
 
-		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)
-
-		if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {
-			t.Errorf("%s: an admin was seeded (%s)", tc.name, got.Hex())
-		}
-		for _, addr := range []common.Address{
-			vm.B20ActivationRegistryAddress, vm.B20PolicyRegistryAddress,
-		} {
-			if code := statedb.GetCode(addr); len(code) != 0 {
-				t.Errorf("%s: %s carries a sentinel. Crossing the boundary with an unusable "+
-					"admin must leave the state untouched", tc.name, addr.Hex())
-			}
-		}
+	// Planting is BSC-only: a non-Parlia chain gets nothing even at the boundary.
+	statedb := newState()
+	nonBSC := *bscConfig()
+	nonBSC.Parlia = nil
+	TryUpdateBuildInSystemContract(&nonBSC, postLondon, forkTime-1, forkTime, statedb, true)
+	if planted(statedb) {
+		t.Error("a non-BSC chain had sentinels planted")
 	}
 }

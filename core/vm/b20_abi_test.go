@@ -129,7 +129,7 @@ func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
 	}
 
 	// Open the Asset feature and create a token so the token path is live too.
-	if _, err := call(B20ActivationRegistryAddress, b20Call(selActivate, featureB20Asset)); err != nil {
+	if _, err := call(B20ActivationRegistryAddress, encodeUpdateParam(featureNameAsset, true)); err != nil {
 		// The harness seeds every feature already; activating again is fine to skip.
 		_ = err
 	}

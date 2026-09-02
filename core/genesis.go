@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -286,18 +287,17 @@ func (e *GenesisMismatchError) Error() string {
 // ChainOverrides contains the changes to chain config
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-	OverridePassedForkTime     *uint64
-	OverrideLorentz            *uint64
-	OverrideMaxwell            *uint64
-	OverrideFermi              *uint64
-	OverrideOsaka              *uint64
-	OverrideMendel             *uint64
-	OverridePasteur            *uint64
-	OverrideJenner             *uint64
-	OverrideB20ActivationAdmin *common.Address
-	OverrideBPO1               *uint64
-	OverrideBPO2               *uint64
-	OverrideUBT                *uint64
+	OverridePassedForkTime *uint64
+	OverrideLorentz        *uint64
+	OverrideMaxwell        *uint64
+	OverrideFermi          *uint64
+	OverrideOsaka          *uint64
+	OverrideMendel         *uint64
+	OverridePasteur        *uint64
+	OverrideJenner         *uint64
+	OverrideBPO1           *uint64
+	OverrideBPO2           *uint64
+	OverrideUBT            *uint64
 }
 
 // apply applies the chain overrides on the supplied chain config.
@@ -334,9 +334,6 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverridePasteur != nil {
 		cfg.PasteurTime = o.OverridePasteur
-	}
-	if o.OverrideB20ActivationAdmin != nil {
-		cfg.B20ActivationAdmin = o.OverrideB20ActivationAdmin
 	}
 	if o.OverrideJenner != nil {
 		cfg.JennerTime = o.OverrideJenner
@@ -774,6 +771,11 @@ func DeveloperGenesisBlock(gasLimit uint64, faucet *common.Address) *Genesis {
 			params.HistoryStorageAddress:     {Nonce: 1, Code: params.HistoryStorageCode, Balance: common.Big0},
 			params.WithdrawalQueueAddress:    {Nonce: 1, Code: params.WithdrawalQueueCode, Balance: common.Big0},
 			params.ConsolidationQueueAddress: {Nonce: 1, Code: params.ConsolidationQueueCode, Balance: common.Big0},
+			// The B20 registries hold storage and no code, so they need their
+			// sentinels from the start on a chain that is born past the fork: the
+			// boundary hook that plants them never runs here (BEP-702 3.16).
+			vm.B20ActivationRegistryAddress: {Code: vm.B20MarkerCode, Balance: common.Big0},
+			vm.B20PolicyRegistryAddress:     {Code: vm.B20MarkerCode, Balance: common.Big0},
 		},
 	}
 	if faucet != nil {

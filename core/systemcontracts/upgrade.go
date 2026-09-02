@@ -1120,17 +1120,12 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
 		// The B20 registries are precompiles rather than upgradeable contracts, so
-		// they are seeded here instead of through an Upgrade config. The fork opens
-		// no feature; it installs the governance switch and the sentinel that keeps
-		// the registry accounts from being reaped. A network still naming the
-		// placeholder admin writes nothing here and routes nothing in the EVM.
-		if config.B20Scheduled() && config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
-			// The admin comes from chain configuration, so a QA network can hold the
-			// switch with its own key while the public networks name their multisig.
-			admin := *config.B20ActivationAdmin
-			vm.SeedB20Activation(statedb, admin)
-			log.Info("Seeded B20 activation registry", "blockNumber", blockNumber.Int64(),
-				"blockTime", blockTime, "activationAdmin", admin)
+		// their account sentinels are planted here instead of through an Upgrade
+		// config. Nothing else is written and no feature is opened: the authority is
+		// GovHub, a constant, so there is no admin to seed.
+		if config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
+			vm.SeedB20Activation(statedb)
+			log.Info("Planted B20 registry sentinels", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
 	} else {
 		if config.IsFeynman(blockNumber, lastBlockTime) {

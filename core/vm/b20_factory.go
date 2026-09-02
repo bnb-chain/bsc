@@ -50,10 +50,12 @@ func b20VariantRecognized(variant byte) bool {
 	return ok
 }
 
-// b20MarkerCode marks an initialized token, keeps the account clear of EIP-161
+// B20MarkerCode marks an initialized token, keeps the account clear of EIP-161
 // reaping, and uses EIP-3541's reserved 0xEF prefix so no deployment can forge
-// it (BEP-702 3.16). It is never executed.
-var b20MarkerCode = []byte{0xEF}
+// it (BEP-702 3.16). It is never executed. Exported so a genesis that starts
+// after the fork can pre-deploy it on the registries, the way the other system
+// accounts are.
+var B20MarkerCode = []byte{0xEF}
 
 // b20NoSupplyCap is the "unlimited" sentinel: type(uint128).max.
 var b20NoSupplyCap = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
@@ -188,10 +190,10 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if b20AddressOccupied(ctx, addr) {
 		return nil, revB20("TokenAlreadyExists(address)", errSelTokenExists, addrKey(addr))
 	}
-	if !ctx.chargeCodeWrite(addr, b20MarkerCode) {
+	if !ctx.chargeCodeWrite(addr, B20MarkerCode) {
 		return nil, ErrOutOfGas
 	}
-	ctx.StateDB.SetCode(addr, b20MarkerCode, tracing.CodeChangeContractCreation)
+	ctx.StateDB.SetCode(addr, B20MarkerCode, tracing.CodeChangeContractCreation)
 
 	// Bootstrap context/token bound to the new address, privileged so initCalls
 	// can grant roles and mint before any role holder exists.

@@ -39,11 +39,6 @@ func b20TestChainConfig() *params.ChainConfig {
 	zero := uint64(0)
 	cfg.JennerTime = &zero
 	cfg.Parlia = &params.ParliaConfig{}
-	// A usable admin is half the B20 gate (ChainConfig.B20Scheduled): the built-in
-	// networks still name the placeholder, so they route nothing, and a harness
-	// that left this unset would too.
-	admin := b20ActivationAdmin
-	cfg.B20ActivationAdmin = &admin
 	return &cfg
 }
 
@@ -89,7 +84,7 @@ func TestResolveB20(t *testing.T) {
 
 	// Mark three tokens as initialized (factory writes a marker code).
 	for _, a := range []common.Address{asset, stable, unknown} {
-		statedb.SetCode(a, b20MarkerCode, tracing.CodeChangeContractCreation)
+		statedb.SetCode(a, B20MarkerCode, tracing.CodeChangeContractCreation)
 	}
 
 	// Factory resolves regardless of state.
@@ -344,21 +339,22 @@ func TestB20UninitializedExitReportsOutOfGas(t *testing.T) {
 	}
 }
 
-// TestB20RoutingNeedsAUsableAdmin pins the second half of the B20 gate.
-func TestB20RoutingNeedsAUsableAdmin(t *testing.T) {
+// TestB20RoutingFollowsTheFork pins the whole gate: the reserved space is routed
+// exactly when Jenner is active, and behaves as it did before B20 existed
+// otherwise. The gate used to have a second half — a usable activation admin in
+// configuration — which governance-held authority removed.
+func TestB20RoutingFollowsTheFork(t *testing.T) {
 	token := b20Addr(b20VariantAsset, 1)
 	for _, tc := range []struct {
-		name  string
-		admin *common.Address
-		want  bool
+		name   string
+		jenner *uint64
+		want   bool
 	}{
-		{"a real admin", &b20ActivationAdmin, true},
-		{"no admin", nil, false},
-		{"the zero address", &common.Address{}, false},
-		{"the placeholder", &params.B20ActivationAdminPlaceholder, false},
+		{"Jenner active", new(uint64), true},
+		{"Jenner unscheduled", nil, false},
 	} {
 		cfg := *b20TestChainConfig()
-		cfg.B20ActivationAdmin = tc.admin
+		cfg.JennerTime = tc.jenner
 		evm := NewEVM(b20BlockContext(1), nil, &cfg, Config{})
 
 		if got := evm.b20Enabled(); got != tc.want {
@@ -368,9 +364,7 @@ func TestB20RoutingNeedsAUsableAdmin(t *testing.T) {
 			B20PolicyRegistryAddress, B20ActivationRegistryAddress} {
 			_, ok := evm.precompile(addr)
 			if ok != tc.want {
-				t.Errorf("%s: %s resolves to a precompile = %v, want %v. An unusable admin "+
-					"must leave the reserved space behaving as it did before B20 existed",
-					tc.name, addr.Hex(), ok, tc.want)
+				t.Errorf("%s: %s resolves to a precompile = %v, want %v", tc.name, addr.Hex(), ok, tc.want)
 			}
 		}
 	}

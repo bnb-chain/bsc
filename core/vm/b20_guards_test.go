@@ -54,11 +54,10 @@ func TestB20CreateRejectsStaticCall(t *testing.T) {
 		to    common.Address
 		input []byte
 	}{
-		{"activate", B20ActivationRegistryAddress, b20Call(selActivate, common.HexToHash("0xf2"))},
-		{"setAdmin", B20ActivationRegistryAddress, b20Call(selSetAdmin, addrKey(caller))},
+		{"updateParam", B20ActivationRegistryAddress, encodeUpdateParam("bsc.something_later", true)},
 		{"createPolicy", B20PolicyRegistryAddress, b20Call(selCreatePolicy, addrKey(caller), u256hash(b20PolicyBlocklist))},
 	} {
-		if _, _, err := evm.StaticCall(b20ActivationAdmin, tc.to, tc.input, NewGasBudget(5_000_000)); err == nil {
+		if _, _, err := evm.StaticCall(b20TestCaller, tc.to, tc.input, NewGasBudget(5_000_000)); err == nil {
 			t.Errorf("%s succeeded under STATICCALL", tc.name)
 		}
 	}
@@ -200,8 +199,8 @@ func TestB20NonDirectCallPlumbing(t *testing.T) {
 // gasSStoreEIP2200 does, so a missing guard costs a revert rather than consensus.
 func TestB20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 	statedb, evm := newB20EVM(t)
-	ret, _, err := evm.Call(b20ActivationAdmin, B20FactoryAddress,
-		encodeCreateB20(b20VariantAsset, common.HexToHash("0x5711"), b20ActivationAdmin, nil),
+	ret, _, err := evm.Call(b20TestCaller, B20FactoryAddress,
+		encodeCreateB20(b20VariantAsset, common.HexToHash("0x5711"), b20TestCaller, nil),
 		NewGasBudget(9_000_000), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createB20: %v", err)

@@ -180,11 +180,6 @@
           "slot": 0,
           "name": "features",
           "type": "mapping(bytes32 => bool)"
-        },
-        {
-          "slot": 1,
-          "name": "admin",
-          "type": "address"
         }
       ]
     }

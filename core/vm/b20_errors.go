@@ -120,6 +120,12 @@ func revB20Bytes(sig string, sel [4]byte, payload []byte) error {
 	return &b20RevertError{sig: sig, data: append(sel[:], encodeTuple(abiBytes(payload))...)}
 }
 
+// revB20StringBytes builds a revert carrying a string and a bytes argument, the
+// shape BSC's system contracts use to report a rejected parameter change.
+func revB20StringBytes(sig string, sel [4]byte, key string, value []byte) error {
+	return &b20RevertError{sig: sig, data: append(sel[:], encodeTuple(abiString(key), abiBytes(value))...)}
+}
+
 func wU256(v *uint256.Int) common.Hash { return v.Bytes32() }
 func wU64(v uint64) common.Hash        { return uint256.NewInt(v).Bytes32() }
 func wU8(v byte) common.Hash           { var h common.Hash; h[31] = v; return h }
@@ -177,7 +183,8 @@ var (
 	errSelFeatureNotActive   = b20ErrorSel("FeatureNotActivated(bytes32)")
 	errSelAlreadyActivated   = b20ErrorSel("AlreadyActivated(bytes32)")
 	errSelUnauthorizedAddr   = b20ErrorSel("Unauthorized(address)")
-	errSelZeroAdminAddress   = b20ErrorSel("ZeroAdminAddress()")
+	errSelInvalidValue       = b20ErrorSel("InvalidValue(string,bytes)")
+	errSelUnknownParam       = b20ErrorSel("UnknownParam(string,bytes)")
 	errSelDelegateCallDenied = b20ErrorSel("DelegateCallNotAllowed()")
 	errSelStaticCallDenied   = b20ErrorSel("StaticCallNotAllowed()")
 	errSelUnsupportedVersion = b20ErrorSel("UnsupportedVersion(uint8,uint8)")

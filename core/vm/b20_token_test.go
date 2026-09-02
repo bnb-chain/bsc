@@ -146,7 +146,7 @@ func TestB20EndToEndTransfer(t *testing.T) {
 	}
 	token := b20Addr(b20VariantAsset, 1)
 	// Simulate factory creation: initialization marker + seed balance.
-	statedb.SetCode(token, b20MarkerCode, 0)
+	statedb.SetCode(token, B20MarkerCode, 0)
 	newUnmeteredB20Storage(statedb, token).setBalance(b20Alice, uint256.NewInt(1000))
 
 	cfg := *b20TestChainConfig()
@@ -240,7 +240,7 @@ func TestB20CalldataStrictnessProfile(t *testing.T) {
 // consulted.
 func TestB20TransferFromSelfSpendsAllowance(t *testing.T) {
 	statedb, evm := newB20EVM(t)
-	admin := b20ActivationAdmin
+	admin := b20TestCaller
 
 	// A policy authorizing nobody, bound as the executor scope, so the shortcut is
 	// observable: without it the self transfer would be refused too.

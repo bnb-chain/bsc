@@ -96,7 +96,7 @@ func TestB20Factory(t *testing.T) {
 	}
 	cfg := *b20TestChainConfig()
 	bc := b20BlockContext(1)
-	seedActivation(statedb, b20ActivationAdmin)
+	seedActivation(statedb, b20TestCaller)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 
 	creator := common.HexToAddress("0xc4ea70")
@@ -169,7 +169,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	cfg := *b20TestChainConfig()
 	bc := b20BlockContext(1)
-	seedActivation(statedb, b20ActivationAdmin)
+	seedActivation(statedb, b20TestCaller)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x02")

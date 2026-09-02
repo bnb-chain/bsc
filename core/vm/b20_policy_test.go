@@ -62,19 +62,19 @@ func newB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 	}
 	cfg := *b20TestChainConfig()
 	bc := b20BlockContext(1)
-	seedActivation(statedb, b20ActivationAdmin)
+	seedActivation(statedb, b20TestCaller)
 	return statedb, NewEVM(bc, statedb, &cfg, Config{})
 }
 
-// b20ActivationAdmin is the activation admin the test harness seeds.
-var b20ActivationAdmin = common.HexToAddress("0x60feed")
+// b20TestCaller is the activation admin the test harness seeds.
+var b20TestCaller = common.HexToAddress("0x60feed")
 
 // seedActivation puts the harness in the state a live network reaches once the
 // fork has run and governance has opened everything. The fork part delegates to
 // SeedB20Activation so the harness cannot drift from it; opening the features
 // stays local, since the fork deliberately opens nothing (BEP-702 3.15).
-func seedActivation(statedb *state.StateDB, admin common.Address) {
-	SeedB20Activation(statedb, admin)
+func seedActivation(statedb *state.StateDB, _ common.Address) {
+	SeedB20Activation(statedb)
 	reg := b20Storage{state: statedb, token: B20ActivationRegistryAddress}
 	for _, f := range []common.Hash{featureB20Asset, featureB20Stablecoin, featurePolicyRegistry} {
 		reg.setWord(mappingSlot(actSlot(actSlotFeatures), f), common.Hash{31: 1})
@@ -722,7 +722,7 @@ func encodeCreatePolicyWithAccounts(admin common.Address, ptype byte, accounts [
 // 0 or 1, as Solidity's external decoder requires.
 func TestB20MembershipArgsDecodeStrictly(t *testing.T) {
 	_, evm := newB20EVM(t)
-	admin := b20ActivationAdmin
+	admin := b20TestCaller
 	call := func(input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(admin, B20PolicyRegistryAddress, input,
 			NewGasBudget(5_000_000), uint256.NewInt(0))

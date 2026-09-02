@@ -264,7 +264,6 @@ var (
 			Prague: DefaultPragueBlobConfigBSC,
 			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
-		B20ActivationAdmin: &B20ActivationAdminPlaceholder,
 	}
 
 	ChapelChainConfig = &ChainConfig{
@@ -320,7 +319,6 @@ var (
 			Prague: DefaultPragueBlobConfigBSC,
 			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
-		B20ActivationAdmin: &B20ActivationAdminPlaceholder,
 	}
 
 	// used to test hard fork upgrade, following https://github.com/bnb-chain/bsc-genesis-contract/blob/master/genesis.json
@@ -378,7 +376,6 @@ var (
 			Prague: DefaultPragueBlobConfigBSC,
 			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
-		B20ActivationAdmin: &B20ActivationAdminPlaceholder,
 	}
 
 	ParliaTestChainConfig = &ChainConfig{
@@ -737,18 +734,7 @@ type ChainConfig struct {
 	BPO5Time       *uint64 `json:"bpo5Time,omitempty"`       // BPO5 switch time (nil = no fork, 0 = already on bpo5)
 	AmsterdamTime  *uint64 `json:"amsterdamTime,omitempty"`  // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
 
-	// B20ActivationAdmin is the account the B20 ActivationRegistry is seeded with
-	// at the fork that ships the precompiles (BEP-702 3.15). It is the only
-	// account that can ever open a B20 feature.
-	//
-	// The choice is one-shot. Seeding runs on the fork boundary block and writes
-	// the admin only into an empty slot; setAdmin then requires the caller to be
-	// the current admin. So an admin that cannot originate a call — the zero
-	// address, or a contract with no path to the registry — can never be replaced
-	// by any transaction, and only a further hard fork can install one. Verify the
-	// configured account can actually reach the registry before the fork ships.
-	B20ActivationAdmin *common.Address `json:"b20ActivationAdmin,omitempty"`
-	UBTTime            *uint64         `json:"ubtTime,omitempty"` // UBT switch time (nil = no fork, 0 = already on UBT)
+	UBTTime *uint64 `json:"ubtTime,omitempty"` // UBT switch time (nil = no fork, 0 = already on UBT)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -842,27 +828,6 @@ func (c *ChainConfig) Description() string {
 	}
 
 	return banner
-}
-
-// sameAddress compares two optional addresses, nil included.
-func sameAddress(a, b *common.Address) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
-// B20Scheduled reports whether this network ships the B20 precompiles.
-//
-// A usable activation admin is what schedules them, rather than the fork alone.
-// Seeding is one-shot and setAdmin requires the current admin to call, so a
-// network that reached the fork with an unusable admin could never open a feature
-// and could never replace the admin either — it would carry seeded registry state
-// for a feature nothing can ever turn on. The placeholder is refused for the same
-// reason: it is nobody's account, so shipping it is the same as shipping none.
-func (c *ChainConfig) B20Scheduled() bool {
-	a := c.B20ActivationAdmin
-	return a != nil && *a != (common.Address{}) && *a != B20ActivationAdminPlaceholder
 }
 
 // String implements the fmt.Stringer interface.
@@ -1879,13 +1844,6 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.JennerTime, newcfg.JennerTime, headTimestamp) {
 		return newTimestampCompatError("Jenner fork timestamp", c.JennerTime, newcfg.JennerTime)
-	}
-	// The activation admin is seeded into state at the Jenner boundary, so it is
-	// part of that block's state root. Editing it in a stored config without a
-	// rewind would leave a reorg or a re-execution across the boundary using a
-	// different admin than the chain was built with.
-	if c.IsJenner(headNumber, headTimestamp) && !sameAddress(c.B20ActivationAdmin, newcfg.B20ActivationAdmin) {
-		return newTimestampCompatError("B20 activation admin", c.JennerTime, newcfg.JennerTime)
 	}
 	if isForkTimestampIncompatible(c.UBTTime, newcfg.UBTTime, headTimestamp) {
 		return newTimestampCompatError("UBT fork timestamp", c.UBTTime, newcfg.UBTTime)

@@ -76,7 +76,6 @@ var (
 			utils.OverrideOsaka,
 			utils.OverrideMendel,
 			utils.OverridePasteur,
-			utils.OverrideB20ActivationAdmin,
 			utils.OverrideJenner,
 			utils.OverrideBPO1,
 			utils.OverrideBPO2,
@@ -374,9 +373,6 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverridePasteur.Name) {
 		v := ctx.Uint64(utils.OverridePasteur.Name)
 		overrides.OverridePasteur = &v
-	}
-	if ctx.IsSet(utils.OverrideB20ActivationAdmin.Name) {
-		overrides.OverrideB20ActivationAdmin = mustB20ActivationAdmin(ctx)
 	}
 	if ctx.IsSet(utils.OverrideJenner.Name) {
 		v := ctx.Uint64(utils.OverrideJenner.Name)

@@ -21,25 +21,17 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 )
 
-// At the B20 fork, seed the activation admin and the registry sentinels; the
-// registries are storage-only and so otherwise EIP-161-empty. Every feature stays
-// disabled (BEP-702 3.15, 3.16).
-
-// SeedB20Activation installs the B20 activation state at a fork boundary. An
-// existing admin is preserved, so replaying the fork block cannot undo a rotation.
-func SeedB20Activation(state StateDB, admin common.Address) {
+// SeedB20Activation gives the two singleton registries their account sentinels.
+// They hold storage and no code, so EIP-161 would otherwise clear them — and the
+// storage with them (BEP-702 3.16). Every feature stays disabled.
+//
+// The sentinel is also what makes the registry reachable by governance at all:
+// GovHub refuses a target with no code (isContract) and swallows the refusal into
+// an event, so a registry without one could never be sent its first parameter
+// change, and the failed proposal would look like a successful one.
+func SeedB20Activation(state StateDB) {
 	seedB20Sentinel(state, B20ActivationRegistryAddress)
 	seedB20Sentinel(state, B20PolicyRegistryAddress)
-
-	if admin == (common.Address{}) {
-		return
-	}
-	reg := newUnmeteredB20Storage(state, B20ActivationRegistryAddress)
-	// Only ever set on a registry that has none: rotation is governance's to do
-	// through setAdmin, and a fork must not silently undo it.
-	if reg.getWord(actSlot(actSlotAdmin)) == (common.Hash{}) {
-		reg.setWord(actSlot(actSlotAdmin), addrKey(admin))
-	}
 }
 
 // seedB20Sentinel gives a registry account the marker code that keeps it out of
@@ -48,13 +40,5 @@ func seedB20Sentinel(state StateDB, addr common.Address) {
 	if !hadNoCode(state, addr) {
 		return
 	}
-	state.SetCode(addr, b20MarkerCode, tracing.CodeChangeSystemContractUpgrade)
-}
-
-// B20ActivationAdmin reports the account seeded as the activation admin. It
-// reads the registry rather than configuration, so it follows any rotation
-// governance has performed since the fork.
-func B20ActivationAdmin(state StateDB) common.Address {
-	reg := newUnmeteredB20Storage(state, B20ActivationRegistryAddress)
-	return common.BytesToAddress(reg.getWord(actSlot(actSlotAdmin)).Bytes())
+	state.SetCode(addr, B20MarkerCode, tracing.CodeChangeSystemContractUpgrade)
 }

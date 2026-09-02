@@ -63,12 +63,8 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 // so no separate check is needed: a non-BSC config that set jennerTime would
 // still not route the reserved address space, and its registries would never be
 // seeded either.
-//
-// A usable activation admin is the other half (ChainConfig.B20Scheduled): while a
-// network names the placeholder, the reserved space behaves as it did before the
-// feature existed and the fork hook writes nothing.
 func (evm *EVM) b20Enabled() bool {
-	return evm.chainRules.IsJenner && evm.chainConfig.B20Scheduled()
+	return evm.chainRules.IsJenner
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles

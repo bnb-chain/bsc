@@ -51,7 +51,7 @@ func TestB20AssetExtension(t *testing.T) {
 	}
 	cfg := *b20TestChainConfig()
 	bc := b20BlockContext(1)
-	seedActivation(statedb, b20ActivationAdmin)
+	seedActivation(statedb, b20TestCaller)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 
 	creator := common.HexToAddress("0xc4ea70")
@@ -466,8 +466,8 @@ func TestB20MultiplierCeilingIsOneConstant(t *testing.T) {
 		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
-	ret, err := call(b20ActivationAdmin, B20FactoryAddress, encodeCreateB20(
-		b20VariantAsset, common.HexToHash("0xce11"), b20ActivationAdmin,
+	ret, err := call(b20TestCaller, B20FactoryAddress, encodeCreateB20(
+		b20VariantAsset, common.HexToHash("0xce11"), b20TestCaller,
 		[][]byte{b20Call(selGrantRole, roleOperator, addrKey(operator))}))
 	if err != nil {
 		t.Fatalf("createB20: %v", err)
