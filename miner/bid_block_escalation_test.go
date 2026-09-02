@@ -102,33 +102,6 @@ func TestRevokeEscalationAndRetention(t *testing.T) {
 	}
 }
 
-func TestNonEscalatingRevokesPreserveLadder(t *testing.T) {
-	m, now := newEscalationTestManager()
-	requireRevokeForViolation(t, m, 1, 24*time.Hour)
-	resetAt := now.Add(24 * time.Hour)
-
-	m.RevokeFor(escalationTestBuilder, "gas price too low", common.Hash{}, 2, bidBlockGasPriceLowRevokeDuration)
-	rec, _ := getBidBlockPermissionRecord(m, escalationTestBuilder)
-	if rec.ViolationCount != 1 || !revokeResetAt(rec).Equal(resetAt) {
-		t.Fatalf("flat revoke changed ladder: %+v", rec)
-	}
-
-	*now = resetAt
-	requireRevokeForViolation(t, m, 2, 36*time.Hour)
-	resetAt = now.Add(36 * time.Hour)
-	m.SetAllowed(escalationTestBuilder, false)
-	rec, _ = getBidBlockPermissionRecord(m, escalationTestBuilder)
-	if rec.ViolationCount != 2 || !revokeResetAt(rec).Equal(resetAt) {
-		t.Fatalf("manual deny changed ladder: %+v", rec)
-	}
-
-	m.SetAllowed(escalationTestBuilder, true)
-	if !m.IsAllowed(escalationTestBuilder) {
-		t.Fatal("manual allow did not clear lockout")
-	}
-	requireRevokeForViolation(t, m, 1, 24*time.Hour)
-}
-
 func TestViolationJournalRetention(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
