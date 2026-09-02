@@ -663,9 +663,15 @@ l'explorateur, contenant exactement ceci — et **rien qui ne soit vérifiable**
 
 **Ce qui n'est pas à nous — la moitié qui compte**
 
-- **Aucun compte X / Twitter**, **aucun serveur Discord** : les champs correspondants sont
-  **vides** dans `site/app.js`. Tout compte X ou Discord se présentant comme Coinbosa est une
-  imitation, aujourd'hui, sans exception.
+- **Le compte X du projet est `@coinbosacrypto`.** Il n'est déclaré nulle part dans ce dépôt
+  — `coinbosa.config.json`, `site/app.js` et `explorer/app.js` portent tous les trois un champ
+  `twitter` **vide** — mais l'organisation GitHub du projet le déclare
+  (`api.github.com/orgs/Coinbosa` → `twitter_username: coinbosacrypto`), et `x.com/coinbosacrypto`
+  répond `Coinbosa (@coinbosacrypto) / X`. Mesuré le 2026-09-03.
+  Tant que le dépôt et le site ne le publient pas, **personne ne peut distinguer le vrai compte
+  d'une imitation** : c'est le champ à remplir en premier.
+- **Aucun serveur Discord** : le champ est vide. Tout serveur Discord se présentant comme
+  Coinbosa est une imitation, aujourd'hui, sans exception.
 - **Aucune adresse de contrat pour BOSA**, sur aucune chaîne.
 - **Aucune vente, aucune prévente, aucun airdrop, aucun programme de staking.**
 - **Aucune Coinbosa Card en service**, donc aucun paiement collecté pour elle.
