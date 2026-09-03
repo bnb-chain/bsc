@@ -59,6 +59,8 @@ const (
 
 	// chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 	chainHeadChanSize = 10
+	// badBidBlockChanSize is the size of channel listening to BadBidBlockEvent.
+	badBidBlockChanSize = 10
 
 	// minRecommitInterval is the minimal time interval to recreate the sealing block with
 	// any newly arrived transactions.
@@ -87,6 +89,9 @@ var (
 	bidBlockVerifyFailedGauge = metrics.NewRegisteredGauge("worker/bidBlockVerifyFailed", nil)
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
+	// bidBlockEvidenceRevokeCounter counts revokes driven by other validators' bad
+	// BidBlocks rather than by this node's own InsertChain failure.
+	bidBlockEvidenceRevokeCounter = metrics.NewRegisteredCounter("worker/bidBlockEvidenceRevoke", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -225,9 +230,12 @@ type worker struct {
 	chain       *core.BlockChain
 
 	// Subscriptions
-	mux          *event.TypeMux
-	chainHeadCh  chan core.ChainHeadEvent
-	chainHeadSub event.Subscription
+	mux            *event.TypeMux
+	chainHeadCh    chan core.ChainHeadEvent
+	chainHeadSub   event.Subscription
+	badBidBlockCh  chan core.BadBidBlockEvent
+	badBidBlockSub event.Subscription
+	badBidBlocks   *badBidBlockTracker
 
 	// Channels
 	newWorkCh          chan *newWorkReq
@@ -289,6 +297,8 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 		tip:                uint256.MustFromBig(config.GasPrice),
 		pendingTasks:       make(map[common.Hash]*task),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
+		badBidBlockCh:      make(chan core.BadBidBlockEvent, badBidBlockChanSize),
+		badBidBlocks:       newBadBidBlockTracker(),
 		newWorkCh:          make(chan *newWorkReq),
 		getWorkCh:          make(chan *getWorkReq),
 		taskCh:             make(chan *task),
@@ -313,6 +323,12 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+
+	// Subscribed unconditionally: BidBlock acceptance depends on the Pasteur fork
+	// being active, which it need not be when the worker is built.
+	worker.badBidBlockSub = eth.BlockChain().SubscribeBadBidBlockEvent(worker.badBidBlockCh)
+	worker.wg.Add(1)
+	go worker.badBidBlockLoop()
 
 	return worker
 }

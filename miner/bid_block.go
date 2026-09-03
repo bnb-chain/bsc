@@ -236,6 +236,88 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 	}
 }
 
+// badBidBlockLoop revokes builders that have already burned enough other
+// validators, so this node need not be burned in turn.
+func (w *worker) badBidBlockLoop() {
+	defer w.wg.Done()
+	defer w.badBidBlockSub.Unsubscribe()
+
+	for {
+		select {
+		case ev := <-w.badBidBlockCh:
+			w.handleBadBidBlockEvidence(ev)
+		case <-w.badBidBlockSub.Err():
+			return
+		case <-w.exitCh:
+			return
+		}
+	}
+}
+
+// handleBadBidBlockEvidence records one validator's failing BidBlock and revokes
+// the builder once the evidence covers enough distinct validators.
+func (w *worker) handleBadBidBlockEvidence(ev core.BadBidBlockEvent) {
+	// Nil-checked: chain events reach nodes that never ran ApplyDefaultMinerConfig.
+	if !isTrue(w.config.Mev.Enabled) || !isTrue(w.config.Mev.BidBlockEnabled) {
+		return
+	}
+	if !w.permMgr.IsAllowed(ev.Builder) {
+		return
+	}
+	p, ok := w.engine.(*parlia.Parlia)
+	if !ok {
+		return
+	}
+	// At the parent, the state that decided this sealer's role. Not head: delivery
+	// is async, and head may already have crossed a breathe block.
+	role, cabinetCount, totalCount, err := p.SealerRole(ev.ParentHash, ev.Sealer)
+	if err != nil {
+		log.Warn("[BID BLOCK EVIDENCE] validator lookup failed",
+			"sealer", ev.Sealer, "builder", ev.Builder, "err", err)
+		return
+	}
+	if role == parlia.ValidatorRoleNone {
+		// The seal was already verified, so this means a stale view, not a forgery.
+		log.Debug("[BID BLOCK EVIDENCE] sealer not in validator set",
+			"sealer", ev.Sealer, "builder", ev.Builder, "number", ev.Number)
+		return
+	}
+
+	cabinetVotes, totalVotes := w.badBidBlocks.add(ev.Builder, ev.Sealer, role == parlia.ValidatorRoleCabinet)
+	// Thresholds follow this event's parent state. Valid sightings remain in the
+	// rolling window across validator-set changes, including jailing.
+	cabinetThreshold := majorityThreshold(cabinetCount)
+	totalThreshold := majorityThreshold(totalCount)
+	if cabinetVotes < cabinetThreshold && totalVotes < totalThreshold {
+		log.Info("[BID BLOCK EVIDENCE]",
+			"builder", ev.Builder,
+			"sealer", ev.Sealer,
+			"role", role,
+			"number", ev.Number,
+			"hash", ev.Hash,
+			"cabinetVotes", cabinetVotes,
+			"cabinetThreshold", cabinetThreshold,
+			"totalVotes", totalVotes,
+			"totalThreshold", totalThreshold)
+		return
+	}
+
+	reason := fmt.Sprintf("bad BidBlocks from %d/%d cabinet and %d/%d total validators",
+		cabinetVotes, cabinetThreshold, totalVotes, totalThreshold)
+	log.Error("[BID BLOCK EVIDENCE REVOKE]",
+		"builder", ev.Builder,
+		"cabinetVotes", cabinetVotes,
+		"cabinetThreshold", cabinetThreshold,
+		"totalVotes", totalVotes,
+		"totalThreshold", totalThreshold,
+		"lastSealer", ev.Sealer,
+		"number", ev.Number,
+		"hash", ev.Hash)
+	w.revokeBidBlockBuilder(ev.Builder, reason, ev.Hash, ev.Number)
+	bidBlockEvidenceRevokeCounter.Inc(1)
+	w.badBidBlocks.clear(ev.Builder)
+}
+
 func (w *worker) revokeBidBlockBuilder(builder common.Address, reason string, hash common.Hash, blockNum uint64) {
 	w.revokeBidBlockBuilderFor(builder, reason, hash, blockNum, bidBlockRevokeDuration)
 }

@@ -67,10 +67,19 @@ var (
 	badBlockRecordslimit = 1000
 	badBlockGauge        = metrics.NewRegisteredGauge("chain/insert/badBlock", nil)
 
+	// badBidBlockQueueSize bounds pending evidence; overflow is dropped.
+	badBidBlockQueueSize = 64
+
 	badBidBlockCounter = metrics.NewRegisteredCounter("chain/insert/badBidblock", nil)
 	// Not badBlockRecords: that set stops accepting entries at badBlockRecordslimit,
 	// which would freeze the counter for the rest of the process lifetime.
 	badBidBlockCounted = lru.NewCache[common.Hash, struct{}](badBlockRecordslimit)
+
+	// badBidBlockEvidenced deduplicates evidence per block, since peers re-announce
+	// and the fetcher requeues the same bad block. Kept apart from
+	// badBidBlockCounted, which also covers blocks that never reach execution.
+	badBidBlockEvidenced      = lru.NewCache[common.Hash, struct{}](badBlockRecordslimit)
+	badBidBlockDroppedCounter = metrics.NewRegisteredCounter("chain/insert/badBidblockDropped", nil)
 
 	headBlockGauge     = metrics.NewRegisteredGauge("chain/head/block", nil)
 	headHeaderGauge    = metrics.NewRegisteredGauge("chain/head/header", nil)
@@ -390,6 +399,8 @@ type BlockChain struct {
 	newPayloadFeed           event.Feed // Feed for engine API newPayload events
 	finalizedHeaderFeed      event.Feed
 	highestVerifiedBlockFeed event.Feed
+	badBidBlockFeed          event.Feed
+	badBidBlockCh            chan BadBidBlockEvent
 	blockProcCounter         int32
 	scope                    event.SubscriptionScope
 	genesisBlock             *types.Block
@@ -486,6 +497,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 		codedb:             state.NewCodeDB(db),
 		triegc:             prque.New[int64, common.Hash](nil),
 		quit:               make(chan struct{}),
+		badBidBlockCh:      make(chan BadBidBlockEvent, badBidBlockQueueSize),
 		triesInMemory:      cfg.TriesInMemory,
 		chainmu:            syncx.NewClosableMutex(),
 		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
@@ -673,6 +685,9 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	// Start future block processor.
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
+
+	bc.wg.Add(1)
+	go bc.publishBadBidBlockEvidence()
 
 	if bc.doubleSignMonitor != nil {
 		bc.wg.Add(1)
@@ -2720,6 +2735,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
+		bc.reportBadBidBlockEvidence(block)
 		return nil, err
 	}
 	ptime := time.Since(pstart)
@@ -2731,6 +2747,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
+		bc.reportBadBidBlockEvidence(block)
 		return nil, err
 	}
 	vtime := time.Since(vstart)
@@ -3409,6 +3426,57 @@ func countBadBidBlock(block *types.Block) {
 	if hash := block.Hash(); !badBidBlockCounted.Contains(hash) {
 		badBidBlockCounted.Add(hash, struct{}{})
 		badBidBlockCounter.Inc(1)
+	}
+}
+
+// publishBadBidBlockEvidence fans evidence out to subscribers. One goroutine for
+// the chain's lifetime, so adversarial block volume cannot grow the goroutine count.
+func (bc *BlockChain) publishBadBidBlockEvidence() {
+	defer bc.wg.Done()
+	for {
+		select {
+		case ev := <-bc.badBidBlockCh:
+			bc.badBidBlockFeed.Send(ev)
+		case <-bc.quit:
+			return
+		}
+	}
+}
+
+// reportBadBidBlockEvidence posts evidence that a BidBlock failed execution.
+//
+// Only call it for blocks past header and body verification: the sync path feeds
+// unverified blocks straight to InsertChain, so an earlier reject proves nothing
+// about the sealer and would let any peer frame a builder.
+func (bc *BlockChain) reportBadBidBlockEvidence(block *types.Block) {
+	builder, ok := badBidBlockBuilder(block)
+	if !ok {
+		return
+	}
+	// Deduplicated here rather than in the consumer, which would still pay for a
+	// validator-set lookup per copy and let one re-announced block crowd the queue.
+	hash := block.Hash()
+	if badBidBlockEvidenced.Contains(hash) {
+		return
+	}
+	badBidBlockEvidenced.Add(hash, struct{}{})
+
+	ev := BadBidBlockEvent{
+		Builder:    builder,
+		Sealer:     block.Coinbase(),
+		Hash:       hash,
+		ParentHash: block.ParentHash(),
+		Number:     block.NumberU64(),
+	}
+	// Handed to the publisher rather than sent here: Send blocks until every
+	// subscriber accepts, and the miner's reads contract state, so sending under
+	// chainmu would stall import. Dropped when the queue is full — evidence is
+	// best-effort, and losing some only delays a revoke.
+	select {
+	case bc.badBidBlockCh <- ev:
+	default:
+		badBidBlockDroppedCounter.Inc(1)
+		log.Warn("Bad BidBlock evidence dropped, queue full", "builder", builder, "number", ev.Number, "hash", hash)
 	}
 }
 

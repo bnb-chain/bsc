@@ -41,6 +41,18 @@ type NewVoteEvent struct{ Vote *types.VoteEnvelope }
 // FinalizedHeaderEvent is posted when a finalized header is reached.
 type FinalizedHeaderEvent struct{ Header *types.Header }
 
+// BadBidBlockEvent is posted when a block from the MEV v2 (BEP-675 SendBidBlock)
+// path fails execution locally. Only posted for header- and body-verified blocks,
+// so Sealer is the validator parlia recovered from the seal. ParentHash anchors
+// the validator-set lookup, which head cannot: it may have moved on by then.
+type BadBidBlockEvent struct {
+	Builder    common.Address
+	Sealer     common.Address
+	Hash       common.Hash
+	ParentHash common.Hash
+	Number     uint64
+}
+
 type ChainEvent struct {
 	Header       *types.Header
 	Receipts     []*types.Receipt

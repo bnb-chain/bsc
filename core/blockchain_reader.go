@@ -659,6 +659,11 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
 }
 
+// SubscribeBadBidBlockEvent registers a subscription of BadBidBlockEvent.
+func (bc *BlockChain) SubscribeBadBidBlockEvent(ch chan<- BadBidBlockEvent) event.Subscription {
+	return bc.scope.Track(bc.badBidBlockFeed.Subscribe(ch))
+}
+
 // SubscribeHighestVerifiedHeaderEvent registers a subscription of HighestVerifiedBlockEvent.
 func (bc *BlockChain) SubscribeHighestVerifiedHeaderEvent(ch chan<- HighestVerifiedBlockEvent) event.Subscription {
 	return bc.scope.Track(bc.highestVerifiedBlockFeed.Subscribe(ch))
