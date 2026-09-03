@@ -2,7 +2,9 @@ package ethapi
 
 import (
 	"context"
+	"encoding/hex"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -10,6 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
@@ -63,13 +67,18 @@ func bscJennerTestConfig() *params.ChainConfig {
 
 func newJennerBSCBackend(t *testing.T) *testBackend {
 	t.Helper()
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
+	if err != nil {
+		t.Fatalf("decode payment lane contract: %v", err)
+	}
 	acc := newTestAccount()
 	gspec := &core.Genesis{
 		Config: bscJennerTestConfig(),
 		Alloc: types.GenesisAlloc{
-			acc.addr:         {Balance: big.NewInt(params.Ether)},
-			jennerProbeAddr:  {Code: jennerProbeCode},
-			jennerAssertAddr: {Code: jennerAssertCode},
+			acc.addr:                    {Balance: big.NewInt(params.Ether)},
+			jennerProbeAddr:             {Code: jennerProbeCode},
+			jennerAssertAddr:            {Code: jennerAssertCode},
+			paymentlane.ContractAddress: {Code: code},
 		},
 	}
 	// The plain faker rejects Shanghai+ headers; the full fake skips header

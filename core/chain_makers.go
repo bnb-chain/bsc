@@ -53,6 +53,8 @@ type BlockGen struct {
 
 	engine consensus.Engine
 
+	lane *LaneState
+
 	// extra data of block
 	sidecars types.BlobSidecars
 }
@@ -121,11 +123,14 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
+	laneType := b.lane.Classify(tx)
+	usedBefore := b.gasPool.Used()
 	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx, NewReceiptBloomGenerator())
 	if err != nil {
 		panic(err)
 	}
 	b.header.GasUsed = b.gasPool.Used()
+	b.lane.RecordUsedFrom(laneType, b.gasPool, usedBefore)
 
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.
@@ -416,6 +421,13 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
+		lane, err := ResolveLaneState(config, parent.Header(), b.header, statedb)
+		if err != nil {
+			panic(err)
+		}
+		lane.SetQuota()
+		b.lane = lane
+
 		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
 		if config.IsPrague(b.header.Number, b.header.Time) || config.IsUBT(b.header.Number, b.header.Time) {
 			// EIP-2935
@@ -454,6 +466,16 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts)
 		if err != nil {
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
+		}
+
+		// The same stamp and self-check the miner runs. A nil pool means addTx never ran, so
+		// PaymentLaneUsed is zero too and a zero poolUsed is exact rather than merely safe.
+		var poolUsed uint64
+		if b.gasPool != nil {
+			poolUsed = b.gasPool.Used()
+		}
+		if err := b.lane.WriteCommitmentAndVerify(block, poolUsed); err != nil {
+			panic(fmt.Sprintf("payment lane commitment failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {
 			for _, s := range b.sidecars {

@@ -26,6 +26,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
+	"github.com/ethereum/go-ethereum/core/paymentlanemeta"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -77,7 +79,9 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockNumber = block.Number()
 		allLogs     []*types.Log
 		gp          = NewGasPool(block.GasLimit())
+		err         error
 	)
+	replayLaneClassification := !statedb.NoTries()
 	var tracingStateDB = vm.StateDB(statedb)
 	if hooks := cfg.Tracer; hooks != nil {
 		tracingStateDB = state.NewHookedState(statedb, hooks)
@@ -92,6 +96,48 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
+
+	var laneCommitted paymentlane.Commitment
+	laneOn := config.IsJenner(lastBlock.Number, lastBlock.Time)
+	lane := &LaneState{}
+	if laneOn {
+		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
+			return nil, laneReject(err)
+		}
+		var laneGovernanceParams paymentlane.GovernanceParams
+		if replayLaneClassification {
+			lane, err = ResolveLaneState(config, lastBlock, header, statedb)
+			if err != nil {
+				return nil, laneReject(err)
+			}
+			if err = lane.CheckQuota(laneCommitted.PaymentLaneQuota); err != nil {
+				return nil, laneReject(err)
+			}
+			laneGovernanceParams = lane.GovernanceParams()
+		} else {
+			// The committed quota is still checked exactly; only classification is skipped, so
+			// the listed set is never needed and is not loaded.
+			if laneGovernanceParams, err = paymentlanemeta.LoadGovernanceParamsForQuota(config, lastBlock, header, statedb); err != nil {
+				return nil, laneReject(err)
+			}
+			signal, err := paymentlane.NewSignalFromParent(lastBlock)
+			if err != nil {
+				return nil, laneReject(err)
+			}
+			if err := signal.CheckNextLaneQuota(laneCommitted.PaymentLaneQuota, laneGovernanceParams, header.GasLimit); err != nil {
+				return nil, laneReject(err)
+			}
+		}
+		// activation+1, the only block whose parent carries no commitment, and the only place the
+		// parameters this node read are put on record.
+		if lastBlock.UncleHash == types.EmptyUncleHash {
+			floor, ceiling, safetyCap := paymentlane.Bounds(laneGovernanceParams, header.GasLimit)
+			log.Info("Payment lane activated", "number", header.Number, "paymentLaneQuota", laneCommitted.PaymentLaneQuota,
+				"paymentLaneFloor", floor, "paymentLaneCeiling", ceiling, "paymentLaneSafetyCap", safetyCap,
+				"governanceParams", laneGovernanceParams)
+		}
+	}
+
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, lastBlock.Time, block.Time(), statedb, true)
 
@@ -99,7 +145,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		context vm.BlockContext
 		signer  = types.MakeSigner(p.chain.Config(), header.Number, header.Time)
 		txNum   = len(block.Transactions())
-		err     error
 	)
 
 	// Apply pre-execution system calls.
@@ -147,17 +192,26 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		// System transactions never reach here. Classified after every earlier transaction has
+		// run and before this one does - the point the producer classified at too.
+		laneType := paymentlane.GeneralLane
+		if replayLaneClassification {
+			laneType = lane.Classify(tx)
+		}
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
 			telemetry.StringAttribute("tx.hash", tx.Hash().Hex()),
 			telemetry.Int64Attribute("tx.index", int64(i)),
 		)
-
+		usedBefore := gp.Used()
 		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
 			spanEnd(&err)
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+		if replayLaneClassification {
+			lane.RecordUsedFrom(laneType, gp, usedBefore)
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
@@ -184,6 +238,15 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	// Add the system-tx logs appended by Finalize.
 	for _, receipt := range receipts[numUserReceipts:] {
 		allLogs = append(allLogs, receipt.Logs...)
+	}
+
+	if replayLaneClassification {
+		if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
+			return nil, laneReject(err)
+		}
+	}
+	if laneOn {
+		recordLaneImported(laneCommitted)
 	}
 
 	return &ProcessResult{
@@ -464,7 +527,8 @@ type blockAssembler interface {
 }
 
 // AssembleBlock finalizes the state and assembles the block with provided
-// body and receipts.
+// body and receipts. The payment lane commitment is stamped onto the assembled
+// block afterwards, by LaneState.WriteCommitmentAndVerify, and not here.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
 	if p, ok := engine.(blockAssembler); ok {
 		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)

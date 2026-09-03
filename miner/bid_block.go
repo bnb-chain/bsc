@@ -15,6 +15,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -32,6 +33,30 @@ type bidBlockTaskInfo struct {
 }
 
 var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
+
+// verifyBidBlockLaneQuota checks a builder-authored header before this validator signs it: the
+// header is adopted verbatim and broadcast before InsertChain, so nothing later can catch it.
+// verifyCascadingFields has already settled that the commitment decodes and that the block rule
+// holds over its values.
+//
+// laneQuota only, and exactly - it is a pure function of the parent and 0x2007's parameters over
+// a gas limit preSealVerifyBidBlock has already pinned, so a mismatch is never a false positive.
+// paymentGasUsed needs the live state of the builder's block, which this node does not have;
+// import settles it via Budget.VerifyCommitment.
+func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, local *environment) error {
+	header := decoded.Header
+	if header.ParentHash != local.header.ParentHash {
+		return fmt.Errorf("bidblock parent %x is not the parent the local state is open on (%x)",
+			header.ParentHash, local.header.ParentHash)
+	}
+	parent := w.chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	// VerifyHeaderQuota rebuilds its own parent-root-bound StateDB, so passing the live
+	// environment this validator packed with local transactions is safe.
+	return core.VerifyHeaderQuota(w.chainConfig, parent, header, local.state)
+}
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
 func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {

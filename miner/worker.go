@@ -88,6 +88,18 @@ var (
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
+	// Producing-side lane metrics; core/payment_lane.go reports the imported side. The two
+	// disagreeing means the block was not packed here.
+	paymentLaneQuotaGauge             = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
+	paymentLaneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
+	generalLaneYieldedCounter         = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
+	paymentLaneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
+	// The clamp bounds, so a flat payment-lane quota can be attributed to one of them.
+	paymentLaneFloorGauge   = metrics.NewRegisteredGauge("paymentlane/paymentLaneFloor", nil)
+	paymentLaneCeilingGauge = metrics.NewRegisteredGauge("paymentlane/paymentLaneCeiling", nil)
+	paymentLaneCapGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneCap", nil)
+
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 	pendingPlainTxsTimer = metrics.NewRegisteredTimer("worker/pendingPlainTxs", nil)
@@ -135,6 +147,12 @@ type environment struct {
 	// discarded by its clearLoop). The worker must not discard it even when a
 	// winning bid's env becomes w.current, or the EVM arena is released twice.
 	fromBid bool
+
+	// lane is this block's BEP-703 state, resolved from the parent in makeEnv.
+	lane *core.LaneState
+	// generalLaneYielded counts drops this env made for the quota, so the seal log reports it
+	// once; the counter metric accumulates across discarded envs and cannot be read per block.
+	generalLaneYielded int
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -709,6 +727,13 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 			return nil, err
 		}
 	}
+	// Before StartPrefetcher: an error after it would leave a prefetcher with no env to discard it.
+	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, state)
+	if err != nil {
+		return nil, err
+	}
+	lane.SetQuota()
+
 	state.StartPrefetcher("miner", bundle)
 	// Parlia reserves gas for the system txs it applies in FinalizeAndAssemble,
 	// so user txs must leave room for them. Initialise the gas pool at
@@ -724,8 +749,10 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 		log.Debug("makeEnv", "number", header.Number.Uint64(), "time", header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
 	}
+
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
+		lane:     lane,
 		signer:   types.MakeSigner(w.chainConfig, header.Number, header.Time),
 		state:    state,
 		size:     uint64(header.Size()),
@@ -788,9 +815,13 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
+	// The authoritative classification, at the point replaying importers take it. Nothing between
+	// commitTransactions' advisory call and this one touches state - keep it that way.
+	laneType := env.lane.Classify(tx)
 	var (
-		snap = env.state.Snapshot()
-		gp   = env.gasPool.Snapshot()
+		snap       = env.state.Snapshot()
+		gp         = env.gasPool.Snapshot()
+		usedBefore = env.gasPool.Used()
 	)
 
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, receiptProcessors...)
@@ -799,6 +830,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		env.gasPool.Set(gp)
 	}
 	env.header.GasUsed = env.gasPool.Used()
+	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
 	return receipt, err
 }
 
@@ -921,6 +953,16 @@ LOOP:
 			continue
 		}
 		prefetchCurr.Store(tx)
+
+		// Advisory, to size the budget below; applyTransaction re-asks authoritatively.
+		laneType := env.lane.Classify(tx)
+		if !env.lane.Admits(env.gasPool.Gas(), laneType, tx.Gas()) {
+			generalLaneYieldedCounter.Inc(1)
+			env.generalLaneYielded++
+			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			txs.Pop()
+			continue
+		}
 
 		// if inclusion of the transaction would put the block size over the
 		// maximum we allow, don't add any more txs to the payload.
@@ -1248,6 +1290,11 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
+	if err := work.lane.WriteCommitmentAndVerify(block, work.gasPool.Used()); err != nil {
+		paymentLaneDeclineCounter.Inc(1)
+		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
+		return &newPayloadResult{err: err}
+	}
 
 	return &newPayloadResult{
 		block:    block,
@@ -1519,8 +1566,13 @@ LOOP:
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
 		bidBlockWinGauge.Inc(1)
-		task, err := w.prepareBidBlockTask(bestBidBlock, start)
-		if err != nil {
+		if err := w.verifyBidBlockLaneQuota(bestBidBlock, bestWork); err != nil {
+			log.Error("BidBlock rejected by the payment lane, fallback",
+				"builder", bestBidBlock.Builder,
+				"err", err)
+			paymentLaneBidBlockDeclineCounter.Inc(1)
+			bidBlockFallback = true
+		} else if task, err := w.prepareBidBlockTask(bestBidBlock, start); err != nil {
 			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)
@@ -1569,7 +1621,9 @@ LOOP:
 		}
 	}
 
-	w.commit(bestWork, w.fullTaskHook, start)
+	if err := w.commit(bestWork, w.fullTaskHook, start); err != nil {
+		log.Error("Failed to commit sealing work", "number", bestWork.header.Number, "err", err)
+	}
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
@@ -1613,6 +1667,20 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
+		if err := env.lane.WriteCommitmentAndVerify(block, env.gasPool.Used()); err != nil {
+			paymentLaneDeclineCounter.Inc(1)
+			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
+			return err
+		}
+		if env.lane.On() {
+			floor, ceiling, safetyCap := env.lane.Bounds()
+			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
+			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+			paymentLaneFloorGauge.Update(int64(floor))
+			paymentLaneCeilingGauge.Update(int64(ceiling))
+			paymentLaneCapGauge.Update(int64(safetyCap))
+		}
+
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
 			env.sidecars = make(types.BlobSidecars, 0)
@@ -1622,7 +1690,9 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
+				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
+				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

@@ -1480,6 +1480,15 @@ func (c *ChainConfig) IsJenner(num *big.Int, time uint64) bool {
 	return c.IsInBSC() && c.IsLondon(num) && isTimestampForked(c.JennerTime, time)
 }
 
+// IsOnJenner returns whether currentBlockTime is either equal to the Jenner fork time or greater firstly.
+func (c *ChainConfig) IsOnJenner(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsJenner(lastBlockNumber, lastBlockTime) && c.IsJenner(currentBlockNumber, currentBlockTime)
+}
+
 // IsBPO1 returns whether time is either equal to the BPO1 fork time or greater.
 func (c *ChainConfig) IsBPO1(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BPO1Time, time)

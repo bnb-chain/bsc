@@ -20,6 +20,10 @@ parent header / state
         executes and appends unsigned system tx
         returns the complete block
 
+  → core.LaneState.WriteCommitmentAndVerify(block, gasPool.Used())    [Jenner+1 onward]
+        stamps the BEP-703 commitment onto that block
+        MUST happen before anything reads block.Hash()
+
   → block → builder.BidBlock
         Header       = block.Header()
         Transactions = tx.MarshalBinary()
@@ -53,6 +57,30 @@ err := parliaEngine.PrepareForBidBlock(chain, header)
 ## 2. Execute User Transactions
 
 Transaction selection and EVM execution are entirely builder-driven; this specification does not constrain them. The builder runs selected user transactions against the parent state and maintains `state` / `receipts` / `body.Transactions` / `sidecars`.
+
+From the block after the Jenner activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. The activation block itself carries no commitment, and a builder never builds one — see the `-38001` rows in [Send and Fallback](#6-send-and-fallback).
+
+```go
+lane, err := core.ResolveLaneState(chainConfig, parent, header, state)  // once per block
+if err != nil {
+    return err  // never ignore: a nil lane no-ops silently and the block ships unstamped
+}
+lane.SetQuota()                                    // derives the quota this block must commit
+
+class := lane.Classify(tx)                         // before each apply
+if !lane.Admits(gasPool.Gas(), class, tx.Gas()) {  // general must leave the quota intact
+    continue
+}
+usedBefore := gasPool.Used()
+// ... apply tx ...
+lane.RecordUsedFrom(class, gasPool, usedBefore)
+```
+
+`state` and not a detached reader: `ResolveLaneState` reads the parent-pinned params from the
+still-unadvanced block `StateDB`, while `Classify` reads the live code view from that same state
+as execution advances.
+
+A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so; `WriteCommitmentAndVerify` in step 3b will, and so will the validator at admission, since the committed values alone decide it.
 
 ## 3. Finalize (generate unsigned system tx)
 
@@ -91,6 +119,30 @@ Signing does not affect EVM state transitions, so the execution results are iden
 
 `GasFee` is not a wire field of `BidBlock`. The validator derives it from the `value` of the trailing `deposit` system transaction and uses it to rank competing BidBlocks for the same parent.
 
+## 3b. Stamp the Commitment
+
+`FinalizeAndAssembleBidBlock` writes `EmptyUncleHash` and `types.NewBlock` re-derives it from the body, so from Jenner+1 the commitment has to be stamped onto the block it returns:
+
+```go
+// block is the one step 3 returned
+if err := lane.WriteCommitmentAndVerify(block, gasPool.Used()); err != nil {
+    return err  // discard the block; never repair it
+}
+```
+
+Two things this is strict about:
+
+- **Before anything reads `block.Hash()`.** It is cached on first read and never invalidated, so anything that hashes the block first leaves it disagreeing with its own header. `WriteCommitmentAndVerify` detects that and refuses rather than emitting it.
+- **`poolUsed` is `gasPool.Used()`** — not `header.GasUsed`, and not a sum of receipts.
+
+A wrong commitment is never accepted, but where it is caught — and whether the builder hears about it — varies:
+
+| what is wrong | where it is caught | what the builder sees |
+|---|---|---|
+| no commitment, malformed, or the block rule fails on the committed values | admission, before the validator signs | `mev_sendBidBlock` → `-38007` |
+| `laneSize` is not the derived quota | after admission has already returned success, when the validator picks the block | **nothing** — no RPC error, no revoke; the bid is dropped and the slot goes to another bid or to the validator's own block |
+| the payment total is wrong | the importer, after the validator has signed and broadcast | the builder's permission is revoked |
+
 ## 4. Assemble the BidBlock Payload
 
 ```go
@@ -123,10 +175,10 @@ A bare keccak digest, with no EIP-191/712 prefix, consistent with the existing `
 
 Builders poll `mev_getBidBlockPermission` to determine whether the BidBlock path is currently open for them on a given validator, and fall back to legacy `mev_sendBid` when it is not.
 
-The RPC does not surface permission denial through a JSON-RPC error; state is carried in the `allowed` field of the result. When `allowed` is false, `reason` identifies why. Current values:
+The RPC does not surface permission denial through a JSON-RPC error; state is carried in the `allowed` field of the result. When `allowed` is false, `reason` identifies why. Current values are the same strings the validator records:
 
-- `insertchain_failed` — the last sealed BidBlock from this builder failed validator-side `InsertChain` (e.g. invalid state root, mismatched receipt hash, KZG proof failure).
-- `gasprice_too_low` — the sealed BidBlock imported successfully, but its average gas price (excluding system transactions) was below the validator's configured minimum.
+- `InsertChain err: <detail>` — the last sealed BidBlock from this builder failed validator-side `InsertChain` (e.g. invalid state root, mismatched receipt hash, KZG proof failure).
+- `BidBlock average gas price too low, avg:<avg>, min:<min>` — the sealed BidBlock imported successfully, but its average gas price (excluding system transactions) was below the validator's configured minimum.
 - `manual` — admin revoke via `admin_setBidBlockPermission`.
 
 `mev_getBidBlockPermission` response:
@@ -134,7 +186,7 @@ The RPC does not surface permission denial through a JSON-RPC error; state is ca
 ```jsonc
 {
   "allowed": false,
-  "reason": "insertchain_failed",
+  "reason": "InsertChain err: invalid state root",
   "blockHash": "0x...",
   "blockNumber": "0x123",
   "revokedAt": "2026-05-22T...",       // when the revoke happened
@@ -149,6 +201,7 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 | Error message contains | JSON-RPC code | Builder action |
 | --- | --- | --- |
 | `BidBlock disabled, fallback to SendBid` | -38001 | fallback to `mev_sendBid` |
+| `BidBlock disabled at block N (hard-fork activation block)` | -38001 | validators self-produce fork activation blocks; fallback to `mev_sendBid` |
 | `builder BidBlock permission revoked, fallback to SendBid` | -38006 | permission not allowed; fallback to `mev_sendBid` |
 | `pre-seal verify failed: ...` | -38007 | **fix build logic; do NOT retry the same BidBlock** |
 | `too late, expected before ...` | -38008 | dropped; next slot |
@@ -185,3 +238,4 @@ The transmission latency on the wire is not constant: the number of transactions
 5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". Use gRPC only when both `mev_params.BidBlockEnabled` and `mev_params.GRPCEnabled` are true.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
+8. From Jenner+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then stamp the commitment before anything hashes the block — see [Stamp the Commitment](#3b-stamp-the-commitment), including where a wrong one is caught.

@@ -671,7 +671,7 @@ func (f *BlockFetcher) loop() {
 						announce.time = task.time
 
 						// If the block is empty (header only), short circuit into the final import queue
-						if header.TxHash == types.EmptyTxsHash && header.UncleHash == types.EmptyUncleHash {
+						if header.TxHash == types.EmptyTxsHash && header.IsEmptyUncleHash() {
 							log.Trace("Block empty, skipping body retrieval", "peer", announce.origin, "number", header.Number, "hash", header.Hash())
 
 							block := types.NewBlockWithHeader(header)
@@ -749,7 +749,8 @@ func (f *BlockFetcher) loop() {
 						if uncleHash == (common.Hash{}) {
 							uncleHash = types.CalcUncleHash(task.uncles[i])
 						}
-						if uncleHash != announce.header.UncleHash {
+						if uncleHash != announce.header.UncleHash &&
+							!(uncleHash == types.EmptyUncleHash && announce.header.BEP703CommitsNoUncles()) {
 							continue
 						}
 						if txnHash == (common.Hash{}) {
