@@ -230,15 +230,40 @@ if ! systemctl is-active --quiet coinbosa-node; then
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# ACCIDENT ÉVITÉ. « bn » est du texte rendu par le nœud, et il entrait tel quel
+# dans $((bn)). L'évaluation arithmétique de bash n'est pas un calcul inoffensif :
+# elle RELIT son texte, et l'indice d'un tableau y est à son tour évalué. Une
+# réponse « 0x1,RPC_PORT[$(commande)] » exécutait donc « commande » ICI, dans un
+# script lancé en root. Reproduit, pas supposé.
+#
+# Au passage, le test « non vide » suffisait à déclarer le nœud opérationnel :
+# n'importe quelle chaîne passait, et $((bn)) affichait alors un numéro de bloc
+# inventé (mesuré : « bloc 8545 », soit la valeur de RPC_PORT). Exiger une vraie
+# quantité « 0x… » est donc à la fois la barrière ET un contrôle plus honnête.
+# ---------------------------------------------------------------------------
+hexok() {
+  case "${1:-}" in
+    0x|0x*[!0-9a-fA-F]*) return 1 ;;   # « 0x » seul, ou un caractère hors hexadécimal
+    0x*)                 return 0 ;;
+    *)                   return 1 ;;
+  esac
+}
+
 # On interroge le nœud pour PROUVER qu'il répond, plutôt que se fier au statut du service.
+bn=""
 for i in $(seq 1 20); do
   bn=$(curl -s -X POST -H 'Content-Type: application/json' \
         --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
         "http://127.0.0.1:$RPC_PORT" 2>/dev/null | sed -n 's/.*"result":"\([^"]*\)".*/\1/p') || true
-  [ -n "${bn:-}" ] && { echo "    nœud opérationnel — bloc $((bn))"; break; }
+  if hexok "${bn:-}"; then
+    echo "    nœud opérationnel — bloc $((16#${bn#0x}))"
+    break
+  fi
+  bn=""          # une réponse non conforme n'est pas une réponse : on continue d'attendre
   sleep 2
 done
-[ -n "${bn:-}" ] || { echo "ERREUR : le nœud ne répond pas sur le RPC local." >&2; exit 1; }
+[ -n "${bn:-}" ] || { echo "ERREUR : le nœud ne rend pas de hauteur exploitable sur le RPC local." >&2; exit 1; }
 
 echo ""
 echo "==> Nœud RPC en service."

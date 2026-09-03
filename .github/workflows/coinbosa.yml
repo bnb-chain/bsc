@@ -216,6 +216,16 @@ jobs:
         working-directory: coinbosa
         run: RPC=http://127.0.0.1:8545 node scripts/test-brc20.js
 
+      # Le contrat systeme 0x...1000 est fige dans le genesis : son bytecode ne se
+      # corrige plus. Il n avait pourtant AUCUN banc en dehors du franchissement
+      # d epoch. Celui-ci verifie que l initialisation est idempotente, que
+      # deposit et reward ne revertent pas, et que la rotation est refusee hors
+      # gouverneur comme sans le validateur de genese — les deux verrous dont
+      # depend la vivacite de la chaine.
+      - name: Contrat systeme (CoinbosaValidatorSet)
+        working-directory: coinbosa
+        run: RPC=http://127.0.0.1:8545 node scripts/test-validatorset.js
+
       # Le bloc 200 est le premier bloc d'epoch : c'est là que le contrat système
       # est interrogé. Une régression sur CoinbosaValidatorSet fige la chaîne ici.
       - name: Franchir un bloc d'epoch

@@ -1,33 +1,48 @@
 # Créer les coins — procédure du genesis de production
 
-Les 700 000 000 BOSA n'existent pas encore. Ils naîtront **au bloc 0**, en une seule
-opération : le genesis inscrit l'offre et ses détenteurs, puis plus rien ne peut la changer —
-le moteur de consensus ne crée pas de monnaie.
+Les 700 000 000 BOSA naissent **au bloc 0**, en une seule opération : le genesis inscrit
+l'offre et ses détenteurs, puis plus rien ne peut la changer — le moteur de consensus ne crée
+pas de monnaie.
 
 Il n'y a donc **pas de deuxième essai**. Une adresse mal recopiée, une clé perdue, un poste
 oublié : la seule correction possible serait de relancer un réseau, c'est-à-dire d'abandonner
 le premier. Ce document est la marche à suivre pour que cela n'arrive pas.
 
-> **État au 6 août 2026 : NO-GO — il manque UNE seule chose, les adresses.**
+> **Cette procédure a déjà été exécutée.** Le genesis de production est figé depuis le
+> **7 août 2026** et la chaîne tourne. Ce qui suit reste la référence pour une **nouvelle**
+> genèse ; cela ne s'applique plus à celle-ci, qui ne se rejoue pas.
 >
 > | | |
 > |---|---|
-> | Client compilé sur le serveur | ✅ geth 1.7.6, patch 5 s vérifié |
-> | Clé de scellage du validateur | ✅ générée **sur le serveur**, jamais sortie |
-> | Adresse du validateur | `0x3986D6b31EC55043CeaAF25f5dDEa53517CBba50` |
-> | Nœud RPC + relais `/rpc` | ✅ prêts (`30-node.sh`, Caddy) |
-> | **13 adresses de répartition** | ❌ **toutes à `0x0`** |
-> | **Gouverneur** | ❌ non désigné |
+> | Empreinte du bloc 0 | `0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6` |
+> | `stateRoot` du bloc 0 | `0x93682eb9182a55531d47014b76a285b45d3e720a2951f9ffbdc67f52995f8c03` |
+> | Validateur de genèse | `0x3986D6b31EC55043CeaAF25f5dDEa53517CBba50` |
+> | Gouverneur | `0x1EEf3830833d83AcD3152A511853fd04a0b4082A` — **irremplaçable** |
+> | 13 adresses de répartition | renseignées dans `genesis/distribution-addresses.json` |
+> | Offre inscrite au bloc 0 | 700 000 000 BOSA |
+> | Validateurs | **1** |
 >
-> Voie retenue : **portefeuille matériel**. Une phrase de récupération générée sur
-> l'appareil, dont on n'exporte que le **xpub** (clé publique, qui ne permet pas de
-> dépenser) ; `scripts/derive-treasury-addresses.js` en dérive les 13 adresses plus le
-> gouverneur. La phrase ne touche jamais un ordinateur.
+> Les 13 adresses et le gouverneur ont été dérivés d'un portefeuille matériel par
+> `scripts/derive-treasury-addresses.js`, à partir du seul **xpub** ; la phrase de
+> récupération n'a jamais touché un ordinateur.
 >
-> Nombre de validateurs au lancement : **1**, avec passage à 4 ensuite. Conséquence à
-> assumer publiquement : le réseau n'a **ni tolérance aux pannes ni sécurité byzantine**,
-> et la clé de scellage vit sur le serveur qui sert aussi le site. C'est un choix de
-> vitesse, pas une architecture cible — il doit rester écrit noir sur blanc.
+> **Vérifié le 3 septembre 2026**, en lecture seule sur `https://explorer.coinbosa.com/rpc` :
+> le réseau sert un bloc 0 d'empreinte `0x8dcdadc2…18da6` et de `stateRoot` `0x93682eb9…f8c03`,
+> identiques à `genesis/genesis-reference.json`, à la hauteur 457 341. La chaîne servie est
+> donc bien celle qui a été publiée.
+>
+> Ce tableau décrit le dépôt et l'empreinte servie. Il ne dit **pas** que les 13 adresses sont
+> déjà des coffres multi-signatures — l'étape 1 reste à honorer.
+>
+> Conséquence à assumer publiquement, tant qu'elle est vraie : avec **un seul** validateur, le
+> réseau n'a **ni tolérance aux pannes ni sécurité byzantine**, et la clé de scellage vit sur
+> le serveur qui sert aussi le site. C'est un choix de vitesse, pas une architecture cible —
+> cela doit rester écrit noir sur blanc.
+>
+> *(Cet encadré annonçait « NO-GO — il manque les adresses », « les 700 M n'existent pas
+> encore », « 13 adresses toutes à 0x0 », « gouverneur non désigné ». C'était l'état du
+> 6 août 2026. Un opérateur lisant ce NO-GO aurait cru la chaîne non lancée — et aurait pu
+> chercher à la lancer une seconde fois.)*
 
 ---
 
@@ -211,9 +226,16 @@ prendre la production des blocs. Il peut aussi appeler `sweepSurplus`.
   synchronisé.
 - **Tester la restauration** sur un appareil vierge, au moins une fois — une sauvegarde
   jamais testée n'est pas une sauvegarde.
-- **Ne jamais utiliser cette clé pour autre chose.** Elle ne détient aucun fonds
-  (vérifié : solde nul) et ne doit jamais en détenir : elle gouverne, elle ne transporte pas
-  de valeur.
+- **Ne jamais utiliser cette clé pour autre chose.** Elle ne portait **aucun** solde au
+  bloc 0 : elle est absente de l'`alloc` du genesis. Elle en porte un depuis — **1 000 BOSA**,
+  compteur de transactions à **0**, mesuré le 3 septembre 2026 sur le RPC public. Ce solde de
+  service est nécessaire : sans gas, `updateValidatorSet` serait impossible le jour où il
+  faudrait faire tourner le set, et cette clé est la seule à pouvoir l'appeler. Ce qu'elle ne
+  doit **jamais** porter, c'est de la trésorerie : garder ce solde petit, et n'y router aucun
+  fonds de répartition.
+  *(Ce paragraphe affirmait « vérifié : solde nul ». C'était vrai au bloc 0 et ne l'est plus.
+  Une vérification sans date se périme, et devient un mensonge que personne n'a écrit
+  volontairement.)*
 - **Ne la connecter à aucun site.** Ses seules transactions légitimes sont
   `updateValidatorSet` et `sweepSurplus`, préparées par
   `scripts/rotate-validators.js` et simulées avant envoi.

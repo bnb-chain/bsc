@@ -215,10 +215,39 @@ hex_h=$(curl -s -X POST "https://$DOMAINE/rpc" -H 'content-type: application/jso
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' -m 20 \
   | sed -n 's/.*"result"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
+# --- filtre de confiance sur ce que le RPC vient de repondre -----------------
+# ACCIDENT EVITE. La valeur ci-dessus ne vient pas de nous : elle vient du
+# reseau, et elle repart aussitot dans le CORPS JSON de la requete suivante
+# (eth_getLogs, plus bas), entre guillemets doubles. Un relais casse, un nœud
+# compromis ou un intermediaire qui repondrait
+#     {"result":"0x1\",\"toBlock\":\"0x0"}
+# ne casse pas la requete : il la REECRIT. La plage interrogee devient vide,
+# eth_getLogs repond en quelques millisecondes, et la sonde conclut « index des
+# journaux en bonne sante » alors que l'index est mort. C'est exactement le
+# faux vert du 12 aout 2026 — six jours de chaine illisible sans une alerte —
+# mais fabrique a la demande et invisible dans le journal.
+#
+# Une quantite JSON-RPC, c'est « 0x » suivi d'AU MOINS un chiffre hexadecimal.
+# Tout le reste n'est pas une hauteur de bloc : c'est une panne du RPC. On la
+# dit, et surtout on ne s'en sert pas.
+hex_ok=0
+case "${hex_h:-}" in
+  0x|0x*[!0-9a-fA-F]*) ;;   # « 0x » tout seul, ou un caractere hors hexadecimal
+  0x*)                 hex_ok=1 ;;
+esac
+
 if [ -z "${hex_h:-}" ]; then
   alerte_transitoire error "RPC public muet" "eth_blockNumber sans reponse sur https://$DOMAINE/rpc"
+elif [ "$hex_ok" = 0 ]; then
+  # Voix pleine, pas alerte_transitoire : un redemarrage produit du SILENCE,
+  # jamais une quantite malformee. Ce defaut-la n'a aucune excuse transitoire,
+  # le taire pendant la fenetre de maintenance rendrait la sonde aveugle.
+  alerte error "RPC public INCOHERENT" \
+    "eth_blockNumber a repondu <${hex_h:0:40}> la ou une quantite 0x... est attendue — valeur REFUSEE sans etre utilisee ; verifier le relais Caddy et le nœud RPC"
 else
   t0=$(date +%s)
+  # $hex_h est ici PROUVE « 0x »+hexadecimal par le filtre ci-dessus : il ne peut
+  # plus contenir de guillemet, donc plus reecrire le JSON qui l'entoure.
   rep=$(curl -s -X POST "https://$DOMAINE/rpc" -H 'content-type: application/json' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getLogs\",\"params\":[{\"fromBlock\":\"$hex_h\",\"toBlock\":\"$hex_h\"}]}" \
     -m $(( LOGS_SEUIL + 4 )))

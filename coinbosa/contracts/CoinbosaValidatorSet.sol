@@ -203,13 +203,23 @@ contract CoinbosaValidatorSet {
         uint256 n = newVals.length;
         require(n > 0 && n <= MAX_VALIDATORS, "bad length");
         require(newVotes.length == n, "length mismatch");
-        // Garde anti-arret : INITIAL_VALIDATOR doit rester dans le set. Sans cela, un
-        // appel qui remplace le set par des adresses dont aucune cle n'est detenue
-        // par un noeud mineur laisse le reseau sans signataire au prochain bloc
-        // d'epoch, et la chaine s'arrete irreversiblement. C'est le validateur de
-        // genese — et non le gouverneur — qui detient une cle de scellage : exiger sa
-        // presence garantit un signataire. Exiger celle du gouverneur ne garantirait
-        // rien, puisqu'il ne produit aucun bloc.
+        // Garde anti-arret PARTIELLE : INITIAL_VALIDATOR doit rester dans le set.
+        // C'est le validateur de genese — et non le gouverneur — qui detient une cle
+        // de scellage : l'exiger evite de retirer la seule adresse dont on sache qu'une
+        // cle existe. Exiger celle du gouverneur ne garantirait rien, puisqu'il ne
+        // produit aucun bloc.
+        //
+        // Cela NE GARANTIT PAS la liveness, et l'ecrire serait l'accident. Parlia exige
+        // ⌊N/2⌋+1 signataires DISTINCTS et EN LIGNE : passer a N=2 avec un seul noeud
+        // qui scelle arrete la chaine au prochain bloc d'epoch, garde presente ou non.
+        // Un lecteur a qui l'on promet ici « un signataire garanti » se croit couvert
+        // par le contrat et fait exactement cette rotation — que rien on-chain ne peut
+        // ensuite defaire, puisque plus aucun bloc n'est produit. Le contrat ne sait pas
+        // quels noeuds tournent ; il ne peut donc pas verifier ce que ce commentaire
+        // affirmait. Voir consensus/parlia/coinbosa_halt_repro_test.go.
+        //
+        // Ne jamais appeler cette fonction directement : passer par
+        // coinbosa/scripts/rotate-validators.js, qui exige d'avoir VU sceller.
         bool sealerPresent = false;
         for (uint256 i = 0; i < n; ++i) {
             require(newVals[i] != address(0), "zero address");

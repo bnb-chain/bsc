@@ -183,16 +183,33 @@ echo "==> Vérification (le nœud doit RÉPONDRE, pas seulement être « actif �
 sleep 8
 systemctl is-active --quiet coinbosa-node-archive || {
   echo "ERREUR : service inactif." >&2; journalctl -u coinbosa-node-archive -n 30 --no-pager >&2; exit 1; }
+# ---------------------------------------------------------------------------
+# ACCIDENT ÉVITÉ. « bn » est du texte rendu par le nœud, et il entrait tel quel
+# dans $((bn)). L'évaluation arithmétique de bash RELIT son texte et évalue
+# l'indice d'un tableau : une réponse « 0x1,HTTP_PORT[$(commande)] » exécutait
+# « commande » ICI, dans un script lancé en root. Reproduit, pas supposé.
+# Et le test « non vide » laissait passer n'importe quelle chaîne, en affichant
+# un numéro de bloc inventé. On exige donc une vraie quantité « 0x… ».
+# ---------------------------------------------------------------------------
+hexok() {
+  case "${1:-}" in
+    0x|0x*[!0-9a-fA-F]*) return 1 ;;   # « 0x » seul, ou un caractère hors hexadécimal
+    0x*)                 return 0 ;;
+    *)                   return 1 ;;
+  esac
+}
+
 bn=""
 for _ in $(seq 1 20); do
   bn=$(curl -s -X POST -H 'Content-Type: application/json' \
         --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
         "http://127.0.0.1:$HTTP_PORT" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p') || true
-  [ -n "$bn" ] && break
+  hexok "$bn" && break
+  bn=""          # réponse non conforme = pas de réponse : on continue d'attendre
   sleep 2
 done
-[ -n "$bn" ] || { echo "ERREUR : pas de réponse sur 127.0.0.1:$HTTP_PORT." >&2; exit 1; }
-echo "    nœud archive à la hauteur $((bn))"
+[ -n "$bn" ] || { echo "ERREUR : pas de hauteur exploitable sur 127.0.0.1:$HTTP_PORT." >&2; exit 1; }
+echo "    nœud archive à la hauteur $((16#${bn#0x}))"
 
 # On PROUVE que ce nœud est sur LA MÊME chaîne : même empreinte de bloc 0 que le
 # nœud en service. Un genesis divergent donnerait un nœud qui répond joyeusement
@@ -201,6 +218,15 @@ g0(){ curl -s -X POST -H 'Content-Type: application/json' \
       --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["0x0",false]}' \
       "http://127.0.0.1:$1" | sed -n 's/.*"hash":"\([^"]*\)".*/\1/p'; }
 H_ARCH=$(g0 "$HTTP_PORT"); H_PROD=$(g0 8545)
+# Une empreinte de bloc, c'est « 0x » + 64 chiffres hexadécimaux, rien d'autre.
+# Sans cette exigence, deux nœuds répondant le MÊME texte malformé passaient le
+# test d'égalité ci-dessous et le genesis était déclaré identique sans preuve.
+empreinte_ok() { case "${1:-}" in 0x*[!0-9a-fA-F]*) return 1 ;; 0x????????????????????????????????????????????????????????????????) return 0 ;; *) return 1 ;; esac; }
+if ! empreinte_ok "$H_ARCH" || ! empreinte_ok "$H_PROD"; then
+  echo "ARRÊT : empreinte de bloc 0 illisible — archive=<${H_ARCH:0:20}> production=<${H_PROD:0:20}>" >&2
+  systemctl disable --now coinbosa-node-archive >/dev/null 2>&1 || true
+  exit 1
+fi
 if [ -z "$H_ARCH" ] || [ "$H_ARCH" != "$H_PROD" ]; then
   echo "ARRÊT : genesis divergent — archive=$H_ARCH  production=$H_PROD" >&2
   systemctl disable --now coinbosa-node-archive >/dev/null 2>&1 || true

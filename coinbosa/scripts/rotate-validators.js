@@ -136,6 +136,32 @@ const ABI = [
     avertissements.push(`${entrants.length} entrant(s) acceptés sous ta responsabilité (JE_COMPRENDS_LE_RISQUE=1) : leurs nœuds DOIVENT déjà tourner et être synchronisés.`);
   }
 
+  // --- 2 bis. LE QUORUM PARLIA : la seule chose que ce script puisse réellement prouver ---
+  // ACCIDENT ÉVITÉ : publier une rotation vers un ensemble dont trop peu de membres scellent
+  // POUR DE VRAI. `requisEnLigne` était calculé (l. plus haut) et AFFICHÉ à l'opérateur, mais
+  // il n'entrait dans AUCUNE décision : le seul refus était le cas extrême « plus aucun
+  // sortant actif ». Conséquence observée au banc : retirer un validateur compromis de
+  // {genèse, B, C} pour ne garder que {genèse, C}, avec le nœud de C éteint, affichait
+  // « JAMAIS VU SCELLER : C » puis « rotation sûre » DANS LA MÊME SORTIE, et rendait la main
+  // avec le code 0. Au bloc d'epoch suivant la chaîne s'arrête — et comme plus aucun bloc
+  // n'est produit, aucune transaction corrective ne peut être minée : c'est sans retour.
+  // On compare donc enfin les scelleurs PROUVÉS au quorum ⌊N/2⌋+1 que l'en-tête de ce
+  // fichier présente comme « la SEULE chose qui protège ».
+  // Portée honnête de cette preuve : avoir scellé dans la fenêtre montre qu'un nœud tenait sa
+  // clé et était en ligne RÉCEMMENT. Ce n'est pas une garantie qu'il le sera encore au
+  // prochain bloc d'epoch. C'est un plancher qu'on refuse de franchir, pas un feu vert.
+  if (actifs.length < requisEnLigne) {
+    const manque =
+      `quorum NON PROUVÉ : ${actifs.length} scelleur(s) observé(s) dans l'ensemble demandé, ` +
+      `${requisEnLigne} exigé(s) par Parlia (⌊${N}/2⌋+1). Les autres n'ont scellé aucun des ` +
+      `${fenetre} derniers blocs.`;
+    if (FORCER) {
+      avertissements.push(`${manque} Accepté sous ta responsabilité (JE_COMPRENDS_LE_RISQUE=1) : sans ces nœuds en ligne au prochain bloc d'epoch, la chaîne s'arrête sans retour.`);
+    } else {
+      bloquants.push(`${manque} Démarre ces nœuds, attends de les VOIR sceller, puis relance.`);
+    }
+  }
+
   // --- 3. transitions connues pour dégrader la disponibilité ---
   if (N === 2) {
     avertissements.push('N=2 impose un quorum de 2 sur 2 EN PERMANENCE : la perte d\'un seul nœud arrête le réseau. Préférer un passage direct de 1 à 3.');
@@ -183,6 +209,13 @@ const ABI = [
       motifRevert = (e.shortMessage || e.message || '').slice(0, 160);
       bloquants.push(`la chaîne REJETTE cette rotation : ${motifRevert}`);
     }
+  } else {
+    // ACCIDENT ÉVITÉ : sortir « la transaction PASSE » alors que rien n'a été exécuté.
+    // Aujourd'hui GOVERNOR() décode toujours en adresse, donc cette branche est
+    // inatteignable ; elle est écrite pour le jour où un chemin « simulation sautée »
+    // apparaîtra (option de contournement, RPC qui refuse `from`, ABI retouchée). Ce
+    // jour-là le script doit REFUSER, pas hériter du silence comme d'un succès.
+    bloquants.push('simulation on-chain NON EXÉCUTÉE (gouverneur illisible) : aucune preuve que la chaîne accepte cette rotation — ne pas envoyer.');
   }
 
   console.log('\n  ' + '='.repeat(72));
@@ -197,8 +230,26 @@ const ABI = [
     process.exit(1);
   }
 
+  // ACCIDENT ÉVITÉ : affirmer un succès qu'on n'a pas établi. Cette phrase est une
+  // AFFIRMATION SUR LA CHAÎNE ; elle ne doit sortir que si l'eth_call a vraiment tourné et
+  // vraiment réussi. Elle s'imprimait sur la seule absence de bloquants, sans jamais relire
+  // `simulationOk` : au banc, le texte était IDENTIQUE au caractère près que la simulation
+  // ait eu lieu ou non. Il n'apprenait donc rien à l'opérateur qui décide d'envoyer.
+  if (!simulationOk) {
+    console.error('\n  INCOHÉRENCE INTERNE : aucune simulation réussie, et pourtant aucun bloquant.');
+    console.error('  Le script refuse de conclure plutôt que d\'annoncer un succès non établi.\n');
+    process.exit(1);
+  }
   console.log('  SIMULATION on-chain : la transaction PASSE (eth_call, rien n\'a été publié).');
-  console.log('\n  VERDICT : rotation sûre sur tout ce qui est vérifiable.');
+  // Un avertissement, ici, désigne toujours quelque chose que la chaîne NE PEUT PAS prouver
+  // (nœuds entrants, quorum forcé). Annoncer « rotation sûre » par-dessus reviendrait à
+  // requalifier en preuve ce qu'on vient d'écrire comme non vérifié.
+  if (avertissements.length) {
+    console.log('\n  VERDICT : rien de bloquant DÉMONTRABLE depuis la chaîne.');
+    console.log('  Ce n\'est PAS un feu vert : les points « À CONSIDÉRER » ci-dessus ne sont pas vérifiés.');
+  } else {
+    console.log('\n  VERDICT : rotation sûre sur tout ce qui est vérifiable depuis la chaîne.');
+  }
   console.log('\n  À envoyer DEPUIS LE GOUVERNEUR (hors ligne / matériel) :');
   console.log(`    contrat : ${VALSET}`);
   console.log('    méthode : updateValidatorSet(address[] newVals, bytes[] newVotes)');

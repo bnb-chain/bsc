@@ -276,6 +276,36 @@ crier_doux() { [ "$MAINTENANCE" = 1 ] && { logger -t coinbosa-cotation "pendant 
 rpc() { curl -s -X POST "$RPC" -H 'content-type: application/json' -d "$1" -m 20 2>/dev/null; }
 res() { sed -n 's/.*"result"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",}]*\)"\{0,1\}.*/\1/p'; }
 
+# ---------------------------------------------------------------------------
+# Filtre de confiance sur les quantites rendues par le RPC.
+#
+# ACCIDENT EVITE. Ce que « res » vient d'extraire n'est pas a nous : c'est du
+# texte choisi par la machine d'en face. Il servait ensuite TEL QUEL a deux
+# endroits, tous deux dangereux :
+#
+#   1) dans $(( 16#... )). L'evaluation arithmetique de bash n'est pas un calcul
+#      inoffensif : elle RELIT son texte, et l'indice d'un tableau y est a son
+#      tour evalue. Une reponse
+#          {"result":"0x1,RPC[$(commande)]"}
+#      fait donc EXECUTER « commande » ici meme, sur la machine qui surveille —
+#      celle qui a les droits d'agir sur les nœuds. Reproduit, pas suppose.
+#   2) dans le corps JSON de eth_getLogs (section 5). Un guillemet n'y casse pas
+#      la requete : il la REECRIT. Une plage de blocs vide repond en quelques
+#      millisecondes et la sonde declare l'index des journaux sain alors qu'il
+#      est mort — le faux vert du 12 aout 2026, fabrique a la demande.
+#
+# Une hauteur de bloc JSON-RPC, c'est « 0x » suivi d'AU MOINS un chiffre
+# hexadecimal. Tout le reste n'est pas une hauteur : c'est une panne du RPC.
+# On la signale, on ne la calcule pas.
+# ---------------------------------------------------------------------------
+hexok() {
+  case "${1:-}" in
+    0x|0x*[!0-9a-fA-F]*) return 1 ;;   # « 0x » seul, ou un caractere hors hexadecimal
+    0x*)                 return 0 ;;
+    *)                   return 1 ;;
+  esac
+}
+
 DEFAUTS=0
 
 # --- 1. la porte d'entrée répond-elle, et en combien de temps ? --------------
@@ -286,8 +316,14 @@ HEX=$(printf '%s' "$REP_H" | res)
 if [ -z "${HEX:-}" ]; then
   DEFAUTS=$((DEFAUTS+1))
   crier_doux grave rpc-muet "RPC PUBLIC MUET" "eth_blockNumber sans reponse sur $RPC — aucune bourse ne peut lire la chaine"
+elif ! hexok "$HEX"; then
+  # « crier », pas « crier_doux » : un redemarrage produit du SILENCE, jamais une
+  # quantite malformee. Ce defaut n'a pas d'excuse transitoire, et le taire
+  # pendant la fenetre de maintenance rendrait la sonde aveugle.
+  DEFAUTS=$((DEFAUTS+1))
+  crier grave rpc-incoherent "RPC PUBLIC INCOHERENT" "eth_blockNumber a repondu <${HEX:0:40}> la ou une quantite 0x... est attendue — valeur REFUSEE sans etre utilisee ; verifier le relais Caddy et le nœud RPC"
 else
-  HAUTEUR=$(( 16#${HEX#0x} ))
+  HAUTEUR=$(( 16#${HEX#0x} ))   # HEX prouve « 0x »+hexadecimal par hexok() ci-dessus
   if [ "$MS" -ge "$LAT_SEUIL_MS" ]; then
     DEFAUTS=$((DEFAUTS+1))
     crier_doux attention rpc-lent "RPC PUBLIC LENT" "eth_blockNumber a mis ${MS} ms depuis la machine elle-meme (seuil ${LAT_SEUIL_MS} ms) — un client distant verra pire"
@@ -344,6 +380,9 @@ else
   }
   T1=$(date +%s)
   DEB=$(( HAUTEUR > 5000 ? HAUTEUR - 4999 : 1 ))
+  # $HEX est PROUVE « 0x »+hexadecimal par hexok() (section 1) : il ne peut plus
+  # contenir de guillemet, donc plus reecrire le JSON qui l'entoure ni retrecir
+  # en douce la plage de blocs interrogee.
   L=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getLogs\",\"params\":[{\"fromBlock\":\"$(printf '0x%x' $DEB)\",\"toBlock\":\"$HEX\"}]}")
   DL=$(( $(date +%s) - T1 ))
   if [ -z "${L:-}" ]; then
@@ -708,6 +747,19 @@ controle() {
   inf() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 < b+0)}' && echo 1 || echo 0; }
   sup() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 >= b+0)}' && echo 1 || echo 0; }
   jrpc() { curl -s -X POST "$RPC" -H 'content-type: application/json' -d "$1" -m "${2:-25}" 2>/dev/null; }
+  # Meme filtre que dans la sonde : ce qui sort du RPC n'est pas une hauteur tant
+  # qu'on ne l'a pas verifie. Sans lui, la ligne « N1=$(( 16#${H1#0x} )) » plus bas
+  # EXECUTE ce que le RPC a repondu — l'arithmetique de bash relit son texte et
+  # evalue l'indice d'un tableau. Reproduit avec {"result":"0x1,RPC[$(commande)]"}.
+  # Cette liste de controle est aussi celle qu'on lance « dehors », vers une URL
+  # donnee en argument : la machine d'en face n'est alors meme plus la notre.
+  hexok() {
+    case "${1:-}" in
+      0x|0x*[!0-9a-fA-F]*) return 1 ;;
+      0x*)                 return 0 ;;
+      *)                   return 1 ;;
+    esac
+  }
 
   echo "===================================================================="
   echo " CONTRÔLE COINBOSA — $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
@@ -721,11 +773,17 @@ controle() {
   if [ -z "$H1" ]; then
     v "hauteur lisible" "un nombre" "AUCUNE RÉPONSE" 0
     N2=0
+  elif ! hexok "$H1"; then
+    # Repondre n'importe quoi n'est pas repondre : c'est un KO, pas un n/a.
+    v "hauteur lisible" "une quantité 0x…" "RÉPONSE NON CONFORME : <${H1:0:40}>" 0
+    N2=0
   else
     sleep 12
     H2=$(jrpc '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
-    [ -z "$H2" ] && H2="$H1"
-    N1=$(( 16#${H1#0x} )); N2=$(( 16#${H2#0x} )); D=$(( N2 - N1 ))
+    # Seconde lecture absente OU malformee : on retombe sur la premiere, qui est
+    # deja verifiee. Jamais sur un texte non valide — ce serait rouvrir la porte.
+    hexok "${H2:-}" || H2="$H1"
+    N1=$(( 16#${H1#0x} )); N2=$(( 16#${H2#0x} )); D=$(( N2 - N1 ))   # les deux sont prouves hexadecimaux
     v "hauteur avance en 12 s" ">= 2 blocs (5 s/bloc)" "$N1 -> $N2  (+$D)" "$( [ "$D" -ge 2 ] && echo 1 || echo 0 )"
   fi
 

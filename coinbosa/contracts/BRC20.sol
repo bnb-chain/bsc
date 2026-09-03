@@ -108,7 +108,20 @@ contract BRC20 is IBRC20 {
 
     /// @notice Ferme DÉFINITIVEMENT l'émission : plus aucun mint n'est ensuite possible.
     /// Rend l'offre fixe et vérifiable — indispensable pour un jeton présenté comme tel.
+    ///
+    /// L'ACCIDENT QUE CETTE GARDE ÉVITE. Sans elle, un second appel réussissait et
+    /// réémettait MintingFinished. L'écriture était pourtant inutile : le drapeau était
+    /// déjà posé. C'est l'ÉVÉNEMENT qui pose problème — c'est lui, et non l'état, que
+    /// lisent les indexeurs, explorateurs et agrégateurs. Deux MintingFinished sur le
+    /// même jeton se lisent comme deux clôtures, donc comme une émission qui aurait
+    /// repris entre les deux : exactement l'inverse de ce que cette fonction garantit.
+    /// Un propriétaire qui rejoue la transaction par prudence suffit à le produire.
+    ///
+    /// La clôture est irréversible : un second appel n'a aucun effet légitime. Le
+    /// refuser franchement vaut mieux que de le laisser écrire une histoire fausse
+    /// dans le journal d'événements.
     function finishMinting() public onlyOwner {
+        require(!_mintingFinished, "BRC20: emission deja close");
         _mintingFinished = true;
         emit MintingFinished();
     }
