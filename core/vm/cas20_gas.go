@@ -1,19 +1,3 @@
-// Copyright 2024 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 package vm
 
 import (
@@ -28,10 +12,14 @@ import (
 // feeds is not GasCosts.StateGas (see meteredGasUsed). Opcode, memory and call
 // overhead have no counterpart here and are not synthesized.
 
-// The EIP-2929 warm/cold policy is normative and lives in BEP-702 3.17: no CAS20
+// The EIP-2929 warm/cold policy is normative and lives in BEP-702 3.14: no CAS20
 // address starts warm, a transaction access list applies, warmth is keyed on
 // (address, slot), and a foreign slot read warms the foreign address too.
-// cas20_warming_test.go holds each clause.
+//
+// None of those four clauses has a test. The addresses are absent from the
+// static precompile map today, which is what keeps the first of them true by
+// accident; a refactor that added them would start every call warm and reprice
+// it, with nothing here to notice.
 
 // cas20CalldataWordGas is the per-word part of bringing calldata into memory:
 // CALLDATACOPY's copy cost plus the linear part of the memory expansion that
