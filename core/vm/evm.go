@@ -44,8 +44,40 @@ type (
 )
 
 func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
-	p, ok := evm.precompiles[addr]
-	return p, ok
+	if p, ok := evm.precompiles[addr]; ok {
+		return p, ok
+	}
+	// CAS20 native token family: the factory has a fixed address and every token
+	// address is resolved dynamically from its prefix (there is no fixed-address
+	// entry for tokens, so they cannot live in the static precompiles map).
+	if evm.cas20Enabled() {
+		return resolveCAS20(addr)
+	}
+	return nil, false
+}
+
+// cas20Enabled reports whether the CAS20 native token family is active for the
+// current block.
+//
+// Jenner (BEP-706) is the fork that ships it. IsJenner embeds the IsInBSC gate,
+// so no separate check is needed: a non-BSC config that set jennerTime would
+// still not route the reserved address space, and its registries would never be
+// seeded either.
+func (evm *EVM) cas20Enabled() bool {
+	return evm.chainRules.IsJenner
+}
+
+// runPrecompile dispatches a resolved precompile, routing stateful precompiles
+// (the CAS20 family) through runStatefulPrecompiledContract and everything else
+// through the plain, stateless RunPrecompiledContract.
+//
+// readOnly is the read-only state of the current frame; directCall is true for
+// CALL/STATICCALL and false for CALLCODE/DELEGATECALL.
+func (evm *EVM) runPrecompile(p PrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool, value *uint256.Int) ([]byte, GasBudget, error) {
+	if sp, ok := p.(StatefulPrecompiledContract); ok {
+		return runStatefulPrecompiledContract(evm, sp, caller, self, input, gas, readOnly, directCall, value)
+	}
+	return RunPrecompiledContract(evm.StateDB, p, self, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
 }
 
 // BlockContext provides the EVM with auxiliary information. Once provided
@@ -316,7 +348,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 	}
 
 	if isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, true, value)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		code := evm.resolveCode(addr)
@@ -382,7 +414,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, false, value)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -427,7 +459,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
+		ret, gas, err = evm.runPrecompile(p, originCaller, addr, input, gas, evm.readOnly, false, value)
 	} else {
 		// Initialise a new contract and make initialise the delegate values
 		contract := GetContract(originCaller, caller, value, gas, evm.jumpDests)
@@ -479,7 +511,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 	evm.StateDB.AddBalance(addr, new(uint256.Int), tracing.BalanceChangeTouchAccount)
 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, true, true, nil)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
