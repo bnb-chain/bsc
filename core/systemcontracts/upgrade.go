@@ -1119,6 +1119,19 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 			statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeNewContract)
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
+		// The CAS20 registries are precompiles rather than upgradeable contracts, so
+		// their account sentinels are planted here instead of through an Upgrade
+		// config. Nothing else is written and no feature is opened; the activation
+		// admin is governance's to appoint afterwards.
+		//
+		// The sentinels are what make that appointment possible at all: GovHub
+		// refuses a proposal target carrying no code, so a registry without one
+		// could never receive its first parameter change — and GovHub reports the
+		// refusal in an event while leaving the proposal successful.
+		if config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
+			vm.SeedCAS20Activation(statedb)
+			log.Info("Planted CAS20 registry sentinels", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
+		}
 	} else {
 		if config.IsFeynman(blockNumber, lastBlockTime) {
 			upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
