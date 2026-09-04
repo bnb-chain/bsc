@@ -24,9 +24,7 @@ var (
 )
 
 var (
-	// ErrCAS20DelegateCall is returned when a token precompile is reached via a
-	// non-direct call (DELEGATECALL/CALLCODE), where Self could not be trusted
-	// as the storage root.
+	// Refused because under delegation Self no longer names the storage owner.
 	ErrCAS20DelegateCall = errors.New("cas20: delegate call not allowed")
 
 	// ErrCAS20StatelessDispatch guards the plain Run path: CAS20 precompiles must be

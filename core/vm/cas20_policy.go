@@ -340,7 +340,6 @@ func (p policyReg) ensureInitialized() uint64 {
 	return cas20PolicyFirstID
 }
 
-// cas20PolicyPrecompile is the singleton registry precompile.
 type cas20PolicyPrecompile struct{ cas20StatefulBase }
 
 func (p *cas20PolicyPrecompile) Name() string { return "CAS20PolicyRegistry" }
