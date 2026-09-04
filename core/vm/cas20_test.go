@@ -47,7 +47,7 @@ func TestIsCAS20Address(t *testing.T) {
 		{"unknown variant still in space", cas20Addr(0x7f, 1), true},
 		{"factory is outside token space", CAS20FactoryAddress, false},
 		{"wrong magic prefix", common.HexToAddress("0xb3000000000000000000ab0000000000000000ff"), false},
-		{"nonzero padding byte", common.HexToAddress("0xca500000000001000000000000000000000000ff"), false},
+		{"nonzero padding byte", common.HexToAddress("0xca520000000001000000000000000000000000ff"), false},
 		{"the reference implementation's prefix", common.HexToAddress("0xb2000000000000000000000000000000000000ff"), false},
 		{"zero address", common.Address{}, false},
 	}
