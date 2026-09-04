@@ -184,8 +184,9 @@ func (p policyReg) setMember(id uint64, account common.Address, in bool) {
 }
 
 // isAuthorized never reverts: it sits on every transfer's path. A malformed or
-// absent policy takes empty-set semantics, and the sentinel ids answer before the
-// registry is initialized.
+// absent policy takes empty-set semantics — which authorizes everyone for a
+// BLOCKLIST or an INTERSECT and no one for an ALLOWLIST or a UNION — and the
+// sentinel ids answer before the registry is initialized.
 func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 	if !polIDWellFormed(id) {
 		return false
@@ -208,11 +209,11 @@ func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 		}
 		return false
 	case cas20PolicyIntersect:
-		kids := p.children(id)
-		if len(kids) == 0 {
-			return false
-		}
-		for _, child := range kids {
+		// An AND over no children is vacuously true, so a well-formed INTERSECT id
+		// that names no policy authorizes everyone — the same tolerance a
+		// never-created BLOCKLIST already gets, and for the same reason: binding
+		// checks existence, so no token can reference one (BEP-702 3.8).
+		for _, child := range p.children(id) {
 			if !p.isAuthorized(child, account) {
 				return false
 			}
@@ -454,8 +455,10 @@ func runCAS20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 }
 
 // validateChildren checks a proposed child set: the count, then that every entry
-// exists, then that none is itself a composite. The no-nesting rule keeps
-// evaluation one level deep so isAuthorized cannot recurse without bound.
+// exists, then that every entry is eligible — neither a composite nor a sentinel.
+// The no-nesting rule keeps evaluation one level deep so isAuthorized cannot
+// recurse without bound; a sentinel is refused because it stores no membership
+// for a composite to consult.
 func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 	if len(kids) < cas20CompositeMinChildren || len(kids) > cas20CompositeMaxChildren {
 		return nil, revCAS20("ChildPoliciesOutsideOfRange()", errSelChildrenOutOfRange)
@@ -470,13 +473,23 @@ func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 		if !ok {
 			return nil, ErrExecutionReverted
 		}
+		out = append(out, id)
+	}
+	// Two passes over the whole set, not one interleaved pass per child: a set
+	// holding both a missing child and an ineligible one owes PolicyNotFound,
+	// whichever comes first in the array. The order decides which error the
+	// caller receives, so it is consensus (BEP-702 3.9).
+	for _, id := range out {
 		if !reg.policyExists(id) {
-			return nil, revCAS20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
+			return nil, revCAS20("PolicyNotFound()", errSelPolicyNotFound)
 		}
-		if polIsComposite(id) {
+	}
+	// A sentinel is refused alongside a composite: only a simple policy the
+	// registry actually minted can be a child.
+	for _, id := range out {
+		if isSentinelPolicy(id) || polIsComposite(id) {
 			return nil, revCAS20("InvalidChildPolicy(uint64)", errSelInvalidChildPolicy, wU64(id))
 		}
-		out = append(out, id)
 	}
 	return out, nil
 }
@@ -493,8 +506,9 @@ func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Addres
 }
 
 // createCompositePolicy mints a UNION or INTERSECT over existing simple policies.
-// The type is checked first, before the zero-admin guard — the reverse of the
-// simple constructors, which check the admin first and then refuse composites.
+// The zero-admin guard comes first, as it does in the simple constructors: all
+// three agree on the order, and it is observable through which error a caller
+// receives (BEP-702 3.9).
 func createCompositePolicy(ctx *PrecompileContext, reg policyReg, args []byte) ([]byte, error) {
 	admin, err := readAddress(args, 0)
 	if err != nil {
@@ -505,14 +519,14 @@ func createCompositePolicy(ctx *PrecompileContext, reg policyReg, args []byte) (
 		return nil, err
 	}
 	if !isEnumWord(ptypeWord, cas20PolicyIntersect) {
-		return nil, revPanic(0x21)
+		return nil, ErrExecutionReverted
 	}
 	ptype := ptypeWord[31]
-	if !polIsComposite(uint64(ptype) << 56) {
-		return nil, revCAS20("IncompatiblePolicyType()", errSelIncompatibleType)
-	}
 	if admin == (common.Address{}) {
 		return nil, revCAS20("ZeroAddress()", errSelZeroAddress)
+	}
+	if !polIsComposite(uint64(ptype) << 56) {
+		return nil, revCAS20("IncompatiblePolicyType()", errSelIncompatibleType)
 	}
 	rawKids, err := readWordArray(args, 2)
 	if err != nil {
@@ -551,7 +565,7 @@ func updateComposite(ctx *PrecompileContext, reg policyReg, args []byte) error {
 		return err
 	}
 	if !reg.policyExists(id) {
-		return revCAS20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
+		return revCAS20("PolicyNotFound()", errSelPolicyNotFound)
 	}
 	if !polIsComposite(id) {
 		return revCAS20("IncompatiblePolicyType()", errSelIncompatibleType)
@@ -588,7 +602,7 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	// refused by the logic instead, after the zero-admin check and before the batch
 	// bound — a composite is minted only through createCompositePolicy.
 	if !isEnumWord(ptypeWord, cas20PolicyIntersect) {
-		return nil, revPanic(0x21)
+		return nil, ErrExecutionReverted
 	}
 	if admin == (common.Address{}) {
 		return nil, revCAS20("ZeroAddress()", errSelZeroAddress)
@@ -656,7 +670,7 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 		return err
 	}
 	if !isEnumWord(inWord, 1) { // strict ABI bool
-		return revPanic(0x21)
+		return ErrExecutionReverted
 	}
 	accounts, err := readWordArray(args, 2)
 	if err != nil {

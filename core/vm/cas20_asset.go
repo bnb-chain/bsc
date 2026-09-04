@@ -261,12 +261,13 @@ func dispatchAsset(tok cas20Token, ext assetExt, input []byte) (ret []byte, err 
 			return nil, err, true
 		}
 		// bytes4 occupies the high four bytes of its word; anything in the
-		// remaining 28 is not a valid bytes4 and cannot be advertised.
+		// remaining 28 is a malformed encoding, which Solidity's external decoder
+		// refuses with empty returndata rather than answering for.
 		var want [4]byte
 		copy(want[:], id[:4])
 		for _, b := range id[4:] {
 			if b != 0 {
-				return encBool(false), nil, true
+				return nil, ErrExecutionReverted, true
 			}
 		}
 		return encBool(cas20AssetInterfaceIDs[want]), nil, true

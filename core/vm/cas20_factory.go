@@ -82,7 +82,7 @@ func runCAS20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		// variant[31] answered for encodings creation rejects, and named
 		// addresses in unroutable variant spaces.
 		if !isEnumWord(variant, cas20VariantMax) {
-			return nil, revPanic(0x21)
+			return nil, ErrExecutionReverted
 		}
 		if !ctx.chargeKeccak(64) {
 			return nil, ErrOutOfGas
@@ -144,7 +144,7 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	// feature gate applied before the variant-specific params blob is decoded, so
 	// a closed feature is reported as such whatever the payload.
 	if !isEnumWord(variantWord, cas20VariantMax) {
-		return nil, revPanic(0x21)
+		return nil, ErrExecutionReverted
 	}
 	variant := variantWord[31]
 	feature, ok := variantFeature(variant)
@@ -272,8 +272,8 @@ func decodeCreateParams(variant byte, params []byte) (cas20CreateParams, error) 
 	body := params[off:]
 
 	// A uint8 field with dirty high bits is a malformed encoding, which the
-	// decode reports as such — Panic(0x21) is for an out-of-range enum, and
-	// version and decimals are plain integers.
+	// decode reports as such: version and decimals are plain integers, so their
+	// range is a field check rather than a decode failure.
 	version, err := readStrictUint8(body, 0)
 	if err != nil {
 		return out, err

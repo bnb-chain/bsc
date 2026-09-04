@@ -445,17 +445,19 @@ func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 	}
 }
 
-// TestCAS20OutOfEnumVariantPanics covers the variant word no enum member claims.
-func TestCAS20OutOfEnumVariantPanics(t *testing.T) {
+// TestCAS20OutOfEnumVariantRevertsEmpty covers the variant word no enum member
+// claims. Solidity's external decoder validates an enum argument and reverts with
+// empty returndata; Panic(0x21) comes from an internal uint-to-enum cast and is
+// not what a caller passing 2 to an enum parameter receives.
+func TestCAS20OutOfEnumVariantRevertsEmpty(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := common.HexToAddress("0xca11e4")
-	wantData, _ := finishCAS20(nil, revPanic(0x21))
 
 	for _, tc := range []struct {
 		name  string
 		input []byte
 	}{
-		{"createCAS20", encodeCreateCAS20WithParams(0x02, common.HexToHash("0xbv"),
+		{"createCAS20", encodeCreateCAS20WithParams(0x02, common.HexToHash("0xb0a1"),
 			cas20AssetParams("T", "T", caller, 18), nil)},
 		{"getCAS20Address", cas20Call(selGetCAS20Address, u256hash(2), addrKey(caller), common.Hash{})},
 	} {
@@ -464,9 +466,9 @@ func TestCAS20OutOfEnumVariantPanics(t *testing.T) {
 		if !errors.Is(err, ErrExecutionReverted) {
 			t.Errorf("%s with variant 2: err = %v, want a revert", tc.name, err)
 		}
-		if !bytes.Equal(ret, wantData) {
-			t.Errorf("%s with variant 2: returndata = %x, want Panic(0x21) = %x. Both entry "+
-				"points must decode the variant identically", tc.name, ret, wantData)
+		if len(ret) != 0 {
+			t.Errorf("%s with variant 2: returndata = %x, want empty. Both entry points must "+
+				"decode the variant identically", tc.name, ret)
 		}
 	}
 

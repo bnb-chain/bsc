@@ -172,8 +172,9 @@ var (
 	errSelInvalidCurrency    = cas20ErrorSel("InvalidCurrency(string)")
 )
 
-// revPanic mirrors Solidity's Panic(code): 0x11 arithmetic over/underflow,
-// 0x21 invalid enum value.
+// revPanic mirrors Solidity's Panic(code). Only 0x11, arithmetic overflow and
+// underflow, arises here: a malformed argument is a decode failure and reverts
+// with empty returndata, which is what Solidity's external decoder does.
 func revPanic(code byte) error {
 	return revCAS20("Panic(uint256)", errSelPanic, wU8(code))
 }

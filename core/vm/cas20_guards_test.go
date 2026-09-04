@@ -313,3 +313,111 @@ func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 		}
 	}
 }
+
+// TestCAS20MalformedArgsRevertEmpty pins the returndata of every decode failure,
+// not merely that one occurred.
+//
+// Solidity's external decoder validates each narrow argument and reverts with
+// `revert(0, 0)` — empty returndata — both for dirty padding and for a clean
+// value outside an enum's range. Panic(0x21) is what an *internal* uint-to-enum
+// cast produces and is not what a caller passing 2 to an enum parameter receives.
+// Asserting only that the call reverted cannot tell the two apart, so every case
+// here compares the returndata itself.
+func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
+	_, evm := newCAS20EVM(t)
+	caller := cas20TestCaller
+
+	assertEmpty := func(what string, ret []byte, err error) {
+		t.Helper()
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want a revert", what, err)
+			return
+		}
+		if len(ret) != 0 {
+			t.Errorf("%s: returndata = %x, want empty. A decode failure is revert(0,0), "+
+				"never Panic(0x21)", what, ret)
+		}
+	}
+
+	// The registry's enum and bool arguments.
+	outOfEnum := u256hash(uint64(cas20PolicyIntersect) + 1)
+	for _, tc := range []struct {
+		name  string
+		input []byte
+	}{
+		{"createPolicy, policyType past the enum",
+			cas20Call(selCreatePolicy, addrKey(caller), outOfEnum)},
+		{"createPolicyWithAccounts, policyType past the enum",
+			encodeCreatePolicyWithAccountsRaw(addrKey(caller), outOfEnum, nil)},
+		{"createCompositePolicy, policyType past the enum",
+			encodeComposite(selCreateComposite,
+				[]common.Hash{addrKey(caller), outOfEnum}, []uint64{cas20PolicyAlwaysAllow})},
+	} {
+		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, tc.input,
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		assertEmpty(tc.name, ret, err)
+	}
+
+	// A live policy, so the bool below fails on its own encoding rather than on
+	// the policy's absence.
+	ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
+		cas20Call(selCreatePolicy, addrKey(caller), u256hash(cas20PolicyAllowlist)),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	id := new(uint256.Int).SetBytes(ret).Uint64()
+	ret, _, err = evm.Call(caller, CAS20PolicyRegistryAddress,
+		encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(2), []common.Hash{addrKey(cas20Alice)}),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	assertEmpty("updateAllowlist, allowed = 2", ret, err)
+
+	// The token's own narrow arguments. These go through evm.Call on a real token
+	// rather than a bare dispatch: a revert's data is materialized on the way out
+	// of the precompile, so a handler-level call returns nil returndata for every
+	// failure and an emptiness assertion over it would hold vacuously.
+	initCalls := [][]byte{cas20Call(selGrantRole, rolePause, addrKey(caller))}
+	ret, _, err = evm.Call(caller, CAS20FactoryAddress,
+		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x9174d5"), caller, initCalls),
+		NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createCAS20: %v", err)
+	}
+	asset := common.BytesToAddress(ret)
+	onToken := func(input []byte) ([]byte, error) {
+		r, _, e := evm.Call(caller, asset, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return r, e
+	}
+
+	badFeature := uint64(cas20PauseSeize) + 1
+	assertEmpty2 := func(what string, input []byte) {
+		t.Helper()
+		r, e := onToken(input)
+		assertEmpty(what, r, e)
+	}
+	assertEmpty2("isPaused, feature past the enum", cas20Call(selIsPaused, u256hash(badFeature)))
+	assertEmpty2("pause, element past the enum", cas20CallU8Array(selPause, byte(badFeature)))
+
+	if _, err := onToken(cas20Call(selIsPaused, u256hash(uint64(cas20PauseSeize)))); err != nil {
+		t.Errorf("isPaused with a valid feature: %v", err)
+	}
+	if _, err := onToken(cas20CallU8Array(selPause, byte(cas20PauseTransfer))); err != nil {
+		t.Errorf("pause with a valid feature: %v", err)
+	}
+
+	dirtyID := common.Hash{}
+	copy(dirtyID[:4], selIsPaused[:])
+	dirtyID[31] = 1 // a nonzero byte outside the bytes4 value
+	assertEmpty2("supportsInterface, bytes4 with nonzero padding",
+		cas20Call(selSupportsInterface, dirtyID))
+
+	// The clean form answers rather than reverting, so the guard above is not
+	// simply refusing every bytes4.
+	clean := common.Hash{}
+	copy(clean[:4], selIsPaused[:])
+	if ret, err := onToken(cas20Call(selSupportsInterface, clean)); err != nil {
+		t.Errorf("supportsInterface with a clean bytes4: %v", err)
+	} else if !bytes.Equal(ret, encBool(false)) {
+		t.Errorf("supportsInterface(unknown id) = %x, want false", ret)
+	}
+}
