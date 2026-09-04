@@ -47,20 +47,16 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	if p, ok := evm.precompiles[addr]; ok {
 		return p, ok
 	}
-	// CAS20 native token family: the factory has a fixed address and every token
-	// address is resolved dynamically from its prefix (there is no fixed-address
-	// entry for tokens, so they cannot live in the static precompiles map).
+	// CAS20 tokens have no fixed address, so they cannot live in the static map:
+	// they are resolved from the address prefix instead.
 	if evm.cas20Enabled() {
 		return resolveCAS20(addr)
 	}
 	return nil, false
 }
 
-// cas20Enabled reports whether the CAS20 native token family is active for the
-// current block.
-//
-// Jenner (BEP-706) is the fork that ships it. IsJenner embeds the IsInBSC gate,
-// so no separate check is needed: a non-BSC config that set jennerTime would
+// cas20Enabled gates the family on Jenner (BEP-706). IsJenner embeds the IsInBSC
+// gate, so no separate check is needed: a non-BSC config that set jennerTime would
 // still not route the reserved address space, and its registries would never be
 // seeded either.
 func (evm *EVM) cas20Enabled() bool {

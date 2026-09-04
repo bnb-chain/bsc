@@ -172,12 +172,10 @@ func (ctx *PrecompileContext) meteredGasUsed() uint64 {
 // gasLeft reports the regular gas remaining in the budget.
 func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.RegularGas }
 
-// BlockTime returns the timestamp of the block being executed (used e.g. by
-// EIP-2612 permit deadline checks).
+// BlockTime returns the timestamp of the block being executed.
 func (ctx *PrecompileContext) BlockTime() uint64 { return ctx.evm.Context.Time }
 
-// ChainID returns the active chain id (used e.g. by the EIP-712 domain
-// separator).
+// ChainID returns the active chain id.
 func (ctx *PrecompileContext) ChainID() *uint256.Int {
 	id, _ := uint256.FromBig(ctx.evm.chainConfig.ChainID)
 	return id

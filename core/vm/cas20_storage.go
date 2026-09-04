@@ -42,7 +42,6 @@ const (
 	cas20OffSeizeReceiver    = 8
 )
 
-// cas20CoreRoot is the ERC-7201 root of the core storage namespace, computed once.
 var cas20CoreRoot = erc7201Root(cas20Namespace)
 
 // erc7201Root computes the ERC-7201 storage root of a namespace:

@@ -18,12 +18,11 @@ import (
 // what keeps a newly added error from slipping past the overload check.
 var cas20ErrSigs = map[string][4]byte{}
 
-// eventTopic computes topic0 for an event signature.
 func eventTopic(sig string) common.Hash {
 	return crypto.Keccak256Hash([]byte(sig))
 }
 
-// cas20ErrorSel computes (and registers) the 4-byte selector of an error signature.
+// cas20ErrorSel also registers the signature, for revert-data assertions.
 func cas20ErrorSel(sig string) [4]byte {
 	var s [4]byte
 	copy(s[:], crypto.Keccak256([]byte(sig)))
@@ -83,7 +82,6 @@ func finishCAS20Metered(ctx *PrecompileContext, ret []byte, err error) ([]byte, 
 	return finishCAS20(ret, err)
 }
 
-// revCAS20 builds a typed revert from a registered selector and static 32-byte words.
 func revCAS20(sig string, sel [4]byte, words ...common.Hash) error {
 	data := make([]byte, 4+32*len(words))
 	copy(data, sel[:])
@@ -93,8 +91,6 @@ func revCAS20(sig string, sel [4]byte, words ...common.Hash) error {
 	return &cas20RevertError{sig: sig, data: data}
 }
 
-// revCAS20Bytes builds a typed revert for an error with a single dynamic
-// `bytes`/`string` argument.
 func revCAS20Bytes(sig string, sel [4]byte, payload []byte) error {
 	return &cas20RevertError{sig: sig, data: append(sel[:], encodeTuple(abiBytes(payload))...)}
 }
