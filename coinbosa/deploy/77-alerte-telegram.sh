@@ -90,7 +90,11 @@ envoyer() {  # $1 = texte
     --data-urlencode "chat_id=$CANAL" \
     --data-urlencode "text=$1" \
     --data-urlencode "disable_web_page_preview=true" 2>/dev/null || echo 000)
-  [ "$code" = 200 ] || logger -t coinbosa-telegram "envoi refuse par Telegram (HTTP $code)"
+  if [ "$code" != 200 ]; then
+    logger -t coinbosa-telegram "envoi refuse par Telegram (HTTP $code)"
+    return 1
+  fi
+  return 0
 }
 
 cle() { printf '%s' "$1" | md5sum | cut -c1-16; }   # une empreinte par TITRE
@@ -142,8 +146,27 @@ ok "aide installée : $AIDE"
 # --- essai : on n'installe rien de plus, on prouve juste le canal ------------
 if [ "$ESSAI" = 1 ]; then
   [ -s "$JETON" ] || ko "aucun jeton dans $JETON — rien à essayer"
-  "$AIDE" signaler info "essai du canal" "Si tu lis ceci dans Telegram, le canal d'alerte fonctionne."
-  ok "message d'essai envoyé — vérifie $CANAL"
+  # NE PAS annoncer « envoyé » sans le verifier. La premiere version de ce
+  # script le faisait : elle imprimait OK que Telegram ait accepte ou non, et un
+  # jeton invalide passait pour un canal fonctionnel. C'est exactement le faux
+  # vert que ce depot traque partout ailleurs — il n'a pas sa place ici non plus.
+  t=$(tr -d '\r\n' < "$JETON")
+  rep=$(curl -sS --max-time 15 -w '\n%{http_code}' \
+    -X POST "https://api.telegram.org/bot$t/sendMessage" \
+    --data-urlencode "chat_id=$CANAL" \
+    --data-urlencode "text=Coinbosa — essai du canal d'alerte. Si vous lisez ceci, la supervision peut vous joindre." \
+    --data-urlencode "disable_web_page_preview=true" 2>/dev/null || echo $'\n000')
+  code=$(printf '%s' "$rep" | tail -1)
+  if [ "$code" = 200 ]; then
+    ok "Telegram a ACCEPTE le message (HTTP 200) — il doit etre dans $CANAL"
+  else
+    # On n'affiche que la description, jamais le corps entier : il peut porter le jeton.
+    desc=$(printf '%s' "$rep" | head -n -1 | python3 -c "import json,sys;print(json.load(sys.stdin).get('description',''))" 2>/dev/null || echo '')
+    printf '    \033[31mECHEC\033[0m Telegram a REFUSE (HTTP %s) %s\n' "$code" "$desc"
+    [ "$code" = 401 ] && echo "    -> le jeton est invalide."
+    [ "$code" = 400 ] && echo "    -> le bot est-il ADMINISTRATEUR de $CANAL ?"
+    exit 1
+  fi
   rm -f "$ETAT"/actives/* "$ETAT"/passe/* 2>/dev/null
   exit 0
 fi
@@ -185,8 +208,12 @@ fi
 # --- contrôle ---------------------------------------------------------------
 echo "==> Contrôle"
 if [ -s "$JETON" ]; then
-  ok "jeton présent ($(stat -c '%a' "$JETON") — 600 attendu)"
-  [ "$(stat -c '%a' "$JETON")" = 600 ] || echo "    ATTENTION : droits trop larges, faire chmod 600 $JETON"
+  # Un jeton en 644 est lisible par tout compte de la machine. Ce jeton publie au
+  # nom du projet : on ne se contente pas de le SIGNALER, on le corrige.
+  avant=$(stat -c '%a' "$JETON")
+  chmod 600 "$JETON"; chown root:root "$JETON"
+  if [ "$avant" = 600 ]; then ok "jeton présent, droits 600"
+  else ok "jeton présent — droits resserrés de $avant à 600 (il était lisible par d'autres comptes)"; fi
 else
   echo "    Le jeton manque : le dispositif est en place mais INERTE."
   echo "    Une seule commande, à lancer par l'éditeur :"
