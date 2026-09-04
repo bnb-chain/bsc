@@ -30,6 +30,13 @@ func TestCAS20StringLengthWordIsNotTrusted(t *testing.T) {
 		})},
 		{"long string one byte past the cap", common.Hash(
 			uint256.NewInt(2*(cas20MaxStringLen+1) + 1).Bytes32())},
+		// The long form encodes 32 bytes or more. A shorter length belongs to the
+		// short form, so these words are as non-canonical as the oversized ones
+		// above and must answer the same way — without them the short form's bound
+		// is the only one under test, and dropping the long form's would go
+		// unnoticed while the reader went off to the data root for content.
+		{"long string claiming one byte", common.Hash(uint256.NewInt(3).Bytes32())},
+		{"long string claiming 31 bytes", common.Hash(uint256.NewInt(2*31 + 1).Bytes32())},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())

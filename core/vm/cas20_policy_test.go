@@ -817,3 +817,182 @@ func TestCAS20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
 			errSelUnauthorized, "stageUpdateAdmin on a sentinel after initialization")
 	}
 }
+
+// encodeComposite builds calldata for createCompositePolicy / updateComposite:
+// a fixed head, then the offset to the uint64[] and the array itself.
+func encodeComposite(sel [4]byte, head []common.Hash, kids []uint64) []byte {
+	out := append([]byte{}, sel[:]...)
+	for _, w := range head {
+		out = append(out, w.Bytes()...)
+	}
+	out = append(out, u256hash(uint64((len(head)+1)*32)).Bytes()...)
+	out = append(out, u256hash(uint64(len(kids))).Bytes()...)
+	for _, k := range kids {
+		out = append(out, wU64(k).Bytes()...)
+	}
+	return out
+}
+
+// TestCAS20CompositeChildValidation pins the child-set rules, all four of which
+// are observable through which error a caller receives and none of which any
+// other test covers.
+//
+// The two-pass shape is the substantive one: a set holding both a missing child
+// and an ineligible one owes PolicyNotFound whatever their order in the array. An
+// implementation that validated each child fully before moving to the next would
+// answer InvalidChildPolicy for a set whose first element is a live composite,
+// and would pass every other assertion here.
+func TestCAS20CompositeChildValidation(t *testing.T) {
+	_, evm := newCAS20EVM(t)
+	admin := common.HexToAddress("0xad4149")
+	call := func(input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	create := func(ptype uint64) uint64 {
+		t.Helper()
+		ret, err := call(cas20Call(selCreatePolicy, addrKey(admin), u256hash(ptype)))
+		if err != nil {
+			t.Fatalf("createPolicy(%d): %v", ptype, err)
+		}
+		return new(uint256.Int).SetBytes(ret).Uint64()
+	}
+	revertsWith := func(what string, input []byte, sel [4]byte, args ...common.Hash) {
+		t.Helper()
+		ret, err := call(input)
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want revert", what, err)
+			return
+		}
+		want := append([]byte{}, sel[:]...)
+		for _, a := range args {
+			want = append(want, a.Bytes()...)
+		}
+		if !bytes.Equal(ret, want) {
+			t.Errorf("%s: revert data %x, want %x", what, ret, want)
+		}
+	}
+
+	block, allow := create(cas20PolicyBlocklist), create(cas20PolicyAllowlist)
+	unionHead := []common.Hash{addrKey(admin), u256hash(cas20PolicyUnion)}
+
+	ret, err := call(encodeComposite(selCreateComposite, unionHead, []uint64{block, allow}))
+	if err != nil {
+		t.Fatalf("createCompositePolicy: %v", err)
+	}
+	composite := new(uint256.Int).SetBytes(ret).Uint64()
+
+	ghost := uint64(cas20PolicyAllowlist)<<56 | 999
+
+	// Two passes: existence over the whole set precedes eligibility over the whole
+	// set, so a live composite ahead of a missing id still answers PolicyNotFound.
+	revertsWith("composite child before missing child",
+		encodeComposite(selCreateComposite, unionHead, []uint64{composite, ghost}), errSelPolicyNotFound)
+	// Both entry points, not just creation: they share one validator today, so a
+	// single case would keep passing if a refactor specialized either path.
+	revertsWith("composite child before missing child, on update",
+		encodeComposite(selUpdateComposite, []common.Hash{u256hash(composite)},
+			[]uint64{composite, ghost}), errSelPolicyNotFound)
+	// The registry's form carries no id: the caller supplied the set.
+	revertsWith("missing child alone",
+		encodeComposite(selCreateComposite, unionHead, []uint64{ghost, block}), errSelPolicyNotFound)
+
+	// Eligibility names the offending child, and a sentinel is as ineligible as a
+	// composite: only a simple policy the registry minted can be a child.
+	revertsWith("composite as child",
+		encodeComposite(selCreateComposite, unionHead, []uint64{composite, block}),
+		errSelInvalidChildPolicy, wU64(composite))
+	revertsWith("always-allow sentinel as child",
+		encodeComposite(selCreateComposite, unionHead, []uint64{cas20PolicyAlwaysAllow, block}),
+		errSelInvalidChildPolicy, wU64(cas20PolicyAlwaysAllow))
+	revertsWith("always-block sentinel as child",
+		encodeComposite(selCreateComposite, unionHead, []uint64{block, cas20PolicyAlwaysBlock}),
+		errSelInvalidChildPolicy, wU64(cas20PolicyAlwaysBlock))
+
+	// The count bound precedes both passes, so a lone missing child reports the
+	// count rather than the absence.
+	revertsWith("count bound precedes child checks",
+		encodeComposite(selCreateComposite, unionHead, []uint64{ghost}), errSelChildrenOutOfRange)
+
+	// The zero-admin guard precedes the type check, as it does in the simple
+	// constructors: all three agree on the order.
+	revertsWith("zero admin outranks incompatible type",
+		encodeComposite(selCreateComposite,
+			[]common.Hash{{}, u256hash(cas20PolicyBlocklist)}, []uint64{block, allow}),
+		errSelZeroAddress)
+
+	// updateComposite is the registry's own method, so its absence error carries
+	// no id either.
+	revertsWith("updateComposite on a missing composite",
+		encodeComposite(selUpdateComposite, []common.Hash{u256hash(ghost)}, []uint64{block, allow}),
+		errSelPolicyNotFound)
+	// A simple policy is not a composite, checked after existence.
+	revertsWith("updateComposite on a simple policy",
+		encodeComposite(selUpdateComposite, []common.Hash{u256hash(block)}, []uint64{block, allow}),
+		errSelIncompatibleType)
+
+	// And a well-formed replacement still lands, so the guards above are not
+	// simply refusing everything.
+	if _, err := call(encodeComposite(selUpdateComposite,
+		[]common.Hash{u256hash(composite)}, []uint64{allow, block})); err != nil {
+		t.Fatalf("updateComposite with a valid child set: %v", err)
+	}
+}
+
+// TestCAS20EmptyCompositeEvaluation pins how a composite with no children
+// answers, which is reachable only through a well-formed id the registry never
+// minted: a created composite carries two to four children and `updateComposite`
+// cannot empty it.
+//
+// The two types fall opposite ways, and neither is a special case: `isAuthorized`
+// runs the same loop for both, so an OR over nothing is false and an AND over
+// nothing is true. That makes a never-created INTERSECT behave as ALWAYS_ALLOW,
+// the same tolerance a never-created BLOCKLIST already has. It is safe for the
+// same reason: binding checks existence, so no token can reference either.
+func TestCAS20EmptyCompositeEvaluation(t *testing.T) {
+	_, evm := newCAS20EVM(t)
+	caller := cas20TestCaller
+	ask := func(id uint64) bool {
+		t.Helper()
+		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
+			cas20Call(selIsAuthorized, wU64(id), addrKey(cas20Alice)),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("isAuthorized(%#x): %v", id, err)
+		}
+		return bytes.Equal(ret, encBool(true))
+	}
+
+	ghostUnion := uint64(cas20PolicyUnion)<<56 | 7
+	ghostIntersect := uint64(cas20PolicyIntersect)<<56 | 7
+	ghostBlocklist := uint64(cas20PolicyBlocklist)<<56 | 7
+	ghostAllowlist := uint64(cas20PolicyAllowlist)<<56 | 7
+
+	if ask(ghostUnion) {
+		t.Error("a never-created UNION authorized an account: an OR over no children is false")
+	}
+	if !ask(ghostIntersect) {
+		t.Error("a never-created INTERSECT refused an account: an AND over no children is " +
+			"vacuously true, so it authorizes everyone")
+	}
+	// The two simple types for contrast, so the composite answers above are read
+	// against the same emptiness rule rather than in isolation.
+	if !ask(ghostBlocklist) {
+		t.Error("a never-created BLOCKLIST refused an account: an empty blocklist blocks no one")
+	}
+	if ask(ghostAllowlist) {
+		t.Error("a never-created ALLOWLIST authorized an account: an empty allowlist admits no one")
+	}
+	// And none of them exists, which is what keeps the tolerance unreachable from
+	// a token: updatePolicy refuses to bind any of these ids.
+	for _, id := range []uint64{ghostUnion, ghostIntersect, ghostBlocklist, ghostAllowlist} {
+		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
+			cas20Call(selPolicyExists, wU64(id)), NewGasBudget(5_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("policyExists(%#x): %v", id, err)
+		}
+		if !bytes.Equal(ret, encBool(false)) {
+			t.Errorf("policyExists(%#x) = true, want false", id)
+		}
+	}
+}

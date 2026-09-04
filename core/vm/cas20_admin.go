@@ -142,18 +142,16 @@ func (t cas20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err err
 		return nil, t.renounceLastAdmin(), true
 
 	case selIsPaused:
-		// Decoded exactly as pause()/unpause() decode their elements: a word with
-		// dirty high bytes is a malformed encoding, and a well-formed value
-		// outside the enum is Panic(0x21).
+		// Decoded exactly as pause()/unpause() decode their elements. Solidity's
+		// external decoder validates an enum argument and reverts with empty
+		// returndata, both for dirty padding and for a clean value outside the
+		// enum; Panic(0x21) belongs to an internal uint-to-enum cast, not here.
 		w, err := readWord(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		if !isEnumWord(w, 0xff) {
+		if !isEnumWord(w, cas20PauseSeize) {
 			return nil, ErrExecutionReverted, true
-		}
-		if uint(w[31]) > cas20PauseSeize {
-			return nil, revPanic(0x21), true
 		}
 		return encBool(t.isPaused(uint(w[31]))), nil, true
 	case selPause:
@@ -447,7 +445,7 @@ func (t cas20Token) setPause(args []byte, on bool) error {
 	words := make([]common.Hash, len(features))
 	for i, f := range features {
 		if uint(f) > cas20PauseSeize {
-			return revPanic(0x21) // invalid enum value
+			return ErrExecutionReverted
 		}
 		words[i] = wU8(f)
 		mask := new(uint256.Int).Lsh(uint256.NewInt(1), uint(f))

@@ -400,6 +400,13 @@ func (s cas20Storage) getStringAt(slot common.Hash) (string, bool) {
 		return "", true
 	}
 	length := (encoded.Uint64() - 1) / 2
+	// The long form encodes 32 bytes or more; a shorter length belongs to the
+	// short form and no write produces it here. Reading it as empty keeps every
+	// non-canonical length word answering the same way, rather than leaving the
+	// short form's own bound (above) as the only one enforced.
+	if length < 32 {
+		return "", true
+	}
 	base := s.stringDataRoot(slot)
 	// Before the allocation, not after: the loop below checks each iteration, but
 	// make() runs once with the stored length whatever the budget says.
@@ -474,14 +481,19 @@ func (s cas20Storage) stringChunks(slot common.Hash) uint64 {
 	if word[31]&1 == 0 {
 		return 0
 	}
-	// Same untrusted word as getStringAt, so the same bound: without it the
-	// release loop in setStringAt would be handed a chunk count of any size, and
-	// an unmetered view has no out-of-gas guard to stop it.
+	// Same untrusted word as getStringAt, so the same bounds, both of them: the
+	// upper one because the release loop in setStringAt would otherwise be handed
+	// a chunk count of any size and an unmetered view has no out-of-gas guard to
+	// stop it, the lower one because a word getStringAt reads as empty must not
+	// leave chunks behind for the release loop to walk.
 	encoded := new(uint256.Int).SetBytes(word.Bytes())
 	if encoded.Gt(uint256.NewInt(2*cas20MaxStringLen + 1)) {
 		return 0
 	}
 	length := (encoded.Uint64() - 1) / 2
+	if length < 32 {
+		return 0
+	}
 	return (length + 31) / 32
 }
 
