@@ -45,7 +45,7 @@ var CAS20MarkerCode = []byte{0xEF}
 var cas20NoSupplyCap = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 
 // cas20DeriveAddress computes a token's deterministic address:
-// 0xCA50 ++ 8×0x00 ++ variant ++ keccak256(abi.encode(creator, salt))[:9].
+// 0xCA52 ++ 8×0x00 ++ variant ++ keccak256(abi.encode(creator, salt))[:9].
 func cas20DeriveAddress(variant byte, creator common.Address, salt common.Hash) common.Address {
 	h := crypto.Keccak256(common.LeftPadBytes(creator.Bytes(), 32), salt.Bytes())
 	var a common.Address

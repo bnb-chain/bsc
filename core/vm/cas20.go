@@ -9,25 +9,15 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// CAS20 native token family. The factory, the two variants and the registries are
-// native precompiles; a token deploys no executable bytecode, only the one-byte
-// sentinel. It is identified by its address, routed by the address prefix, and
-// isolated by the state stored under that address (BEP-702 §3.3).
-var cas20MarkerPrefix = [2]byte{0xca, 0x50}
+// cas20MarkerPrefix opens every CAS20 token address.
+var cas20MarkerPrefix = [2]byte{0xca, 0x52}
 
 const (
 	cas20VariantAsset      = 0x00
 	cas20VariantStablecoin = 0x01
-
-	// cas20VariantMax is the highest ordinal the variant enum defines. A word above
-	// it is outside the enum, which is a different failure from a word inside it
-	// that no handler claims — see createCAS20.
-	cas20VariantMax = cas20VariantStablecoin
+	cas20VariantMax        = cas20VariantStablecoin
 )
 
-// The three singletons (BEP-702 §3.1). The factory's second byte is 0x5F where
-// the token space pins 0x50, so IsCAS20Address matches no singleton.
-// CAS20PolicyRegistryAddress is declared in cas20_policy.go.
 var (
 	CAS20FactoryAddress            = common.HexToAddress("0xCA5F000000000000000000000000000000000000")
 	CAS20ActivationRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
@@ -46,7 +36,7 @@ var (
 )
 
 // IsCAS20Address reports whether addr falls in the reserved CAS20 token space:
-// byte[0:2] == 0xCA50 and byte[2:10] all zero. The variant byte is deliberately
+// byte[0:2] == 0xCA52 and byte[2:10] all zero. The variant byte is deliberately
 // not inspected, so a future variant's addresses still read as CAS20, matching the
 // spec's isCAS20 rule.
 func IsCAS20Address(addr common.Address) bool {
