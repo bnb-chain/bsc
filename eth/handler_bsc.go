@@ -17,11 +17,6 @@ func (h *bscHandler) Chain() *core.BlockChain { return h.chain }
 
 // RunPeer is invoked when a peer joins on the `bsc` protocol.
 func (h *bscHandler) RunPeer(peer *bsc.Peer, hand bsc.Handler) error {
-	// Send capability message asynchronously for backward compatibility.
-	// Old nodes expect this message to complete their handshake.
-	// We don't wait for response - just send and continue.
-	peer.SendBscCap()
-
 	return (*handler)(h).runBscExtension(peer, hand)
 }
 
