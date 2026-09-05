@@ -175,8 +175,8 @@ des clés simples, dépensables immédiatement et intégralement. Un document qu
 | Livre blanc | `https://coinbosa.com/whitepaper/` | HTTP **200** |
 | Dépôt | `https://github.com/Coinbosa/coinbosa-chain` | HTTP **200** |
 | Registre de chaînes | `chainid.network/chains.json` | **entrée 26262 présente** parmi 2 735 chaînes |
-| WebSocket | **aucun** | ni route `wss` dans Caddy, ni `--ws` dans l'unité systemd du nœud |
-| Point d'accès d'archive | **aucun** | nœud en `--gcmode full` ; § 12 |
+| WebSocket | `wss://explorer.coinbosa.com/ws` | **HTTP 101** en HTTP/1.1, abonnement `newHeads` établi et reçu — mesuré le 2026-09-04 |
+| Point d'accès d'archive | **en service** | second nœud `--gcmode archive` derrière `/rpc` depuis le 2026-09-04 ; l'état du bloc 0 est servi |
 
 État du dépôt au moment de la rédaction : branche `coinbosa-genesis-bos20`, commit
 `a734cd2da9f2af0212b08c7286e38b2d332e8ed4`.
@@ -522,12 +522,22 @@ $ RPC=https://explorer.coinbosa.com/rpc node scripts/check-supply.js
                                                         [code de sortie 1]
 ```
 
-Ce n'est **pas** une anomalie d'offre. Le script veut lire les soldes **au bloc 0**, mais
-l'état du bloc 0 a été purgé (nœud non-archive) : il se rabat sur le bloc courant, où les
-1 000 BOSA transférés au gouverneur ne sont plus dans la liste des 13 adresses. L'offre
-totale reste **exactement 700 000 000** (§ 3). Le script doit être corrigé pour tenir compte
-du gouverneur et du contrat de frais, sans quoi il criera « ÉCHEC » à chaque vérification —
-et le premier auditeur externe qui le lancera conclura à un trou dans l'offre.
+**LEVÉ le 2026-09-04.** Ce n'était pas une anomalie d'offre, et ce n'en est plus une du tout :
+`/rpc` est désormais servi par un nœud d'**archive**, donc l'état du bloc 0 est lu réellement.
+Le contrôle rend maintenant, contre la production :
+
+```
+point de mesure : bloc 0 (allocation initiale, état servi par le nœud)
+allocation lue au bloc 0 (23 comptes) : 700,000,000 BOSA
+CONFORME AU BLOC 0 : les 23 comptes du genesis déployé portent exactement les soldes
+et le bytecode de genesis-coinbosa.json, pour un total de 700,000,000 BOSA.
+                                                            [code de sortie 0]
+```
+
+Le constat qui précède décrivait l'état d'avant : le script se rabattait sur le bloc courant
+faute d'état historique, et le premier auditeur externe qui l'aurait lancé aurait conclu à un
+trou dans l'offre. Le script a par ailleurs été durci depuis : au bloc 0 il compare strictement,
+au bloc courant il n'échoue que si le total DÉPASSE l'offre — la borne qui compte.
 
 **b) Le retrait des jetons Solana est annoncé mais n'a pas eu lieu**, et 4,00 % de ces jetons
 sont hors du portefeuille projet. § 8.
@@ -554,11 +564,11 @@ Testé méthode par méthode contre `https://explorer.coinbosa.com/rpc`.
 
 | Manque | Conséquence |
 |---|---|
-| **État historique** au-delà de ~36 h | `eth_getBalance(addr, "0x1")` → *« historical state … is not available »*. **Profondeur mesurée par dichotomie : 25 758 blocs, soit 35,8 heures** — le plus ancien bloc dont l'état est servi était le **377 800** alors que la chaîne était au **403 558**. Cette borne **avance** : chaque vidage de tampon détruit définitivement une tranche d'historique. **Un indexeur qui rejoue depuis le bloc 0 ne peut pas reconstruire les soldes.** |
+| ~~**État historique**~~ | **LEVÉE le 2026-09-04.** `/rpc` est servi par un nœud d'archive : `eth_getBalance(addr, "0x0")` rend l'allocation du genesis. Ancien constat : **Profondeur mesurée par dichotomie : 25 758 blocs, soit 35,8 heures** — le plus ancien bloc dont l'état est servi était le **377 800** alors que la chaîne était au **403 558**. Cette borne **avance** : chaque vidage de tampon détruit définitivement une tranche d'historique. **Un indexeur qui rejoue depuis le bloc 0 ne peut pas reconstruire les soldes.** |
 | **Namespace `debug_`** | Pas de `debug_traceTransaction`. Aucun traçage d'appels internes. |
 | **`txpool_*`** | Impossible d'observer les transactions en attente. |
 | **`admin_*`, `web3_clientVersion`** | La version du client n'est pas lisible par RPC (elle l'est via l'`extraData` — § 1). |
-| **WebSocket** | Aucun `wss://`. Pas d'abonnement `eth_subscribe` : seule l'interrogation périodique est possible. |
+| ~~**WebSocket**~~ | **LEVÉE le 2026-09-04.** `wss://explorer.coinbosa.com/ws` répond 101 et sert `eth_subscribe` — abonnement `newHeads` vérifié de bout en bout. |
 | **`finalized` / `safe`** | Bloquées au bloc 0. **Ne pas s'en servir.** § 9. |
 
 ### Limites en vigueur
@@ -572,14 +582,20 @@ Testé méthode par méthode contre `https://explorer.coinbosa.com/rpc`.
 | Adresses ou sujets par position de filtre | **20** | `--rpc.logquerylimit 20` ; au-delà : *« exceed max addresses or topics per search position »* |
 | Méthode HTTP | **POST uniquement** sur `/rpc` ; tout le reste → **405** | Caddy |
 
-### Le correctif existe dans le dépôt, il n'est pas appliqué
+### Le correctif est APPLIQUÉ depuis le 2026-09-04
 
 `coinbosa/deploy/73-node-archive.sh` déploie un **second nœud RPC en mode archive** et
 **ajoute le point d'accès WebSocket manquant**, sur des ports distincts (8547 / 8548 / 30305),
 sans toucher au validateur, au nœud 8545 ni à Caddy. Le script est **réversible**
 (`systemctl disable --now coinbosa-node-archive` + suppression du datadir).
 
-**Il n'est pas déployé.** Vérifié sur le serveur :
+**Il est déployé.** Le basculement de `/rpc` vers ce nœud a été fait par
+`coinbosa/deploy/75-bascule-archive.sh`, qui refuse d'agir tant que le nœud d'archive n'a pas
+rattrapé, ne sert pas l'état du bloc 0 avec la valeur attendue, et n'ouvre pas son WebSocket.
+Il vérifie aussi que la borne de simultanéité `max_conns_per_host 24` survit à la modification.
+Réversible par `ANNULER=1` ; le nœud 8545 n'a jamais été arrêté.
+
+Constat d'AVANT le déploiement, conservé pour mémoire :
 
 ```
 systemctl list-unit-files | grep coinbosa   → coinbosa-node, coinbosa-validator,
@@ -599,6 +615,35 @@ seul Caddy — la même machine qui héberge le site et l'explorateur, et qui fa
 validateur.** Il n'y a **aucune redondance** : perte du serveur = perte simultanée de la
 chaîne, du RPC, de l'explorateur et du site. La plupart des places d'échange exigent au
 minimum deux points d'accès indépendants.
+
+---
+
+### Ce qu'un intégrateur obtient aujourd'hui — mesuré le 2026-09-04
+
+`coinbosa/scripts/check-exchange-rpc.js`, lancé contre la production :
+
+**21 contrôles au vert**, dont ceux qui décident d'une intégration :
+
+| Contrôle | Résultat |
+|---|---|
+| Empreinte du bloc 0 | hash et `stateRoot` conformes à `genesis-reference.json` |
+| Allocation du genesis servie **au bloc 0** | `0xCa6f08e5…5f04` = 140 000 000 BOSA |
+| `eth_getBalance` au bloc 1 | tout l'historique est servi |
+| Reçus : lot, unité, cohérence | 7 reçus sur le bloc 1, identiques champ pour champ |
+| `eth_getLogs`, `eth_feeHistory` | servis |
+| Lot de 50 puis 51 appels | toutes les réponses servies |
+| Corps de requête de 39 Ko | accepté, 40 réponses JSON-RPC |
+| WebSocket `newHeads` | `wss://…/ws` : 101 accepté, abonnement établi |
+| Même bloc lu deux fois à distance | identique **octet pour octet** |
+| Lecture par numéro vs par empreinte | identiques |
+
+**2 bloqueurs, et ce sont le même :** `finalized` et `safe` répondent **bloc 0**. C'est ce
+qu'une place d'échange interroge pour décider qu'un dépôt est irréversible. Voir § 9 — il
+manque le **vote de finalité**, qui exige une clé BLS sur le validateur. La marche à suivre est
+dans `coinbosa/deploy/ACTIVER-LE-VOTE.md`.
+
+**Rien d'autre ne bloque.** Les deux murs précédents — état du bloc 0 purgé, absence de
+WebSocket — sont tombés le 2026-09-04.
 
 ---
 
