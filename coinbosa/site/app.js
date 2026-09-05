@@ -38,7 +38,7 @@ var CONTENT = {
     telegramCommunity: "",
     // Declare par l organisation GitHub du projet elle-meme
     // (api.github.com/orgs/Coinbosa -> twitter_username), et jamais repris ici.
-    twitter:           "https://x.com/coinbosacrypto",
+    twitter:           "https://x.com/coinbosa6476",   // indiqué par l'éditeur ; GitHub déclare coinbosacrypto
     discord:           ""    // serveur Discord
   },
 

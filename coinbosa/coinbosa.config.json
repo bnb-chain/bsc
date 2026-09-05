@@ -68,7 +68,8 @@
     "whitepaper": "https://coinbosa.com/whitepaper/",
     "github": "https://github.com/Coinbosa/coinbosa-chain",
     "facebook": "https://www.facebook.com/coinbosa",
-    "twitter": "https://x.com/coinbosacrypto",
+    "twitter": "https://x.com/coinbosa6476",
+    "$twitter_note": "Compte X indique par l editeur le 2026-09-04. ATTENTION : l organisation GitHub du projet declare l AUTRE compte (api.github.com/orgs/Coinbosa -> twitter_username: coinbosacrypto, qui repond « Coinbosa »). Les deux existent et portent le nom du projet. Tant que les deux declarations divergent, un tiers ne peut pas savoir lequel est officiel — et c est precisement la confusion qu un imitateur exploite. A trancher par l editeur : corriger le champ GitHub, ou corriger celui-ci.",
     "telegram": "https://t.me/Coinbosaofficial",
     "discord": ""
   },

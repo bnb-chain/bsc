@@ -44,7 +44,9 @@ const LINKS = {
   whitepaper:         'https://coinbosa.com/whitepaper/',
   github:             'https://github.com/Coinbosa/coinbosa-chain',
   facebook:           'https://www.facebook.com/coinbosa',
-  twitter:            'https://x.com/coinbosacrypto',   // X — déclaré par l'organisation GitHub
+  // Indiqué par l'éditeur. L'organisation GitHub déclare l'AUTRE compte
+  // (coinbosacrypto) : les deux existent et portent le nom du projet.
+  twitter:            'https://x.com/coinbosa6476',
   telegram:           'https://t.me/Coinbosaofficial',  // LE canal officiel, confirmé par l'éditeur
   discord:            '',                               // à remplir
   // produits de l'écosystème (liens à compléter quand ils ouvrent)
