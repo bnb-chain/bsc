@@ -37,15 +37,15 @@ const LINKS = {
   website:            'https://coinbosa.com',
   explorer:           'https://explorer.coinbosa.com',
   // Pointer vers la page PUBLIÉE, jamais vers une branche du dépôt. Le lien visait
-  // master, dont le livre blanc annonce encore « preuve d'enjeu » — alors que la chaîne
-  // fonctionne en preuve d'AUTORITÉ — et nie l'existence du point d'accès public, qui
-  // existe. Un visiteur cliquant depuis l'explorateur lisait donc une version fausse.
+  // master, dont le livre blanc annonçait « preuve d'enjeu » et niait l'existence du
+  // point d'accès public, qui existe. Un visiteur cliquant depuis l'explorateur lisait
+  // donc une version fausse. Le consensus de cette chaîne est PARLIA — c'est ce
+  // qu'écrit le livre blanc v2.0, et c'est ce que le site dit depuis son alignement.
   whitepaper:         'https://coinbosa.com/whitepaper/',
   github:             'https://github.com/Coinbosa/coinbosa-chain',
   facebook:           'https://www.facebook.com/coinbosa',
-  twitter:            '',                               // à remplir
-  telegram:           'https://t.me/coinbosa',          // groupe @coinbosa
-  telegramCommunity:  'https://t.me/Coinbosaofficial',     // communauté
+  twitter:            'https://x.com/coinbosacrypto',   // X — déclaré par l'organisation GitHub
+  telegram:           'https://t.me/Coinbosaofficial',  // LE canal officiel, confirmé par l'éditeur
   discord:            '',                               // à remplir
   // produits de l'écosystème (liens à compléter quand ils ouvrent)
   academy:            '', nextfuture: '', card: '', vpn: '',

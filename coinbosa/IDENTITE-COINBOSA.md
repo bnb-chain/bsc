@@ -183,16 +183,29 @@ Tout compte X se présentant comme Coinbosa est une imitation »*. **Cette phras
 2026-09-03**, et telle quelle, la page anti-fraude du projet désavouerait le compte du projet.
 Voir § 5.
 
-*Ce qui reste à confirmer par l'éditeur, et que la mesure ne peut pas trancher :* que ce
-compte est **bien détenu** par lui aujourd'hui. Le champ GitHub prouve qu'un administrateur de
-l'organisation l'a déclaré ; il ne prouve pas l'accès actuel.
+**TRANCHÉ le 2026-09-04.** L'éditeur a confirmé que le compte existe et est le sien, et il est
+désormais déclaré dans `coinbosa.config.json`, `site/app.js` et `explorer/app.js` — les trois
+portaient un champ vide. La question ouverte ci-dessus est close.
 
-#### b) Trois adresses Telegram circulent, et la seule affichée publiquement en désigne une autre
+#### b) Trois adresses Telegram circulaient — TRANCHÉ le 2026-09-04
+
+**L'éditeur a confirmé que `t.me/Coinbosaofficial` est son groupe.** C'est désormais la seule
+adresse Telegram déclarée, dans la configuration comme sur le site. Les deux autres ont été
+retirées : `t.me/coinbosa` est un compte personnel, et `t.me/coinbosagroup` n'était pas un nom
+réservé.
+
+**Ce qui reste à faire, et que seul l'éditeur peut faire :** la description publique du groupe
+annonce encore « Proof of authority », renvoie à `coinbosa.org` — un domaine qui ne résout pas —
+et se dit exploitée par une « Coinbosa Foundation », quand l'éditeur est coinbosa, Inc.,
+Delaware, et que le consensus est Parlia. Un tiers qui vérifie y verra trois contradictions.
+
+Le constat qui suit est celui d'avant l'arbitrage ; il est conservé parce qu'il explique
+pourquoi la description doit être corrigée.
 
 | Adresse | Déclarée où | Ce que Telegram sert le 2026-09-03 |
 |---|---|---|
 | `t.me/coinbosa` | `coinbosa.config.json` (`telegram`), `explorer/app.js`, `site/app.js` — étiquetée **« canal officiel »** | titre `COINBOSA`, description *« You can contact @coinbosa right away »* → c'est un **compte utilisateur**, pas un canal |
-| `t.me/coinbosagroup` | `coinbosa.config.json` (`telegramCommunity`) — **et nulle part ailleurs** | **aucun titre, aucune description** : la page générique servie pour un nom d'utilisateur libre. Rien n'indique qu'il soit détenu |
+| `t.me/coinbosagroup` | `coinbosa.config.json` (`telegramCommunity`) jusqu'au 2026-09-04, **RETIRÉ depuis** — et nulle part ailleurs | **aucun titre, aucune description** : la page générique servie pour un nom d'utilisateur libre. Rien n'indique qu'il soit détenu |
 | `t.me/Coinbosaofficial` | `site/*.html` (6 langues), `explorer/app.js`, `whitepaper/*` — **seule adresse servie par le site en ligne** | groupe, **14 membres**, description : *« High performance blockchain based on **Proof of authority**. **https://coinbosa.org** — This account is owned and operated by the **Coinbosa Foundation**. This group is used for informational purposes only. »* |
 
 Trois problèmes distincts, par ordre de gravité :
@@ -209,7 +222,7 @@ Trois problèmes distincts, par ordre de gravité :
    héritage à corriger immédiatement, ou bien il ne l'est pas et le site doit cesser de le
    déclarer officiel. Tant que ce n'est pas tranché, aucune déclaration signée ne doit
    nommer cette adresse.
-2. **`t.me/coinbosagroup` est publié dans le dépôt sans signe de détention.** Un nom
+2. **`t.me/coinbosagroup` était publié dans le dépôt sans signe de détention — retiré le 2026-09-04.** Un nom
    d'utilisateur Telegram publié dans une configuration publique et non réservé est une
    invitation : le premier venu peut le prendre et se réclamer du fichier de configuration du
    projet lui-même. **À réserver ou à retirer du fichier — pas à laisser tel quel.**
@@ -222,7 +235,7 @@ Trois problèmes distincts, par ordre de gravité :
 |---|---|---|
 | Facebook | `https://www.facebook.com/coinbosa` (HTTP 200) | **absent** de la page d'accueil et de `/a-propos.html` |
 | X | `""` | absent |
-| Telegram | `t.me/coinbosa` + `t.me/coinbosagroup` | `t.me/Coinbosaofficial` uniquement |
+| Telegram | `t.me/coinbosa` + `t.me/coinbosagroup` (jusqu'au 2026-09-04) | `t.me/Coinbosaofficial` uniquement — **c'est désormais aussi ce que déclare la configuration** |
 | Dépôt | `github.com/Coinbosa/coinbosa-chain` | identique ✔ |
 
 `PLAN-AGREGATEURS.md` (A4, A6) exige déjà cette mise en cohérence pour les guichets. Ici
@@ -497,9 +510,9 @@ de dépense, ni de décision de trésorerie.
 
 | # | Action | Qui | Ce qui la débloque |
 |---|---|---|---|
-| **I1** | **Trancher les trois Telegram** : regarder la liste des administrateurs de `t.me/Coinbosaofficial`, corriger sa description ou cesser de le déclarer officiel ; réserver ou retirer `t.me/coinbosagroup` ; requalifier `t.me/coinbosa` (compte, pas canal) | **éditeur seul** | rien — un regard sur la liste des administrateurs. **Bloque I2, I3 et le § 3** : aucune déclaration ne peut être signée avec un champ `telegram` indéterminé |
-| **I2** | **Déclarer `@coinbosacrypto`** dans `coinbosa.config.json:71`, `site/app.js:32`, `explorer/app.js:46`, puis propager au site | front-end | l'éditeur confirme qu'il détient le compte aujourd'hui |
-| **I3** | **Une seule liste de liens**, identique dans la configuration, sur le site, dans l'explorateur et le livre blanc — Facebook et X inclus | front-end | I1 et I2 |
+| **I1** | ~~Trancher les trois Telegram~~ — **FAIT le 2026-09-04** : l'éditeur a confirmé que `t.me/Coinbosaofficial` est son groupe ; les deux autres adresses sont retirées. **Reste :** corriger la description publique du groupe (« Proof of authority », `coinbosa.org`, « Coinbosa Foundation ») | éditeur | rien — c'est une modification dans Telegram |
+| **I2** | ~~Déclarer `@coinbosacrypto`~~ — **FAIT le 2026-09-04** dans `coinbosa.config.json`, `site/app.js` et `explorer/app.js` | fait | — |
+| **I3** | ~~Une seule liste de liens~~ — **FAIT le 2026-09-04** : configuration, site et explorateur portent les mêmes sept liens, vérifié champ par champ | fait | — |
 | **I4** | **Produire et publier la déclaration signée** + le `.sig` + l'empreinte SHA-256 ; ajouter les deux lignes `rsync` à `deploy/publish-static.sh` | éditeur (signature) + exploitation (publication) | I1 ; l'accès au fichier de clés du validateur, ou le choix de l'ancre de repli (§ 3) |
 | **I5** | **Poser l'enregistrement `TXT`** de liaison inverse sur `coinbosa.com` | éditeur | accès à la zone DNS chez ResellerClub. Aucun conflit : le domaine ne porte aucun `TXT` |
 | **I6** | **Vérifier le domaine chez GitHub** (organisation → domaines vérifiés, par `TXT`) : l'organisation est aujourd'hui `is_verified: false` | éditeur | même accès DNS que I5. Gratuit, immédiat, visible de tous sur la page de l'organisation |
@@ -563,7 +576,7 @@ ligne de base mesurée le 2026-09-03, sans quoi une variation n'est pas interpr�
 | Signal | Où l'on regarde | Ligne de base mesurée le 2026-09-03 |
 |---|---|---|
 | **`coinbosa.org` reprend vie** | `dig +short A coinbosa.org` | **aucune réponse** — le domaine ne résout pas. Il est nommé comme site par le groupe que notre propre site déclare officiel (§ 2 b) : sa réapparition serait immédiatement crédible auprès de nos propres visiteurs |
-| **`t.me/coinbosagroup` est pris par un tiers** | `curl -s https://t.me/coinbosagroup \| grep og:title` | **aucun titre, aucune description**. Ce nom est publié dans `coinbosa.config.json` : s'il devient un groupe actif que nous ne détenons pas, notre fichier de configuration le légitime |
+| **`t.me/coinbosagroup` est pris par un tiers** | `curl -s https://t.me/coinbosagroup \| grep og:title` | **aucun titre, aucune description**. Ce nom était publié dans `coinbosa.config.json` jusqu'au 2026-09-04 : s'il devenait un groupe actif que nous ne détenons pas, notre propre fichier l'aurait légitimé. Retiré depuis ; la surveillance reste utile au cas où quelqu'un le prendrait en se réclamant de nous |
 | **Un jeton nommé BOSA apparaît chez un agrégateur** | `api.coingecko.com/api/v3/search?query=BOSA` et `query=coinbosa` | **listes vides** pour les deux requêtes |
 | **Une seconde chaîne réclame le nom** | entrée `chainid.network/chains.json` : `chainId`, `shortName`, `chain`, `nativeCurrency.symbol` | **26262 seule** sur les quatre champs, parmi 2 745 chaînes. `262620` libre. Seul autre « bosa » : `BOSagora Mainnet` (2151), sans recouvrement de ticker |
 | **Comptes X voisins de `@coinbosacrypto`** | recherche sur X | à établir **après** I2 : tant que le compte n'est pas déclaré publiquement, on ne peut pas distinguer un voisin d'un officiel |

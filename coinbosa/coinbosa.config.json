@@ -62,15 +62,14 @@
     "amount": "700000000"
   },
   "links": {
-    "$comment": "Liens publics — réseaux sociaux, site, explorateur, livre blanc. Source de vérité ; l'explorateur (explorer/index.html, objet LINKS) et le futur site coinbosa.com les reprennent.",
+    "$comment": "Canaux officiels. Chacun a ete VERIFIE le 2026-09-04 : le lien repond, et il nous appartient. Un canal qu on ne controle pas ne se publie pas — publier un nom d utilisateur libre le legitime pour qui le prendra demain. Deux adresses ont ete retirees a ce titre : t.me/coinbosa, qui est un compte PERSONNEL et non un groupe (« You can contact @coinbosa right away »), et t.me/coinbosagroup, dont le nom n etait pas reserve. Elles etaient declarees ici comme canal officiel et canal communautaire, alors que les neuf pages publiees emploient toutes t.me/Coinbosaofficial — le vrai groupe, confirme par l editeur. Ce fichier contredisait donc le site qu il pretend alimenter. site/app.js et explorer/app.js portent leur PROPRE copie de ces liens (site statique, aucune lecture a l execution) : les trois se tiennent a la main.",
     "website": "https://coinbosa.com",
     "explorer": "https://explorer.coinbosa.com",
-    "whitepaper": "https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/WHITEPAPER.md",
+    "whitepaper": "https://coinbosa.com/whitepaper/",
     "github": "https://github.com/Coinbosa/coinbosa-chain",
     "facebook": "https://www.facebook.com/coinbosa",
-    "twitter": "",
-    "telegram": "https://t.me/coinbosa",
-    "telegramCommunity": "https://t.me/coinbosagroup",
+    "twitter": "https://x.com/coinbosacrypto",
+    "telegram": "https://t.me/Coinbosaofficial",
     "discord": ""
   },
   "entity": {

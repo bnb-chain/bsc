@@ -663,13 +663,21 @@ l'explorateur, contenant exactement ceci — et **rien qui ne soit vérifiable**
 
 **Ce qui n'est pas à nous — la moitié qui compte**
 
-- **Le compte X du projet est `@coinbosacrypto`.** Il n'est déclaré nulle part dans ce dépôt
-  — `coinbosa.config.json`, `site/app.js` et `explorer/app.js` portent tous les trois un champ
-  `twitter` **vide** — mais l'organisation GitHub du projet le déclare
+- **Le compte X du projet est `@coinbosacrypto`, et il est désormais DÉCLARÉ** dans
+  `coinbosa.config.json`, `site/app.js` et `explorer/app.js` — les trois portaient un champ
+  `twitter` vide jusqu'au 2026-09-04. L'organisation GitHub du projet le déclarait déjà
   (`api.github.com/orgs/Coinbosa` → `twitter_username: coinbosacrypto`), et `x.com/coinbosacrypto`
-  répond `Coinbosa (@coinbosacrypto) / X`. Mesuré le 2026-09-03.
-  Tant que le dépôt et le site ne le publient pas, **personne ne peut distinguer le vrai compte
-  d'une imitation** : c'est le champ à remplir en premier.
+  répond `Coinbosa (@coinbosacrypto) on X`.
+  Tant qu'il n'était pas publié ici, personne ne pouvait distinguer le vrai compte d'une
+  imitation. Tout autre compte X se présentant comme Coinbosa en est une.
+- **Le canal Telegram officiel est `t.me/Coinbosaofficial`, et lui seul.** L'éditeur a confirmé
+  le 2026-09-04 que ce groupe est le sien. Deux autres adresses étaient déclarées dans la
+  configuration et ont été retirées : `t.me/coinbosa`, qui est un compte **personnel** et non un
+  groupe, et `t.me/coinbosagroup`, dont le nom **n'était pas réservé** — le publier le
+  légitimait pour qui l'aurait pris.
+- **Le bot d'alerte est `@Coinbosa_bot`** (nom rendu par l'API `getMe`, vérifié le 2026-09-04),
+  et non `coinbosa_officiel_bot` comme annoncé d'abord. Déclarer officiel un compte qui n'existe
+  pas est précisément ce que cette page existe pour éviter.
 - **Aucun serveur Discord** : le champ est vide. Tout serveur Discord se présentant comme
   Coinbosa est une imitation, aujourd'hui, sans exception.
 - **Aucune adresse de contrat pour BOSA**, sur aucune chaîne.

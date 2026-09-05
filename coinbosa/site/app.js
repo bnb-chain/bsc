@@ -27,9 +27,18 @@ var CONTENT = {
     whitepaper:        "https://coinbosa.com/whitepaper/",   // livre blanc (hébergé sur le site)
     github:            "https://github.com/Coinbosa/coinbosa-chain",   // dépôt(s)
     facebook:          "https://www.facebook.com/coinbosa",   // page Facebook
-    telegram:          "https://t.me/coinbosa",   // canal Telegram officiel
-    telegramCommunity: "https://t.me/Coinbosaofficial",   // groupe communautaire Telegram
-    twitter:           "",   // X / Twitter
+    // Les deux etaient INVERSES : ce qui portait « canal officiel » etait un
+    // compte PERSONNEL (« You can contact @coinbosa right away »), et le vrai
+    // groupe — celui que les neuf pages publiees emploient, confirme par
+    // l editeur — etait relegue en « communaute ».
+    telegram:          "https://t.me/Coinbosaofficial",   // LE canal officiel
+    // Vide : il n existe pas de second groupe. t.me/coinbosagroup, qu on
+    // declarait ailleurs, n est meme pas un nom reserve — le publier le
+    // legitimerait pour qui le prendrait demain.
+    telegramCommunity: "",
+    // Declare par l organisation GitHub du projet elle-meme
+    // (api.github.com/orgs/Coinbosa -> twitter_username), et jamais repris ici.
+    twitter:           "https://x.com/coinbosacrypto",
     discord:           ""    // serveur Discord
   },
 
