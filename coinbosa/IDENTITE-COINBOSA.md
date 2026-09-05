@@ -160,13 +160,23 @@ recherche publique n'est pas ouverte sans clé. La source ne dit donc rien pour 
 C'est la moitié utile de ce paragraphe. Les cinq écarts ci-dessous ne sont pas des finitions :
 chacun est un point d'entrée pour une confusion, et chacun est vérifiable par un tiers.
 
-#### a) Le compte X existe, et le dépôt le déclare vide
+#### a) TRANCHÉ le 2026-09-04 — et pire que prévu : un compte au nom du projet lui échappe
 
-Le profil public de l'organisation GitHub `Coinbosa` porte le champ
-`twitter_username: coinbosacrypto` (API GitHub, `https://api.github.com/orgs/Coinbosa`). Le
-compte existe : `https://x.com/coinbosacrypto` sert
-`<title>Coinbosa (@coinbosacrypto) / X</title>` et la description
-*« Coinbosa, the future of the African fintech and Blockchain. »*
+**Le compte officiel est `@coinbosa6476`** (« Coinbosa Group »), confirmé par l'éditeur et
+déclaré depuis dans les trois sources du dépôt.
+
+**`@coinbosacrypto` n'est PAS le compte du projet : l'éditeur en a perdu les accès.** Il existe,
+il sert `<title>Coinbosa (@coinbosacrypto) / X</title>` et la description *« Coinbosa, the future
+of the African fintech and Blockchain. »* — c'était donc bien un compte du projet, et il lui
+échappe aujourd'hui. Un compte portant notre nom, hors de notre contrôle, est la situation
+qu'un imitateur n'a même pas besoin de créer : elle existe.
+
+**Et l'organisation GitHub du projet le déclare toujours** — `api.github.com/orgs/Coinbosa`
+porte encore `twitter_username: coinbosacrypto`. Notre propre page publique sert d'aval à ce
+compte. C'est le geste le plus urgent du dossier, et il ne prend que deux clics.
+
+Le constat qui suit décrit l'état d'AVANT cet arbitrage ; il est conservé parce qu'il explique
+comment on en est arrivé là.
 
 Or le dépôt déclare l'inverse, à trois endroits :
 
@@ -372,10 +382,10 @@ site: https://coinbosa.com
 explorateur: https://explorer.coinbosa.com
 rpc: https://explorer.coinbosa.com/rpc
 depot: https://github.com/Coinbosa/coinbosa-chain
-x: https://x.com/coinbosacrypto
-telegram: <A TRANCHER — voir § 2 b>
+x: https://x.com/coinbosa6476
+telegram: https://t.me/Coinbosaofficial
 facebook: https://www.facebook.com/coinbosa
-securite: security@coinbosa.com
+securite: https://github.com/Coinbosa/coinbosa-chain/security/advisories/new
 nonce: <32 caracteres hexadecimaux tires au hasard>
 Les points d'acces ci-dessus sont les seuls declares par l'editeur a cette date.
 Cette declaration ne porte sur aucun autre reseau, aucun autre jeton, aucune autre organisation.
@@ -409,7 +419,7 @@ une déclaration ancienne** — on en publie une nouvelle qui la remplace, en in
 |---|---|---|
 | **1. Le domaine** | `https://coinbosa.com/.well-known/coinbosa-identity.txt` et `.sig` | emplacement normalisé, servi en HTTPS par le domaine que la déclaration nomme |
 | **2. Le dépôt** | `identity/coinbosa-identity.txt` et `.sig`, à chemin stable | horodaté par l'historique Git, public, indépendant de notre hébergement |
-| **3. Les canaux** | message épinglé sur `@coinbosacrypto` et sur le canal Telegram retenu | atteint ceux qui ne liront jamais un fichier `.well-known` |
+| **3. Les canaux** | message épinglé sur `@coinbosa6476` et sur `t.me/Coinbosaofficial` | atteint ceux qui ne liront jamais un fichier `.well-known` |
 
 **Détail d'implémentation à ne pas rater.** `deploy/publish-static.sh` **exclut `.well-known/`**
 de la synchronisation générale (tableau `COMMUN`, option `--exclude '.well-known/'`) : déposer
@@ -511,7 +521,7 @@ de dépense, ni de décision de trésorerie.
 | # | Action | Qui | Ce qui la débloque |
 |---|---|---|---|
 | **I1** | ~~Trancher les trois Telegram~~ — **FAIT le 2026-09-04** : l'éditeur a confirmé que `t.me/Coinbosaofficial` est son groupe ; les deux autres adresses sont retirées. **Reste :** corriger la description publique du groupe (« Proof of authority », `coinbosa.org`, « Coinbosa Foundation ») | éditeur | rien — c'est une modification dans Telegram |
-| **I2** | ~~Déclarer `@coinbosacrypto`~~ — **FAIT le 2026-09-04** dans `coinbosa.config.json`, `site/app.js` et `explorer/app.js` | fait | — |
+| **I2** | ~~Déclarer le compte X~~ — **FAIT le 2026-09-04** : c'est `@coinbosa6476` qui est déclaré dans `coinbosa.config.json`, `site/app.js` et `explorer/app.js`. `@coinbosacrypto`, d'abord retenu d'après le champ GitHub, s'est révélé HORS DU CONTRÔLE de l'éditeur | fait | — |
 | **I3** | ~~Une seule liste de liens~~ — **FAIT le 2026-09-04** : configuration, site et explorateur portent les mêmes sept liens, vérifié champ par champ | fait | — |
 | **I4** | **Produire et publier la déclaration signée** + le `.sig` + l'empreinte SHA-256 ; ajouter les deux lignes `rsync` à `deploy/publish-static.sh` | éditeur (signature) + exploitation (publication) | I1 ; l'accès au fichier de clés du validateur, ou le choix de l'ancre de repli (§ 3) |
 | **I5** | **Poser l'enregistrement `TXT`** de liaison inverse sur `coinbosa.com` | éditeur | accès à la zone DNS chez ResellerClub. Aucun conflit : le domaine ne porte aucun `TXT` |
@@ -547,7 +557,7 @@ les trois choses que l'homonymie change, et qui ne sont pas dans ce document-là
 > **vides** dans `site/app.js`. Tout compte X ou Discord se présentant comme Coinbosa est une
 > imitation, aujourd'hui, sans exception. »*
 
-La moitié « Discord » reste exacte. **La moitié « X » est fausse** : `@coinbosacrypto` existe
+La moitié « Discord » reste exacte. **La moitié « X » était fausse, et l'est autrement qu'on ne croyait** : le compte officiel est `@coinbosa6476`, et `@coinbosacrypto` existe
 et est déclaré par l'organisation GitHub du projet (§ 2 a). Publier cette page telle quelle
 ferait désavouer par le projet son propre compte — et offrirait à quiconque le passage
 inverse : *« leur propre page dit que ce compte n'est pas à eux »*. **I13 corrige, I2 la
@@ -579,7 +589,8 @@ ligne de base mesurée le 2026-09-03, sans quoi une variation n'est pas interpr�
 | **`t.me/coinbosagroup` est pris par un tiers** | `curl -s https://t.me/coinbosagroup \| grep og:title` | **aucun titre, aucune description**. Ce nom était publié dans `coinbosa.config.json` jusqu'au 2026-09-04 : s'il devenait un groupe actif que nous ne détenons pas, notre propre fichier l'aurait légitimé. Retiré depuis ; la surveillance reste utile au cas où quelqu'un le prendrait en se réclamant de nous |
 | **Un jeton nommé BOSA apparaît chez un agrégateur** | `api.coingecko.com/api/v3/search?query=BOSA` et `query=coinbosa` | **listes vides** pour les deux requêtes |
 | **Une seconde chaîne réclame le nom** | entrée `chainid.network/chains.json` : `chainId`, `shortName`, `chain`, `nativeCurrency.symbol` | **26262 seule** sur les quatre champs, parmi 2 745 chaînes. `262620` libre. Seul autre « bosa » : `BOSagora Mainnet` (2151), sans recouvrement de ticker |
-| **Comptes X voisins de `@coinbosacrypto`** | recherche sur X | à établir **après** I2 : tant que le compte n'est pas déclaré publiquement, on ne peut pas distinguer un voisin d'un officiel |
+| **`@coinbosacrypto`, hors de notre contrôle** | surveiller ce compte lui-même | l'éditeur en a perdu les accès. Ce qu'il publiera engagera notre nom sans nous. À surveiller en priorité, et à désavouer publiquement dès que le compte officiel est déclaré partout |
+| **Comptes X voisins de `@coinbosa6476`** | recherche sur X | à établir : tant que le compte n'est pas déclaré publiquement, on ne peut pas distinguer un voisin d'un officiel |
 
 **Ce qu'on publie quand on trouve.** Le mode opératoire est celui de
 `SURVEILLANCE-LANCEMENT.md` § 6 — un seul endroit, une seule fois, la page « Identité
@@ -616,10 +627,14 @@ l'autre :** un projet parfaitement identifié peut être parfaitement fragile.
 **Rien ici ne crée un marché ni n'obtient une cotation.** Les guichets exigent un marché
 actif ; ce document ne fournit qu'une pièce d'identité. Voir `PLAN-AGREGATEURS.md`.
 
-**Deux questions ne peuvent être tranchées que par l'éditeur, et bloquent la suite :**
-qui détient `t.me/Coinbosaofficial`, et qui détient `@coinbosacrypto` aujourd'hui. Aucune
-mesure extérieure ne répond — la première se lit dans la liste des administrateurs du groupe,
-la seconde en se connectant au compte.
+**Les deux questions qui bloquaient la suite sont tranchées, le 2026-09-04 :**
+`t.me/Coinbosaofficial` est bien le groupe de l'éditeur, et `@coinbosacrypto` **ne l'est plus** —
+il en a perdu les accès. Le compte officiel est `@coinbosa6476`.
+
+**Ce qui reste, et qui n'appartient qu'à l'éditeur :** corriger `twitter_username` sur
+l'organisation GitHub, et corriger la description publique du groupe Telegram, qui annonce
+encore « Proof of authority », renvoie à `coinbosa.org` — un domaine qui ne résout pas — et se
+dit exploitée par une « Coinbosa Foundation ».
 
 **L'héritage n'est pas couvert ici.** Le jeton SPL Solana et l'écart mesuré sur son retrait de
 circulation restent traités par `DOSSIER-COTATION.md` § 8. Les artefacts GitHub hérités (I12)
@@ -642,7 +657,7 @@ mesure suivante ne détecte aucun changement.
 | Genesis reproductible, SHA-256 `4d93164f…` | `scripts/build-genesis.js` ; `DOSSIER-COTATION.md` § 1 |
 | Entrée 26262, unicité, 2 745 chaînes, 262620 libre | `https://chainid.network/chains.json` |
 | Recherches CoinGecko vides | `https://api.coingecko.com/api/v3/search?query=BOSA` et `?query=coinbosa` |
-| `@coinbosacrypto` déclaré et existant | `https://api.github.com/orgs/Coinbosa` champ `twitter_username` ; `<title>` de `https://x.com/coinbosacrypto` |
+| `@coinbosacrypto` existe mais ÉCHAPPE au projet ; officiel = `@coinbosa6476` | `https://api.github.com/orgs/Coinbosa` champ `twitter_username` ; `<title>` de `https://x.com/coinbosacrypto` |
 | Organisation créée 2022-05-11, non vérifiée, 4 dépôts | `https://api.github.com/orgs/Coinbosa` |
 | Fichier `info` BEP2 | `https://raw.githubusercontent.com/Coinbosa/smart-chain-token/master/info` |
 | Descriptions Telegram des trois adresses | `og:title` et `og:description` de `https://t.me/<nom>` |

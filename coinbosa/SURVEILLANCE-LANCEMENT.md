@@ -663,13 +663,18 @@ l'explorateur, contenant exactement ceci — et **rien qui ne soit vérifiable**
 
 **Ce qui n'est pas à nous — la moitié qui compte**
 
-- **Le compte X du projet est `@coinbosacrypto`, et il est désormais DÉCLARÉ** dans
-  `coinbosa.config.json`, `site/app.js` et `explorer/app.js` — les trois portaient un champ
-  `twitter` vide jusqu'au 2026-09-04. L'organisation GitHub du projet le déclarait déjà
-  (`api.github.com/orgs/Coinbosa` → `twitter_username: coinbosacrypto`), et `x.com/coinbosacrypto`
-  répond `Coinbosa (@coinbosacrypto) on X`.
-  Tant qu'il n'était pas publié ici, personne ne pouvait distinguer le vrai compte d'une
-  imitation. Tout autre compte X se présentant comme Coinbosa en est une.
+- **Le compte X officiel est `@coinbosa6476`** (« Coinbosa Group »), confirmé par l'éditeur le
+  2026-09-04 et déclaré depuis dans `coinbosa.config.json`, `site/app.js` et `explorer/app.js` —
+  les trois portaient un champ `twitter` vide jusque-là.
+- **`@coinbosacrypto` N'EST PAS le compte du projet.** Il existe, il répond
+  `Coinbosa (@coinbosacrypto) / X`, il porte donc le nom du projet — mais **l'éditeur en a perdu
+  les accès** (confirmé le 2026-09-04). C'est un compte au nom de Coinbosa qui échappe au projet :
+  exactement la situation qu'un imitateur exploite, et elle existe déjà.
+  **Aggravant :** l'organisation GitHub du projet le déclare encore
+  (`api.github.com/orgs/Coinbosa` → `twitter_username: coinbosacrypto`). Notre propre page sert
+  donc d'aval public à un compte hors de notre contrôle. À corriger par l'éditeur — c'est le
+  geste le plus urgent de cette section.
+- Tout autre compte X se présentant comme Coinbosa est une imitation.
 - **Le canal Telegram officiel est `t.me/Coinbosaofficial`, et lui seul.** L'éditeur a confirmé
   le 2026-09-04 que ce groupe est le sien. Deux autres adresses étaient déclarées dans la
   configuration et ont été retirées : `t.me/coinbosa`, qui est un compte **personnel** et non un
