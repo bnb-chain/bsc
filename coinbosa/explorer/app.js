@@ -247,6 +247,41 @@ async function refresh(){
     if(d.length)document.getElementById('s-time').textContent=(d.reduce((a,b)=>a+b,0)/d.length).toFixed(1)+' s';
     for(const b of blocks)for(const x of b.transactions)if(!state.txs.find(y=>y.hash===x.hash))state.txs.unshift({...x,ts:hex(b.timestamp)});
     state.txs=state.txs.slice(0,40);
+    // FOUILLE PROFONDE, une seule fois, et seulement si la fenetre courte n'a RIEN trouve.
+    //
+    // La boucle ci-dessus ne regarde que les 18 derniers blocs — 90 secondes a 5 s le bloc.
+    // Sur une chaine presque vide, une transaction disparait donc de « dernieres
+    // transactions » en une minute et demie. L'editeur a fait un virement de 100 BOSA,
+    // l'a vu confirme dans son portefeuille, et l'explorateur affichait « No transactions
+    // yet » : la transaction etait au bloc 502125, la fenetre commencait au 502143.
+    // Pour un integrateur d'une place d'echange qui fait un virement d'essai et regarde
+    // l'explorateur, c'est indiscernable d'une chaine qui n'enregistre rien.
+    //
+    // On remonte donc plus loin, mais SEULEMENT quand la fenetre courte est vide : sur une
+    // chaine active, ce chemin ne s'execute jamais et ne coute rien. On demande d'abord les
+    // en-tetes seuls (parametre false, sans le detail des transactions), qui suffisent a
+    // reperer les blocs non vides ; on ne recharge en entier que ceux-la.
+    if(!state.fouilleFaite && !state.txs.length){
+      state.fouilleFaite=true;
+      const PROFONDEUR=300, PAQUET=30;   // 300 blocs = 25 min ; 30 a la fois, bien sous la limite de debit
+      const bas=Math.max(0,head-18-PROFONDEUR);
+      const pleins=[];
+      for(let d=head-18; d>bas && pleins.length<12; d-=PAQUET){
+        const lot=[];for(let i=d;i>Math.max(bas,d-PAQUET);i--)lot.push(i);
+        const entetes=(await Promise.all(lot.map(n=>rpc('eth_getBlockByNumber',['0x'+n.toString(16),false])
+                          .catch(()=>null)))).filter(Boolean);
+        for(const e of entetes) if(e.transactions&&e.transactions.length) pleins.push(hex(e.number));
+      }
+      if(pleins.length){
+        const complets=(await Promise.all(pleins.slice(0,12).map(n=>rpc('eth_getBlockByNumber',['0x'+n.toString(16),true])
+                            .catch(()=>null)))).filter(Boolean);
+        for(const b of complets)
+          for(const x of b.transactions)
+            if(!state.txs.find(y=>y.hash===x.hash)) state.txs.push({...x,ts:hex(b.timestamp)});
+        state.txs.sort((u,v)=>v.ts-u.ts);
+        state.txs=state.txs.slice(0,40);
+      }
+    }
     try{const r=await rpc('eth_call',[{to:SYS[0][0],data:'0x4df6e0c3'},'latest']);const body=r.slice(2);const n=parseInt(body.slice(128,192),16);if(!Number.isFinite(n)||n<0||n>128)throw 0;const vs=[];for(let i=0;i<n;i++)vs.push('0x'+body.slice(192+i*64+24,192+i*64+64));if(vs.length)state.vals=vs;}catch(e){}
     if(view==='contrats')for(const [a] of SYS)if(state.sys[a]==null)try{const c=await rpc('eth_getCode',[a,'latest']);state.sys[a]=(c.length-2)/2;}catch(e){}
     if(view==='contrats'||view==='tokens') await discover();
@@ -373,7 +408,12 @@ applyLang();showView(view);cycle();setInterval(cycle,5000);
    et qu'on lance la recherche existante. Le champ de recherche et le panneau de
    résultat vivent hors des onglets : il n'y a donc aucune vue à changer. */
 (function routeChemin(){
-  var m = location.pathname.match(/^\/(tx|block|blocs?|address|adresse)\/([^\/?#]+)\/?$/i);
+  // « token » mene a la meme vue que « address » : un jeton BRC20 EST un
+    // contrat, et la fiche d adresse en montre le code, les soldes et les
+    // transferts. La route existe parce que les places d echange ont un champ
+    // « Token Endpoint » distinct du champ « Address Endpoint » — leur donner
+    // une URL qui rend 404 ferait echouer leur integration sans expliquer pourquoi.
+    var m = location.pathname.match(/^\/(tx|block|blocs?|address|adresse|token|jeton)\/([^\/?#]+)\/?$/i);
   if (!m) return;
   var champ = document.getElementById('q');
   if (!champ) return;
