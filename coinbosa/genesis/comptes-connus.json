@@ -1,0 +1,48 @@
+{
+  "$commentaire": [
+    "Les comptes qui détiennent des BOSA SANS figurer dans l'allocation du genesis,",
+    "et les comptes du genesis dont on sait qu'ils ont bougé.",
+    "",
+    "Ce fichier est lu par scripts/audit-argent.js. Il ne blanchit rien : y inscrire",
+    "une adresse veut dire « on sait pourquoi elle détient des BOSA », et la raison",
+    "est écrite à côté. Ce qui n'y figure pas fait échouer l'audit — c'est le but.",
+    "",
+    "Quand un mouvement nouveau apparaît : retrouver la transaction, établir qu'elle",
+    "est légitime, puis mettre à jour CE fichier ET les documents qui annoncent le",
+    "nombre de mouvements (GARDE-TRESORERIE.md § 3.2, DOSSIER-COTATION.md)."
+  ],
+  "mis_a_jour_le": "2026-09-07",
+  "comptes": [
+    {
+      "adresse": "0x1EEf3830833d83AcD3152A511853fd04a0b4082A",
+      "raison": "gouverneur — approvisionné en gaz au bloc 160 399 (1 000 BOSA)"
+    },
+    {
+      "adresse": "0x45010bd571E2AfC94303D05FDCB542a0C7B06468",
+      "raison": "dépôt bite-fast.com — premier dépôt réel, bloc 502 125 (100 BOSA)"
+    }
+  ],
+  "nonces_attendus": {
+    "0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9": 2
+  },
+  "$mouvements_connus": [
+    {
+      "bloc": 160399,
+      "date": "2026-08-16T20:42:33Z",
+      "tx": "0xb10cf391c74a81336e7e4037f84e30ceacab52a59d239452453360b5a9790544",
+      "de": "0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9",
+      "vers": "0x1EEf3830833d83AcD3152A511853fd04a0b4082A",
+      "montant_bosa": "1000",
+      "objet": "approvisionner le gouverneur en gaz"
+    },
+    {
+      "bloc": 502125,
+      "date": "2026-09-05T15:20:46Z",
+      "tx": "0xc26ccf9d3c9fa7d32b9aa0255b9d2d43e0c8c00a751c607e1069d091d0e1b32b",
+      "de": "0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9",
+      "vers": "0x45010bd571E2AfC94303D05FDCB542a0C7B06468",
+      "montant_bosa": "100",
+      "objet": "premier dépôt vers bite-fast.com"
+    }
+  ]
+}

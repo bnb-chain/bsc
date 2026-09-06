@@ -17,6 +17,15 @@ on:
     paths: ['coinbosa/**', 'consensus/parlia/**', 'go.mod', 'go.sum', 'Makefile', 'build/**', '.github/workflows/coinbosa.yml']
   workflow_dispatch:
 
+  # L'argent ne bouge pas au rythme des commits. Le 5 septembre 2026, un transfert
+  # de 100 BOSA depuis le poste `equipe` est resté deux jours sans que personne le
+  # voie, pendant que le dossier de cotation continuait d'annoncer « une seule
+  # transaction dans l'histoire de la chaîne ». Rien n'était volé — mais rien ne
+  # regardait. Cet horaire fait tourner l'audit d'argent chaque jour contre la
+  # production, qu'on ait poussé du code ou non.
+  schedule:
+    - cron: '17 5 * * *'
+
 jobs:
   chaine-et-contrats:
     name: Chaîne et contrats
@@ -236,3 +245,35 @@ jobs:
         if: failure()
         working-directory: coinbosa
         run: tail -80 node.log
+
+  audit-argent:
+    name: Audit de l'argent (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Ce job n'a besoin ni du binaire, ni d'un noeud local : il interroge la chaine
+    # PUBLIQUE et la compare au genesis publie dans ce depot. Il ne detient aucun
+    # secret et n'ecrit jamais sur la chaine.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Dependances
+        working-directory: coinbosa
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      # Cinq invariants : identite du bloc 0, somme du genesis, conservation de
+      # l'offre, comptabilite du contrat systeme, et mouvements de tresorerie
+      # declares. Un seul qui casse fait echouer ce job.
+      - name: Les cinq invariants d'argent
+        working-directory: coinbosa
+        run: RPC=https://explorer.coinbosa.com/rpc node scripts/audit-argent.js
+
+      # Si l'audit echoue, la sortie machine aide a comprendre quoi sans relire
+      # tout le journal.
+      - name: Detail en cas d'echec
+        if: failure()
+        working-directory: coinbosa
+        run: RPC=https://explorer.coinbosa.com/rpc node scripts/audit-argent.js --json || true
