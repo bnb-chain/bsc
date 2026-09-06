@@ -344,11 +344,8 @@ func (s cas20Storage) getStringAt(slot common.Hash) (string, bool) {
 		return "", true
 	}
 	base := s.stringDataRoot(slot)
-	// Before the allocation: make() runs with the stored length whatever the budget says.
-	if s.ctx != nil && s.ctx.OutOfGas() {
-		return "", false
-	}
-	out := make([]byte, 0, length)
+	// Grown only behind paid reads, so the allocation is bounded by the gas spent.
+	var out []byte
 	for i := uint64(0); i < length; i += 32 {
 		chunkSlot := new(uint256.Int).AddUint64(base, i/32).Bytes32()
 		chunk, ok := s.getWordChecked(chunkSlot)

@@ -3,6 +3,7 @@ package vm
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // SeedCAS20Activation plants the registries' account sentinels (BEP-702 3.16).
@@ -16,6 +17,7 @@ func SeedCAS20Activation(state StateDB) {
 
 func seedCAS20Sentinel(state StateDB, addr common.Address) {
 	if !hadNoCode(state, addr) {
+		log.Error("CAS20 registry already carries code", "addr", addr)
 		return
 	}
 	state.SetCode(addr, CAS20MarkerCode, tracing.CodeChangeSystemContractUpgrade)
