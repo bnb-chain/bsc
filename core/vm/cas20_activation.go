@@ -202,7 +202,6 @@ func updateParam(ctx *PrecompileContext, reg activationReg, args []byte) error {
 		return revCAS20StringBytes("InvalidValue(string,bytes)", errSelInvalidValue, key, value)
 	}
 	previous := reg.admin()
-	ctx.ensureSentinel()
 	reg.setAdmin(next)
 	if !ctx.AddLog([]common.Hash{cas20TopicAdminChanged, addrKey(previous), addrKey(next), addrKey(ctx.Caller)}, nil) {
 		return ErrOutOfGas
@@ -235,9 +234,6 @@ func setFeature(ctx *PrecompileContext, reg activationReg, args []byte, on bool)
 		return revCAS20("AlreadyActivated(bytes32)", errSelAlreadyActivated, feature)
 	case !on && !active:
 		return revCAS20("FeatureNotActivated(bytes32)", errSelFeatureNotActive, feature)
-	}
-	if on {
-		ctx.ensureSentinel() // only the activating write creates state worth keeping
 	}
 	reg.setActivated(feature, on)
 	topic := cas20TopicFeatureDeactivated

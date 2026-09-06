@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -80,21 +79,6 @@ func cas20AddressOccupied(ctx *PrecompileContext, addr common.Address) bool {
 func hadNoCode(state StateDB, addr common.Address) bool {
 	ch := state.GetCodeHash(addr)
 	return ch == (common.Hash{}) || ch == types.EmptyCodeHash
-}
-
-// ensureSentinel keeps a registry's storage out of reach of EIP-161 clearing. It
-// plants the marker only on an account with no code at all (BEP-702 3.16).
-func (ctx *PrecompileContext) ensureSentinel() {
-	if !ctx.chargeAccountAccess(ctx.Self) {
-		return
-	}
-	if !hadNoCode(ctx.StateDB, ctx.Self) {
-		return
-	}
-	if !ctx.chargeCodeWrite(ctx.Self, CAS20MarkerCode) {
-		return
-	}
-	ctx.StateDB.SetCode(ctx.Self, CAS20MarkerCode, tracing.CodeChangeContractCreation)
 }
 
 // cas20EnterCall applies the guards every CAS20 entry point shares: direct calls

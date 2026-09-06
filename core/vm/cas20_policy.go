@@ -425,7 +425,6 @@ func runCAS20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err := ensureFeatureActivated(ctx, featurePolicyRegistry); err != nil {
 			return nil, err
 		}
-		ctx.ensureSentinel()
 	default:
 		return nil, ErrExecutionReverted // unknown selector
 	}
