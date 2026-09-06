@@ -25,7 +25,7 @@ section 8, et sont exécutables par un tiers depuis le point d'accès public
 | Origine des clés | la procédure du dépôt dérive les 13 postes **et** le gouverneur d'une **seule graine**, en dérivation **non durcie**. Que les adresses déployées viennent bien de cette procédure reste une **déclaration de l'éditeur** — cela se confirme en une commande (§ 7.2) |
 | Conséquence, si la procédure a été suivie | une seule phrase de récupération commande **la totalité de l'offre** et **la liste des validateurs** |
 | Clé de scellage du validateur | **distincte**, sur le serveur, et **ne détient aucun fonds** (solde 0) |
-| Mouvements depuis le bloc 0 | **un seul** : 1 000 BOSA du poste `equipe` vers le gouverneur, au bloc 160 399 |
+| Mouvements depuis le bloc 0 | **deux**, tous deux depuis le poste `equipe` : 1 000 BOSA vers le gouverneur au bloc 160 399, puis 100 BOSA vers `0x45010bd5…6468` au bloc 502 125 (§ 3.2) |
 | Rotations du jeu de validateurs | **aucune** depuis le bloc 1 |
 | Acquisition progressive (*vesting*) | **aucune**. Aucun poste n'est bloqué ni libéré par palier |
 
@@ -145,7 +145,7 @@ nombre de transactions jamais émises par cette clé.
 | `developpement` | 20 % | `0xCa6f08e549290BbF161fF45c475fd3f7A6e65f04` | 140 000 000 | 0 | 0 |
 | `technique` | 10 % | `0xf4cEbe2d34A9a996cAD0c02345d6c3fB69B0E6C1` | 70 000 000 | 0 | 0 |
 | `recherche` | 10 % | `0xb3B91c44f7D48e814aC37c3ED3C691eEDd728b1b` | 70 000 000 | 0 | 0 |
-| `equipe` | 10 % | `0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9` | 69 998 999,999979 | 0 | 1 |
+| `equipe` | 10 % | `0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9` | 69 998 899,999958 | 0 | 2 |
 | `fondsFinancierCard` | 10 % | `0x59dcf9E2A5C17D6C32dC00feCdd8419954494E3f` | 70 000 000 | 0 | 0 |
 | `fondsLiquidite` | 10 % | `0xF85C43a06032F557323545dC3353f31dF1fBDD65` | 70 000 000 | 0 | 0 |
 | `rechercheIA` | 10 % | `0x7a8E70400Af9b66E22cefF574Dba9B293f3Ca6b5` | 70 000 000 | 0 | 0 |
@@ -178,13 +178,27 @@ question du détenteur caché** :
    celle qui est publiée, et pas une autre ;
 2. le moteur de consensus ne crée pas de monnaie, et rien n'est brûlé (la base de frais vaut
    zéro) : l'offre totale est constante ;
-3. si quinze comptes totalisent l'offre entière, **tous les autres comptes de la chaîne sont
-   à zéro**.
+3. si quinze comptes totalisaient l'offre entière **au bloc 0**, alors tous les autres
+   comptes étaient à zéro à cet instant.
 
 Aucune énumération de comptes n'est possible en JSON-RPC ; c'est ce raisonnement, et non une
 liste, qui établit le résultat.
 
-### 3.2 L'unique mouvement de l'histoire de la chaîne
+> **Le point 3 vaut pour le bloc 0, et ne doit pas se lire au présent.**
+> Deux transferts ont eu lieu depuis (§ 3.2), et le second est sorti des quinze comptes :
+> `0x45010bd571E2AfC94303D05FDCB542a0C7B06468` détient **100 BOSA** au 2026-09-07 sans
+> figurer dans l'allocation. Ce qui reste vrai — et c'est le point qui compte — c'est que
+> **l'offre totale n'a pas bougé d'un wei** : le moteur ne crée pas de monnaie, la base de
+> frais vaut zéro, rien n'est brûlé. L'argent s'est déplacé ; il ne s'est ni créé ni détruit.
+
+### 3.2 Les deux mouvements de l'histoire de la chaîne
+
+Ce paragraphe s'intitulait « l'unique mouvement ». Il y en a désormais deux, et le second a
+été relevé le 2026-09-07 en recomptant les soldes contre le genesis. C'est précisément pour
+cela qu'on recompte : un document de garde qui affirme « un seul mouvement » alors que la
+chaîne en porte deux se fait démentir par le premier lecteur qui vérifie.
+
+**Mouvement 1 — approvisionner le gouverneur en gaz**
 
 | | |
 |---|---|
@@ -195,11 +209,26 @@ liste, qui établit le résultat.
 | Montant | 1 000 BOSA |
 | Frais | 0,000021 BOSA, portés par le contrat système, dus au validateur |
 
-Objet : approvisionner le gouverneur en gaz, celui-ci n'ayant reçu aucune allocation au
-genesis. Conséquences à énoncer plutôt qu'à laisser découvrir :
+**Mouvement 2 — le premier dépôt réel vers une bourse**
 
-- le poste `equipe` détient **69 998 999,999979 BOSA**, soit **1 000,000021 BOSA de moins**
-  que les 10 % annoncés ;
+| | |
+|---|---|
+| Bloc | 502 125, le 2026-09-05T15:20:46Z |
+| Transaction | `0xc26ccf9d3c9fa7d32b9aa0255b9d2d43e0c8c00a751c607e1069d091d0e1b32b` |
+| De | `0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9` (poste `equipe`) |
+| Vers | `0x45010bd571E2AfC94303D05FDCB542a0C7B06468` — **hors allocation du genesis** |
+| Montant | 100 BOSA |
+| Frais | 0,000021 BOSA, 21 000 de gaz, statut 1 |
+
+C'est le dépôt de test vers `bite-fast.com`, la première place où BOSA sera coté. À noter
+pour qui vérifiera : **c'est la première fois qu'un compte extérieur à l'allocation détient
+des BOSA.** Le raisonnement du § 3.1 sur les comptes à zéro s'arrête donc à ce bloc.
+
+Objet du premier mouvement : approvisionner le gouverneur en gaz, celui-ci n'ayant reçu
+aucune allocation au genesis. Conséquences à énoncer plutôt qu'à laisser découvrir :
+
+- le poste `equipe` détient **69 998 899,999958 BOSA**, soit **1 100,000042 BOSA de moins**
+  que les 10 % annoncés — 1 000 + 100 transférés, et deux fois 0,000021 de frais ;
 - le gouverneur, dont `docs/GENESIS-PRODUCTION.md` écrit qu'« elle ne détient aucun fonds
   (vérifié : solde nul) », **détient 1 000 BOSA**. Cette phrase du dépôt est périmée ;
 - l'inventaire complet des événements du contrat système sur toute la chaîne ne contient

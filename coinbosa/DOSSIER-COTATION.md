@@ -136,8 +136,9 @@ seule de ces deux valeurs serait faux la moitié du temps.
 
 ### Conservation de l'offre — vérifiée au wei près
 
-La chaîne a connu **une seule transaction utilisateur** depuis le bloc 1 (§ 9). L'offre se
-répartit donc, au bloc de référence, sur exactement 15 comptes :
+La chaîne a connu **deux transactions utilisateur** depuis le bloc 1 (§ 9), toutes deux
+émises par le poste Équipe. L'offre se répartit donc, au 2026-09-07, sur **16 comptes** —
+les 15 d'origine, plus l'adresse de dépôt de la bourse qui a reçu la seconde :
 
 ```
 13 adresses de répartition   699 998 999,999979 BOSA
@@ -244,7 +245,7 @@ Soldes réels lus au bloc 403 277 (`eth_getBalance`), et non recopiés du livre 
 | 1 | Développement | `0xCa6f08e549290BbF161fF45c475fd3f7A6e65f04` | 140 000 000 | 20,0000 % | 0 |
 | 2 | Technique | `0xf4cEbe2d34A9a996cAD0c02345d6c3fB69B0E6C1` | 70 000 000 | 10,0000 % | 0 |
 | 3 | Recherche | `0xb3B91c44f7D48e814aC37c3ED3C691eEDd728b1b` | 70 000 000 | 10,0000 % | 0 |
-| 4 | Équipe | `0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9` | **69 998 999,999979** | 9,9999 % | **1** |
+| 4 | Équipe | `0x41Ab22491Ba87eda15927286D744ebdaAE5B2FC9` | **69 998 899,999958** | 9,9998 % | **2** |
 | 5 | Fonds financier Card | `0x59dcf9E2A5C17D6C32dC00feCdd8419954494E3f` | 70 000 000 | 10,0000 % | 0 |
 | 6 | Fonds de liquidité | `0xF85C43a06032F557323545dC3353f31dF1fBDD65` | 70 000 000 | 10,0000 % | 0 |
 | 7 | Recherche IA | `0x7a8E70400Af9b66E22cefF574Dba9B293f3Ca6b5` | 70 000 000 | 10,0000 % | 0 |
@@ -272,8 +273,34 @@ nonce de 0 : **aucune sortie de fonds** depuis le genesis.
 - Que **les 13 adresses ne portent aucun code** : `eth_getCode` renvoie 0 octet aux treize.
   Ce sont des clés simples, **pas des coffres multi-signatures**.
 - Que **12 des 13 n'ont jamais émis de transaction** — `eth_getTransactionCount` = 0.
-- Que **tous les mouvements historiques** de la chaîne sont visibles : une seule transaction
-  utilisateur, `0xb10cf391c74a81336e7e4037f84e30ceacab52a59d239452453360b5a9790544`.
+- Que **tous les mouvements historiques** de la chaîne sont visibles, et qu'il y en a
+  **deux**, tous deux émis par le poste Équipe :
+
+  | bloc | transaction | vers | montant |
+  |---|---|---|---|
+  | 160 399 | `0xb10cf391c74a81336e7e4037f84e30ceacab52a59d239452453360b5a9790544` | gouverneur `0x1EEf3830…4082A` | 1 000 BOSA |
+  | 502 125 | `0xc26ccf9d3c9fa7d32b9aa0255b9d2d43e0c8c00a751c607e1069d091d0e1b32b` | `0x45010bd5…6468` (dépôt bourse) | 100 BOSA |
+
+  Le second est le premier dépôt réel vers une place de marché. C'est aussi la première
+  fois qu'une adresse extérieure à l'allocation du genesis détient des BOSA : l'intégrateur
+  qui recompte doit s'attendre à **seize** comptes non nuls, pas quinze.
+
+- Que **le compte se ferme au wei près**, frais compris. Recomptage du 2026-09-07 :
+
+  ```
+  13 postes de trésorerie          699 998 899,999958
+  gouverneur                             1 000,000000
+  adresse de dépôt de la bourse            100,000000
+  contrat système (frais)                    0,000042
+  ------------------------------------------------------
+  total                            700 000 000,000000    écart : 0
+  ```
+
+  Les 0,000042 BOSA du contrat système sont les frais des deux transactions. Ils ne sont
+  pas perdus : la créance du validateur inscrite dans le contrat vaut **exactement**
+  0,000042 BOSA, et `surplus()` — ce que le contrat détient au-delà des créances — vaut
+  **zéro**. Il n'y a donc aucun fonds non attribué dans le contrat système, et le
+  validateur n'a jamais réclamé son dû (`claim()` n'a jamais été appelé).
 
 ### Ce qu'il doit croire sur parole
 
