@@ -66,13 +66,32 @@ cat > "$AIDE" <<'AIDE_FIN'
 #!/usr/bin/env bash
 # Porte une alerte de supervision dans Telegram, SANS noyer le destinataire.
 #
-#   coinbosa-telegram-alerte signaler <niveau> <titre> <detail>
+#   coinbosa-telegram-alerte signaler  <niveau> <titre> <detail>   # un ETAT
+#   coinbosa-telegram-alerte noter     <niveau> <titre> <detail>   # un EVENEMENT
+#   coinbosa-telegram-alerte maintenir <titre>                     # « toujours la »
 #   coinbosa-telegram-alerte passe-finie
 #
 # Un incident qui dure ne doit pas produire une notification toutes les dix
 # minutes : on prévient à la première occurrence, on rappelle toutes les six
 # heures, et on prévient du RETOUR À LA NORMALE — c'est l'information la plus
 # attendue quand on a été réveillé pour rien.
+#
+# UN ETAT N'EST PAS UN EVENEMENT, ET LES CONFONDRE CASSE LES DEUX
+# ---------------------------------------------------------------
+# `signaler` decrit un ETAT que la sonde RETESTE a chaque passe : « le disque est
+# plein », « le service est arrete ». Tant qu il dure il est resignale ; le jour ou
+# il cesse de l etre, c est qu il est resolu, et on le dit.
+#
+# `noter` decrit un EVENEMENT deja passe au moment ou on l apprend : le battement
+# quotidien, un rembobinage, une fenetre de maintenance depassee. Il ne sera JAMAIS
+# resignale — il n y a plus rien a retester.
+#
+# Faire passer un evenement par `signaler` produit exactement ce qui s est vu le
+# 6 septembre 2026 a 00:00:35 : le battement quotidien — le message dont le seul
+# role est de dire que TOUT VA BIEN — est parti en 🔴 « Premiere occurrence », puis
+# a ete annonce « resolu, duree 0 min » deux minutes plus tard. Sur le rembobinage
+# le meme defaut serait grave : la chaine forke, le canal alerte, et deux minutes
+# apres il annonce que c est rentre dans l ordre.
 set -uo pipefail
 JETON=/etc/coinbosa-telegram-token
 ETAT=/var/lib/coinbosa-alertes
@@ -102,6 +121,10 @@ cle() { printf '%s' "$1" | md5sum | cut -c1-16; }   # une empreinte par TITRE
 case "${1:-}" in
   signaler)
     niveau="${2:-error}"; titre="${3:-sans titre}"; detail="${4:-}"
+    # Un « info » n a pas d etat a suivre : ni rappel, ni resolution. On le
+    # reoriente ICI plutot que de faire confiance a l appelant — c est ce mauvais
+    # aiguillage, et lui seul, qui a fait partir le battement quotidien en rouge.
+    if [ "$niveau" = info ]; then exec "$0" noter "$niveau" "$titre" "$detail"; fi
     k=$(cle "$titre")
     : > "$ETAT/passe/$k"                              # vu pendant cette passe
     f="$ETAT/actives/$k"
@@ -123,6 +146,21 @@ $detail"
       fi
     fi
     ;;
+  noter)
+    # Un evenement : un seul message, aucun etat cree, aucune resolution a venir.
+    niveau="${2:-info}"; titre="${3:-sans titre}"; detail="${4:-}"
+    case "$niveau" in info) icone='ℹ️' ;; *) icone='🟠' ;; esac
+    envoyer "$icone Coinbosa — $titre
+$detail"
+    ;;
+  maintenir)
+    # « Cet etat est toujours la, mais je ne notifie pas maintenant. »
+    # Sans cette branche, taire un incident pendant la fenetre de maintenance
+    # reviendrait a le declarer resolu a la fin de la passe : le faux vert exact
+    # que ce depot traque partout ailleurs.
+    k=$(cle "${2:-sans titre}")
+    if [ -f "$ETAT/actives/$k" ]; then : > "$ETAT/passe/$k"; fi
+    ;;
   passe-finie)
     # Tout incident actif qui n'a PAS été signalé pendant cette passe est resolu.
     for f in "$ETAT"/actives/*; do
@@ -137,7 +175,7 @@ Durée : ${duree} min."
     done
     rm -f "$ETAT"/passe/* 2>/dev/null
     ;;
-  *) echo "usage: $0 signaler <niveau> <titre> <detail> | passe-finie" >&2; exit 1 ;;
+  *) echo "usage: $0 {signaler|noter} <niveau> <titre> <detail> | maintenir <titre> | passe-finie" >&2; exit 1 ;;
 esac
 AIDE_FIN
 chmod 0700 "$AIDE"
@@ -182,12 +220,26 @@ import pathlib, sys
 p = pathlib.Path(sys.argv[1]); s = p.read_text()
 
 # 1. chaque alerte part aussi vers Telegram, apres le journal et Sentry.
-ancre = '  logger -t coinbosa-watchdog -p daemon.err "[$niveau] $titre — $detail"'
+#    Le MODE suit la nature de l'alerte, que la sonde connait et nous transmet :
+#    un ETAT peut etre resolu plus tard, un EVENEMENT non. Envoyer un evenement
+#    par `signaler` le ferait annoncer « resolu » a la passe suivante.
+ancre = '  logger -t coinbosa-watchdog -p "$prio" "[$niveau] $titre — $detail"'
 assert s.count(ancre) == 1, "ancre de la fonction alerte introuvable ou multiple"
 s = s.replace(ancre, ancre + '\n'
   '  # Porte aussi l alerte dans Telegram. Le | true est deliberе : si Telegram\n'
   '  # est injoignable, la supervision NE DOIT PAS s arreter pour autant.\n'
-  '  /usr/local/bin/coinbosa-telegram-alerte signaler "$niveau" "$titre" "$detail" 2>/dev/null || true', 1)
+  '  local mode=signaler; [ "$nature" = ponctuel ] && mode=noter\n'
+  '  /usr/local/bin/coinbosa-telegram-alerte "$mode" "$niveau" "$titre" "$detail" 2>/dev/null || true', 1)
+
+# 1 bis. pendant la maintenance on ne notifie pas — mais se taire n'est pas
+#    guerir. Sans cette ligne, la fin de passe annoncerait « resolu » un incident
+#    qui dure encore, simplement parce qu'on a choisi de ne pas en parler.
+ancre2 = '    logger -t coinbosa-watchdog "pendant maintenance, non remonte : $2 — $3"'
+assert s.count(ancre2) == 1, "ancre de alerte_transitoire introuvable ou multiple"
+s = s.replace(ancre2, ancre2 + '\n'
+  '    # Ne pas notifier ne veut pas dire que c est rentre dans l ordre : sans cette\n'
+  '    # ligne, la fin de passe annoncerait « resolu » un incident qui dure encore.\n'
+  '    /usr/local/bin/coinbosa-telegram-alerte maintenir "$2" 2>/dev/null || true', 1)
 
 # 2. en fin de passe, on annonce ce qui est revenu a la normale.
 assert s.count('\nexit 0\n') >= 1, "fin de script introuvable"

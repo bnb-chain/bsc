@@ -62,9 +62,18 @@ CERT_JOURS=21
 STAGNATION_MAX=60   # 12 blocs manques a 5 s : au-dela, la chaine est reellement arretee
 DSN=$(cat /etc/coinbosa-sentry-dsn 2>/dev/null || true)
 
-alerte() {  # $1=niveau  $2=titre  $3=détail
-  local niveau="$1" titre="$2" detail="${3:-}"
-  logger -t coinbosa-watchdog -p daemon.err "[$niveau] $titre — $detail"
+# $4 vaut « ponctuel » pour un EVENEMENT — deja passe au moment ou on l apprend :
+# battement quotidien, rembobinage, fenetre de maintenance depassee — et reste vide
+# pour un ETAT que la passe suivante retestera. La distinction n est pas cosmetique :
+# c est elle qui decide si l alerte pourra etre annoncee « resolue » plus tard. Un
+# etat se resout ; un evenement, lui, a simplement eu lieu.
+alerte() {  # $1=niveau  $2=titre  $3=détail  [$4=ponctuel]
+  local niveau="$1" titre="$2" detail="${3:-}" nature="${4:-etat}"
+  # Un « info » n est pas une erreur. Le journaliser en daemon.err faisait
+  # apparaitre le battement quotidien — la preuve que tout va bien — au milieu des
+  # erreurs de la machine.
+  local prio=daemon.err; [ "$niveau" = info ] && prio=daemon.info
+  logger -t coinbosa-watchdog -p "$prio" "[$niveau] $titre — $detail"
   [ -n "$DSN" ] || return 0
   # Envoi direct à Sentry (protocole "store"), sans SDK.
   local proto reste cle hote projet url
@@ -120,7 +129,7 @@ if [ -r "$TEMOIN" ]; then
     # Le temoin traine alors que la fenetre est close : le script d'arret propre
     # n'est pas alle au bout. C'est precisement ce qu'il faut savoir.
     alerte error "fenetre de maintenance depassee" \
-      "le temoin $TEMOIN a expire depuis $((maintenant - ${fin:-$maintenant}))s — l arret propre n a pas termine"
+      "le temoin $TEMOIN a expire depuis $((maintenant - ${fin:-$maintenant}))s — l arret propre n a pas termine" ponctuel
     rm -f "$TEMOIN"
   fi
 fi
@@ -152,7 +161,7 @@ else
 
   if [ -n "$precedent" ] && [ "$hv" -lt "$precedent" ] 2>/dev/null; then
     # Un recul est anormal a tout instant : on alerte sans attendre.
-    alerte fatal "REMBOBINAGE DETECTE" "hauteur passee de $precedent a $hv — fork probable"
+    alerte fatal "REMBOBINAGE DETECTE" "hauteur passee de $precedent a $hv — fork probable" ponctuel
     echo "$hv $maintenant" > "$ETAT"
   elif [ -n "$precedent" ] && [ "$hv" -eq "$precedent" ] 2>/dev/null; then
     # Stagnation : on ne crie qu'au-dela de STAGNATION_MAX (12 blocs manques).
@@ -273,7 +282,7 @@ hier=$(date -d 'yesterday' +%Y-%m-%d 2>/dev/null || echo "")
 aujourdhui=$(date +%Y-%m-%d)
 if [ "$(cat "$BATTEMENT" 2>/dev/null)" != "$aujourdhui" ]; then
   echo "$aujourdhui" > "$BATTEMENT"
-  alerte info "battement quotidien" "chaine a $(hauteur "$VAL_IPC" "$VAL_USER") — supervision operationnelle"
+  alerte info "battement quotidien" "chaine a $(hauteur "$VAL_IPC" "$VAL_USER") — supervision operationnelle" ponctuel
 fi
 
 exit 0
