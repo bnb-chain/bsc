@@ -46,6 +46,7 @@ const FORCER = process.env.JE_COMPRENDS_LE_RISQUE === '1';
 const ABI = [
   'function updateValidatorSet(address[] newVals, bytes[] newVotes)',
   'function getValidators() view returns (address[])',
+  'function getMiningValidators() view returns (address[] vals, bytes[] votes)',
   'function numOfValidators() view returns (uint256)',
   'function getTurnLength() view returns (uint256)',
   'function GOVERNOR() view returns (address)',
@@ -183,17 +184,43 @@ const ABI = [
     process.exit(1);
   }
 
-  // --- 4. adresses de vote : elles doivent être DISTINCTES ---
-  // Le contrat refuse deux clés de vote identiques (CoinbosaValidatorSet.sol:216). Or la
-  // finalité rapide est inactive, donc la clé « naturelle » est 48 octets nuls — la même
-  // pour tous. Envoyer cela pour N≥2 provoquait un REVERT GARANTI, et c'est exactement ce
-  // que ce script conseillait de faire. On dérive donc une valeur unique par validateur.
-  // Ces clés ne servent à rien tant que la finalité rapide est inactive : ce sont des
-  // marque-places, mais ils doivent être uniques pour passer la garde du contrat.
+  // --- 4. adresses de vote : PRÉSERVER celles qui existent déjà ---
+  // Le contrat refuse deux clés de vote identiques (CoinbosaValidatorSet.sol:216). Tant que
+  // la finalité rapide est inactive, la clé « naturelle » est 48 octets nuls — la même pour
+  // tous. Envoyer cela pour N≥2 provoquait un REVERT GARANTI. On dérive donc une valeur
+  // unique par validateur : un marque-place, qui ne sert qu'à passer la garde du contrat.
+  //
+  // ACCIDENT ÉVITÉ : cette liste était dérivée pour TOUS les validateurs, sortants compris.
+  // `updateValidatorSet` remplace l'intégralité du tableau `voteAddresses` (`:235-238`).
+  // Le jour où une vraie clé BLS est inscrite — c'est l'objet de
+  // `scripts/inscrire-cle-vote.js` — une simple rotation l'aurait donc écrasée par une
+  // valeur inventée. Sans revert, sans alerte : la transaction réussit, et la finalité
+  // rapide s'éteint au bloc d'epoch suivant. `finalized` retombe au bloc 0, et la seule
+  // trace serait une bourse qui recommence à refuser les dépôts.
+  //
+  // On relit donc les clés EN PLACE et on les réémet telles quelles. Le marque-place ne
+  // sert plus qu'aux ENTRANTS, qui n'en ont pas encore.
   const listeVals = [...vus].map((a) => ethers.getAddress(a));
-  const listeVotes = listeVals.map((a) => '0x' + ethers.keccak256(a).slice(2).padEnd(96, '0').slice(0, 96));
+  const NULLE = '0x' + '00'.repeat(48);
+  const enPlace = new Map();
+  try {
+    const [mv, mvotes] = await c.getMiningValidators();
+    mv.forEach((adr, k) => enPlace.set(adr.toLowerCase(), mvotes[k]));
+  } catch (e) {
+    bloquants.push(`clés de vote actuelles ILLISIBLES (${(e.shortMessage || e.message || '').slice(0, 80)}) : impossible de garantir qu'une rotation ne les écraserait pas — ne pas envoyer.`);
+  }
+  const preservees = [];
+  const listeVotes = listeVals.map((a) => {
+    const v = enPlace.get(a.toLowerCase());
+    if (v && v !== NULLE) { preservees.push(a); return v; }
+    return '0x' + ethers.keccak256(a).slice(2).padEnd(96, '0').slice(0, 96);
+  });
+  if (preservees.length) {
+    console.log(`\n  clés de vote RÉELLES préservées telles quelles : ${preservees.length}`);
+    preservees.forEach((a) => console.log(`      ${a} -> ${enPlace.get(a.toLowerCase()).slice(0, 26)}…`));
+  }
   const distincts = new Set(listeVotes).size === listeVotes.length;
-  if (!distincts) bloquants.push('collision improbable sur les clés de vote dérivées — ne pas envoyer.');
+  if (!distincts) bloquants.push('collision sur les clés de vote — ne pas envoyer.');
 
   // --- 5. SIMULATION : on demande à la chaîne ce qui se passerait ---
   // C'est le seul contrôle qui ne peut pas se tromper : il exécute la transaction sans la

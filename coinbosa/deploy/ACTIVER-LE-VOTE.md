@@ -67,7 +67,7 @@ Contrat `0x0000000000000000000000000000000000001000`, lectures directes :
 
 | Appel | Sélecteur | Réponse |
 |---|---|---|
-| `GOVERNOR()` | `0x6dc0ae22` | `0x1eEF3830833d83aCd3152A511853fd04A0b4082a` |
+| `GOVERNOR()` | `0x6dc0ae22` | `0x1EEf3830833d83AcD3152A511853fd04a0b4082A` |
 | `INITIAL_VALIDATOR()` | `0x258718a7` | `0x3986D6b31EC55043CeaAF25f5dDEa53517CBba50` |
 | `numOfValidators()` | `0x1e526e45` | `1` |
 | `alreadyInit()` | `0xa78abc16` | `true` |
@@ -476,7 +476,7 @@ fonction  updateValidatorSet(address[] newVals, bytes[] newVotes)
 selecteur 0x8001f54c
 newVals   [ 0x3986D6b31EC55043CeaAF25f5dDEa53517CBba50 ]     <- UNE SEULE adresse
 newVotes  [ 0x<votre cle publique BLS, 48 octets> ]
-emetteur  0x1eEF3830833d83aCd3152A511853fd04A0b4082a          <- le GOUVERNEUR
+emetteur  0x1EEf3830833d83AcD3152A511853fd04a0b4082A          <- le GOUVERNEUR
 ```
 
 > ### DANGER — la seule erreur qui arrête la chaîne
@@ -502,7 +502,7 @@ emetteur  0x1eEF3830833d83aCd3152A511853fd04A0b4082a          <- le GOUVERNEUR
 
 ```bash
 RPC=https://explorer.coinbosa.com/rpc
-GOV=0x1eEF3830833d83aCd3152A511853fd04A0b4082a
+GOV=0x1EEf3830833d83AcD3152A511853fd04a0b4082A
 VAL=3986d6b31ec55043ceaaf25f5ddea53517cbba50
 
 # Les 96 caracteres hexadecimaux releves a l'etape 4, SANS le prefixe 0x.
@@ -884,21 +884,43 @@ En revanche, la règle de **séparation** garde toute sa force, pour une raison
 différente : c'est la seule chose qui empêche un vol (§ 3.4), et un vol détruit la
 valeur probante de `finalized` en silence, sans qu'aucune alarme ne se déclenche.
 
-### 7.3 Ce que je n'ai pas pu établir sur le chiffrement
+### 7.3 Le chiffrement du keystore BLS — **établi le 6 septembre 2026**
 
-`SAUVEGARDE-CLE.md § 1.4` donne les paramètres exacts du coffre secp256k1
-(`scrypt N=262144, r=8, p=1`) et en tire, mesures à l'appui, le coût d'une attaque par
-force brute. **Je ne peux pas faire la même chose ici.** Le keystore BLS est produit par
-`keystorev4.New()` (`blsaccountcmd.go:326`), issu de
-`prysmaticlabs/prysm/v5` — dépendance **non vendorisée** dans `/Users/protocole/repo`
-(il n'y a aucun répertoire `vendor`). Je n'ai lu ni sa fonction de dérivation, ni ses
-paramètres, ni le contenu qu'elle écrit dans `bls/wallet`. **Je ne donne donc aucun
-chiffre sur la résistance de ce keystore.** Les paramètres réels seront lisibles dans
-le fichier `keystore-<petnom>.json` une fois créé, dans son champ `crypto.kdf`.
+Ce paragraphe annonçait des paramètres inconnus, faute de keystore à lire. La clé
+existe maintenant, et son champ `crypto` est lisible. Relevé sur le fichier de
+production :
 
-**Conséquence pratique : ne présumez pas que le mot de passe BLS bénéficie de la même
-protection que celui de la clé de scellage.** Choisissez-le au moins aussi fort, et
-distinct.
+| | Coffre de la clé de scellage | Keystore BLS |
+|---|---|---|
+| format | Web3 Secret Storage v3 | **EIP-2335 v4** |
+| dérivation | `scrypt` **N=262144, r=8, p=1** | **`pbkdf2`, c=262144, HMAC-SHA256** |
+| longueur de clé dérivée | 32 octets | **32 octets** |
+| somme de contrôle | keccak256 | **sha256** |
+| chiffrement | aes-128-ctr | **aes-128-ctr** |
+
+**Ce n'est pas la même protection, et l'écart est structurel.** `scrypt` avec
+N=262144 et r=8 exige **128 × N × r = 256 Mio de mémoire vive par essai**. C'est ce
+coût mémoire — et lui seul — qui rend une attaque massivement parallèle coûteuse :
+une carte graphique dispose de beaucoup de cœurs, pas de 256 Mio par cœur.
+
+`pbkdf2-hmac-sha256` n'exige **aucune mémoire**. Ses 262 144 itérations coûtent du
+calcul, et le calcul est exactement ce qu'une carte graphique fait le mieux. À nombre
+d'itérations égal, un essai y est donc très largement moins cher que sur `scrypt`.
+
+Je ne donne pas de chiffre d'essais par seconde : je ne l'ai pas mesuré sur du
+matériel d'attaque, et une valeur inventée ne vaudrait rien ici. Le rapport de coût
+**mémoire**, lui, se lit dans les paramètres et ne dépend d'aucune mesure.
+
+**Conséquences pratiques, dans cet ordre :**
+
+1. **Le mot de passe BLS doit être plus long que celui de la clé de scellage, pas
+   simplement « aussi fort ».** À KDF plus faible, c'est la longueur du secret qui
+   compense.
+2. **Le papier ne se range jamais à côté du coffre.** C'est la seule protection qui
+   ne dépende ni du KDF ni de la longueur du mot de passe.
+3. Rappel de proportion : une clé BLS volée ou perdue se **révoque et se remplace**
+   (§ 3.3, § 3.4). Ce n'est pas la clé de scellage. La vigilance ici sert à protéger
+   la valeur probante de `finalized`, pas la survie de la chaîne.
 
 ---
 
