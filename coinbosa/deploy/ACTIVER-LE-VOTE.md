@@ -552,13 +552,37 @@ gouverneur détient 1 000 BOSA.
 * `SAUVEGARDE-CLE.md § 8` note que cette clé « ne produit pas de blocs, mais elle seule
   peut faire tourner l'ensemble des validateurs » et qu'elle « mérite sa propre
   procédure ». Cette procédure n'existe pas encore.
-* **Je n'ai pas pu établir qui détient cette clé ni par quel outil elle est signée.**
+* **Établi le 6 septembre 2026 — la clé du gouverneur vit sur un appareil matériel.**
+  L'adresse `0x1EEf…4082A` est dérivée du même xpub que les treize postes de
+  trésorerie, chemin de compte `m/44'/60'/0'` (`scripts/derive-treasury-addresses.js`).
+  Ce script est construit tout entier autour d'une règle : « la phrase de récupération
+  ne quitte JAMAIS l'appareil, et aucune clé privée n'existe côté logiciel ».
+  **Il n'y a donc pas de clé privée brute à saisir, et il ne doit pas y en avoir.**
+  Un outil qui en réclamerait une serait une erreur de conception — c'était le cas de
+  la première version de `scripts/inscrire-cle-vote.js`, corrigée depuis.
+
+  Trois chemins, par ordre de préférence :
+
+  1. **`node scripts/signer-navigateur.js`** — calcule la transaction, la fait exécuter
+     à blanc par la chaîne, puis la présente à MetaMask sur `127.0.0.1` uniquement.
+     MetaMask la transmet au Ledger, qui l'affiche et la signe. La clé ne bouge pas.
+  2. **`node scripts/inscrire-cle-vote.js --calldata`** — sort `to` et `data`, à porter
+     dans n'importe quel outil de signature hors ligne. Aucun secret n'est demandé.
+  3. La saisie d'une clé brute, **si et seulement si** une telle clé existe pour cette
+     adresse. Le script la lit sans écho, refuse une entrée redirigée, et vérifie
+     qu'elle correspond bien au gouverneur avant de signer.
+
   Le nonce du gouverneur est `0` : ce chemin n'a jamais été exercé sur cette chaîne
-  (§ 1.1). Il serait raisonnable de l'exercer d'abord sur une transaction sans
+  (§ 1.1). Il reste raisonnable de l'exercer d'abord sur une transaction sans
   conséquence — un envoi de valeur nulle vers le gouverneur lui-même — avant de signer
-  celle-ci.
-* Le RPC public est en lecture ; l'émission doit passer par un nœud qui accepte les
-  transactions. **Je n'ai pas établi quel point d'entrée sert à cela en production.**
+  celle-ci ; cela vérifie la chaîne outil → appareil, pas la transaction.
+
+* **Établi le 6 septembre 2026 — le RPC public accepte l'émission.**
+  `eth_sendRawTransaction` répond sur `https://explorer.coinbosa.com/rpc` : envoyée
+  avec une charge volontairement invalide, la méthode rend
+  `rlp: value size exceeds available input length` — une erreur de décodage, pas
+  « method not found ». Elle est donc bien exposée. Aucun autre point d'entrée n'est
+  nécessaire.
 
 ### Étape 7 — Attendre le bloc d'epoch et vérifier le basculement
 

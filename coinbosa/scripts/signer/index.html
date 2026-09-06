@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coinbosa — inscrire la clé de vote</title>
+<style>
+  :root{
+    --fond:#f7f6f3; --carte:#ffffff; --trait:#e2ded6; --encre:#1c1a17;
+    --encre2:#5c574e; --or:#a8792a; --vert:#1f6b3f; --rouge:#a32a2a;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --fond:#141310; --carte:#1d1b17; --trait:#332f28; --encre:#eee9e0;
+           --encre2:#a09a8e; --or:#d9a441; --vert:#5fbb85; --rouge:#e0736e; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fond);color:var(--encre);
+       font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+       padding:32px 20px 64px}
+  main{max-width:760px;margin:0 auto}
+  h1{font-size:22px;letter-spacing:-.01em;margin:0 0 4px}
+  .sous{color:var(--encre2);margin:0 0 28px}
+  section{background:var(--carte);border:1px solid var(--trait);border-radius:10px;
+          padding:18px 20px;margin-bottom:16px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--encre2);
+     margin:0 0 12px;font-weight:600}
+  dl{display:grid;grid-template-columns:auto 1fr;gap:7px 18px;margin:0}
+  dt{color:var(--encre2);white-space:nowrap}
+  dd{margin:0;font-family:var(--mono);font-size:13px;word-break:break-all}
+  .data{font-family:var(--mono);font-size:11.5px;line-height:1.7;word-break:break-all;
+        background:var(--fond);border:1px solid var(--trait);border-radius:6px;padding:12px;
+        max-height:150px;overflow:auto}
+  button{font:inherit;font-weight:600;padding:11px 20px;border-radius:8px;cursor:pointer;
+         border:1px solid var(--or);background:var(--or);color:#fff}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.secondaire{background:transparent;color:var(--encre);border-color:var(--trait)}
+  .rangee{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .etat{margin-top:14px;padding:12px 14px;border-radius:8px;border:1px solid var(--trait);
+        background:var(--fond);font-size:14px}
+  .etat.ok{border-color:var(--vert);color:var(--vert)}
+  .etat.ko{border-color:var(--rouge);color:var(--rouge)}
+  .note{color:var(--encre2);font-size:13.5px;margin:10px 0 0}
+  ol{margin:8px 0 0;padding-left:20px;color:var(--encre2);font-size:13.5px}
+  li{margin:4px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--fond);
+       border:1px solid var(--trait);border-radius:4px;padding:1px 5px}
+  .avert{border-left:3px solid var(--or);padding-left:14px;margin:14px 0 0;
+         color:var(--encre2);font-size:13.5px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Inscrire la clé de vote BLS</h1>
+  <p class="sous">Ta clé privée ne quitte jamais l'appareil. Cette page ne fait que
+     présenter la transaction ; c'est ton portefeuille qui signe.</p>
+
+  <section>
+    <h2>La transaction</h2>
+    <dl id="params"></dl>
+    <h2 style="margin-top:18px">Données (calldata)</h2>
+    <div class="data" id="data">…</div>
+    <p class="note" id="decode"></p>
+  </section>
+
+  <section>
+    <h2>Ce qui va se passer</h2>
+    <ol>
+      <li>La page se connecte à ton portefeuille et vérifie qu'il est bien
+          <em>le gouverneur</em> et sur le bon réseau.</li>
+      <li>Elle rejoue la transaction en lecture seule (<code>eth_call</code>) : rien n'est publié.</li>
+      <li>Elle te demande de signer. <strong>Vérifie sur l'écran de ton appareil</strong> que
+          l'adresse de destination finit par <code>…1000</code> et que le montant est nul.</li>
+      <li>Elle attend le reçu et te dit à quel bloc d'epoch regarder.</li>
+    </ol>
+    <p class="avert">Cette page tourne uniquement sur ta machine, sur
+       <code>127.0.0.1</code>. Ferme la fenêtre du terminal quand tu as fini : le serveur
+       s'arrête avec elle.</p>
+  </section>
+
+  <section>
+    <h2>Action</h2>
+    <div class="rangee">
+      <button id="connecter">Connecter le portefeuille</button>
+      <button id="simuler" class="secondaire" disabled>Simuler</button>
+      <button id="envoyer" disabled>Signer et envoyer</button>
+    </div>
+    <div class="etat" id="etat">En attente de connexion.</div>
+  </section>
+</main>
+<script src="signer.js"></script>
+</body>
+</html>

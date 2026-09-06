@@ -7,10 +7,25 @@
 //
 //   ... puis, pour envoyer réellement, la même commande SANS --simuler.
 //
-// La clé privée du gouverneur est demandée À L'ÉCRAN, sans écho. Elle ne passe
-// NI par la ligne de commande (elle irait dans l'historique du shell et dans la
-// table des processus), NI par une variable d'environnement, NI par un fichier.
-// C'est la seule façon de la manipuler qui ne laisse pas de trace.
+//   --calldata   sort la transaction a signer et s'arrete. Aucun secret demande.
+//
+// TROIS FAÇONS DE SIGNER, ET LA PREMIÈRE EST LA BONNE
+// ----------------------------------------------------
+// Le gouverneur est dérivé du même xpub que la trésorerie
+// (`scripts/derive-treasury-addresses.js`, chemin de compte m/44'/60'/0').
+// Autrement dit : **sa clé privée vit sur un portefeuille matériel et n'en sort
+// jamais.** Il n'existe donc, normalement, AUCUNE clé privée brute à saisir ici.
+//
+//   1. `node scripts/signer-navigateur.js` — le chemin prévu. Ouvre une page
+//      locale qui fait signer MetaMask, et donc le Ledger derrière lui. La clé
+//      ne quitte pas l'appareil.
+//   2. `--calldata` — sort `to` et `data`, à coller dans n'importe quel outil
+//      de signature hors ligne.
+//   3. La saisie ci-dessous — utile UNIQUEMENT si tu détiens vraiment une clé
+//      privée brute pour cette adresse. Elle est lue à l'écran, sans écho, et ne
+//      passe NI par la ligne de commande (elle irait dans l'historique du shell
+//      et dans la table des processus), NI par une variable d'environnement, NI
+//      par un fichier.
 //
 // POURQUOI CE SCRIPT PLUTÔT QUE rotate-validators.js
 // ---------------------------------------------------
@@ -43,6 +58,7 @@ const readline = require('readline');
 const RPC = process.env.RPC || 'https://explorer.coinbosa.com/rpc';
 const VALSET = '0x0000000000000000000000000000000000001000';
 const SIMULER = process.argv.includes('--simuler');
+const CALLDATA_SEULE = process.argv.includes('--calldata');
 const CLE_VOTE = (process.env.CLE_VOTE || '').trim().replace(/^0x/i, '');
 
 const ABI = [
@@ -168,9 +184,26 @@ function lireSecret(invite) {
   console.log(`  solde du gouverneur : ${ethers.formatEther(solde)} BOSA`);
   if (solde < cout) { console.error('\n  REFUS : solde insuffisant.'); process.exit(1); }
 
+  if (CALLDATA_SEULE) {
+    console.log('\n  ' + '='.repeat(72));
+    console.log('  TRANSACTION A SIGNER — a coller dans ton outil de signature');
+    console.log(`    reseau   : Coinbosa Chain, chainId ${reseau.chainId}`);
+    console.log(`    depuis   : ${gouverneur}`);
+    console.log(`    vers     : ${VALSET}`);
+    console.log('    valeur   : 0');
+    console.log(`    gaz      : ${gaz}   (prevois ${(gaz * 12n) / 10n})`);
+    console.log(`    prix gaz : ${ethers.formatUnits(prix, 'gwei')} gwei`);
+    console.log('    data     :');
+    console.log(`      ${data}`);
+    console.log('\n  Aucun secret n a ete demande. Rien n a ete envoye.\n');
+    return;
+  }
+
   if (SIMULER) {
     console.log('\n  --simuler : RIEN N A ETE ENVOYE. Aucune cle privee n a ete demandee.');
-    console.log('  Pour envoyer reellement, relance la meme commande SANS --simuler.\n');
+    console.log('  Pour envoyer reellement : node scripts/signer-navigateur.js (portefeuille materiel),');
+    console.log('  ou --calldata pour signer ailleurs, ou cette meme commande sans --simuler si et');
+    console.log('  seulement si tu detiens une cle privee brute.\n');
     return;
   }
 
@@ -185,8 +218,26 @@ function lireSecret(invite) {
   try {
     portefeuille = new ethers.Wallet(pk.startsWith('0x') ? pk : '0x' + pk, provider);
   } catch {
+    // On DIAGNOSTIQUE sans jamais rien afficher de ce qui a ete tape. Un message
+    // qui dit seulement « invalide » laisse l operateur sans piste — et la piste
+    // la plus probable, ici, c est qu il n existe pas de cle privee brute du tout.
+    const brut = pk.replace(/^0x/i, '');
+    const mots = pk.trim().split(/\s+/).length;
     pk = null;
-    console.error('\n  REFUS : ce n est pas une cle privee valide. Rien n a ete envoye.');
+    console.error('\n  REFUS : ce que tu as saisi n est pas une cle privee brute.');
+    console.error(`         longueur recue : ${brut.length} caracteres (64 attendus, prefixe 0x exclu)`);
+    console.error(`         entierement hexadecimal : ${/^[0-9a-fA-F]*$/.test(brut) ? 'oui' : 'NON'}`);
+    if (mots >= 12) {
+      console.error('\n  Cela ressemble a une PHRASE DE RECUPERATION. Ne la saisis jamais ici :');
+      console.error('  elle ouvre toute la tresorerie, pas seulement le gouverneur.');
+    }
+    console.error('\n  RAPPEL — le gouverneur est derive du meme xpub que la tresorerie');
+    console.error('  (m/44\'/60\'/0\'), donc sa cle privee vit sur ton portefeuille MATERIEL');
+    console.error('  et n en sort pas. Il n y a normalement rien a saisir ici.');
+    console.error('\n  Utilise plutot :');
+    console.error('    node scripts/signer-navigateur.js     (MetaMask + Ledger — le chemin prevu)');
+    console.error('    node scripts/inscrire-cle-vote.js --calldata   (pour signer ailleurs)');
+    console.error('\n  Rien n a ete envoye.');
     process.exit(1);
   }
   pk = null;   // on ne la garde pas en clair une seconde de plus que necessaire
