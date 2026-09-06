@@ -104,6 +104,26 @@ n=$(wc -l < "$PW"); c=$(wc -c < "$PW")
 [ "$n" -eq 0 ] || ko "$PW contient $n saut(s) de ligne — le nœud REFUSERA de démarrer. Le réécrire avec printf '%s'"
 ok "mot de passe : $c octets, 0 saut de ligne"
 
+# Droits. `bls account new` laisse bls/keystore en 755 et son json en 664 — mesure
+# du 2026-09-06. Le repertoire du validateur etant en 700, rien n'est lisible de
+# l'exterieur AUJOURD'HUI : c'est le parent qui rattrape, pas ces bits-la. On les
+# resserre quand meme, parce qu'une restauration ou un chown -R suffirait a lever
+# ce rattrapage — et qu'a ce moment-la le compte du noeud RPC public pourrait lire
+# la cle de vote chiffree.
+for c in "$DD/bls" "$DD/bls/keystore" "$DD/bls/wallet"; do
+  [ -e "$c" ] || continue
+  m=$(stat -c '%a' "$c"); [ "$m" = 700 ] && continue
+  chmod 700 "$c" && ok "$c : $m -> 700"
+done
+for f in "$DD"/bls/keystore/*.json; do
+  [ -e "$f" ] || continue
+  m=$(stat -c '%a' "$f"); [ "$m" = 600 ] && continue
+  chmod 600 "$f" && ok "$(basename "$f") : $m -> 600"
+done
+m=$(stat -c '%a' "$DD")
+[ "$m" = 700 ] || ko "$DD est en $m au lieu de 700 — la cle de vote chiffree est lisible par d autres comptes de la machine. Corriger AVANT d activer le vote."
+ok "repertoire du validateur en 700"
+
 # La preuve qui compte : le portefeuille s'ouvre AVEC CE FICHIER. Le fichier
 # n'ayant aucun saut de ligne, la CLI et le nœud lisent la même chaîne — ce
 # succès vaut donc pour le démarrage du nœud.

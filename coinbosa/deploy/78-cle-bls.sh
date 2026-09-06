@@ -115,6 +115,31 @@ echo "==> Clé BLS"
 sudo -u "$U" "$GETH" bls account new --datadir "$DD" --blspassword "$PW" 2>&1 \
   | sed 's/^/    /' || ko "création de la clé refusée"
 
+# --- droits : `bls account new` les laisse trop larges ------------------------
+# Mesure du 2026-09-06 sur la production : le repertoire bls/keystore sortait en
+# 755 et le fichier en 664, la ou la cle de SCELLAGE est en 700/600. Ce n'est pas
+# une fuite tant que $DD reste en 700 — c'est le parent, et lui seul, qui rattrape
+# ces bits. Mais l'asymetrie n'est voulue par personne : elle vient des defauts de
+# l'outil. Le jour ou une restauration, un chown -R ou un outil tiers remet $DD en
+# 755, la cle de vote chiffree devient lisible par tout compte de la machine —
+# dont `coinbosa`, qui fait tourner le noeud RPC EXPOSE A INTERNET.
+#
+# Et cette cle-la se casse plus vite qu'on ne le croit : son keystore est protege
+# par pbkdf2, sans cout memoire, contrairement au scrypt de la cle de scellage.
+chmod 700 "$DD/bls" "$DD/bls/keystore" 2>/dev/null || true
+chmod 600 "$DD"/bls/keystore/*.json 2>/dev/null || true
+for c in "$DD/bls/keystore" "$DD/bls/wallet"; do
+  [ -e "$c" ] || continue
+  m=$(stat -c '%a' "$c")
+  [ "$m" = 700 ] || ko "$c est en $m, attendu 700"
+done
+for f in "$DD"/bls/keystore/*.json; do
+  [ -e "$f" ] || continue
+  m=$(stat -c '%a' "$f")
+  [ "$m" = 600 ] || ko "$f est en $m, attendu 600"
+done
+ok "droits resserres : 700 sur les repertoires, 600 sur les keystores"
+
 # --- la preuve ----------------------------------------------------------------
 # `bls account list` ouvre le portefeuille avec le mot de passe lu comme le fait
 # la CLI. Le fichier n'ayant AUCUN saut de ligne, la CLI et le nœud lisent la
