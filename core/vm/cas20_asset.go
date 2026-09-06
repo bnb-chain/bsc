@@ -403,19 +403,14 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if tok.inAnnounce {
-		return revCAS20("AnnouncementInProgress()", errSelAnnounceInProgress)
-	}
-	if err := tok.ensureRole(roleOperator); err != nil {
-		return err
-	}
+	// Decoded before any check of the caller or the token's state: Solidity's
+	// dispatcher decodes a function's arguments before its modifiers run, so
+	// calldata that does not decode is reported as such whoever sent it. The
+	// order is observable through which error the caller receives.
 	calls, err := readBytesArray(args, 0)
 	if err != nil {
 		return err
 	}
-	// All three strings are decoded before the id is looked up, so a malformed
-	// payload is reported as malformed rather than as AnnouncementIdAlreadyUsed.
-	// The order is observable through which error the caller receives.
 	id, err := readStringArg(args, 1)
 	if err != nil {
 		return err
@@ -426,6 +421,12 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 	}
 	uri, err := readStringArg(args, 3)
 	if err != nil {
+		return err
+	}
+	if tok.inAnnounce {
+		return revCAS20("AnnouncementInProgress()", errSelAnnounceInProgress)
+	}
+	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
 	}
 	used, ok := ext.announcementUsed(id)
@@ -564,18 +565,20 @@ func batchMint(tok cas20Token, args []byte) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if tok.isPaused(cas20PauseMint) {
-		return revCAS20("ContractPaused(uint8)", errSelContractPaused, wU8(cas20PauseMint))
-	}
-	if err := tok.ensureRole(roleMint); err != nil {
-		return err
-	}
+	// Decoded first, as Solidity's dispatcher does, so a payload that does not
+	// decode is reported as such rather than as a pause or a missing role.
 	recipients, err := readWordArray(args, 0)
 	if err != nil {
 		return err
 	}
 	amounts, err := readWordArray(args, 1)
 	if err != nil {
+		return err
+	}
+	if tok.isPaused(cas20PauseMint) {
+		return revCAS20("ContractPaused(uint8)", errSelContractPaused, wU8(cas20PauseMint))
+	}
+	if err := tok.ensureRole(roleMint); err != nil {
 		return err
 	}
 	if len(recipients) != len(amounts) {
