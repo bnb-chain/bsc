@@ -891,9 +891,26 @@ C    la cle PUBLIQUE (96 caracteres hex) — publique, a noter sans precaution
 
 > **Pourquoi A1 **et** A2.** `bls account new` écrit le keystore **puis** l'importe dans
 > le portefeuille (`blsaccountcmd.go:320-321, 358, 368-375`). Le nœud, lui, n'ouvre que
-> le **portefeuille** (`vote_signer.go:50-53`). Le keystore seul devrait suffire à
-> reconstituer un portefeuille via `geth bls account import`, mais **je n'ai pas testé
-> cette restauration** : sauvegardez les deux.
+> le **portefeuille** (`vote_signer.go:50-53`).
+>
+> **Mesuré le 7 septembre 2026** — `deploy/repetition-restauration-bls.sh`, 10 preuves,
+> 0 échec, sur un datadir jetable :
+>
+> | pièce restaurée | le portefeuille s'ouvre-t-il ? |
+> |---|---|
+> | keystore **et** wallet | oui, même clé publique |
+> | **wallet seul** | oui, même clé publique — c'est ce que le nœud ouvre |
+> | **keystore seul**, tel quel | non |
+> | **keystore seul** + `bls account import` | **oui, même clé publique** |
+>
+> Ce document portait « le keystore seul *devrait* suffire, mais je n'ai pas testé cette
+> restauration ». C'est désormais testé : il suffit, à condition de le réimporter, et
+> l'import réclame **deux** mots de passe — `--blspassword` pour le portefeuille et
+> `--importedaccountpassword` pour le keystore. Ici c'est le même ; ce ne le serait pas
+> forcément pour une clé venue d'ailleurs.
+>
+> **Chacune des deux pièces suffit donc.** Les sauvegarder toutes les deux reste la bonne
+> pratique — c'est une marge, plus une nécessité.
 
 ### 7.2 L'attitude à adopter, et elle diffère
 
