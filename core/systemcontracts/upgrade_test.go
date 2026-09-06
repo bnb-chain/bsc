@@ -100,7 +100,8 @@ func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
 			len(statedb.GetCode(vm.CAS20PolicyRegistryAddress)) != 0
 	}
 
-	// Born Jenner-active: nothing ever crosses the fork, so block 1 stands in (IsOnJenner).
+	// Born Jenner-active: nothing ever crosses the fork, so the sentinels have to
+	// come from the genesis alloc.
 	nonBSC := func() *params.ChainConfig {
 		cfg := *bscConfig()
 		cfg.Parlia = nil
@@ -127,7 +128,7 @@ func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
 		{"wholly after the boundary", bscConfig(), postLondon, forkTime + 1, forkTime + 2, true, false},
 		{"the block-end pass", bscConfig(), postLondon, forkTime - 1, forkTime, false, false},
 
-		{"block 1 of a chain born active", bornActive(), big.NewInt(1), 100, 200, true, true},
+		{"block 1 of a chain born active", bornActive(), big.NewInt(1), 100, 200, true, false},
 		{"block 2 of a chain born active", bornActive(), big.NewInt(2), 200, 300, true, false},
 		{"block 1 before the fork is scheduled", bscConfig(), big.NewInt(1), 1, 2, true, false},
 		{"a non-BSC chain at the boundary", nonBSC(), postLondon, forkTime - 1, forkTime, true, false},
