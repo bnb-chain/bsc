@@ -5,9 +5,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// CAS20 mutable metadata and the remaining IB20 views. Metadata writes are not
-// pause-gated, and a rename changes the live EIP-712 domain — it emits
-// EIP712DomainChanged and invalidates outstanding permits (BEP-702 3.6).
+// Metadata writes are not pause-gated (BEP-702 3.6).
 
 var (
 	selContractURI       = selector("contractURI()")
@@ -24,8 +22,6 @@ var (
 	cas20TopicEIP712DomainChanged = eventTopic("EIP712DomainChanged()")
 )
 
-// dispatchMetadata handles the metadata writers and the views that report
-// configuration rather than balances. ok is false when sel is none of them.
 func (t cas20Token) dispatchMetadata(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
 	case selContractURI:
@@ -45,7 +41,6 @@ func (t cas20Token) dispatchMetadata(sel [4]byte, args []byte) (ret []byte, err 
 		}
 		return d, nil, true
 
-	// writes (METADATA_ROLE)
 	case selUpdateName:
 		v, err := readStringArg(args, 0)
 		if err != nil {
@@ -117,8 +112,6 @@ func (t cas20Token) updateContractURI(v string) error {
 	return nil
 }
 
-// pausedFeatures lists the set pause bits in ascending order. The bitmask is
-// read once: reporting four features must not cost four SLOADs.
 func (t cas20Token) pausedFeatures() []common.Hash {
 	p := t.s.paused()
 	out := make([]common.Hash, 0, cas20PauseSeize+1)
@@ -130,23 +123,21 @@ func (t cas20Token) pausedFeatures() []common.Hash {
 	return out
 }
 
-// eip712Domain implements ERC-5267. fields is 0x0f — name, version, chainId
-// and verifyingContract are in use, salt and extensions are not — and matches
-// the four fields domainSeparator actually hashes.
+// ERC-5267. fields 0x0f names the four members domainSeparator hashes.
 func (t cas20Token) eip712Domain() ([]byte, bool) {
 	name, ok := t.s.name()
 	if !ok {
 		return nil, false
 	}
 	var fields common.Hash
-	fields[0] = 0x0f // bytes1 sits at the high end of its word
+	fields[0] = 0x0f
 	return encodeTuple(
 		abiWord(fields),
 		abiString(name),
 		abiString(cas20EIP712Version),
 		abiWord(wU256(t.ctx.ChainID())),
 		abiWord(addrKey(t.ctx.Self)),
-		abiWord(common.Hash{}), // salt: unused
-		abiWordArray(nil),      // extensions: none
+		abiWord(common.Hash{}),
+		abiWordArray(nil),
 	), true
 }

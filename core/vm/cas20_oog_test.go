@@ -15,10 +15,8 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TestCAS20ExhaustedBudgetStopsWork covers what chargeGas does not do: it marks
-// the frame out of gas and returns, leaving the caller to continue. Every
-// individual charge was correct, and the dispatcher failed the call at the end, so
-// the state was always discarded — but the node had already done all the work.
+// chargeGas only marks the frame; the state is discarded either way, but the node
+// must not do the work first.
 func TestCAS20ExhaustedBudgetStopsWork(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -40,7 +38,6 @@ func TestCAS20ExhaustedBudgetStopsWork(t *testing.T) {
 	}
 	input := encodeBatchMint(recips, amts)
 
-	// Best of several runs, so a scheduling hiccup cannot fail the test.
 	best := func(budget uint64, wantErr bool) time.Duration {
 		t.Helper()
 		out := time.Hour
@@ -62,9 +59,7 @@ func TestCAS20ExhaustedBudgetStopsWork(t *testing.T) {
 		return out
 	}
 
-	// 25,000 gas cannot even pay the calldata charge for this payload, so the
-	// batch must abandon immediately rather than mint 4000 times.
-	// The funded run is the baseline for what all 4000 mints actually cost.
+	// 25,000 gas cannot pay the calldata charge, so the batch must abandon at once.
 	starved, funded := best(25_000, true), best(200_000_000, false)
 	if starved*3 > funded {
 		t.Errorf("a starved batch took %v against %v for one that could pay — the loop "+
@@ -72,14 +67,10 @@ func TestCAS20ExhaustedBudgetStopsWork(t *testing.T) {
 	}
 }
 
-// TestCAS20BootstrapStopsOnExhaustion is the same property for the factory's
-// initCalls loop, which the first pass missed: each entry dispatches a whole
-// token call, making it the most expensive per iteration of all the
-// caller-sized loops. Found by sweeping for the shape, not by a failing test.
+// The same property for the initCalls loop, the most expensive per iteration.
 func TestCAS20BootstrapStopsOnExhaustion(t *testing.T) {
 	creator := common.HexToAddress("0xc4ea70")
 
-	// A long bundle of real grants, so every iteration writes storage.
 	const n = 1500
 	calls := make([][]byte, 0, n+1)
 	for i := 0; i < n; i++ {
@@ -115,10 +106,8 @@ func TestCAS20BootstrapStopsOnExhaustion(t *testing.T) {
 	}
 }
 
-// TestCAS20OldTailReleaseStopsOnExhaustion covers the one loop whose bound comes
-// from state rather than from the call's own calldata: replacing a long stored
-// string with a short one releases the old tail, and the old length is whatever a
-// previous caller paid to store.
+// The one loop whose bound comes from state, not calldata: the old tail's length
+// is whatever a previous caller paid to store.
 func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -131,7 +120,6 @@ func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// A name long enough that clearing its tail is measurable, stored and paid for.
 	long := strings.Repeat("N", 40_000)
 	if _, _, err := evm.Call(creator, token, encodeStringCall(selUpdateName, long),
 		NewGasBudget(500_000_000), uint256.NewInt(0)); err != nil {
@@ -160,8 +148,7 @@ func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 			if !wantErr && err != nil {
 				t.Fatalf("a funded updateName should succeed: %v", err)
 			}
-			// The long name surviving a failed attempt is what makes the work
-			// re-buyable, so assert it rather than assuming it.
+			// The surviving long name is what makes the work re-buyable.
 			if wantErr {
 				if got := newUnmeteredCAS20Storage(sdb, token).stringChunks(slotAt(cas20SlotName)); got != chunks {
 					t.Fatalf("after a reverted attempt the name occupies %d chunks, want %d", got, chunks)
@@ -178,8 +165,6 @@ func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 	}
 }
 
-// TestCAS20UnaffordableCallDoesNoWork covers the DoS shape RequiredGas() == 0 opens.
-// warmed reports whether an (address, slot) pair is in the access list.
 func warmed(db *state.StateDB, addr common.Address, slot common.Hash) bool {
 	_, ok := db.SlotInAccessList(addr, slot)
 	return ok
@@ -198,20 +183,17 @@ func TestCAS20UnaffordableCallDoesNoWork(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// A slot no earlier call touched, which balanceOf would warm.
 	slot := cas20Storage{token: token}.balanceSlot(cas20Carol)
 	if warmed(statedb, token, slot) {
 		t.Fatal("carol's slot is already warm; the fixture cannot show a skipped read")
 	}
 
-	// Driven without evm.Call's snapshot: it reverts on error, and the access list
-	// reverts with it, so through evm.Call the slot reads cold whether or not the
-	// handler touched it. Asserting the end state there would prove nothing.
+	// Without evm.Call's snapshot, which would revert the access list and read the
+	// slot cold whether or not the handler touched it.
 	p, ok := resolveCAS20(token)
 	if !ok {
 		t.Fatal("the token address does not resolve to a precompile")
 	}
-	// One gas: enough for the call frame, not for the calldata charge.
 	input := cas20Call(selBalanceOf, addrKey(cas20Carol))
 	out, left, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
 		creator, token, input, NewGasBudget(1), false, true, uint256.NewInt(0))
@@ -231,8 +213,6 @@ func TestCAS20UnaffordableCallDoesNoWork(t *testing.T) {
 	}
 }
 
-// TestCAS20CalldataGasMatchesTheBEP pins the calldata charge to BEP-702 3.14's
-// formula: G_copy + G_memory per 32-byte word, and nothing else.
 func TestCAS20CalldataGasMatchesTheBEP(t *testing.T) {
 	charged := func(words int) uint64 {
 		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -252,24 +232,15 @@ func TestCAS20CalldataGasMatchesTheBEP(t *testing.T) {
 				"and forbids synthesizing opcode or memory-expansion overhead", words, got, want)
 		}
 	}
-	// Linear, so the difference between sizes is the per-word price. A quadratic
-	// term would show up here even if the absolute values were adjusted to match.
+	// A quadratic term would show up in the differences even if the absolute values matched.
 	if d := charged(1000) - charged(999); d != params.CopyGas+params.MemoryGas {
 		t.Errorf("the 1000th word costs %d, want %d — the charge is not linear",
 			d, params.CopyGas+params.MemoryGas)
 	}
 }
 
-// TestCAS20AnnounceStopsAtTheUnpaidRead is the regression Codex named as the proof
-// that a failed read must be reported, not silently zeroed.
-//
-// A zero read made announcementUsed report "unused", so announce went on to
-// ABI-encode the id, description and uri into an Announcement log and — with an
-// empty calls array, where the loop's own guard never runs — encode the id again
-// for EndAnnouncement. Both insertions happened on a frame whose charge had
-// already been refused, so a failing call still published a complete, balanced
-// disclosure. Reaching EndAnnouncement is the observable: it is the last write in
-// the function, and nothing after the refusal should execute at all.
+// A read zeroed for want of gas once let announce publish a complete disclosure on
+// a refused frame. EndAnnouncement is the observable: it is the last write.
 func TestCAS20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	admin := cas20TestCaller
@@ -286,9 +257,8 @@ func TestCAS20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 		t.Fatal("the token does not resolve")
 	}
 
-	// Long strings, so the skipped work is proportional to calldata, and an empty
-	// calls array so the loop guard never gets a turn. A fresh id per probe, so each
-	// meets a cold slot rather than the previous probe's AnnouncementIdAlreadyUsed.
+	// An empty calls array so the loop guard never gets a turn; a fresh id per probe
+	// so each meets a cold slot.
 	long := strings.Repeat("x", 600)
 
 	probes, refused, zero := 0, 0, 0
@@ -309,9 +279,8 @@ func TestCAS20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 		if len(added) == 0 {
 			zero++
 		}
-		// A log the frame did pay for may be here — the caller's revert removes it.
-		// EndAnnouncement may not: it is emitted after the refusal point, so its
-		// presence in a failing call means execution carried on past the refusal.
+		// A log the frame paid for may be here; EndAnnouncement, emitted after the
+		// refusal point, may not.
 		for _, l := range added {
 			if l.Topics[0] == cas20TopicEndAnnouncement {
 				t.Fatalf("budget %d: the call ran out of gas yet reached EndAnnouncement, "+
@@ -329,14 +298,8 @@ func TestCAS20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 	}
 }
 
-// TestCAS20AnnouncementViewNeverAnswersFromAnUnpaidRead pins the end-to-end
-// property rather than either mechanism that provides it. Two independent
-// barriers stand between an unpaid read and a wrong answer: announcementUsed
-// reports that it could not read, and finishCAS20Metered overrides the returned
-// error whenever the frame's out-of-gas flag is set. Remove either alone and
-// the other still holds, so no single-mutation test can witness this; remove
-// both and the view returns false for an id that was announced, with a nil
-// error and gas still in hand. That combination is what this test refuses.
+// Two independent barriers stand between an unpaid read and a wrong answer, so no
+// single-mutation test can witness this; the end-to-end property is what is pinned.
 func TestCAS20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	admin := cas20TestCaller

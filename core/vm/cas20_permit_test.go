@@ -14,9 +14,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// newTokenWithEVM builds a token bound to a real EVM so ChainID()/BlockTime()
-// resolve (permit needs both). Any caller can submit; the seed callback runs
-// against the unmetered view.
 func newTokenWithEVM(t *testing.T, now uint64, seed func(cas20Storage)) (*state.StateDB, common.Address, func(caller common.Address, input []byte) ([]byte, error)) {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -44,11 +41,9 @@ func TestCAS20Permit(t *testing.T) {
 	})
 	view := newUnmeteredCAS20Storage(statedb, token)
 
-	// Build the token used only to compute the domain separator (same EVM cfg).
 	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, cas20TestChainConfig(), Config{})
-	// A real budget: this token only computes the domain separator, but a read whose
-	// charge fails now returns zero rather than the stored value, so a 1-gas context
-	// would hash an empty name and sign against the wrong domain.
+	// A real budget: a read whose charge fails returns zero, and a 1-gas context
+	// would sign against an empty name.
 	gas := NewGasBudget(2_000_000)
 	domTok := newCAS20Token(&PrecompileContext{evm: evm, StateDB: statedb, Self: token, gas: &gas}, 18)
 
@@ -79,10 +74,8 @@ func TestCAS20Permit(t *testing.T) {
 	spender := cas20Carol
 	relayer := cas20Bob // anyone may submit
 
-	// happy path: valid signature sets the allowance and bumps the nonce.
 	v, r, s := sign(key, owner, spender, 777, 200, 0)
-	// Empty returndata: EIP-2612's `permit(...) external` returns nothing, so a
-	// caller decoding a bool must fail here.
+	// EIP-2612's permit returns nothing, so a caller decoding a bool must fail here.
 	if ret, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); err != nil || len(ret) != 0 {
 		t.Fatalf("permit ret %x err %v, want empty returndata", ret, err)
 	}
@@ -93,25 +86,21 @@ func TestCAS20Permit(t *testing.T) {
 		t.Fatalf("nonce = %d, want 1", got)
 	}
 
-	// replay of the same signature now fails (nonce consumed).
 	if _, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("replay err = %v, want revert", err)
 	}
 
-	// expired deadline reverts.
 	v, r, s = sign(key, owner, spender, 1, 50, 1) // deadline 50 < now 100
 	if _, err := run(relayer, permitCall(owner, spender, 1, 50, v, r, s)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("expired err = %v, want revert", err)
 	}
 
-	// signature by a different key (claiming owner) reverts.
 	other, _ := crypto.GenerateKey()
 	v, r, s = sign(other, owner, spender, 5, 200, 1)
 	if _, err := run(relayer, permitCall(owner, spender, 5, 200, v, r, s)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("wrong-signer err = %v, want revert", err)
 	}
 
-	// DOMAIN_SEPARATOR() and nonces() views.
 	want, paid := domTok.domainSeparator()
 	if !paid {
 		t.Fatal("the reference domain separator could not be paid for")

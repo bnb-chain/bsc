@@ -10,7 +10,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// probePrecompile records the context it was handed instead of doing work.
 type probePrecompile struct {
 	cas20StatefulBase
 	got PrecompileContext
@@ -23,8 +22,6 @@ func (p *probePrecompile) RunStateful(ctx *PrecompileContext, _ []byte) ([]byte,
 	return nil, nil
 }
 
-// TestStatefulPrecompileCallContext pins the msg.sender and msg.value a stateful
-// precompile is handed on each of the four call opcodes.
 func TestStatefulPrecompileCallContext(t *testing.T) {
 	var (
 		probeAddr = common.HexToAddress("0x0b0be0")
@@ -75,8 +72,7 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 			wantCaller: caller, wantValue: 0, wantDirect: true, wantRead: true,
 		},
 		{
-			// CALLCODE transfers value to the caller itself, so the frame is
-			// value-bearing and msg.sender is the immediate caller.
+			// CALLCODE transfers value to the caller itself.
 			name: "CALLCODE",
 			invoke: func(evm *EVM, _ *probePrecompile) {
 				evm.CallCode(caller, probeAddr, nil, NewGasBudget(100_000), uint256.NewInt(value))
@@ -84,8 +80,7 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 			wantCaller: caller, wantValue: value, wantDirect: false,
 		},
 		{
-			// DELEGATECALL preserves the parent's msg.sender and inherits its
-			// msg.value; neither is the immediate caller's.
+			// DELEGATECALL preserves the parent's msg.sender and msg.value.
 			name: "DELEGATECALL",
 			invoke: func(evm *EVM, _ *probePrecompile) {
 				evm.DelegateCall(origin, caller, probeAddr, nil, NewGasBudget(100_000), uint256.NewInt(value))

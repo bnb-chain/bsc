@@ -8,87 +8,61 @@ import (
 )
 
 // StatefulPrecompiledContract is a precompile that reads and writes consensus
-// state. Unlike the plain PrecompiledContract, whose Run is a pure function of
-// its input, a stateful precompile is handed a PrecompileContext carrying the
-// StateDB, the caller, the call mode, and dynamic gas metering. It is the host
-// primitive the CAS20 token family is built on.
+// state through a PrecompileContext, unlike PrecompiledContract, whose Run is a
+// pure function of its input.
 type StatefulPrecompiledContract interface {
-	// RequiredGas returns the flat gas charged up-front, before RunStateful.
-	// Additional, data-dependent cost is charged inside RunStateful via
-	// PrecompileContext.UseGas.
+	// RequiredGas is the flat charge taken before RunStateful; data-dependent
+	// cost is charged inside it.
 	RequiredGas(input []byte) uint64
 
-	// RunStateful executes the precompile against ctx. Returning a non-nil error
-	// reverts every state mutation performed during the call (the enclosing
-	// Call/StaticCall frame is already wrapped in a StateDB snapshot).
+	// RunStateful's error reverts every state mutation of the call.
 	RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error)
 }
 
-// PrecompileContext is the execution environment handed to a stateful
-// precompile. It exposes exactly the host capabilities a native token needs —
-// state access, caller identity, call-mode guards, log emission and dynamic
-// gas — without leaking the whole *EVM.
+// PrecompileContext is the execution environment handed to a stateful precompile.
 type PrecompileContext struct {
 	evm *EVM
 
-	// StateDB is the live state; mutations are journalled and revert with the
-	// enclosing call frame's snapshot when RunStateful returns an error.
 	StateDB StateDB
 
-	// Self is the address the precompile is bound to. For the CAS20 dynamic
-	// family this is the token address, and is the storage root for its state.
+	// Self is the callee address and the storage root of its state.
 	Self common.Address
 
 	// Caller is msg.sender for this frame.
 	Caller common.Address
 
-	// ReadOnly is true inside a STATICCALL (or any read-only ancestor frame);
-	// a precompile must reject state mutation when set.
+	// ReadOnly is true inside a STATICCALL or any read-only ancestor frame.
 	ReadOnly bool
 
-	// DirectCall is true for CALL and STATICCALL, false for CALLCODE and
-	// DELEGATECALL. Stateful token precompiles reject non-direct calls so that
-	// Self is always the genuine callee and can be trusted as the storage root.
+	// DirectCall is false for CALLCODE and DELEGATECALL, which would make Self
+	// something other than the genuine callee.
 	DirectCall bool
 
-	// Value is the wei attached to the frame (nil means zero). Every CAS20 entry
-	// point is nonpayable and rejects a non-zero value with NonPayable
-	// (BEP-702 section 3.2).
+	// Value is the wei attached to the frame; nil means zero.
 	Value *uint256.Int
 
-	// gas points at the caller's remaining budget so UseGas can meter
-	// data-dependent cost in place.
 	gas *GasBudget
 
-	// adminRenounced records that a token gave up its last admin during this
-	// frame, so a bootstrap bundle cannot renounce and then grant again (BEP-702
-	// 3.4). Per-frame rather than stored: outside the bootstrap window the zero
-	// admin count freezes role mutation on its own.
+	// adminRenounced is per-frame, not stored: outside the bootstrap window the zero
+	// admin count freezes role mutation on its own (BEP-702 3.4).
 	adminRenounced bool
 
-	// frame holds accounting shared by every context in this EVM frame, so a
-	// spawned child's exhaustion and charges are not lost. Lazily allocated.
+	// frame is shared with every context spawned in this EVM frame, so a child's
+	// exhaustion and charges are not lost. Lazily allocated.
 	frame *frameAccounting
 }
 
-// frameAccounting is shared by every context in one EVM frame, so a child's gas
-// exhaustion and state-gas charges cannot be lost on the way back.
 type frameAccounting struct {
-	// outOfGas is set sticky once a charge cannot be covered; the dispatcher
-	// checks it and returns ErrOutOfGas.
 	outOfGas bool
 
-	// writeProtected is set sticky when a metered write is attempted in a
-	// read-only frame. It outranks outOfGas at the exit: the frame had no business
+	// writeProtected outranks outOfGas at the exit: the frame had no business
 	// writing at all, whatever it could afford.
 	writeProtected bool
 
 	meteredGasUsed uint64
 }
 
-// UseGas charges cost against the remaining budget. It returns false and
-// exhausts the budget when the charge cannot be covered, mirroring the EVM's
-// out-of-gas semantics; callers should propagate ErrOutOfGas on false.
+// UseGas exhausts the budget when the charge cannot be covered, as the EVM does.
 func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 	prior, ok := ctx.gas.Charge(cost)
 	if !ok {
@@ -101,9 +75,7 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 	return true
 }
 
-// spawnBootstrap derives a context bound to a different self address, sharing
-// this frame's state, gas budget and accounting. ReadOnly is carried
-// across: dropping it would let initCalls write during a STATICCALL.
+// ReadOnly is carried across: dropping it would let initCalls write during a STATICCALL.
 func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *PrecompileContext {
 	return &PrecompileContext{
 		evm:        ctx.evm,
@@ -117,8 +89,6 @@ func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *Preco
 	}
 }
 
-// frameGas returns the shared frame accounting, allocating it on first use so a
-// context built as a plain struct literal needs no initialisation.
 func (ctx *PrecompileContext) frameGas() *frameAccounting {
 	if ctx.frame == nil {
 		ctx.frame = new(frameAccounting)
@@ -126,18 +96,10 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 	return ctx.frame
 }
 
-// markOutOfGas records exhaustion. Every context spawned from this one — and the
-// one it was spawned from — observes it, because they hold the same accounting.
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
-// chargeGas charges cost against the frame and reports whether it may continue.
-// Every CAS20 charge arrives here, state access and computation alike.
-//
-// False means stop: the caller must return before the operation this charge pays
-// for, the way the interpreter checks UseGas before executing an opcode rather
-// than after. A charge that cannot be covered marks the frame, and an already
-// marked frame refuses every later charge, so one failure ends the call rather
-// than letting the rest of the handler run on an exhausted budget.
+// chargeGas is where every CAS20 charge arrives. False means stop before the
+// operation the charge pays for, as the interpreter checks gas before an opcode.
 func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 	if ctx.OutOfGas() {
 		return false
@@ -150,18 +112,10 @@ func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 	return true
 }
 
-// OutOfGas reports whether a charge has failed during this call. The
-// dispatcher must check it after driving the token logic and return
-// ErrOutOfGas so the frame reverts.
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
-// meteredGasUsed returns every charge this frame levied, a bootstrap child's
-// included: state access and equally the calldata copy, the keccaks, the logs and
-// permit's ecrecover. Read only by the metering tests.
-//
-// It is not GasCosts.StateGas, which is a separate dimension — half of what is
-// counted here is computation. Wiring it there means dividing these charges by
-// dimension first.
+// meteredGasUsed is read only by the metering tests. It is not GasCosts.StateGas:
+// half of what it counts is computation.
 func (ctx *PrecompileContext) meteredGasUsed() uint64 {
 	if ctx.frame == nil {
 		return 0
@@ -169,35 +123,25 @@ func (ctx *PrecompileContext) meteredGasUsed() uint64 {
 	return ctx.frame.meteredGasUsed
 }
 
-// gasLeft reports the regular gas remaining in the budget.
 func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.RegularGas }
 
-// BlockTime returns the timestamp of the block being executed.
 func (ctx *PrecompileContext) BlockTime() uint64 { return ctx.evm.Context.Time }
 
-// ChainID returns the active chain id.
 func (ctx *PrecompileContext) ChainID() *uint256.Int {
 	id, _ := uint256.FromBig(ctx.evm.chainConfig.ChainID)
 	return id
 }
 
-// markWriteProtected records an attempted write in a read-only frame, the way
-// geth's gas functions return ErrWriteProtection before pricing anything
-// (gasSStoreEIP2200, gasSelfdestruct, gasCallIntrinsic). The handlers each check
-// ReadOnly first and none is known to be missing; this is what makes a missing
-// one fail closed instead of writing state inside a STATICCALL.
+// The handlers each check ReadOnly first; this is what makes a missing check fail
+// closed instead of writing inside a STATICCALL.
 func (ctx *PrecompileContext) markWriteProtected() { ctx.frameGas().writeProtected = true }
 
-// writeProtectionViolated reports whether any write was attempted in a read-only
-// frame during this call.
 func (ctx *PrecompileContext) writeProtectionViolated() bool {
 	return ctx.frame != nil && ctx.frame.writeProtected
 }
 
-// AddLog emits a log, or does nothing and reports false when the charge for it
-// cannot be covered. Dropping that result let a handler whose write had already
-// been refused still append its event: approve's Approval log costs 1,756 gas,
-// which fits inside the 2,300 the EIP-2200 sentry leaves behind.
+// AddLog's result must be honoured: an Approval log fits inside the 2,300 gas the
+// EIP-2200 sentry leaves behind, so a refused write could still emit its event.
 func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) bool {
 	if ctx.ReadOnly {
 		ctx.markWriteProtected()

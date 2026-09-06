@@ -7,7 +7,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// CAS20 core storage layout.
 const cas20Namespace = "bsc.cas20"
 
 const (
@@ -28,11 +27,8 @@ const (
 	cas20SlotSeizePolicies    = 14
 )
 
-// Packed u64 byte offsets within the policy slots. The lanes a group leaves
-// free are reserved for that group: the mint slot holds one id today and the
-// rest of it belongs to future mint-side policy types, which is why the seize
-// ids sit in a slot of their own rather than filling it. Seize is a cold path,
-// so the extra load costs nothing that matters.
+// The free lanes of each policy slot are reserved for that group, which is why
+// the seize ids have a slot of their own rather than filling the mint slot.
 const (
 	cas20OffTransferSender   = 0
 	cas20OffTransferReceiver = 8
@@ -44,39 +40,31 @@ const (
 
 var cas20CoreRoot = erc7201Root(cas20Namespace)
 
-// erc7201Root computes the ERC-7201 storage root of a namespace:
 func erc7201Root(namespace string) common.Hash {
 	inner := new(uint256.Int).SetBytes(crypto.Keccak256([]byte(namespace)))
 	inner.SubUint64(inner, 1)
 	buf := inner.Bytes32()
 	root := crypto.Keccak256Hash(buf[:])
-	root[31] = 0 // clear the low byte
+	root[31] = 0
 	return root
 }
 
-// slotAt returns the absolute storage slot of a fixed field at the given
-// offset from the core root.
 func slotAt(offset uint64) common.Hash {
 	s := new(uint256.Int).SetBytes(cas20CoreRoot.Bytes())
 	s.AddUint64(s, offset)
 	return s.Bytes32()
 }
 
-// offsetSlot returns the slot at root+offset, the fixed-field addressing every
-// CAS20 namespace uses.
 func offsetSlot(root common.Hash, offset uint64) common.Hash {
 	x := new(uint256.Int).SetBytes(root.Bytes())
 	x.AddUint64(x, offset)
 	return x.Bytes32()
 }
 
-// mappingSlot returns the Solidity storage slot of mapping[key] where the
-// mapping is declared at base: keccak256(pad32(key) ++ base).
 func mappingSlot(base, key common.Hash) common.Hash {
 	return crypto.Keccak256Hash(key.Bytes(), base.Bytes())
 }
 
-// addrKey left-pads an address to a 32-byte mapping key.
 func addrKey(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
 
 type cas20Storage struct {
@@ -85,14 +73,8 @@ type cas20Storage struct {
 	ctx   *PrecompileContext
 }
 
-// mapSlot derives mapping[key] and meters the keccak, which hashes the 64-byte
-// (key ++ base) preimage. Use it on any metered path; the bare mappingSlot helper
-// stays available for tests and unmetered views.
-//
-// The three derivations below return the zero slot when their charge is refused.
-// That slot is meaningless, not dangerous: the frame is out of gas by then, so
-// every read or write through it is refused too. Skipping the hash matters most
-// for strMapSlot, whose preimage is caller-sized.
+// A refused charge yields the zero slot, which is harmless: the frame is out of
+// gas by then, so every access through it is refused too.
 func (s cas20Storage) mapSlot(base, key common.Hash) common.Hash {
 	if s.ctx != nil && !s.ctx.chargeKeccak(64) {
 		return common.Hash{}
@@ -100,10 +82,8 @@ func (s cas20Storage) mapSlot(base, key common.Hash) common.Hash {
 	return mappingSlot(base, key)
 }
 
-// strMapSlot derives mapping[key] for a string-keyed mapping. Solidity hashes
-// the key's raw bytes concatenated with the base slot rather than padding the
-// key to a word, so the preimage is variable-length — and so is the charge,
-// which is what keeps a long caller-supplied key from hashing for free.
+// Solidity hashes a string key's raw bytes ++ base, so the preimage and the charge
+// are caller-sized.
 func (s cas20Storage) strMapSlot(base common.Hash, key string) common.Hash {
 	if s.ctx != nil && !s.ctx.chargeKeccak(len(key)+32) {
 		return common.Hash{}
@@ -111,30 +91,22 @@ func (s cas20Storage) strMapSlot(base common.Hash, key string) common.Hash {
 	return crypto.Keccak256Hash([]byte(key), base.Bytes())
 }
 
-// newUnmeteredCAS20Storage returns a view that charges no gas. Only for callers
-// that have no frame to charge — the fork seeding hook and the state queries
-// behind it — and for tests. Everything reached from a precompile call must use
-// newMeteredCAS20Storage, or its state access is free.
+// Only for callers with no frame to charge: the fork seeding hook, state queries
+// and tests. Everything reached from a precompile call must be metered.
 func newUnmeteredCAS20Storage(state StateDB, token common.Address) cas20Storage {
 	return cas20Storage{state: state, token: token}
 }
 
-// newMeteredCAS20Storage returns a view bound to ctx.Self that charges gas for
-// each slot access.
 func newMeteredCAS20Storage(ctx *PrecompileContext) cas20Storage {
 	return cas20Storage{state: ctx.StateDB, token: ctx.Self, ctx: ctx}
 }
 
-// newMeteredCAS20StorageAt is newMeteredCAS20Storage for a fixed address instead of
-// ctx.Self, which a token needs when it consults a registry for its own gating.
-// Charged as storage with no account-access surcharge, as if the slot were its
-// own (BEP-702 3.14).
+// A token consulting a registry pays as if the slot were its own: no
+// account-access surcharge (BEP-702 3.14).
 func newMeteredCAS20StorageAt(ctx *PrecompileContext, token common.Address) cas20Storage {
 	return cas20Storage{state: ctx.StateDB, token: token, ctx: ctx}
 }
 
-// chargeRead meters an SLOAD-equivalent at EIP-2929 prices: warm always, plus
-// the cold surcharge on the first touch of the slot in this transaction.
 func (s cas20Storage) chargeRead(slot common.Hash) bool {
 	if s.ctx == nil {
 		return true
@@ -146,14 +118,8 @@ func (s cas20Storage) chargeRead(slot common.Hash) bool {
 	return s.ctx.chargeGas(params.ColdSloadCostEIP2929)
 }
 
-// getWord reads a slot after charging for it. The second result is false when the
-// charge could not be covered, in which case nothing was read and the caller must
-// stop — the value is meaningless, and acting on a zero is how a frame out of gas
-// took a fail-open branch.
-// getWordChecked is getWord with the charge result, for reads whose value decides
-// a branch. getWord's zero is safe only where the next charge stops the caller
-// anyway; where a zero means "absent" and absent means "proceed", the caller has
-// to know the read never happened.
+// getWordChecked is for reads whose value decides a branch: getWord's zero is safe
+// only where the next charge stops the caller anyway, not where zero means "proceed".
 func (s cas20Storage) getWordChecked(slot common.Hash) (common.Hash, bool) {
 	if !s.chargeRead(slot) {
 		return common.Hash{}, false
@@ -168,14 +134,8 @@ func (s cas20Storage) getWord(slot common.Hash) common.Hash {
 	return s.state.GetState(s.token, slot)
 }
 
-// setWord writes a slot after metering it (see chargeStorageWrite) and reports
-// whether the write happened. False covers an unaffordable charge, the reentrancy
-// sentry, and a read-only frame.
-//
-// Honour the result before doing work proportional to what the caller sent. The
-// fixed-size wrappers below drop it deliberately: the out-of-gas flag is sticky
-// and the exit reports it either way, so what dropping it costs is the bound on
-// work, not correctness.
+// The fixed-size wrappers below drop the result deliberately: the out-of-gas flag
+// is sticky, so what dropping it costs is the bound on work, not correctness.
 func (s cas20Storage) setWord(slot, val common.Hash) bool {
 	if !s.chargeStorageWrite(slot, val) {
 		return false
@@ -201,8 +161,6 @@ func (s cas20Storage) setSupplyCap(v *uint256.Int)   { s.setU256(cas20SlotSupply
 func (s cas20Storage) adminCount() *uint256.Int      { return s.getU256(cas20SlotAdminCount) }
 func (s cas20Storage) setAdminCount(v *uint256.Int)  { s.setU256(cas20SlotAdminCount, v) }
 
-// pausedChecked is paused with the charge result, for the write path, whose work
-// after the read is proportional to the caller's feature array.
 func (s cas20Storage) pausedChecked() (*uint256.Int, bool) {
 	w, ok := s.getWordChecked(slotAt(cas20SlotPaused))
 	if !ok {
@@ -216,11 +174,8 @@ func (s cas20Storage) setPaused(v *uint256.Int) { s.setU256(cas20SlotPaused, v) 
 
 // --- balances / allowances / nonces ----------------------------------------
 
-// Deriving a mapping slot is a metered keccak, so a read-modify-write that goes
-// through balanceOf then setBalance pays for the hash twice where a Solidity
-// implementation computes it once. The slot-taking forms below let a caller
-// derive once and reuse; the address-taking forms remain for single accesses,
-// views and tests.
+// Deriving a mapping slot is a metered keccak, so a read-modify-write derives the
+// slot once and reuses it, as Solidity would.
 
 func (s cas20Storage) balanceSlot(a common.Address) common.Hash {
 	return s.mapSlot(slotAt(cas20SlotBalances), addrKey(a))
@@ -297,7 +252,6 @@ func (s cas20Storage) getPackedU64(offset uint64, byteOff uint) uint64 {
 	return word.Rsh(word, byteOff*8).Uint64()
 }
 
-// setPackedU64 writes v into the u64 lane at byteOff, preserving the other lanes.
 func (s cas20Storage) setPackedU64(offset uint64, byteOff uint, v uint64) {
 	slot := slotAt(offset)
 	word := new(uint256.Int).SetBytes(s.getWord(slot).Bytes())
@@ -307,9 +261,6 @@ func (s cas20Storage) setPackedU64(offset uint64, byteOff uint, v uint64) {
 	s.setWord(slot, word.Bytes32())
 }
 
-// transferPolicies reads all three transfer-side ids with one storage access:
-// they share a slot, so reading them separately pays for the same slot three
-// times. seizePolicies does the same for its pair.
 func (s cas20Storage) transferPolicies() (sender, receiver, executor uint64) {
 	w := s.getU256At(slotAt(cas20SlotTransferPolicies))
 	return packedLane(w, cas20OffTransferSender), packedLane(w, cas20OffTransferReceiver),
@@ -321,7 +272,6 @@ func (s cas20Storage) seizePolicies() (holder, receiver uint64) {
 	return packedLane(w, cas20OffSeizeHolder), packedLane(w, cas20OffSeizeReceiver)
 }
 
-// packedLane extracts the u64 lane at byteOff from an already-read slot value.
 func packedLane(word *uint256.Int, byteOff uint) uint64 {
 	return new(uint256.Int).Rsh(word, byteOff*8).Uint64()
 }
@@ -364,10 +314,6 @@ func (s cas20Storage) setString(offset uint64, str string) bool {
 	return s.setStringAt(slotAt(offset), str)
 }
 
-// stringDataRoot derives the slot a long string's data begins at, keccak256 of
-// the length slot, and meters the hash of that 32-byte preimage. Deriving a
-// mapping slot is metered the same way (see mapSlot); a long string's data root
-// is no less a runtime keccak just because the preimage is one word.
 func (s cas20Storage) stringDataRoot(slot common.Hash) *uint256.Int {
 	if s.ctx != nil && !s.ctx.chargeKeccak(32) {
 		return new(uint256.Int)
@@ -375,40 +321,30 @@ func (s cas20Storage) stringDataRoot(slot common.Hash) *uint256.Int {
 	return new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
 }
 
-// cas20MaxStringLen bounds a string read against a malformed length word.
 const cas20MaxStringLen = 1 << 24
 
-// getStringAt / setStringAt read and write a Solidity string at an arbitrary
-// slot (used for fixed fields and for string-keyed mapping values).
 func (s cas20Storage) getStringAt(slot common.Hash) (string, bool) {
 	word, ok := s.getWordChecked(slot)
 	if !ok {
 		return "", false
 	}
 	if word[31]&1 == 0 {
-		// short string: content in the high bytes, low byte holds 2*len.
 		n := int(word[31]) / 2
 		if n > 31 {
 			return "", true
 		}
 		return string(word[:n]), true
 	}
-	// long string: slot holds 2*len+1; content starts at keccak256(slot).
 	encoded := new(uint256.Int).SetBytes(word.Bytes())
 	if encoded.Gt(uint256.NewInt(2*cas20MaxStringLen + 1)) {
 		return "", true
 	}
 	length := (encoded.Uint64() - 1) / 2
-	// The long form encodes 32 bytes or more; a shorter length belongs to the
-	// short form and no write produces it here. Reading it as empty keeps every
-	// non-canonical length word answering the same way, rather than leaving the
-	// short form's own bound (above) as the only one enforced.
 	if length < 32 {
 		return "", true
 	}
 	base := s.stringDataRoot(slot)
-	// Before the allocation, not after: the loop below checks each iteration, but
-	// make() runs once with the stored length whatever the budget says.
+	// Before the allocation: make() runs with the stored length whatever the budget says.
 	if s.ctx != nil && s.ctx.OutOfGas() {
 		return "", false
 	}
@@ -424,7 +360,6 @@ func (s cas20Storage) getStringAt(slot common.Hash) (string, bool) {
 	return string(out[:length]), true
 }
 
-// setStringAt writes a string, releasing whatever the previous value held.
 func (s cas20Storage) setStringAt(slot common.Hash, str string) bool {
 	b := []byte(str)
 	oldChunks := s.stringChunks(slot)
@@ -444,10 +379,8 @@ func (s cas20Storage) setStringAt(slot common.Hash, str string) bool {
 		return false
 	}
 	if newChunks == 0 && oldChunks == 0 {
-		return true // wholly inline, before and after: no data region exists
+		return true
 	}
-	// One keccak covers writing the new chunks and releasing the old ones, as
-	// it would in Solidity — deriving the root twice would overcharge.
 	base := s.stringDataRoot(slot)
 	for i := uint64(0); i < newChunks; i++ {
 		if s.ctx != nil && s.ctx.OutOfGas() {
@@ -457,13 +390,8 @@ func (s cas20Storage) setStringAt(slot common.Hash, str string) bool {
 		copy(chunk[:], b[i*32:])
 		s.setWord(new(uint256.Int).AddUint64(base, i).Bytes32(), chunk)
 	}
-	// The release loop needs its own guard, and for a different reason than the
-	// write loop above: oldChunks comes from state, not from this call's calldata.
-	// Replacing a long stored string with a short one does work proportional to the
-	// *old* length, which the current caller never paid for — and since an
-	// exhausted frame reverts, the long string survives for the next attempt. A
-	// 60,000-byte name costs 41.9M gas to store once, after which updateName("x")
-	// on 30,000 gas cleared 1875 slots in 126us and could do so again forever.
+	// oldChunks comes from state, not calldata: without this guard a starved frame
+	// would do work proportional to the old length and never pay for it.
 	for i := newChunks; i < oldChunks; i++ {
 		if s.ctx != nil && s.ctx.OutOfGas() {
 			return false
@@ -473,18 +401,13 @@ func (s cas20Storage) setStringAt(slot common.Hash, str string) bool {
 	return true
 }
 
-// stringChunks reports how many tail slots the string currently at slot
-// occupies. A short string is held inline and occupies none.
 func (s cas20Storage) stringChunks(slot common.Hash) uint64 {
 	word := s.getWord(slot)
 	if word[31]&1 == 0 {
 		return 0
 	}
-	// Same untrusted word as getStringAt, so the same bounds, both of them: the
-	// upper one because the release loop in setStringAt would otherwise be handed
-	// a chunk count of any size and an unmetered view has no out-of-gas guard to
-	// stop it, the lower one because a word getStringAt reads as empty must not
-	// leave chunks behind for the release loop to walk.
+	// Same bounds as getStringAt: a word it reads as empty must not leave chunks
+	// for the release loop to walk.
 	encoded := new(uint256.Int).SetBytes(word.Bytes())
 	if encoded.Gt(uint256.NewInt(2*cas20MaxStringLen + 1)) {
 		return 0

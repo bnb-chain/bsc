@@ -11,15 +11,12 @@ type cas20Token struct {
 	s        cas20Storage
 	decimals uint8
 
-	// privileged is set on the factory's bootstrap path, where role and
-	// transfer-side policy gates are skipped (anti-revival and MINT_RECEIVER
-	// checks are still enforced). Always false for ordinary calls.
+	// privileged marks the factory's bootstrap frame: role and transfer-side
+	// policy gates are skipped there, MINT_RECEIVER and the renounce freeze are not.
 	privileged bool
 
-	// inAnnounce marks the Asset disclosure window. announce sets it on the
-	// token value it threads into the bundle's internal calls, so a nested
-	// announce sees it and reverts; the enclosing frame's own value is a copy
-	// and needs no reset.
+	// inAnnounce travels by value into announce's internal calls, so a nested
+	// announce sees it and reverts.
 	inAnnounce bool
 }
 
@@ -27,8 +24,6 @@ func newCAS20Token(ctx *PrecompileContext, decimals uint8) cas20Token {
 	return cas20Token{ctx: ctx, s: newMeteredCAS20Storage(ctx), decimals: decimals}
 }
 
-// newCAS20TokenBootstrap returns a token in the factory's privileged bootstrap
-// mode, where role and transfer-side policy gates are skipped.
 func newCAS20TokenBootstrap(ctx *PrecompileContext, decimals uint8) cas20Token {
 	t := newCAS20Token(ctx, decimals)
 	t.privileged = true
@@ -65,10 +60,6 @@ var (
 	maxU256 = new(uint256.Int).Not(new(uint256.Int))
 )
 
-// dispatch routes a call by selector. It returns the ABI-encoded result on
-// success. Business-rule failures and unknown selectors revert
-// (ErrExecutionReverted); a write reached in a read-only frame throws
-// (ErrWriteProtection), matching SSTORE-in-STATICCALL semantics.
 func (t cas20Token) dispatch(input []byte) ([]byte, error) {
 	if len(input) < 4 {
 		return nil, ErrExecutionReverted
@@ -145,15 +136,12 @@ func (t cas20Token) dispatch(input []byte) ([]byte, error) {
 		}
 		return t.transferFrom(t.ctx.Caller, from, to, amount)
 	}
-	// RBAC / pause / mint-burn / configurable selectors.
 	if ret, err, ok := t.dispatchAdmin(sel, args); ok {
 		return ret, err
 	}
-	// Mutable metadata and the configuration views.
 	if ret, err, ok := t.dispatchMetadata(sel, args); ok {
 		return ret, err
 	}
-	// permit (EIP-2612) and the *WithMemo family.
 	if ret, err, ok := t.dispatchPermitMemo(sel, args); ok {
 		return ret, err
 	}
@@ -166,21 +154,14 @@ func (t cas20Token) approve(owner, spender common.Address, amount *uint256.Int) 
 	if t.ctx.ReadOnly {
 		return nil, ErrWriteProtection
 	}
-	// The approver is checked first. owner is msg.sender, so a zero one only
-	// arises from a frame with no caller, but the check is declared and costs a
-	// comparison.
+	// owner is msg.sender, so this only trips in a frame with no caller; the check is declared anyway.
 	if owner == (common.Address{}) {
 		return nil, revCAS20("InvalidApprover(address)", errSelInvalidApprover, addrKey(owner))
 	}
 	if spender == (common.Address{}) {
 		return nil, revCAS20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
 	}
-	// Not gated by pause or policy, and that follows from the published lists
-	// rather than from intent: PausableFeature is { TRANSFER, MINT, BURN, SEIZE }
-	// (BEP-702 3.9) and the six policy scopes cover transfer sender/receiver/
-	// executor, mint receiver and seize holder/receiver (3.8). Neither names
-	// approve, so there is nothing to consult. A paused token still accepts
-	// approvals; the transfer they authorize is what the pause stops.
+	// Neither the pause features (BEP-702 3.9) nor the policy scopes (3.8) name approve.
 	t.s.setAllowance(owner, spender, amount)
 	if !t.emit(cas20TopicApproval, owner, spender, amount) {
 		return nil, ErrOutOfGas
@@ -211,23 +192,14 @@ func (t cas20Token) transferFrom(spender, from, to common.Address, amount *uint2
 	if t.isPaused(cas20PauseTransfer) {
 		return nil, revCAS20("ContractPaused(uint8)", errSelContractPaused, wU8(cas20PauseTransfer))
 	}
-	// The two malformed-argument checks come before the allowance and the
-	// executor policy: a transfer to the zero address is reported as such whatever
-	// the caller's allowance is. move() repeats them for
-	// the direct transfer path; they are comparisons on already-decoded arguments,
-	// so the duplicate costs nothing.
+	// Zero-address checks before the allowance: a bad receiver is reported as such
+	// whatever the allowance is. move repeats them for the direct path.
 	if to == (common.Address{}) {
 		return nil, revCAS20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
 	if from == (common.Address{}) {
 		return nil, revCAS20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
-	// The allowance is spent unconditionally — the owner spending their own
-	// balance through transferFrom needs a self-approval, and the factory
-	// bootstrap window carves no exception either. U256::MAX stays infinite.
-	//
-	// Only the executor policy takes the self shortcut, and the privileged one:
-	// the sender policy already covers `from` inside move().
 	slot := t.s.allowanceSlot(from, spender)
 	allowed := t.s.getU256At(slot)
 	infinite := allowed.Eq(maxU256)
@@ -235,8 +207,7 @@ func (t cas20Token) transferFrom(spender, from, to common.Address, amount *uint2
 		return nil, revCAS20("InsufficientAllowance(address,uint256,uint256)", errSelInsufficientAllow,
 			addrKey(spender), wU256(allowed), wU256(amount))
 	}
-	// Consulted after the allowance: an unauthorized executor with too little
-	// allowance is told about the allowance.
+	// After the allowance: an unauthorized executor with too little allowance is told about the allowance.
 	if !t.privileged && spender != from {
 		if _, _, executor := t.s.transferPolicies(); !t.policyAllows(executor, spender) {
 			return nil, revCAS20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
@@ -262,7 +233,6 @@ func (t cas20Token) policyAllows(id uint64, account common.Address) bool {
 	return newPolicyReg(t.ctx).isAuthorized(id, account)
 }
 
-// move debits from and credits to, reverting on insufficient balance.
 func (t cas20Token) move(from, to common.Address, amount *uint256.Int) error {
 	if to == (common.Address{}) {
 		return revCAS20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
@@ -270,9 +240,6 @@ func (t cas20Token) move(from, to common.Address, amount *uint256.Int) error {
 	if from == (common.Address{}) {
 		return revCAS20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
-	// TRANSFER_SENDER / TRANSFER_RECEIVER compliance (skipped when privileged).
-	// Both ids share one slot, and the revert payload reuses the id already read
-	// rather than reading it again.
 	if !t.privileged {
 		sender, receiver, _ := t.s.transferPolicies()
 		if !t.policyAllows(sender, from) {
@@ -284,10 +251,8 @@ func (t cas20Token) move(from, to common.Address, amount *uint256.Int) error {
 				scopeTransferReceiver, wU64(receiver))
 		}
 	}
-	// Each balance slot is derived once and reused for its read and its write, and
-	// both writes happen unconditionally — including when from == to or amount is
-	// zero. Bytecode performs them anyway, and skipping them would price a native
-	// token below the contract it replaces (BEP-702 3.14).
+	// Both writes happen even when from == to or amount is zero: bytecode would
+	// perform them, and skipping them would underprice the native token (BEP-702 3.14).
 	fromSlot := t.s.balanceSlot(from)
 	bal := t.s.getU256At(fromSlot)
 	if bal.Lt(amount) {
@@ -331,14 +296,8 @@ func readAddress(args []byte, i int) (common.Address, error) {
 	return a, nil
 }
 
-// addressFromWord is the strict ABI reading of an address word: the twelve high
-// bytes must be zero. Truncating them instead would accept encodings another
-// client rejects, and address[] elements need the same rule as scalar arguments.
-// u64FromWord decodes a uint64 argument, refusing anything above the low eight
-// bytes — Solidity's external decoder rejects a dirty word rather than
-// truncating it.
-// wordFitsIn reports whether only the low n bytes of w are set, the check
-// Solidity's external decoder makes for every type narrower than a word.
+// wordFitsIn is the check Solidity's external decoder makes for every type
+// narrower than a word: dirty high bytes are a malformed encoding, not a value.
 func wordFitsIn(w common.Hash, n int) bool {
 	for _, b := range w[:32-n] {
 		if b != 0 {
@@ -362,18 +321,16 @@ func addressFromWord(w common.Hash) (common.Address, bool) {
 	return common.BytesToAddress(w.Bytes()), true
 }
 
-// readU64 strictly decodes a uint64 argument (upper 24 bytes must be zero).
 func readU64(args []byte, i int) (uint64, error) {
 	w, err := readWord(args, i)
 	if err != nil {
 		return 0, err
 	}
-	for _, b := range w[:24] {
-		if b != 0 {
-			return 0, ErrExecutionReverted
-		}
+	v, ok := u64FromWord(w)
+	if !ok {
+		return 0, ErrExecutionReverted
 	}
-	return new(uint256.Int).SetBytes(w[24:]).Uint64(), nil
+	return v, nil
 }
 
 func readU256(args []byte, i int) (*uint256.Int, error) {
@@ -397,14 +354,10 @@ func encBool(b bool) []byte {
 	return out
 }
 
-// encString ABI-encodes a string as a complete return value: one dynamic member
-// in a tuple, so a head offset followed by the length-prefixed data.
 func encString(s string) []byte { return encodeTuple(abiString(s)) }
 
 // --- ABI encoding primitives ------------------------------------------------
 
-// abiPart is one encoded tuple member: a static head word, or a dynamic value
-// whose head is an offset and whose tail carries length-prefixed data.
 type abiPart struct {
 	word    common.Hash
 	dynamic bool
@@ -413,7 +366,6 @@ type abiPart struct {
 
 func abiWord(w common.Hash) abiPart { return abiPart{word: w} }
 
-// abiBytes encodes a dynamic byte string: length word then right-padded data.
 func abiBytes(b []byte) abiPart {
 	padded := (len(b) + 31) / 32 * 32
 	tail := make([]byte, 32+padded)
@@ -425,8 +377,6 @@ func abiBytes(b []byte) abiPart {
 
 func abiString(s string) abiPart { return abiBytes([]byte(s)) }
 
-// abiWordArray encodes a dynamic array whose members are static words
-// (uint8[], uint256[], address[]): a length word followed by the members.
 func abiWordArray(words []common.Hash) abiPart {
 	tail := make([]byte, 0, 32*(len(words)+1))
 	l := uint256.NewInt(uint64(len(words))).Bytes32()
@@ -437,8 +387,6 @@ func abiWordArray(words []common.Hash) abiPart {
 	return abiPart{dynamic: true, tail: tail}
 }
 
-// encodeTuple lays out parts as ABI head/tail: static members inline, dynamic
-// members as an offset into the tail section.
 func encodeTuple(parts ...abiPart) []byte {
 	head := make([]byte, 0, 32*len(parts))
 	tail := make([]byte, 0)
@@ -455,11 +403,8 @@ func encodeTuple(parts ...abiPart) []byte {
 	return append(head, tail...)
 }
 
-// abiEncodeStruct produces abi.encode(s) for one dynamic struct. Encoding a
-// single value wraps it in a one-element tuple, so the result opens with an
-// offset word (0x20) and only then carries the struct's own head/tail. Getting
-// this wrapper wrong is invisible to a test that encodes and decodes with the
-// same helper, so it is spelled out here once and used everywhere.
+// abi.encode of one dynamic struct wraps it in a one-element tuple, so the
+// result opens with an offset word (0x20) before the struct's own head/tail.
 func abiEncodeStruct(members ...abiPart) []byte {
 	return encodeTuple(abiPart{dynamic: true, tail: encodeTuple(members...)})
 }

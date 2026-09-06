@@ -10,7 +10,6 @@ import (
 // id (high byte = type, low 56 bits = global counter). Reads never revert (they
 // sit on every transfer's hot path); writes are admin-gated.
 
-// CAS20PolicyRegistryAddress is the singleton registry precompile (BEP-702 §3.1).
 var CAS20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000002")
 
 const cas20PolicyNamespace = "bsc.policy_registry"
@@ -18,38 +17,30 @@ const cas20PolicyNamespace = "bsc.policy_registry"
 const (
 	cas20PolicyBlocklist = 0
 	cas20PolicyAllowlist = 1
-	cas20PolicyUnion     = 2 // authorized by ANY child (Cobalt)
-	cas20PolicyIntersect = 3 // authorized by EVERY child (Cobalt)
+	cas20PolicyUnion     = 2 // authorized by ANY child
+	cas20PolicyIntersect = 3 // authorized by EVERY child
 	cas20PolicyBatchMax  = 64
 
-	// A composite references between two and four simple policies, inclusive.
 	cas20CompositeMinChildren = 2
 	cas20CompositeMaxChildren = 4
 	cas20PolicyFirstID        = 2 // counters 0 and 1 belong to the two sentinels
 
-	// Sentinel policy ids, seeded at initialization and always valid to bind.
 	cas20PolicyAlwaysAllow = 0                 // blocklist type, empty -> allow all
 	cas20PolicyAlwaysBlock = uint64(1)<<56 | 1 // allowlist type, empty -> block all
 
-	// cas20PolicyCounterMax bounds the 56-bit counter space. Creation is refused at
-	// the boundary rather than allowed to carry into the type byte, where it
-	// would collide ids across types and could reach a sentinel.
 	cas20PolicyCounterMax = uint64(1)<<56 - 1
 )
 
-// Storage layout (BEP-702 3.17). Slots are append-only: never reorder them
-// across forks.
+// Storage layout. Slots are append-only across forks.
 const (
 	polSlotPolicies      = 0 // mapping(uint64 => packed word)
 	polSlotMembers       = 1 // mapping(uint64 => mapping(address => bool))
 	polSlotPendingAdmins = 2 // mapping(uint64 => address)
 	polSlotCounter       = 3 // uint64
-	polSlotChildren      = 4 // mapping(uint64 => uint64[]) (Cobalt)
+	polSlotChildren      = 4 // mapping(uint64 => uint64[])
 )
 
-// A policy's existence and admin share one word: bit 255 exists, bits 159:0 the
-// admin. That keeps a policy whose admin was renounced to zero distinct from an
-// unwritten slot.
+// Existence and admin share one word: bit 255 exists, bits 159:0 the admin.
 var polExistsBit = new(uint256.Int).Lsh(uint256.NewInt(1), 255)
 
 func packPolicy(admin common.Address) common.Hash {
@@ -62,7 +53,6 @@ func polWordAdmin(w common.Hash) common.Address { return common.BytesToAddress(w
 
 func polIDType(id uint64) byte { return byte(id >> 56) }
 
-// polIDWellFormed reports whether an id's type byte names a real policy type.
 func polIDWellFormed(id uint64) bool { return polIDType(id) <= cas20PolicyIntersect }
 
 func isSentinelPolicy(id uint64) bool {
@@ -97,16 +87,13 @@ var (
 	cas20TopicBlocklistUpdated   = eventTopic("BlocklistUpdated(uint64,address,bool,address[])")
 )
 
-// emitPolicyAdminUpdated reports creation, handover and renunciation through one
-// event, so a policy's whole admin history is a single filter.
+// One event for creation, handover and renunciation: an admin history is one filter.
 func emitPolicyAdminUpdated(ctx *PrecompileContext, id uint64, previous, next common.Address) bool {
 	return ctx.AddLog([]common.Hash{
 		cas20TopicPolicyAdminUpdated, idKey(id), addrKey(previous), addrKey(next),
 	}, nil)
 }
 
-// emitMembersUpdated reports under the event belonging to the policy's own type,
-// so a consumer can subscribe to just the list it cares about.
 func emitMembersUpdated(ctx *PrecompileContext, ptype byte, id uint64, updater common.Address, included bool, accounts []common.Hash) bool {
 	topic := cas20TopicBlocklistUpdated
 	if ptype == cas20PolicyAllowlist {
@@ -137,8 +124,6 @@ func polSlot(offset uint64) common.Hash { return offsetSlot(cas20PolicyRoot, off
 
 func idKey(id uint64) common.Hash { return uint256.NewInt(id).Bytes32() }
 
-// isEnumWord reports whether an ABI word strictly encodes an enum/bool value
-// in [0, max]: every byte above the last must be zero.
 func isEnumWord(w common.Hash, max byte) bool {
 	return wordFitsIn(w, 1) && w[31] <= max
 }
@@ -154,9 +139,6 @@ func (p policyReg) policyWord(id uint64) common.Hash {
 	return p.s.getWord(p.s.mapSlot(polSlot(polSlotPolicies), idKey(id)))
 }
 
-// setPolicyAdmin writes the packed word, which marks the policy as existing.
-// Renouncing goes through here too, with the zero address: the exists bit stays
-// set, so a renounced policy remains distinguishable from one never created.
 func (p policyReg) setPolicyAdmin(id uint64, a common.Address) {
 	p.s.setWord(p.s.mapSlot(polSlot(polSlotPolicies), idKey(id)), packPolicy(a))
 }
@@ -183,10 +165,7 @@ func (p policyReg) setMember(id uint64, account common.Address, in bool) {
 	p.s.setWord(p.s.mapSlot(inner, addrKey(account)), v)
 }
 
-// isAuthorized never reverts: it sits on every transfer's path. A malformed or
-// absent policy takes empty-set semantics — which authorizes everyone for a
-// BLOCKLIST or an INTERSECT and no one for an ALLOWLIST or a UNION — and the
-// sentinel ids answer before the registry is initialized.
+// isAuthorized never reverts: it sits on every transfer's path.
 func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 	if !polIDWellFormed(id) {
 		return false
@@ -197,9 +176,6 @@ func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 	case cas20PolicyAlwaysBlock:
 		return false
 	}
-	// A composite has no members of its own: it asks its children, every time, so
-	// mutating a child's membership changes the composite's verdict with no call on
-	// the composite itself.
 	switch polIDType(id) {
 	case cas20PolicyUnion:
 		for _, child := range p.children(id) {
@@ -209,10 +185,6 @@ func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 		}
 		return false
 	case cas20PolicyIntersect:
-		// An AND over no children is vacuously true, so a well-formed INTERSECT id
-		// that names no policy authorizes everyone — the same tolerance a
-		// never-created BLOCKLIST already gets, and for the same reason: binding
-		// checks existence, so no token can reference one (BEP-702 3.8).
 		for _, child := range p.children(id) {
 			if !p.isAuthorized(child, account) {
 				return false
@@ -233,10 +205,6 @@ func polIsComposite(id uint64) bool {
 	return t == cas20PolicyUnion || t == cas20PolicyIntersect
 }
 
-// children reads a composite's child set. Solidity stores a uint64[] as a length
-// word at the mapping slot with the elements packed four per word from
-// keccak256(slot), which is what the factory and a reference contract must agree
-// on byte for byte.
 func (p policyReg) childrenSlot(id uint64) common.Hash {
 	return p.s.mapSlot(polSlot(polSlotChildren), idKey(id))
 }
@@ -265,13 +233,9 @@ func (p policyReg) setChildren(id uint64, kids []uint64) {
 	slot := p.childrenSlot(id)
 	p.s.setWord(slot, uint256.NewInt(uint64(len(kids))).Bytes32())
 	base := p.s.stringDataRoot(slot)
-	// Each word is built from scratch and written whole, so lanes past the new
-	// length are zeroed rather than left behind. The loop then runs to the word
-	// count the *maximum* set would need, not the new one, which clears any tail a
-	// shrink orphaned — Solidity's array assignment does the same, and without it
-	// the state root would diverge from a reference contract even though every read
-	// agreed. Today the cap of four is exactly one word so the tail is empty; this
-	// is what keeps that from being load-bearing.
+	// Words are rebuilt whole and the loop runs to the count the *maximum* set needs,
+	// so a shrink's orphaned tail is cleared as Solidity's array assignment clears it;
+	// otherwise the state root would diverge though every read agreed.
 	maxWords := (cas20CompositeMaxChildren + 3) / 4
 	for w := 0; w < maxWords; w++ {
 		packed := new(uint256.Int)
@@ -280,8 +244,7 @@ func (p policyReg) setChildren(id uint64, kids []uint64) {
 		}
 		slotW := new(uint256.Int).AddUint64(base, uint64(w)).Bytes32()
 		if packed.IsZero() && w*4 >= len(kids) {
-			// Nothing to store here; only write if something is already there, so a
-			// fresh composite does not pay for clearing empty slots.
+			// Only clear a word that holds something: a fresh composite pays for no empty slots.
 			if p.s.getWord(slotW) == (common.Hash{}) {
 				continue
 			}
@@ -290,8 +253,6 @@ func (p policyReg) setChildren(id uint64, kids []uint64) {
 	}
 }
 
-// policyExists is the ABI view. A malformed id never exists; the sentinels
-// always do, before initialization included.
 func (p policyReg) policyExists(id uint64) bool {
 	if !polIDWellFormed(id) {
 		return false
@@ -302,8 +263,6 @@ func (p policyReg) policyExists(id uint64) bool {
 	return p.exists(id)
 }
 
-// policyAdminOf is the ABI view: zero for a malformed id and for any policy that
-// does not exist, so a caller cannot mistake an unwritten slot for an admin.
 func (p policyReg) policyAdminOf(id uint64) common.Address {
 	if !polIDWellFormed(id) {
 		return common.Address{}
@@ -315,8 +274,6 @@ func (p policyReg) policyAdminOf(id uint64) common.Address {
 	return polWordAdmin(w)
 }
 
-// pendingPolicyAdminOf is the ABI view. The sentinels can never have a pending
-// admin, so their slot is never even read.
 func (p policyReg) pendingPolicyAdminOf(id uint64) common.Address {
 	if !polIDWellFormed(id) || isSentinelPolicy(id) {
 		return common.Address{}
@@ -324,16 +281,13 @@ func (p policyReg) pendingPolicyAdminOf(id uint64) common.Address {
 	return p.pending(id)
 }
 
-// ensureInitialized seeds the two sentinel policies and leaves the counter on
-// the first id available to callers. It gates on the counter, not on the sentinel
-// words, so a harness that pre-warms the account's bytecode cannot cause the
-// seeding to be skipped.
+// ensureInitialized gates on the counter, not the sentinel words, so a harness
+// that pre-warms the account's bytecode cannot make the seeding skip.
 func (p policyReg) ensureInitialized() uint64 {
 	c := p.counter()
 	if c >= cas20PolicyFirstID {
 		return c
 	}
-	// Both sentinels are born renounced: they exist, and nobody administers them.
 	p.setPolicyAdmin(cas20PolicyAlwaysAllow, common.Address{})
 	p.setPolicyAdmin(cas20PolicyAlwaysBlock, common.Address{})
 	p.setCounter(cas20PolicyFirstID)
@@ -409,12 +363,7 @@ func runCAS20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	}
 
 	// Writes: unknown selector, then static frame, then inactive feature, before
-	// decoding arguments. The order is consensus-visible (BEP-702 3.15).
-	//
-	// This is the only place a write path checks ReadOnly. The handlers below used
-	// to repeat it, which the reference implementation does not — it enforces the
-	// call-frame invariants in the frame machinery, not per method — and repeating
-	// it here bought nothing: none of them is reachable except through this switch.
+	// decoding arguments. The order is consensus-visible.
 	switch sel {
 	case selCreatePolicy, selCreatePolicyWithAccounts, selUpdateAllowlist,
 		selUpdateBlocklist, selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin,
@@ -452,38 +401,25 @@ func runCAS20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	return nil, ErrExecutionReverted // unreachable: the gate above is exhaustive
 }
 
-// validateChildren checks a proposed child set: the count, then that every entry
-// exists, then that every entry is eligible — neither a composite nor a sentinel.
-// The no-nesting rule keeps evaluation one level deep so isAuthorized cannot
-// recurse without bound; a sentinel is refused because it stores no membership
-// for a composite to consult.
+// validateChildren: the count, then existence over the whole set, then eligibility.
 func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 	if len(kids) < cas20CompositeMinChildren || len(kids) > cas20CompositeMaxChildren {
 		return nil, revCAS20("ChildPoliciesOutsideOfRange()", errSelChildrenOutOfRange)
 	}
 	out := make([]uint64, 0, len(kids))
 	for _, w := range kids {
-		// Strictly decoded, as Solidity's external decoder does: taking the low
-		// eight bytes of a 32-byte word would let a caller name one policy in the
-		// bytes that matter and anything at all in the rest, and we would act on
-		// the former where a revert is owed.
 		id, ok := u64FromWord(w)
 		if !ok {
 			return nil, ErrExecutionReverted
 		}
 		out = append(out, id)
 	}
-	// Two passes over the whole set, not one interleaved pass per child: a set
-	// holding both a missing child and an ineligible one owes PolicyNotFound,
-	// whichever comes first in the array. The order decides which error the
-	// caller receives, so it is consensus (BEP-702 3.9).
+	// Existence for every child before eligibility for any: the order is consensus.
 	for _, id := range out {
 		if !reg.policyExists(id) {
 			return nil, revCAS20("PolicyNotFound()", errSelPolicyNotFound)
 		}
 	}
-	// A sentinel is refused alongside a composite: only a simple policy the
-	// registry actually minted can be a child.
 	for _, id := range out {
 		if isSentinelPolicy(id) || polIsComposite(id) {
 			return nil, revCAS20("InvalidChildPolicy(uint64)", errSelInvalidChildPolicy, wU64(id))
@@ -492,8 +428,6 @@ func validateChildren(reg policyReg, kids []common.Hash) ([]uint64, error) {
 	return out, nil
 }
 
-// emitCompositeUpdated logs the complete post-update child set, on creation and
-// on every replacement.
 func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Address, kids []uint64) bool {
 	words := make([]common.Hash, len(kids))
 	for i, k := range kids {
@@ -503,10 +437,6 @@ func emitCompositeUpdated(ctx *PrecompileContext, id uint64, admin common.Addres
 		encodeTuple(abiWordArray(words)))
 }
 
-// createCompositePolicy mints a UNION or INTERSECT over existing simple policies.
-// The zero-admin guard comes first, as it does in the simple constructors: all
-// three agree on the order, and it is observable through which error a caller
-// receives (BEP-702 3.9).
 func createCompositePolicy(ctx *PrecompileContext, reg policyReg, args []byte) ([]byte, error) {
 	admin, err := readAddress(args, 0)
 	if err != nil {
@@ -555,8 +485,6 @@ func createCompositePolicy(ctx *PrecompileContext, reg policyReg, args []byte) (
 	return wU64(id).Bytes(), nil
 }
 
-// updateComposite replaces a composite's child set in full. There is no partial
-// update and no way to empty the list, since the count bound forbids it.
 func updateComposite(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	id, err := readU64(args, 0)
 	if err != nil {
@@ -596,9 +524,7 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 		return nil, err
 	}
 	ptype := ptypeWord[31]
-	// The enum widened to four values at Cobalt, so 2 and 3 now decode. They are
-	// refused by the logic instead, after the zero-admin check and before the batch
-	// bound — a composite is minted only through createCompositePolicy.
+	// The enum widened, so 2 and 3 decode; refused here after the zero-admin check.
 	if !isEnumWord(ptypeWord, cas20PolicyIntersect) {
 		return nil, ErrExecutionReverted
 	}
@@ -609,9 +535,7 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 		return nil, revCAS20("IncompatiblePolicyType()", errSelIncompatibleType)
 	}
 
-	// The batch is decoded and bounded before any state is written. An enclosing
-	// revert would discard premature writes anyway, but it would not give back the
-	// gas they were metered at.
+	// Decoded and bounded before any write: a revert would not refund gas metered on premature writes.
 	var accounts []common.Hash
 	if withAccounts {
 		if accounts, err = readWordArray(args, 2); err != nil {
@@ -623,8 +547,6 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	}
 
 	c := reg.ensureInitialized()
-	// The counter shares its 56 bits across both types, so exhausting it must be
-	// refused rather than allowed to carry into the type byte.
 	if c >= cas20PolicyCounterMax {
 		return nil, revPanic(0x11)
 	}
@@ -634,23 +556,18 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	if !ctx.AddLog([]common.Hash{cas20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes()) {
 		return nil, ErrOutOfGas
 	}
-	// The initial admin is reported as a transition from nobody, so it lands in
-	// the same event stream as every later handover.
 	if !emitPolicyAdminUpdated(ctx, id, common.Address{}, admin) {
 		return nil, ErrOutOfGas
 	}
 
 	if withAccounts {
 		for _, a := range accounts {
-			// Same strictness as a single address argument: readAddress refuses a
-			// dirty word, and an element of an array must not be laxer.
 			addr, ok := addressFromWord(a)
 			if !ok {
 				return nil, ErrExecutionReverted
 			}
 			reg.setMember(id, addr, true)
 		}
-		// Emitted even for an empty batch: the call form is part of the record.
 		if !emitMembersUpdated(ctx, ptype, id, ctx.Caller, true, accounts) {
 			return nil, ErrOutOfGas
 		}
@@ -667,15 +584,14 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	if err != nil {
 		return err
 	}
-	if !isEnumWord(inWord, 1) { // strict ABI bool
+	// Decoded before the policy checks, as Solidity's external decoder would have.
+	if !isEnumWord(inWord, 1) {
 		return ErrExecutionReverted
 	}
 	accounts, err := readWordArray(args, 2)
 	if err != nil {
 		return err
 	}
-	// Order matters: it is observable through which error the caller receives —
-	// existence, then type, then admin, then batch.
 	if err := requirePolicyExists(reg, pid); err != nil {
 		return err
 	}
@@ -687,13 +603,6 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	}
 	if len(accounts) > cas20PolicyBatchMax {
 		return revCAS20("BatchSizeTooLarge(uint256)", errSelBatchTooLarge, wU64(cas20PolicyBatchMax))
-	}
-	// Both strictly decoded, as Solidity's external decoder does. bool accepts
-	// only 0 or 1, and an address element must not drop its high padding — this
-	// path is the routine one, so a dirty word would add or remove a different
-	// account than the encoding names.
-	if !isEnumWord(inWord, 1) {
-		return ErrExecutionReverted
 	}
 	in := inWord[31] == 1
 	for _, a := range accounts {
@@ -722,8 +631,6 @@ func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error 
 		return err
 	}
 	reg.setPending(id, newAdmin)
-	// Emitted for a cancellation too, where newAdmin is zero: withdrawing a
-	// nomination is a governance action and should not be a silent one.
 	if !ctx.AddLog([]common.Hash{
 		cas20TopicPolicyAdminStaged, idKey(id), addrKey(ctx.Caller), addrKey(newAdmin),
 	}, nil) {
@@ -744,7 +651,7 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	if pending == (common.Address{}) {
 		return revCAS20("NoPendingAdmin()", errSelNoPendingAdmin)
 	}
-	if pending != ctx.Caller || ctx.Caller == (common.Address{}) {
+	if pending != ctx.Caller {
 		return revCAS20("Unauthorized()", errSelUnauthorized)
 	}
 	previous := reg.admin(pid)
@@ -764,9 +671,7 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	if err := requirePolicyAdmin(reg, pid, ctx.Caller); err != nil {
 		return err
 	}
-	// Frozen, not deleted: the packed word keeps its exists bit, so the policy
-	// stays distinguishable from one never created and its membership keeps
-	// answering reads.
+	// Frozen, not deleted: the exists bit stays, so a renounced policy is not one never created.
 	reg.setPolicyAdmin(pid, common.Address{})
 	reg.setPending(pid, common.Address{})
 	if !emitPolicyAdminUpdated(ctx, pid, ctx.Caller, common.Address{}) {
@@ -775,10 +680,6 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	return nil
 }
 
-// requirePolicyExists reverts PolicyNotFound unless the policy exists. It asks
-// policyExists rather than the raw bit, because the sentinels are seeded lazily
-// and always exist whether or not their word has been written; it is their zero
-// admin that keeps them un-administrable.
 func requirePolicyExists(reg policyReg, id uint64) error {
 	if !reg.policyExists(id) {
 		return revCAS20("PolicyNotFound()", errSelPolicyNotFound)
@@ -786,7 +687,6 @@ func requirePolicyExists(reg policyReg, id uint64) error {
 	return nil
 }
 
-// requirePolicyAdmin reverts unless the policy exists and caller is its admin.
 func requirePolicyAdmin(reg policyReg, id uint64, caller common.Address) error {
 	if err := requirePolicyExists(reg, id); err != nil {
 		return err

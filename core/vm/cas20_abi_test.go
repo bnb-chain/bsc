@@ -11,10 +11,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TestCAS20RevertData verifies typed revert payloads travel end to end: a
-// business-rule failure inside a CAS20 precompile surfaces through evm.Call as
-// (ABI-encoded error, ErrExecutionReverted), exactly like a Solidity
-// `revert CustomError(...)`.
 func TestCAS20RevertData(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -35,7 +31,6 @@ func TestCAS20RevertData(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// ContractPaused(TRANSFER): selector ++ uint8 word.
 	if _, err := call(creator, token, cas20CallU8Array(selPause, byte(cas20PauseTransfer))); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
@@ -48,7 +43,6 @@ func TestCAS20RevertData(t *testing.T) {
 		t.Fatalf("revert data = %x, want ContractPaused(TRANSFER) = %x", ret, want)
 	}
 
-	// InsufficientBalance(sender, balance, needed) carries the observed values.
 	if _, err := call(creator, token, cas20CallU8Array(selUnpause, byte(cas20PauseTransfer))); err != nil {
 		t.Fatalf("unpause: %v", err)
 	}
@@ -64,7 +58,6 @@ func TestCAS20RevertData(t *testing.T) {
 		t.Fatalf("revert data = %x, want InsufficientBalance(alice,100,1000) = %x", ret, want)
 	}
 
-	// NonPayable(): a value-bearing call is refused across the routed space.
 	ret, _, err = evm.Call(creator, token, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(1)), NewGasBudget(5_000_000), uint256.NewInt(7))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("value-bearing call err = %v, want ErrExecutionReverted", err)
@@ -73,9 +66,7 @@ func TestCAS20RevertData(t *testing.T) {
 		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)
 	}
 
-	// The role and policy-scope ids themselves, which base-std publishes as full
-	// hashes next to those selectors. A getter can return the right shape and the
-	// wrong constant; these are what a token's storage is actually keyed on.
+	// The hashes base-std publishes in full; a getter can return the right shape and the wrong constant.
 	for _, tc := range []struct {
 		name string
 		got  common.Hash
@@ -90,7 +81,6 @@ func TestCAS20RevertData(t *testing.T) {
 		}
 	}
 
-	// And the one event topic0 it publishes in full.
 	const wantSeized = "0xa9aec5d8b86e2fa2fd6ac3af62f2622e3dfdab1967d4cbbb56a5df7d74cb887c"
 	if got := cas20TopicSeized.Hex(); got != wantSeized {
 		t.Errorf("Seized topic0 = %s, want %s (base-std's published value)", got, wantSeized)
@@ -101,9 +91,7 @@ func TestCAS20RevertData(t *testing.T) {
 	}
 }
 
-// TestCAS20UndecodableCalldataRevertsEmpty pins BEP-702 3.2's second failure kind:
-// calldata that cannot be decoded reverts with no returndata at all, across
-// every entry point.
+// BEP-702 3.2: undecodable calldata reverts with no returndata, at every entry point.
 func TestCAS20UndecodableCalldataRevertsEmpty(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -112,11 +100,6 @@ func TestCAS20UndecodableCalldataRevertsEmpty(t *testing.T) {
 		return ret, err
 	}
 
-	// Open the Asset feature and create a token so the token path is live too.
-	if _, err := call(CAS20ActivationRegistryAddress, cas20Call(selActivate, featureCAS20Asset)); err != nil {
-		// The harness seeds every feature already; activating again is fine to skip.
-		_ = err
-	}
 	ret, err := call(CAS20FactoryAddress, encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xd0"), creator, nil))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
@@ -149,21 +132,9 @@ func TestCAS20UndecodableCalldataRevertsEmpty(t *testing.T) {
 	}
 }
 
-// TestCAS20ErrorOverloadsAreDeliberate is what remains of a constraint solc used to
-// enforce. Solidity forbids two errors of one name in one interface, and the
-// deleted .sol mirror failed to compile until a duplicate PolicyNotFound was
-// split — the only time anything checked this.
-//
-// The check cannot be rebuilt from the specification: BEP-702 declares errors
-// inside an interface only for IActivationRegistry, four of the fifty-five, so
-// there is no attribution to test against and inventing one would pin this
-// implementation to its own guess. What is checkable without inventing anything
-// is that the overloaded names stay a closed, named set. A third form appearing
-// beside an existing name is the accidental case — the one the mirror caught —
-// and it fails here.
+// Solidity forbids two errors of one name in one interface. BEP-702 attributes
+// errors to interfaces only in prose, so the overloads are a closed, named set.
 func TestCAS20ErrorOverloadsAreDeliberate(t *testing.T) {
-	// Each entry is legitimate only because the two forms live in different
-	// interfaces, which BEP-702 states in prose rather than in a declaration.
 	allowed := map[string]string{
 		"PolicyNotFound": "IPolicyRegistry answers about a policy the caller named, so " +
 			"the argument-less form suffices; a token names the id it could not find (3.8)",
@@ -192,8 +163,6 @@ func TestCAS20ErrorOverloadsAreDeliberate(t *testing.T) {
 				"not a family", name, len(sigs), strings.Join(sigs, ", "))
 		}
 	}
-	// And the exemptions must stay earned: an entry whose second form was removed
-	// is a stale licence for the next duplicate to slip through.
 	for name := range allowed {
 		if len(forms[name]) < 2 {
 			t.Errorf("%s is exempted as an overload but has %d form(s); drop the exemption",

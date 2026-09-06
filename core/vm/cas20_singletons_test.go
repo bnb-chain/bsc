@@ -6,9 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// TestCAS20SingletonAddresses pins the three fixed addresses as literals. Every
-// other test reaches them through these variables, so a change stays green
-// everywhere. They are consensus constants published in BEP-702 3.1.
+// Consensus constants (BEP-702 3.1); every other test reaches them through the variables.
 func TestCAS20SingletonAddresses(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -24,8 +22,7 @@ func TestCAS20SingletonAddresses(t *testing.T) {
 		}
 	}
 
-	// The factory must not be matched by the token-space check, or creating a
-	// token could collide with the factory itself.
+	// Or creating a token could collide with the factory itself.
 	if IsCAS20Address(CAS20FactoryAddress) {
 		t.Error("the factory must fall outside the reserved token space")
 	}

@@ -13,9 +13,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// strOf drops the read-status half of a string getter. The unmetered views tests
-// build always report true, so a test that only wants the value says so here
-// rather than at twenty call sites.
 func strOf(v string, _ bool) string { return v }
 
 func newTestStorage(t *testing.T) cas20Storage {
@@ -74,12 +71,8 @@ func TestCAS20StorageMappings(t *testing.T) {
 		t.Errorf("nonce = %d", got)
 	}
 
-	// Raw-slot checks, spelling out Solidity's derivation independently of the
-	// helpers. Round-tripping through the accessors cannot catch a wrong layout:
-	// a nested mapping whose two keys are swapped is self-consistent, so reads
-	// and writes still agree with each other while diverging from every
-	// reference implementation. Only the slot the value actually lands in tells
-	// them apart.
+	// Raw slots, spelled out from Solidity's rules: a nested mapping with swapped
+	// keys is self-consistent, so only the slot the value lands in tells them apart.
 	pad := func(b []byte) []byte { return common.BytesToHash(b).Bytes() }
 	solMap := func(key, base []byte) []byte { return crypto.Keccak256(pad(key), pad(base)) }
 
@@ -88,19 +81,16 @@ func TestCAS20StorageMappings(t *testing.T) {
 		t.Errorf("balance is not at keccak256(alice ++ balancesBase)")
 	}
 
-	// allowances[owner][spender]: owner is the OUTER key, spender the inner one.
 	inner := solMap(alice.Bytes(), slotAt(cas20SlotAllowances).Bytes())
 	allowSlot := solMap(bob.Bytes(), inner)
 	if got := s.getWord(common.BytesToHash(allowSlot)); new(uint256.Int).SetBytes(got.Bytes()).Uint64() != 42 {
 		t.Error("allowance is not at keccak256(spender ++ keccak256(owner ++ base)) — nesting order is wrong")
 	}
-	// The swapped nesting must be empty, which is what distinguishes the two.
 	swappedInner := solMap(bob.Bytes(), slotAt(cas20SlotAllowances).Bytes())
 	if got := s.getWord(common.BytesToHash(solMap(alice.Bytes(), swappedInner))); got != (common.Hash{}) {
 		t.Error("allowance also landed under the swapped nesting order")
 	}
 
-	// roles[role][account] nests the same way: role outer, account inner.
 	s.setRole(roleMint, alice, true)
 	roleInner := solMap(roleMint.Bytes(), slotAt(cas20SlotRoles).Bytes())
 	if got := s.getWord(common.BytesToHash(solMap(alice.Bytes(), roleInner))); got == (common.Hash{}) {
@@ -131,8 +121,6 @@ func TestCAS20StorageRoles(t *testing.T) {
 	}
 }
 
-// TestCAS20StoragePackedPolicies verifies the four policy ids share their packed
-// slots without clobbering each other.
 func TestCAS20StoragePackedPolicies(t *testing.T) {
 	s := newTestStorage(t)
 	s.setTransferSenderPolicy(0x1111111111111111)
@@ -153,16 +141,12 @@ func TestCAS20StoragePackedPolicies(t *testing.T) {
 		t.Errorf("mintReceiver = %#x", got)
 	}
 
-	// The three transfer lanes must live in a single slot (slot 9), packed at
-	// byte offsets 0/8/16.
 	word := s.getWord(slotAt(cas20SlotTransferPolicies))
-	// byte offsets 24(reserved,0) | 16(executor) | 8(receiver) | 0(sender)
 	wantWord := "0x" + "0000000000000000" + "3333333333333333" + "2222222222222222" + "1111111111111111"
 	if word.Hex() != wantWord {
 		t.Errorf("packed slot 9 = %s, want %s", word.Hex(), wantWord)
 	}
 
-	// Overwriting one lane must not disturb the others.
 	s.setTransferReceiverPolicy(0xdeadbeefdeadbeef)
 	if got := s.transferSenderPolicy(); got != 0x1111111111111111 {
 		t.Errorf("sender disturbed: %#x", got)
@@ -175,8 +159,6 @@ func TestCAS20StoragePackedPolicies(t *testing.T) {
 	}
 }
 
-// TestCAS20StorageGas checks the v0 storage gas schedule: cold/warm reads and
-// SSTORE set/reset/no-op writes, plus out-of-gas propagation.
 func TestCAS20StorageGas(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -194,8 +176,7 @@ func TestCAS20StorageGas(t *testing.T) {
 		return before - gas.RegularGas
 	}
 
-	// A balance slot is mapping-derived, so every access also pays the keccak
-	// over the 64-byte (key ++ base) preimage.
+	// Every access also pays the 64-byte keccak that derives the slot.
 	const keccak64 = params.Keccak256Gas + 2*params.Keccak256WordGas
 	var (
 		cold  = params.ColdSloadCostEIP2929
@@ -204,23 +185,17 @@ func TestCAS20StorageGas(t *testing.T) {
 		reset = params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929
 	)
 
-	// cold write, zero -> non-zero: cold surcharge + set.
 	if c := charged(func() { s.setBalance(alice, uint256.NewInt(500)) }); c != keccak64+cold+set {
 		t.Errorf("cold set write charged %d, want %d", c, keccak64+cold+set)
 	}
-	// warm read of the same slot.
 	if c := charged(func() { _ = s.balanceOf(alice) }); c != keccak64+warm {
 		t.Errorf("warm read charged %d, want %d", c, keccak64+warm)
 	}
-	// warm write, non-zero -> other. The slot was zero at the start of the
-	// transaction, so under EIP-2200 net metering this is a dirty update
-	// charged at the warm price, not a reset — the 20000 was already paid by
-	// the first write. `reset` is exercised by TestCAS20StorageRefunds, where the
-	// slot starts committed non-zero.
+	// A dirty update at the warm price, not a reset: the slot was zero at the start
+	// of the transaction. TestCAS20StorageRefunds covers reset.
 	if c := charged(func() { s.setBalance(alice, uint256.NewInt(600)) }); c != keccak64+warm {
 		t.Errorf("dirty update charged %d, want %d", c, keccak64+warm)
 	}
-	// warm write, same value: no-op.
 	if c := charged(func() { s.setBalance(alice, uint256.NewInt(600)) }); c != keccak64+warm {
 		t.Errorf("warm no-op write charged %d, want %d", c, keccak64+warm)
 	}
@@ -233,7 +208,6 @@ func TestCAS20StorageGas(t *testing.T) {
 		t.Error("should not be out of gas")
 	}
 
-	// Unmetered view never charges.
 	free := newUnmeteredCAS20Storage(statedb, token)
 	if c := charged(func() { _ = free.balanceOf(alice) }); c != 0 {
 		t.Errorf("unmetered read charged %d, want 0", c)
@@ -259,7 +233,6 @@ func TestCAS20StorageGasOutOfGas(t *testing.T) {
 func TestCAS20StorageStrings(t *testing.T) {
 	s := newTestStorage(t)
 
-	// short string (< 32 bytes): stored in-slot, low byte = 2*len.
 	s.setName("USD Coin")
 	if got := strOf(s.name()); got != "USD Coin" {
 		t.Errorf("name = %q", got)
@@ -268,7 +241,6 @@ func TestCAS20StorageStrings(t *testing.T) {
 		t.Errorf("short string length byte = %d, want %d", w[31], len("USD Coin")*2)
 	}
 
-	// exactly 31 bytes stays short; 32+ goes long.
 	short31 := strings.Repeat("a", 31)
 	s.setSymbol(short31)
 	if got := strOf(s.symbol()); got != short31 {
@@ -280,16 +252,13 @@ func TestCAS20StorageStrings(t *testing.T) {
 	if got := strOf(s.contractURI()); got != long {
 		t.Errorf("long string round-trip failed: len %d", len(got))
 	}
-	// long-string marker: low bit of the length slot is set.
 	if w := s.getWord(slotAt(cas20SlotContractURI)); w[31]&1 != 1 {
 		t.Error("long string should set the low bit of the length slot")
 	}
 }
 
-// TestCAS20StorageStringShrink pins that rewriting a string releases the tail
-// slots it no longer needs, as a Solidity assignment would. Reads are
-// length-bounded and would look correct either way, so the check is on the raw
-// slots: a leftover word diverges the state root from a Solidity reference.
+// Reads are length-bounded and would look correct either way; a leftover tail word
+// diverges the state root from a Solidity reference.
 func TestCAS20StorageStringShrink(t *testing.T) {
 	s := newTestStorage(t)
 	tailSlot := func(i uint64) common.Hash {
@@ -297,7 +266,6 @@ func TestCAS20StorageStringShrink(t *testing.T) {
 		return common.Hash(base.AddUint64(base, i).Bytes32())
 	}
 
-	// 100 bytes spans four tail slots.
 	s.setName(strings.Repeat("x", 100))
 	for i := uint64(0); i < 4; i++ {
 		if s.getWord(tailSlot(i)) == (common.Hash{}) {
@@ -305,7 +273,6 @@ func TestCAS20StorageStringShrink(t *testing.T) {
 		}
 	}
 
-	// Shrink to a long-but-shorter value: slots 2 and 3 must be released.
 	s.setName(strings.Repeat("y", 40))
 	if got := strOf(s.name()); got != strings.Repeat("y", 40) {
 		t.Errorf("name = %q, want 40 y's", got)
@@ -316,7 +283,6 @@ func TestCAS20StorageStringShrink(t *testing.T) {
 		}
 	}
 
-	// Shrink to an inline short string: every tail slot must be released.
 	s.setName("USD")
 	if got := strOf(s.name()); got != "USD" {
 		t.Errorf("name = %q, want USD", got)
@@ -328,16 +294,10 @@ func TestCAS20StorageStringShrink(t *testing.T) {
 	}
 }
 
-// TestCAS20StringBoundaryMatrix walks every directed transition between the
-// lengths where the storage encoding changes shape: empty, inline, the 31/32
-// inline-to-long boundary, and the 32-byte chunk boundaries. For each it checks
-// the value round-trips, the length slot carries the right short/long marker,
-// and the data region holds exactly the chunks the new value needs — no stale
-// slot left behind by the old one.
+// Every directed transition between the lengths where the encoding changes shape.
 func TestCAS20StringBoundaryMatrix(t *testing.T) {
 	lengths := []int{0, 1, 31, 32, 33, 64, 65}
-	// A generous scan bound: the largest case needs 3 chunks, so 8 proves that
-	// nothing lingers past the end as well.
+	// The largest case needs 3 chunks; scanning 8 proves nothing lingers past the end.
 	const scan = 8
 
 	for _, from := range lengths {
@@ -348,7 +308,6 @@ func TestCAS20StringBoundaryMatrix(t *testing.T) {
 				base := new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
 				return common.Hash(base.AddUint64(base, i).Bytes32())
 			}
-			// Distinct fill bytes so a stale chunk cannot masquerade as fresh.
 			before, after := strings.Repeat("a", from), strings.Repeat("b", to)
 
 			s.setName(before)
@@ -380,10 +339,7 @@ func TestCAS20StringBoundaryMatrix(t *testing.T) {
 	}
 }
 
-// TestCAS20LongStringGas pins the cost of a long string's keccak-derived data
-// region. Deriving that root is a runtime keccak exactly as a mapping slot is,
-// and leaving it unmetered would donate the computation on every long name,
-// symbol or contractURI access.
+// A long string's data root is a runtime keccak exactly as a mapping slot is.
 func TestCAS20LongStringGas(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	token := cas20Addr(cas20VariantAsset, 1)
@@ -403,7 +359,6 @@ func TestCAS20LongStringGas(t *testing.T) {
 		set      = params.SstoreSetGasEIP2200
 	)
 
-	// A short string lives inline: one slot, no data region, no keccak.
 	if c := charged(func() { s.setName("USD Coin") }); c != cold+set {
 		t.Errorf("short-string write charged %d, want %d", c, cold+set)
 	}
@@ -411,22 +366,16 @@ func TestCAS20LongStringGas(t *testing.T) {
 		t.Errorf("short-string read charged %d, want %d", c, warm)
 	}
 
-	// 100 bytes spans four data slots. The write pays: reading the old length to
-	// see what has to be released, rewriting the length slot, one keccak for the
-	// data root, and four cold sets. Both length-slot touches are warm dirty
-	// updates — the slot was written above in the same transaction.
+	// Old length read, length slot rewritten, one data-root keccak, four cold sets.
 	long := strings.Repeat("x", 100)
 	if c := charged(func() { s.setName(long) }); c != 2*warm+keccak32+4*(cold+set) {
 		t.Errorf("long-string write charged %d, want %d", c, 2*warm+keccak32+4*(cold+set))
 	}
-	// The read pays the length slot, the same single keccak, and four warm reads.
 	if c := charged(func() { _ = strOf(s.name()) }); c != warm+keccak32+4*warm {
 		t.Errorf("long-string read charged %d, want %d", c, warm+keccak32+4*warm)
 	}
 
-	// Shrinking back to inline releases the four data slots, and must derive the
-	// data root only once for the whole operation — a second derivation would
-	// show up here as an extra keccak32.
+	// The data root must be derived once for the whole release.
 	if c := charged(func() { s.setName("USD") }); c != 2*warm+keccak32+4*warm {
 		t.Errorf("shrink-to-short charged %d, want %d", c, 2*warm+keccak32+4*warm)
 	}
@@ -435,10 +384,8 @@ func TestCAS20LongStringGas(t *testing.T) {
 	}
 }
 
-// TestCAS20SpawnedContextPropagatesOutOfGas pins that exhausting a spawned
-// context's budget is visible to the context it was spawned from. The budget is
-// shared by pointer, so only the flag can go missing — and it is the spawner's
-// dispatcher, never the child's, that checks it before reporting success.
+// The budget is shared by pointer, so only the flag can go missing, and it is the
+// spawner's dispatcher that checks it.
 func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	gas := NewGasBudget(100)
@@ -463,12 +410,10 @@ func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 		t.Errorf("shared budget = %d, want 0", got)
 	}
 
-	// The flag is one shared cell, not a copy kept in step, so it travels the
-	// other way too: a context spawned after exhaustion starts exhausted.
+	// One shared cell, not a copy: a context spawned after exhaustion starts exhausted.
 	if later := parent.spawnBootstrap(cas20Addr(cas20VariantAsset, 3), cas20Alice); !later.OutOfGas() {
 		t.Error("a context spawned from an exhausted frame does not start exhausted")
 	}
-	// And a charge failing in the parent is visible to a child spawned earlier.
 	gas2 := NewGasBudget(100)
 	p2 := &PrecompileContext{StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 4), gas: &gas2}
 	c2 := p2.spawnBootstrap(cas20Addr(cas20VariantAsset, 5), cas20Alice)
@@ -478,11 +423,8 @@ func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	}
 }
 
-// TestCAS20SpawnedContextSharesStateGasTally pins that state gas charged inside a
-// bootstrap child counts toward the frame's total. A bootstrap is the same EVM
-// frame with a different Self — it shares the enforced budget — so a tally that
-// dropped its charges would under-report the frame once the StateGas reservoir
-// is enforced rather than merely recorded.
+// A bootstrap is the same EVM frame with a different Self, so its charges count
+// toward the frame's tally.
 func TestCAS20SpawnedContextSharesStateGasTally(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	gas := NewGasBudget(10_000_000)
@@ -503,15 +445,11 @@ func TestCAS20SpawnedContextSharesStateGasTally(t *testing.T) {
 	}
 }
 
-// TestCAS20SpawnedContextPropagatesSentryRefusal covers the other way a spawned
-// frame stops being able to write: the EIP-2200 reentrancy sentry refuses an
-// SSTORE while gas remains. Nothing drains the budget here, so unlike an
-// unaffordable charge this cannot be caught downstream by a later failing
-// charge — the spawner would hold gas in hand and report success over a write
-// that never landed.
+// The sentry refuses while gas remains, so unlike an unaffordable charge nothing
+// downstream would catch it: the spawner would report success over a write that
+// never landed.
 func TestCAS20SpawnedContextPropagatesSentryRefusal(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	// Above zero but at or below the 2300 stipend, so the sentry refuses.
 	gas := NewGasBudget(params.SstoreSentryGasEIP2200)
 	parent := &PrecompileContext{
 		StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 1),
@@ -537,8 +475,6 @@ func TestCAS20SpawnedContextPropagatesSentryRefusal(t *testing.T) {
 	}
 }
 
-// TestCAS20StorageRefunds pins the EIP-3529 refund arms of the net-metered
-// write path against the interpreter's own makeGasSStoreFunc.
 func TestCAS20StorageRefunds(t *testing.T) {
 	clearing := params.SstoreClearsScheduleRefundEIP3529
 
@@ -548,8 +484,7 @@ func TestCAS20StorageRefunds(t *testing.T) {
 			t.Fatal(err)
 		}
 		token := cas20Addr(cas20VariantAsset, 1)
-		// Without the sentinel the token is an EIP-161 empty account and
-		// Finalise below would reap it, storage included (BEP-702 3.16).
+		// Without the sentinel Finalise below would reap the account, storage included.
 		statedb.SetCode(token, CAS20MarkerCode, tracing.CodeChangeContractCreation)
 		gas := NewGasBudget(10_000_000)
 		ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
@@ -559,7 +494,6 @@ func TestCAS20StorageRefunds(t *testing.T) {
 	one := common.Hash{31: 1}
 	two := common.Hash{31: 2}
 
-	// Clearing a slot that existed at the start of the transaction refunds.
 	statedb, s, _ := newCtx()
 	s.state.SetState(s.token, slot, one)
 	statedb.Finalise(true) // commit, so `original` is non-zero
@@ -568,14 +502,11 @@ func TestCAS20StorageRefunds(t *testing.T) {
 		t.Errorf("clear refund = %d, want %d", got, clearing)
 	}
 
-	// Re-creating it in the same transaction takes the refund back.
 	s.setWord(slot, two)
 	if got := statedb.GetRefund(); got != 0 {
 		t.Errorf("refund after recreate = %d, want 0", got)
 	}
 
-	// Restoring a dirty slot to its committed value refunds the difference
-	// between the reset price and a warm read.
 	statedb, s, _ = newCtx()
 	s.state.SetState(s.token, slot, one)
 	statedb.Finalise(true)
@@ -587,9 +518,6 @@ func TestCAS20StorageRefunds(t *testing.T) {
 	}
 }
 
-// TestCAS20SstoreSentry verifies the EIP-2200 reentrancy guard: a write is
-// refused whenever remaining gas is at or below the 2300 call stipend, however
-// cheap the write itself would be, and no state change happens.
 func TestCAS20SstoreSentry(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -598,8 +526,7 @@ func TestCAS20SstoreSentry(t *testing.T) {
 	token := cas20Addr(cas20VariantAsset, 1)
 	slot := slotAt(cas20SlotTotalSupply)
 
-	// Warm the slot and dirty it so the write itself would be cheap (~100 gas),
-	// then leave exactly the stipend in the budget.
+	// Warm and dirty, so the write itself would be cheap; exactly the stipend left.
 	gas := NewGasBudget(params.SstoreSentryGasEIP2200)
 	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredCAS20Storage(ctx)
@@ -613,7 +540,6 @@ func TestCAS20SstoreSentry(t *testing.T) {
 		t.Fatalf("refused write still mutated state: %x", got)
 	}
 
-	// One gas above the stipend, the same write succeeds.
 	gas2 := NewGasBudget(params.SstoreSentryGasEIP2200 + 1 + params.SstoreSetGasEIP2200)
 	ctx2 := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas2}
 	newMeteredCAS20Storage(ctx2).setWord(slot, common.Hash{31: 7})
@@ -625,12 +551,8 @@ func TestCAS20SstoreSentry(t *testing.T) {
 	}
 }
 
-// TestCAS20GasNeverCheaperThanBytecode pins BEP-702 3.14's central rule: a CAS20
-// operation must never cost less than the same state accesses performed
-// through bytecode. It compares a transfer's charge against the floor an
-// equivalent BEP-20 implementation pays for the same accesses — two cold slot
-// reads and two cold writes for a first-time recipient — and additionally
-// requires the derivation and dispatch work CAS20 does on top to be accounted.
+// BEP-702 3.14: a transfer must cost at least what bytecode pays for the same
+// accesses, plus the derivation and dispatch work on top.
 func TestCAS20GasNeverCheaperThanBytecode(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xfee")
@@ -652,7 +574,6 @@ func TestCAS20GasNeverCheaperThanBytecode(t *testing.T) {
 	measure := func(to common.Address, amount uint64) uint64 {
 		t.Helper()
 		in := cas20Call(selTransfer, addrKey(to), u256hash(amount))
-		// Warm the slots first, then measure the second call.
 		if _, _, err := evm.Call(cas20Alice, token, in, NewGasBudget(budget), uint256.NewInt(0)); err != nil {
 			t.Fatalf("warming transfer: %v", err)
 		}
@@ -663,9 +584,6 @@ func TestCAS20GasNeverCheaperThanBytecode(t *testing.T) {
 		return uint64(budget) - left.RegularGas
 	}
 
-	// Warm-path floor: both balance slots are warm and dirty by now, so bytecode
-	// would pay 2 * SLOAD_warm + 2 * SSTORE_dirty, plus a 64-byte keccak per
-	// balance slot to derive it.
 	keccak64 := params.Keccak256Gas + 2*params.Keccak256WordGas
 	floor := 4*params.WarmStorageReadCostEIP2929 + 2*keccak64
 
@@ -674,17 +592,9 @@ func TestCAS20GasNeverCheaperThanBytecode(t *testing.T) {
 		t.Fatalf("warm transfer charged %d, below the bytecode floor %d", ordinary, floor)
 	}
 
-	// The degenerate shapes must cost exactly what an ordinary transfer costs.
-	// A self-transfer and a zero-value transfer look like free wins — no balance
-	// ends up different — but bytecode performs both assignments regardless, so
-	// skipping them would make a native token cheaper than the contract it
-	// replaces, which BEP-702 3.14 forbids outright.
-	//
-	// The floor above is far too loose to catch that on its own: the balance
-	// accesses are a few hundred gas out of a few thousand, so dropping two
-	// writes still clears it. Equality with the ordinary shape is what actually
-	// pins it, and this is precisely the "optimisation" a later reader would
-	// reach for.
+	// Self and zero-value transfers must cost exactly the ordinary shape: the floor
+	// above is too loose to notice two skipped writes, and skipping them is
+	// precisely the optimisation a later reader would reach for.
 	for _, tc := range []struct {
 		what   string
 		to     common.Address

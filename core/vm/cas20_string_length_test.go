@@ -9,8 +9,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TestCAS20StringLengthWordIsNotTrusted covers a length word no write could have
-// produced. Before the bound, both read paths crashed the node:
+// A length word no write could have produced once crashed both read paths.
 func TestCAS20StringLengthWordIsNotTrusted(t *testing.T) {
 	word := func(build func(*common.Hash)) common.Hash {
 		var h common.Hash
@@ -30,11 +29,7 @@ func TestCAS20StringLengthWordIsNotTrusted(t *testing.T) {
 		})},
 		{"long string one byte past the cap", common.Hash(
 			uint256.NewInt(2*(cas20MaxStringLen+1) + 1).Bytes32())},
-		// The long form encodes 32 bytes or more. A shorter length belongs to the
-		// short form, so these words are as non-canonical as the oversized ones
-		// above and must answer the same way — without them the short form's bound
-		// is the only one under test, and dropping the long form's would go
-		// unnoticed while the reader went off to the data root for content.
+		// A long-form word claiming under 32 bytes is as non-canonical as an oversized one.
 		{"long string claiming one byte", common.Hash(uint256.NewInt(3).Bytes32())},
 		{"long string claiming 31 bytes", common.Hash(uint256.NewInt(2*31 + 1).Bytes32())},
 	} {
@@ -49,15 +44,12 @@ func TestCAS20StringLengthWordIsNotTrusted(t *testing.T) {
 			if got := strOf(s.name()); got != "" {
 				t.Errorf("name() = %q, want the empty string", got)
 			}
-			// Fatal, not Errorf: the repair below feeds this count to setStringAt's
-			// release loop, which on an unmetered view has no out-of-gas guard. An
-			// unbounded count there does not fail the test, it hangs it.
+			// Fatal, not Errorf: an unbounded count would hang the unmetered release loop below.
 			if got := s.stringChunks(slotAt(cas20SlotName)); got != 0 {
 				t.Fatalf("stringChunks = %d, want 0 — setStringAt would release that "+
 					"many slots, and nothing would stop it", got)
 			}
-			// A write over the corrupt word must still land, so a token whose state
-			// arrived that way is repairable rather than bricked.
+			// A token whose state arrived that way must be repairable, not bricked.
 			s.setName("ok")
 			if got := strOf(s.name()); got != "ok" {
 				t.Errorf("name() after setName = %q, want %q", got, "ok")
@@ -65,9 +57,7 @@ func TestCAS20StringLengthWordIsNotTrusted(t *testing.T) {
 		})
 	}
 
-	// The bound must not touch a value the chain could actually hold. The longest
-	// string these tests can afford is far shorter than the cap, so check the
-	// boundary arithmetic directly instead.
+	// The longest string a test can afford is far below the cap, so check the boundary arithmetic directly.
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
 		t.Fatal(err)

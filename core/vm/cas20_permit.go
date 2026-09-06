@@ -9,13 +9,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// CAS20 EIP-2612 permit (gasless approvals) and the memo transfer/mint/burn
-// family. The EIP-712 domain is derived from the live token name, so any
-// updateName automatically invalidates outstanding permit signatures — there
-// is no cached separator to roll.
+// The EIP-712 domain is derived from the live token name, so updateName
+// invalidates outstanding permits; there is no cached separator to roll.
 
-// cas20EIP712Version is the domain's version field. DOMAIN_SEPARATOR() hashes it
-// and eip712Domain() reports it, so the two cannot drift apart.
 const cas20EIP712Version = "1"
 
 var (
@@ -32,8 +28,6 @@ var (
 	cas20TopicMemo      = eventTopic("Memo(address,bytes32)")
 )
 
-// dispatchPermitMemo handles the permit and *WithMemo selectors. ok is false
-// when sel matches none of them.
 func (t cas20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
 	case selDomainSeparator:
@@ -120,7 +114,6 @@ func (t cas20Token) dispatchPermitMemo(sel [4]byte, args []byte) (ret []byte, er
 	return nil, nil, false
 }
 
-// emitMemo emits Memo(caller, memo) immediately after a primary op.
 func (t cas20Token) emitMemo(memo common.Hash) bool {
 	return t.ctx.AddLog([]common.Hash{cas20TopicMemo, addrKey(t.ctx.Caller), memo}, nil)
 }
@@ -143,11 +136,6 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 
 // --- EIP-2612 permit --------------------------------------------------------
 
-// domainSeparator computes the EIP-712 domain hash from the live token name,
-// version "1", chain id and the token address, and reports false when a charge on
-// the way could not be covered. A Solidity ERC-2612 pays for the same three
-// hashes, so leaving them free would make the native path cheaper than bytecode
-// (BEP-702 3.14).
 func (t cas20Token) domainSeparator() (common.Hash, bool) {
 	name, ok := t.s.name()
 	if !ok {
@@ -188,8 +176,6 @@ func (t cas20Token) decodePermit(args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// v is a uint8: a word with dirty high bytes is a malformed encoding, not a
-	// signature to be truncated and then blamed on the signer.
 	v, err := readStrictUint8(args, 4)
 	if err != nil {
 		return nil, err
@@ -212,7 +198,6 @@ func (t cas20Token) permit(owner, spender common.Address, value, deadline *uint2
 	if owner == (common.Address{}) {
 		return nil, revCAS20("InvalidApprover(address)", errSelInvalidApprover, addrKey(owner))
 	}
-	// Deadline is inclusive: now > deadline is expired.
 	if deadline.LtUint64(t.ctx.BlockTime()) {
 		return nil, revCAS20("ExpiredSignature(uint256)", errSelExpiredSignature, wU256(deadline))
 	}
@@ -233,10 +218,7 @@ func (t cas20Token) permit(owner, spender common.Address, value, deadline *uint2
 	if !paid {
 		return nil, ErrOutOfGas
 	}
-	// The struct hash, the final digest, and the signature recovery. ECRECOVER is
-	// its own precompile at a flat 3000 gas; a native permit doing the same
-	// secp256k1 work owes the same, and owes it whether or not the signature turns
-	// out to be valid.
+	// Charged whether or not the signature turns out to be valid, as ECRECOVER would be.
 	if !t.ctx.chargeKeccak(len(structHash)) ||
 		!t.ctx.chargeKeccak(66) ||
 		!t.ctx.chargeGas(params.EcrecoverGas) {
@@ -250,12 +232,7 @@ func (t cas20Token) permit(owner, spender common.Address, value, deadline *uint2
 			addrKey(signer), addrKey(owner))
 	}
 
-	// A signature over the zero spender is a valid signature for an approval that
-	// must still be refused; without this check permit would set an allowance
-	// approve() rejects. Its position decides which error a request that is wrong
-	// twice receives: a bad signature naming the zero spender is reported as
-	// InvalidSigner, and the caller pays the two keccaks and the ecrecover before
-	// the free comparison runs.
+	// After the signature, so a bad signature naming the zero spender is InvalidSigner.
 	if spender == (common.Address{}) {
 		return nil, revCAS20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
 	}
@@ -264,13 +241,9 @@ func (t cas20Token) permit(owner, spender common.Address, value, deadline *uint2
 	if !t.emit(cas20TopicApproval, owner, spender, value) {
 		return nil, ErrOutOfGas
 	}
-	// Empty returndata: EIP-2612 declares `permit(...) external` with no return
-	// value, so returning an ABI true would make a caller that decodes a bool
-	// succeed here and fail against every other implementation.
 	return nil, nil
 }
 
-// ecrecoverAddress recovers the signer of an EIP-712 digest. It enforces
 // EIP-2 low-s and v ∈ {27,28}; ERC-1271 contract signatures are not supported.
 func ecrecoverAddress(hash []byte, v byte, r, s common.Hash) (common.Address, bool) {
 	if v != 27 && v != 28 {

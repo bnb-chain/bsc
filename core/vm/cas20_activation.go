@@ -6,35 +6,22 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// ActivationRegistry: the per-feature governance switch (BEP-702 3.15). It gates
-// token creation and PolicyRegistry writes only — deactivation never reaches an
+// ActivationRegistry: the per-feature governance switch. It gates token creation
+// and PolicyRegistry writes only — deactivation never reaches an
 // existing token, so it cannot freeze balances.
 
 const cas20ActivationNamespace = "bsc.activation_registry"
 
-// Slots are append-only: never reorder them across forks.
 const (
 	actSlotFeatures = 0 // mapping(bytes32 feature => bool)
 	actSlotAdmin    = 1 // address, zero means no admin exists
 )
 
-// cas20ParamAdmin is the only parameter this registry takes. Governance appoints
-// the activation admin and the admin operates the switch, so opening or closing
-// a feature does not wait out a voting period while the authority behind it
-// still belongs to governance. Any other key is refused: GovHub reports a
-// target's revert in an event and leaves the proposal successful, so a key
-// accepted by accident would read as a deliberate governance action.
+// cas20ParamAdmin is the only key this registry takes.
 const cas20ParamAdmin = "admin"
 
 var cas20ActivationRoot = erc7201Root(cas20ActivationNamespace)
 
-// Feature identifiers: keccak256 of the canonical feature name (BEP-702 3.15).
-// The names are consensus-visible and independent of the ERC-7201 storage
-// namespaces, which the first two deliberately spell differently
-// ("bsc.cas20.asset") and the third does not: featurePolicyRegistry and
-// cas20PolicyNamespace are the same string for two unrelated derivations. Renaming
-// the namespace must not carry the feature with it, or every integrator's
-// activate() call breaks.
 var (
 	featureCAS20Asset      = crypto.Keccak256Hash([]byte("bsc.cas20_asset"))
 	featureCAS20Stablecoin = crypto.Keccak256Hash([]byte("bsc.cas20_stablecoin"))
@@ -75,23 +62,16 @@ func (r activationReg) setActivated(feature common.Hash, on bool) {
 	if on {
 		v[31] = 1
 	}
-	// Deactivating clears the slot rather than writing false, so the storage
-	// refund applies exactly as it would for a Solidity `delete`.
+	// Cleared, not written false, so the refund matches a Solidity `delete`.
 	r.s.setWord(r.s.mapSlot(actSlot(actSlotFeatures), feature), v)
 }
 
-// admin returns the activation admin. Zero means none is set, so nothing can be
-// activated yet — a state governance can always leave, unlike the seeded slot
-// this replaced.
 func (r activationReg) admin() common.Address {
 	return common.BytesToAddress(r.s.getWord(actSlot(actSlotAdmin)).Bytes())
 }
 
 func (r activationReg) setAdmin(a common.Address) { r.s.setWord(actSlot(actSlotAdmin), addrKey(a)) }
 
-// requireAdmin reverts unless the caller is the activation admin. The stored
-// address must be non-zero: an empty slot means no admin exists, and equality
-// alone would let a caller with no address hold the switch.
 func (r activationReg) requireAdmin(ctx *PrecompileContext) error {
 	if a := r.admin(); a == (common.Address{}) || ctx.Caller != a {
 		return revCAS20("Unauthorized(address)", errSelUnauthorizedAddr, addrKey(ctx.Caller))
@@ -99,11 +79,6 @@ func (r activationReg) requireAdmin(ctx *PrecompileContext) error {
 	return nil
 }
 
-// requireGov reverts unless the caller is GovHub. Appointment authority is a
-// constant rather than configuration, so there is nothing to seed at the fork and
-// no way to ship a chain whose switch can never be thrown: an appointment is an
-// ordinary parameter-change proposal, and a lost admin key is replaced by another
-// one rather than by a fork.
 func requireGov(ctx *PrecompileContext) error {
 	if ctx.Caller != params.CAS20GovHubAddress {
 		return revCAS20("Unauthorized(address)", errSelUnauthorizedAddr, addrKey(ctx.Caller))
@@ -163,16 +138,10 @@ func runCAS20Activation(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	return nil, ErrExecutionReverted
 }
 
-// updateParam is the governance entry point, in the shape every BSC system
-// contract uses: a canonical name and a raw value, with address values 20 bytes
-// wide. It takes exactly one key. Governance appoints the admin here; the admin
-// then works the switch through activate and deactivate, so opening or closing a
-// feature does not wait out a voting period while the authority behind it still
-// belongs to governance.
+// updateParam is the governance contract entry point, in the shape every BSC system
+// contract uses. Governance appoints the admin here and the admin works the
+// switch, so a feature opens without a voting period while authority stays with governance.
 func updateParam(ctx *PrecompileContext, reg activationReg, args []byte) error {
-	// Refused before the decode. The metering layer would refuse the write anyway
-	// and the exit reports the same error either way, so this bounds the work a
-	// read-only frame can ask for rather than deciding the outcome.
 	if ctx.ReadOnly {
 		return ErrWriteProtection
 	}
@@ -192,8 +161,6 @@ func updateParam(ctx *PrecompileContext, reg activationReg, args []byte) error {
 	if key != cas20ParamAdmin {
 		return revCAS20StringBytes("UnknownParam(string,bytes)", errSelUnknownParam, key, value)
 	}
-	// Twenty raw bytes, as every address-valued system parameter takes, and
-	// non-zero because an admin nobody holds cannot open anything.
 	if len(value) != 20 {
 		return revCAS20StringBytes("InvalidValue(string,bytes)", errSelInvalidValue, key, value)
 	}
@@ -206,8 +173,7 @@ func updateParam(ctx *PrecompileContext, reg activationReg, args []byte) error {
 	if !ctx.AddLog([]common.Hash{cas20TopicAdminChanged, addrKey(previous), addrKey(next), addrKey(ctx.Caller)}, nil) {
 		return ErrOutOfGas
 	}
-	// Every system contract logs the parameter change alongside its own event, so
-	// one stream carries the exact key and raw value governance submitted.
+	// Logged alongside the registry's own event, as every system contract does.
 	if !ctx.AddLog([]common.Hash{cas20TopicParamChange},
 		encodeTuple(abiString(key), abiBytes(value))) {
 		return ErrOutOfGas
@@ -215,9 +181,6 @@ func updateParam(ctx *PrecompileContext, reg activationReg, args []byte) error {
 	return nil
 }
 
-// setFeature flips one feature, for the admin governance appointed. A no-op is
-// surfaced rather than accepted: activating an active feature fails, and
-// deactivating an inactive one reuses FeatureNotActivated.
 func setFeature(ctx *PrecompileContext, reg activationReg, args []byte, on bool) error {
 	if ctx.ReadOnly {
 		return ErrWriteProtection
@@ -246,9 +209,6 @@ func setFeature(ctx *PrecompileContext, reg activationReg, args []byte, on bool)
 	return nil
 }
 
-// ensureFeatureActivated is the gate the factory and the PolicyRegistry apply to
-// their creation paths. It is deliberately not applied on any path of a token
-// that already exists (BEP-702 3.15).
 func ensureFeatureActivated(ctx *PrecompileContext, feature common.Hash) error {
 	if !newActivationReg(ctx).isActivated(feature) {
 		return revCAS20("FeatureNotActivated(bytes32)", errSelFeatureNotActive, feature)

@@ -6,9 +6,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// The Asset variant keeps its state in its own ERC-7201 namespace, disjoint
-// from the core one, so the extension composes without touching the shared
-// layout.
+// The Asset extension lives in its own ERC-7201 namespace, disjoint from the core layout.
 const cas20AssetNamespace = "bsc.cas20.asset"
 
 const (
@@ -19,21 +17,14 @@ const (
 	cas20AssetSlotPending       = 4 // packed: multiplier (u128) | effectiveAt (u64)
 )
 
-// Packed lane offsets in the pending slot, LSB-first as Solidity packs a struct
-// of {uint128 multiplier; uint64 effectiveAt}.
-const (
-	cas20PendingMulBits  = 0
-	cas20PendingWhenBits = 128
-)
+// LSB-first, as Solidity packs {uint128 multiplier; uint64 effectiveAt}.
+const cas20PendingWhenBits = 128
 
 var (
 	cas20AssetRoot = erc7201Root(cas20AssetNamespace)
-	// cas20WAD is the multiplier fixed-point base (1e18 = 1.0x).
-	cas20WAD = uint256.NewInt(1_000_000_000_000_000_000)
-	// cas20U128Mask isolates the pending slot's low lane, and is also the ceiling
-	// every multiplier is bounded by (type(uint128).max).
-	cas20U64Max   = new(uint256.Int).SetUint64(^uint64(0))
-	cas20U128Mask = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
+	cas20WAD       = uint256.NewInt(1_000_000_000_000_000_000) // 1.0x
+	cas20U64Max    = new(uint256.Int).SetUint64(^uint64(0))
+	cas20U128Mask  = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 
 	roleOperator = crypto.Keccak256Hash([]byte("OPERATOR_ROLE"))
 
@@ -52,9 +43,7 @@ var (
 	selExtraMetadata       = selector("extraMetadata(string)")
 	selUpdateExtraMetadata = selector("updateExtraMetadata(string,string)")
 
-	// ERC-8056 (Cobalt). The canonical names alias the Beryl ones, which stay
-	// dialable; updateUIMultiplier is the scheduled setter and is not a rename of
-	// updateMultiplier, which remains as the instant failsafe.
+	// ERC-8056 names; the earlier ones stay dialable as aliases.
 	selUIMultiplier       = selector("uiMultiplier()")
 	selToUIAmount         = selector("toUIAmount(uint256)")
 	selFromUIAmount       = selector("fromUIAmount(uint256)")
@@ -76,11 +65,7 @@ var (
 	cas20TopicUIMultiplierCancelled = eventTopic("UIMultiplierUpdateCancelled(uint256,uint256)")
 )
 
-// The ERC-165 ids the Asset variant advertises: ERC-165 itself and all four
-// ERC-8056 interfaces, Conversion included — toUIAmount and fromUIAmount are its
-// canonical converters and both are implemented. The advertised set is observable
-// surface, so it has to match what is implemented rather than merely be a subset
-// of it.
+// All four ERC-8056 interfaces are implemented, so all four are advertised.
 var cas20AssetInterfaceIDs = map[[4]byte]bool{
 	{0x01, 0xff, 0xc9, 0xa7}: true, // IERC165
 	{0xa6, 0x0b, 0xf1, 0x3d}: true, // IScaledUIAmount
@@ -89,7 +74,6 @@ var cas20AssetInterfaceIDs = map[[4]byte]bool{
 	{0x57, 0x85, 0x4f, 0xc3}: true, // IScaledUIAmountConversion
 }
 
-// assetExt is a gas-metered view over the Asset extension storage.
 type assetExt struct{ s cas20Storage }
 
 func newAssetExt(ctx *PrecompileContext) assetExt { return assetExt{s: newMeteredCAS20Storage(ctx)} }
@@ -109,20 +93,13 @@ func (e assetExt) setMultiplier(m *uint256.Int) {
 	e.s.setWord(assetSlot(cas20AssetSlotMultiplier), m.Bytes32())
 }
 
-// --- ERC-8056 scheduled multiplier (Cobalt) ---------------------------------
+// --- ERC-8056 scheduled multiplier -------------------------------------------
 //
-// Two values decide what a holder's balance is worth: the multiplier at slot 1,
-// set by the instant setter, and a pending schedule at slot 4. The *effective*
-// multiplier is the pending one once its timestamp has passed, and the stored one
-// otherwise — so multiplier() changes value at a timestamp, with no transaction
-// and no event at the flip. That is why adopting ERC-8056 is not a pure
-// addition: an indexer rebuilding state from logs alone will diverge
-// (BEP-702 3.12).
+// The effective multiplier flips from the stored value to the scheduled one at a
+// timestamp, with no transaction and no event at the flip.
 
 func (e assetExt) pendingSlot() common.Hash { return assetSlot(cas20AssetSlotPending) }
 
-// pending reads the scheduled update. A zero effectiveAt means none is recorded;
-// a non-zero one may be live or already matured.
 func (e assetExt) pending() (mul *uint256.Int, effectiveAt uint64) {
 	w := new(uint256.Int).SetBytes(e.s.getWord(e.pendingSlot()).Bytes())
 	lane := new(uint256.Int).Rsh(w, cas20PendingWhenBits)
@@ -137,18 +114,14 @@ func (e assetExt) setPending(mul *uint256.Int, effectiveAt uint64) {
 
 func (e assetExt) clearPending() { e.s.setWord(e.pendingSlot(), common.Hash{}) }
 
-// settleMatured folds a matured schedule into the stored multiplier. Reads compute
-// the effective value and cannot write, so the fold has to happen on the next write
-// that reuses the pending slot — otherwise replacing a matured schedule would
-// silently revert the token to the value from before it matured.
+// Reads cannot write, so a matured schedule is folded into the stored multiplier by
+// the next write that reuses the slot; otherwise that write would revalue the token.
 func (e assetExt) settleMatured(now uint64) {
 	if mul, at := e.pending(); at != 0 && now >= at {
 		e.setMultiplier(mul)
 	}
 }
 
-// effectiveMultiplier is what every conversion and balance view uses. It is the
-// scheduled value once its timestamp has arrived, and the stored one until then.
 func (e assetExt) effectiveMultiplier(now uint64) *uint256.Int {
 	if mul, at := e.pending(); at != 0 && now >= at {
 		return mul
@@ -160,10 +133,6 @@ func (e assetExt) announcementSlot(id string) common.Hash {
 	return e.s.strMapSlot(assetSlot(cas20AssetSlotAnnouncements), id)
 }
 
-// announcementUsed reports whether the id has been announced, and whether the
-// answer is real. False/false means the read could not be paid for: announce must
-// stop there rather than treat an unpaid read as "unused" and go on to re-hash the
-// caller-sized id and encode all three strings into two events.
 func (e assetExt) announcementUsed(id string) (bool, bool) {
 	w, ok := e.s.getWordChecked(e.announcementSlot(id))
 	return w != (common.Hash{}), ok
@@ -184,8 +153,6 @@ func (e assetExt) setExtraMetadata(key, value string) bool {
 	return e.s.setStringAt(e.extraMetaSlot(key), value)
 }
 
-// initAssetExtension seeds a new Asset token's extension storage. decimals is
-// fixed at creation and never changes (BEP-702 section 4.10).
 func initAssetExtension(ctx *PrecompileContext, decimals byte) {
 	e := newAssetExt(ctx)
 	e.setDecimals(decimals)
@@ -200,8 +167,7 @@ func applyMultiplier(raw, mul *uint256.Int) (*uint256.Int, error) {
 	return p.Div(p, cas20WAD), nil
 }
 
-// removeMultiplier answers zero for a zero multiplier without a guard of its own:
-// uint256 division by zero yields zero. updateMultiplier rejects zero anyway.
+// uint256 division by zero yields zero; the setters reject a zero multiplier anyway.
 func removeMultiplier(scaled, mul *uint256.Int) (*uint256.Int, error) {
 	p, overflow := new(uint256.Int).MulOverflow(scaled, cas20WAD)
 	if overflow {
@@ -210,7 +176,6 @@ func removeMultiplier(scaled, mul *uint256.Int) (*uint256.Int, error) {
 	return p.Div(p, mul), nil
 }
 
-// assetDispatch tries the extension selectors first, then the shared surface.
 func assetDispatch(tok cas20Token, ext assetExt, input []byte) ([]byte, error) {
 	if ret, err, ok := dispatchAsset(tok, ext, input); ok {
 		return ret, err
@@ -218,8 +183,6 @@ func assetDispatch(tok cas20Token, ext assetExt, input []byte) ([]byte, error) {
 	return tok.dispatch(input)
 }
 
-// dispatchAsset handles the Asset-variant selectors, returning ok=false so the
-// caller falls back to the shared IB20 dispatch.
 func dispatchAsset(tok cas20Token, ext assetExt, input []byte) (ret []byte, err error, ok bool) {
 	if len(input) < 4 {
 		return nil, nil, false
@@ -228,8 +191,6 @@ func dispatchAsset(tok cas20Token, ext assetExt, input []byte) (ret []byte, err 
 	copy(sel[:], input[:4])
 	args := input[4:]
 
-	// Every conversion and balance view reads the effective multiplier, which is
-	// the scheduled one once its timestamp has passed (ERC-8056).
 	effective := func() *uint256.Int { return ext.effectiveMultiplier(tok.ctx.BlockTime()) }
 
 	switch sel {
@@ -260,9 +221,6 @@ func dispatchAsset(tok cas20Token, ext assetExt, input []byte) (ret []byte, err 
 		if err != nil {
 			return nil, err, true
 		}
-		// bytes4 occupies the high four bytes of its word; anything in the
-		// remaining 28 is a malformed encoding, which Solidity's external decoder
-		// refuses with empty returndata rather than answering for.
 		var want [4]byte
 		copy(want[:], id[:4])
 		for _, b := range id[4:] {
@@ -357,7 +315,6 @@ func dispatchAsset(tok cas20Token, ext assetExt, input []byte) (ret []byte, err 
 	return nil, nil, false
 }
 
-// updateExtraMetadata writes/clears (value == "") a custom metadata entry.
 func updateExtraMetadata(tok cas20Token, ext assetExt, key, value string) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -386,7 +343,7 @@ func readStringArg(args []byte, argIndex int) (string, error) {
 	}
 	n, ok2 := wordU64(args, off)
 	if !ok2 {
-		return "", ErrExecutionReverted // malformed length word
+		return "", ErrExecutionReverted
 	}
 	dataPos := off + 32
 	if n > L-dataPos {
@@ -395,18 +352,10 @@ func readStringArg(args []byte, argIndex int) (string, error) {
 	return string(args[dataPos : dataPos+n]), nil
 }
 
-// announce publishes a disclosure and atomically runs a bundle of internal
-// calls against this token, preserving the caller's identity (role checks
-// still apply). Any failure — malformed call, re-entrant announce, or a
-// reverting internal call — rolls back the whole disclosure.
 func announce(tok cas20Token, ext assetExt, args []byte) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// Decoded before any check of the caller or the token's state: Solidity's
-	// dispatcher decodes a function's arguments before its modifiers run, so
-	// calldata that does not decode is reported as such whoever sent it. The
-	// order is observable through which error the caller receives.
 	calls, err := readBytesArray(args, 0)
 	if err != nil {
 		return err
@@ -436,7 +385,7 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 	if used {
 		return revCAS20Bytes("AnnouncementIdAlreadyUsed(string)", errSelAnnounceIdUsed, []byte(id))
 	}
-	if !ext.markAnnouncement(id) { // marked before execution
+	if !ext.markAnnouncement(id) {
 		return ErrOutOfGas
 	}
 	if !tok.ctx.AddLog([]common.Hash{cas20TopicAnnouncement, addrKey(tok.ctx.Caller)},
@@ -444,7 +393,7 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 		return ErrOutOfGas
 	}
 
-	tok.inAnnounce = true // threaded into the internal calls below by value
+	tok.inAnnounce = true
 	for _, c := range calls {
 		if tok.ctx.OutOfGas() {
 			return ErrOutOfGas
@@ -462,9 +411,7 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 	return nil
 }
 
-// updateUIMultiplier schedules a multiplier change for a future timestamp. Check
-// order: role, then the value, then the two timestamp bounds, then whether a live
-// schedule already exists.
+// Check order: role, value, both timestamp bounds, then a live schedule.
 func updateUIMultiplier(tok cas20Token, ext assetExt, newMul, at *uint256.Int) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -472,7 +419,7 @@ func updateUIMultiplier(tok cas20Token, ext assetExt, newMul, at *uint256.Int) e
 	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
 	}
-	if newMul.IsZero() || newMul.Gt(cas20U128Mask) { // (0, type(uint128).max]
+	if newMul.IsZero() || newMul.Gt(cas20U128Mask) {
 		return revCAS20("InvalidMultiplier()", errSelInvalidMultiplier)
 	}
 	now := tok.ctx.BlockTime()
@@ -482,19 +429,13 @@ func updateUIMultiplier(tok cas20Token, ext assetExt, newMul, at *uint256.Int) e
 	if at.Gt(cas20U64Max) {
 		return revCAS20("EffectiveAtTooFar(uint256)", errSelEffectiveAtTooFar, wU256(at))
 	}
-	// Only a *live* schedule blocks a new one. A matured record is stale state,
-	// not a commitment, so it is silently replaced.
+	// Only a live schedule blocks a new one; a matured record is stale state, not a commitment.
 	if _, existing := ext.pending(); existing > now {
 		return revCAS20("UIMultiplierUpdateExists(uint256)", errSelUIMulExists, wU64(existing))
 	}
-	// The outgoing schedule may already be in force. Persist it before the slot is
-	// reused, or the token drops back to its pre-maturity multiplier until the new
-	// schedule arrives — a silent revaluation of every holder's balance.
 	ext.settleMatured(now)
 	previous := ext.multiplier()
 	ext.setPending(newMul, at.Uint64())
-	// The third argument is when the value takes effect, which for a schedule is
-	// the future timestamp rather than now.
 	if !tok.ctx.AddLog([]common.Hash{cas20TopicUIMultiplierUpdated},
 		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(at).Bytes()...)) {
 		return ErrOutOfGas
@@ -502,8 +443,7 @@ func updateUIMultiplier(tok cas20Token, ext assetExt, newMul, at *uint256.Int) e
 	return nil
 }
 
-// cancelUIMultiplier drops a live schedule. A matured one is not cancellable —
-// its value is already in force, so there is nothing pending to withdraw.
+// A matured schedule is already in force, so there is nothing to withdraw.
 func cancelUIMultiplier(tok cas20Token, ext assetExt) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -530,12 +470,11 @@ func updateMultiplier(tok cas20Token, ext assetExt, newMul *uint256.Int) error {
 	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
 	}
-	if newMul.IsZero() || newMul.Gt(cas20U128Mask) { // (0, type(uint128).max]
+	if newMul.IsZero() || newMul.Gt(cas20U128Mask) {
 		return revCAS20("InvalidMultiplier()", errSelInvalidMultiplier)
 	}
-	// The instant setter is the failsafe, so it overrides any schedule. A live one
-	// is withdrawn loudly; a matured one is stale state and goes quietly, since its
-	// value was already in force and is now being replaced.
+	// The instant setter is the failsafe and overrides any schedule: a live one is
+	// withdrawn loudly, a matured one is stale state and goes quietly.
 	now := tok.ctx.BlockTime()
 	previous := ext.effectiveMultiplier(now)
 	if pendingMul, at := ext.pending(); at != 0 {
@@ -552,8 +491,7 @@ func updateMultiplier(tok cas20Token, ext assetExt, newMul *uint256.Int) error {
 	if !tok.ctx.AddLog([]common.Hash{cas20TopicMultiplierUpdated}, mb[:]) {
 		return ErrOutOfGas
 	}
-	// ERC-8056's canonical event, emitted by both setters so one stream carries
-	// every change.
+	// Emitted by both setters so one stream carries every change.
 	if !tok.ctx.AddLog([]common.Hash{cas20TopicUIMultiplierUpdated},
 		append(append(wU256(previous).Bytes(), wU256(newMul).Bytes()...), wU256(uint256.NewInt(now)).Bytes()...)) {
 		return ErrOutOfGas
@@ -565,8 +503,6 @@ func batchMint(tok cas20Token, args []byte) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// Decoded first, as Solidity's dispatcher does, so a payload that does not
-	// decode is reported as such rather than as a pause or a missing role.
 	recipients, err := readWordArray(args, 0)
 	if err != nil {
 		return err
@@ -589,11 +525,8 @@ func batchMint(tok cas20Token, args []byte) error {
 		return revCAS20("EmptyBatch()", errSelEmptyBatch)
 	}
 	for i := range recipients {
-		// chargeGas marks the frame out of gas and returns, so without this
-		// the loop would run to completion on an exhausted budget — the state is
-		// discarded either way, but the node has already done the work. A batch
-		// long enough to exhaust its gas on the first recipient measured the same
-		// wall-clock as one that paid for every one of them.
+		// chargeGas only marks the frame, so without this an exhausted batch would
+		// still run to completion before being discarded.
 		if tok.ctx.OutOfGas() {
 			return ErrOutOfGas
 		}
@@ -609,8 +542,6 @@ func batchMint(tok cas20Token, args []byte) error {
 	return nil
 }
 
-// readWordArray decodes an ABI dynamic array of 32-byte words (address[] /
-// uint256[]) at head word argIndex.
 func readWordArray(args []byte, argIndex int) ([]common.Hash, error) {
 	L := uint64(len(args))
 	base, ok := wordU64(args, uint64(argIndex)*32)
@@ -619,7 +550,7 @@ func readWordArray(args []byte, argIndex int) ([]common.Hash, error) {
 	}
 	n, ok2 := wordU64(args, base)
 	if !ok2 {
-		return nil, ErrExecutionReverted // malformed length word
+		return nil, ErrExecutionReverted
 	}
 	dataPos := base + 32
 	if n > (L-dataPos)/32 {

@@ -6,8 +6,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// Built-in role ids. DEFAULT_ADMIN is bytes32(0); the rest are keccak of their
-// canonical names. An unset role admin (zero) therefore means DEFAULT_ADMIN.
+// DEFAULT_ADMIN is bytes32(0), so an unset role admin reads as DEFAULT_ADMIN.
 var (
 	roleDefaultAdmin = common.Hash{}
 	roleMint         = crypto.Keccak256Hash([]byte("MINT_ROLE"))
@@ -35,8 +34,6 @@ var (
 	selUnpauseRole      = selector("UNPAUSE_ROLE()")
 	selMetadataRole     = selector("METADATA_ROLE()")
 
-	// Policy scope identifiers: keccak256 of the canonical scope names
-	// (BEP-702 section 3.8).
 	scopeTransferSender   = crypto.Keccak256Hash([]byte("TRANSFER_SENDER_POLICY"))
 	scopeTransferReceiver = crypto.Keccak256Hash([]byte("TRANSFER_RECEIVER_POLICY"))
 	scopeTransferExecutor = crypto.Keccak256Hash([]byte("TRANSFER_EXECUTOR_POLICY"))
@@ -73,8 +70,6 @@ var (
 	cas20TopicSupplyCapUpdated   = eventTopic("SupplyCapUpdated(address,uint256,uint256)")
 )
 
-// dispatchAdmin handles the RBAC / pause / mint-burn selectors. ok is false
-// when sel is none of them, so the caller can continue matching.
 func (t cas20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error, ok bool) {
 	switch sel {
 	case selDefaultAdminRole:
@@ -142,10 +137,6 @@ func (t cas20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err err
 		return nil, t.renounceLastAdmin(), true
 
 	case selIsPaused:
-		// Decoded exactly as pause()/unpause() decode their elements. Solidity's
-		// external decoder validates an enum argument and reverts with empty
-		// returndata, both for dirty padding and for a clean value outside the
-		// enum; Panic(0x21) belongs to an internal uint-to-enum cast, not here.
 		w, err := readWord(args, 0)
 		if err != nil {
 			return nil, err, true
@@ -239,13 +230,7 @@ func (t cas20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err err
 	return nil, nil, false
 }
 
-// cas20PolicyLanes maps each policy scope to the packed lane holding its id.
-//
-// One table, because policyId and updatePolicy used to map the same six scopes
-// through separate switches: a lane wired wrong in one showed up only if a test
-// happened to round-trip that scope, and a pair wired wrong the same way in both
-// round-tripped cleanly. TestCAS20PolicyLanePositions checks each entry against the
-// byte the id actually lands on.
+// One table for policyId and updatePolicy, so the two cannot disagree on a lane.
 var cas20PolicyLanes = map[common.Hash]struct {
 	slot    uint64
 	byteOff uint
@@ -280,8 +265,6 @@ func readRoleAccount(args []byte) (common.Hash, common.Address, error) {
 
 // --- RoleManaged ------------------------------------------------------------
 
-// roleMutable reports whether role mutations are still possible: adminCount == 0
-// freezes them, except inside the factory's privileged bootstrap.
 func (t cas20Token) grantRole(role common.Hash, account common.Address) error {
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
@@ -302,7 +285,6 @@ func (t cas20Token) revokeRole(role common.Hash, account common.Address) error {
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
 	}
-	// The last DEFAULT_ADMIN cannot be removed via revoke; use renounceLastAdmin.
 	if role == roleDefaultAdmin && t.s.hasRole(role, account) && t.s.adminCount().Eq(uint256.NewInt(1)) {
 		return revCAS20("LastAdminCannotRenounce()", errSelLastAdminRenounce)
 	}
@@ -316,11 +298,9 @@ func (t cas20Token) renounceRole(role common.Hash, confirmation common.Address) 
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// Confirmation must equal the caller (OZ 5.x anti-misuse guard).
 	if confirmation != t.ctx.Caller {
 		return revCAS20("AccessControlBadConfirmation()", errSelACBadConfirmation)
 	}
-	// The sole DEFAULT_ADMIN must use renounceLastAdmin, not this path.
 	if role == roleDefaultAdmin && t.s.hasRole(role, t.ctx.Caller) && t.s.adminCount().Eq(uint256.NewInt(1)) {
 		return revCAS20("LastAdminCannotRenounce()", errSelLastAdminRenounce)
 	}
@@ -334,10 +314,7 @@ func (t cas20Token) renounceLastAdmin() error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// Two checks, not one condition: a caller who holds no admin role is
-	// unauthorized, and NotSoleAdmin is reserved for one who does hold it but is
-	// not the last. Collapsing them told a stranger they were "not the sole
-	// admin", which is true but says the wrong thing.
+	// A stranger is unauthorized; NotSoleAdmin is for an admin who is not the last.
 	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) {
 		return revCAS20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), roleDefaultAdmin)
@@ -351,8 +328,6 @@ func (t cas20Token) renounceLastAdmin() error {
 	if !t.ctx.AddLog([]common.Hash{cas20TopicRoleRevoked, roleDefaultAdmin, addrKey(t.ctx.Caller), addrKey(t.ctx.Caller)}, nil) {
 		return ErrOutOfGas
 	}
-	// The dedicated event marks the transition an indexer cannot infer from
-	// RoleRevoked alone: the token is now permanently ungovernable.
 	if !t.ctx.AddLog([]common.Hash{cas20TopicLastAdminRenounced, addrKey(t.ctx.Caller)}, nil) {
 		return ErrOutOfGas
 	}
@@ -371,8 +346,6 @@ func (t cas20Token) setRoleAdmin(role, newAdminRole common.Hash) error {
 	return nil
 }
 
-// removeRole clears role from account (if held), maintaining adminCount, and
-// emits RoleRevoked. Renounce silently succeeds when the role is not held.
 func (t cas20Token) removeRole(role common.Hash, account common.Address) bool {
 	if !t.s.hasRole(role, account) {
 		return true
@@ -384,7 +357,6 @@ func (t cas20Token) removeRole(role common.Hash, account common.Address) bool {
 	return t.ctx.AddLog([]common.Hash{cas20TopicRoleRevoked, role, addrKey(account), addrKey(t.ctx.Caller)}, nil)
 }
 
-// ensureRole reverts unless the caller holds role (skipped when privileged).
 func (t cas20Token) ensureRole(role common.Hash) error {
 	if t.privileged || t.s.hasRole(role, t.ctx.Caller) {
 		return nil
@@ -397,9 +369,8 @@ func (t cas20Token) ensureRoleMutable(role common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// The zero-admin freeze yields to the bootstrap window so an ownerless token
-	// can be configured, but not once this frame has renounced: that transition is
-	// advertised as permanent, and the window is not a way back (BEP-702 3.4).
+	// The bootstrap window may configure an ownerless token, but not one this frame
+	// has just renounced: that transition is permanent.
 	if (!t.privileged || t.ctx.adminRenounced) && t.s.adminCount().IsZero() {
 		return revCAS20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), t.s.roleAdmin(role))
@@ -417,10 +388,6 @@ func (t cas20Token) setPause(args []byte, on bool) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	// Decoded before the role check, because that is where Solidity does it: the
-	// external dispatcher decodes the argument before any modifier runs, so a
-	// malformed array is reported as malformed whether or not the caller is
-	// authorized.
 	features, err := readUint8Array(args)
 	if err != nil {
 		return err
@@ -435,9 +402,7 @@ func (t cas20Token) setPause(args []byte, on bool) error {
 	if len(features) == 0 {
 		return revCAS20("EmptyFeatureSet()", errSelEmptyFeatureSet)
 	}
-	// Read before the caller-sized loop and the encoding below: a mask this frame
-	// could not pay to read is zero, which says "nothing paused", and the work that
-	// follows is proportional to the caller's array.
+	// Read before the caller-sized loop: an unpaid read must be out-of-gas, not an empty mask.
 	p, ok := t.s.pausedChecked()
 	if !ok {
 		return ErrOutOfGas
@@ -460,9 +425,6 @@ func (t cas20Token) setPause(args []byte, on bool) error {
 	if !on {
 		topic = cas20TopicUnpaused
 	}
-	// The event carries the requested feature list, not the resulting mask: it
-	// records the action taken, so re-pausing an already-paused feature is
-	// visible rather than indistinguishable from a no-op.
 	if !t.ctx.AddLog([]common.Hash{topic, addrKey(t.ctx.Caller)}, encodeTuple(abiWordArray(words))) {
 		return ErrOutOfGas
 	}
@@ -484,14 +446,12 @@ func (t cas20Token) mint(to common.Address, amount *uint256.Int) error {
 	return t.mintCore(to, amount)
 }
 
-// mintCore performs the mint accounting (supply cap + credit + Transfer) after
-// the caller has checked pause and role. Used by mint and batchMint.
+// mintCore assumes the caller has checked pause and role.
 func (t cas20Token) mintCore(to common.Address, amount *uint256.Int) error {
 	if to == (common.Address{}) {
 		return revCAS20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
-	// MINT_RECEIVER compliance is enforced even during privileged bootstrap. Each
-	// value below is read once and reused, the revert payloads included.
+	// Enforced even during the privileged bootstrap.
 	mintReceiver := t.s.mintReceiverPolicy()
 	if !t.policyAllows(mintReceiver, to) {
 		return revCAS20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
@@ -500,7 +460,7 @@ func (t cas20Token) mintCore(to common.Address, amount *uint256.Int) error {
 	supply := t.s.totalSupply()
 	newSupply := new(uint256.Int).Add(supply, amount)
 	if newSupply.Lt(supply) {
-		return revPanic(0x11) // supply overflow
+		return revPanic(0x11)
 	}
 	if cap := t.s.supplyCap(); newSupply.Gt(cap) {
 		return revCAS20("SupplyCapExceeded(uint256,uint256)", errSelSupplyCapExceeded,
@@ -532,13 +492,9 @@ func (t cas20Token) burn(from common.Address, amount *uint256.Int) error {
 			addrKey(from), wU256(bal), wU256(amount))
 	}
 	t.s.setU256At(fromSlot, new(uint256.Int).Sub(bal, amount))
-	// Checked, as mint checks its own direction and as Solidity's arithmetic would:
-	// the balance check above bounds this only while the balances sum to
-	// totalSupply, and an unchecked Sub would wrap that to near 2^256 rather than
-	// halting.
 	supply := t.s.totalSupply()
 	if supply.Lt(amount) {
-		return revPanic(0x11) // supply underflow
+		return revPanic(0x11)
 	}
 	t.s.setTotalSupply(new(uint256.Int).Sub(supply, amount))
 	if !t.emit(cas20TopicTransfer, from, common.Address{}, amount) {
@@ -547,9 +503,7 @@ func (t cas20Token) burn(from common.Address, amount *uint256.Int) error {
 	return nil
 }
 
-// seizeWithMemo reassigns a frozen account's balance. SEIZE_HOLDER is inverted:
-// only a disallowed holder is seizable, so an ALWAYS_ALLOW scope makes every
-// account non-seizable.
+// SEIZE_HOLDER is inverted: only a disallowed holder is seizable.
 func (t cas20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, memo common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -560,16 +514,14 @@ func (t cas20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, 
 	if err := t.ensureRole(roleSeize); err != nil {
 		return err
 	}
-	// A seizure is a reassignment, so it needs a real source and a different
-	// destination: self-seizing would emit Seized over a no-op, and a zero source
-	// would report InsufficientBalance for what is really a malformed argument.
+	// A self-seize is a no-op that would still emit Seized; a zero source is a
+	// malformed argument, not an empty balance.
 	if to == (common.Address{}) || from == to {
 		return revCAS20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
 	if from == (common.Address{}) {
 		return revCAS20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
-	// Both seize ids share a slot, so they are read together.
 	seizeHolder, seizeReceiver := t.s.seizePolicies()
 	if t.policyAllows(seizeHolder, from) {
 		return revCAS20("AccountNotSeizable(address)", errSelAccountNotSeizable, addrKey(from))
@@ -622,10 +574,8 @@ func (t cas20Token) updateSupplyCap(newCap *uint256.Int) error {
 	return nil
 }
 
-// updatePolicy binds a policy id to one of the token's six compliance scopes.
-// The id must reference an existing registry policy (or a sentinel); binding a
-// never-created id is rejected so the read path's empty-set tolerance cannot be
-// exploited.
+// updatePolicy rejects a never-created id so the read path's empty-set tolerance
+// cannot be bound on purpose.
 func (t cas20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -633,9 +583,7 @@ func (t cas20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
 	}
-	// The scope is validated before the id: an unrecognized scope is reported as
-	// such whatever id accompanies it. Resolving it to its accessors first is what
-	// puts that check ahead of the registry lookup.
+	// Scope before id: an unknown scope is reported as such whatever id accompanies it.
 	lane, ok := cas20PolicyLanes[scope]
 	if !ok {
 		return revCAS20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
@@ -643,14 +591,9 @@ func (t cas20Token) updatePolicy(scope common.Hash, id uint64) error {
 	read := func() uint64 { return t.s.getPackedU64(lane.slot, lane.byteOff) }
 	write := func(id uint64) { t.s.setPackedU64(lane.slot, lane.byteOff, id) }
 
-	// policyExists answers for the sentinels itself, so binding one needs no
-	// special case here (BEP-702 3.8).
 	if !newPolicyReg(t.ctx).policyExists(id) {
 		return revCAS20("PolicyNotFound(uint64)", errSelPolicyNotFoundID, wU64(id))
 	}
-	// The event carries the id being replaced, so the previous binding is read
-	// before the write — an SLOAD a Solidity implementation emitting the same
-	// event would also pay.
 	previous := read()
 	write(id)
 	if !t.ctx.AddLog([]common.Hash{cas20TopicPolicyUpdated, scope},
@@ -662,11 +605,6 @@ func (t cas20Token) updatePolicy(scope common.Hash, id uint64) error {
 
 // --- ABI: dynamic uint8[] ---------------------------------------------------
 
-// readUint8Array decodes a dynamic uint8[] argument. Offsets, the length and
-// every element are read strictly: a word with dirty high bits is a malformed
-// encoding, not a value to be truncated into something plausible. Truncating an
-// element would be the worst of the three — 0x0100 would silently become
-// feature 0 and pause a feature the caller never named.
 func readUint8Array(args []byte) ([]uint8, error) {
 	L := uint64(len(args))
 	off, ok := wordU64(args, 0)
@@ -683,8 +621,7 @@ func readUint8Array(args []byte) ([]uint8, error) {
 	}
 	out := make([]uint8, n)
 	for i := uint64(0); i < n; i++ {
-		// Byte-addressed, not word-indexed: the head offset is caller-supplied
-		// and need not be 32-aligned.
+		// Byte-addressed: the caller-supplied head offset need not be 32-aligned.
 		v, ok := wordU64(args, dataPos+i*32)
 		if !ok || v > 0xff {
 			return nil, ErrExecutionReverted

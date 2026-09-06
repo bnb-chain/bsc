@@ -14,10 +14,8 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// cas20TestChainConfig returns a chain config CAS20 is actually active under:
-// Pasteur scheduled, and Parlia set so IsInBSC holds. The BSC gate matters —
-// params.TestChainConfig alone has no Parlia, so a harness built on it would
-// exercise CAS20 on a chain where production never enables it.
+// params.TestChainConfig has no Parlia, so a harness built on it would exercise
+// CAS20 on a chain where production never enables it.
 func cas20TestChainConfig() *params.ChainConfig {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
@@ -26,8 +24,6 @@ func cas20TestChainConfig() *params.ChainConfig {
 	return &cfg
 }
 
-// cas20Addr builds a token address in the reserved space with the given variant
-// byte and a one-byte identity fingerprint.
 func cas20Addr(variant, id byte) common.Address {
 	var a common.Address
 	a[0], a[1] = cas20MarkerPrefix[0], cas20MarkerPrefix[1]
@@ -66,19 +62,16 @@ func TestResolveCAS20(t *testing.T) {
 	unknown := cas20Addr(0x02, 1)
 	uninit := cas20Addr(cas20VariantAsset, 2)
 
-	// Mark three tokens as initialized (factory writes a marker code).
 	for _, a := range []common.Address{asset, stable, unknown} {
 		statedb.SetCode(a, CAS20MarkerCode, tracing.CodeChangeContractCreation)
 	}
 
-	// Factory resolves regardless of state.
 	if p, ok := resolveCAS20(CAS20FactoryAddress); !ok {
 		t.Fatal("factory address should resolve")
 	} else if _, ok := p.(*cas20FactoryPrecompile); !ok {
 		t.Fatalf("factory resolved to %T, want *cas20FactoryPrecompile", p)
 	}
 
-	// Initialized Asset / Stablecoin route to the right variant.
 	if p, ok := resolveCAS20(asset); !ok {
 		t.Fatal("initialized asset token should resolve")
 	} else if _, ok := p.(*cas20AssetPrecompile); !ok {
@@ -90,27 +83,21 @@ func TestResolveCAS20(t *testing.T) {
 		t.Fatalf("stablecoin resolved to %T, want *cas20StablecoinPrecompile", p)
 	}
 
-	// Unknown variant byte is not routed even when initialized.
 	if _, ok := resolveCAS20(unknown); ok {
 		t.Error("unknown variant should not resolve")
 	}
-	// An uninitialized address with a recognized variant is still routed:
-	// existence is checked inside the handler, not by dispatch, so a
-	// value-bearing call to it is refused rather than stranded (BEP-702 3.3).
+	// Uninitialized but routed: existence is the handler's check, so a value-bearing
+	// call is refused rather than stranded (BEP-702 3.3).
 	if p, ok := resolveCAS20(uninit); !ok {
 		t.Error("uninitialized recognized-variant address should still route")
 	} else if _, ok := p.(*cas20AssetPrecompile); !ok {
 		t.Errorf("uninitialized asset address resolved to %T, want *cas20AssetPrecompile", p)
 	}
-	// A plain address outside the space is not a CAS20 precompile.
 	if _, ok := resolveCAS20(common.HexToAddress("0x1234")); ok {
 		t.Error("non-CAS20 address should not resolve")
 	}
 }
 
-// TestCAS20VariantOf covers the factory view. It validates the variant byte,
-// unlike isCAS20: the return is an enum, so an unrecognized variant must revert
-// rather than hand back a value the caller's own decoder would reject.
 func TestCAS20VariantOf(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	call := func(to common.Address) ([]byte, error) {
@@ -136,8 +123,7 @@ func TestCAS20VariantOf(t *testing.T) {
 		}
 	}
 
-	// Existence is irrelevant: the answer is derived from the address alone, so
-	// an address no createCAS20 has produced still reports its variant.
+	// Derived from the address alone, so an address never created still reports its variant.
 	if _, err := call(cas20Addr(cas20VariantAsset, 0xfe)); err != nil {
 		t.Errorf("variantOf on an uncreated address err = %v, want success", err)
 	}
@@ -161,11 +147,8 @@ func TestCAS20VariantOf(t *testing.T) {
 	}
 }
 
-// TestCAS20DelegateCallGuard checks that every variant rejects non-direct calls
-// before touching any state, and reverts rather than halting: BEP-702 3.2 says
-// DELEGATECALL and CALLCODE MUST revert, so the caller keeps its gas and can
-// decode the reason. Returning the bare sentinel drained the whole budget and
-// returned nothing.
+// BEP-702 3.2: DELEGATECALL and CALLCODE revert rather than halt, so the caller
+// keeps its gas and can decode the reason.
 func TestCAS20DelegateCallGuard(t *testing.T) {
 	want := revCAS20("DelegateCallNotAllowed()", errSelDelegateCallDenied)
 	wantData, _ := finishCAS20(nil, want)
@@ -184,8 +167,7 @@ func TestCAS20DelegateCallGuard(t *testing.T) {
 	}
 }
 
-// TestCAS20StatelessDispatchGuard checks the defensive backstop on the plain Run
-// path (should never be reached in practice, but must not silently no-op).
+// The plain Run path is never reached in practice, but must not silently no-op.
 func TestCAS20StatelessDispatchGuard(t *testing.T) {
 	var p PrecompiledContract = &cas20AssetPrecompile{}
 	if _, err := p.Run(nil); !errors.Is(err, ErrCAS20StatelessDispatch) {
@@ -193,18 +175,13 @@ func TestCAS20StatelessDispatchGuard(t *testing.T) {
 	}
 }
 
-// TestCAS20UninitializedAddressBehavior pins BEP-702 3.3's dispatch table for a
-// reserved address that holds no token. It is routed to the handler, not left
-// to the ordinary account path, so a value-bearing call is refused instead of
-// being accepted and stranded at an address with no way to withdraw from.
+// BEP-702 3.3: a reserved address holding no token is routed, so value sent to it
+// is refused rather than stranded.
 func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := common.HexToAddress("0xca11e5")
-	// A well-formed Asset address nobody has created.
 	empty := cas20Addr(cas20VariantAsset, 0x77)
 
-	// Zero-value call: reaches the handler, which reverts with empty
-	// returndata because no token exists there.
 	ret, _, err := evm.Call(caller, empty, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("call to uninitialized token err = %v, want ErrExecutionReverted", err)
@@ -213,8 +190,6 @@ func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 		t.Fatalf("revert data = %x, want empty", ret)
 	}
 
-	// Value-bearing call: refused with NonPayable before anything else, so the
-	// value never lands.
 	ret, _, err = evm.Call(caller, empty, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(5))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("value-bearing call err = %v, want ErrExecutionReverted", err)
@@ -223,8 +198,7 @@ func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)
 	}
 
-	// An unrecognized variant is the other case: not routed at all, so the
-	// ordinary account path applies and the call succeeds trivially.
+	// An unrecognized variant is not routed, so the ordinary account path applies.
 	future := cas20Addr(0x02, 0x77)
 	ret, _, err = evm.Call(caller, future, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
 	if err != nil {
@@ -235,7 +209,6 @@ func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 	}
 }
 
-// TestCAS20GateIsBSCOnly pins that the CAS20 address space is routed only on BSC.
 func TestCAS20GateIsBSCOnly(t *testing.T) {
 	newEVM := func(cfg *params.ChainConfig) *EVM {
 		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -260,8 +233,7 @@ func TestCAS20GateIsBSCOnly(t *testing.T) {
 		t.Error("CAS20 must be enabled on a BSC chain past the fork")
 	}
 
-	// Same fork time, no Parlia. IsJenner is where the BSC gate now lives, so the
-	// flag itself must be false — that is the property, not just the routing.
+	// Same fork time, no Parlia: the flag itself must be false, not just the routing.
 	nonBSCCfg := *cas20TestChainConfig()
 	nonBSCCfg.Parlia = nil
 	nonBSC := newEVM(&nonBSCCfg)
@@ -275,7 +247,6 @@ func TestCAS20GateIsBSCOnly(t *testing.T) {
 	if nonBSC.cas20Enabled() {
 		t.Error("CAS20 must not be enabled off BSC, even past the fork")
 	}
-	// And the reserved space must resolve to nothing there.
 	for _, addr := range []common.Address{
 		CAS20FactoryAddress, CAS20PolicyRegistryAddress, CAS20ActivationRegistryAddress,
 		cas20Addr(cas20VariantAsset, 1),
@@ -286,11 +257,8 @@ func TestCAS20GateIsBSCOnly(t *testing.T) {
 	}
 }
 
-// TestCAS20UninitializedExitReportsOutOfGas covers the exit taken when a routed
-// address holds no token. That exit reverts with empty returndata, but the
-// existence check it just performed charged an account access — so when that
-// charge is what exhausted the budget, the call is out of gas and not a revert.
-// The two differ in what the enclosing frame is told and what a tracer records.
+// The existence check charges an account access; when that charge is what
+// exhausted the budget, the exit is out of gas, not a revert.
 func TestCAS20UninitializedExitReportsOutOfGas(t *testing.T) {
 	call := func(budget uint64) (*PrecompileContext, error) {
 		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -303,8 +271,7 @@ func TestCAS20UninitializedExitReportsOutOfGas(t *testing.T) {
 		return ctx, err
 	}
 
-	// Enough for the calldata charge but not the cold account access: the
-	// existence check cannot be paid for.
+	// Enough for the calldata charge but not the cold account access.
 	ctx, err := call(params.ColdAccountAccessCostEIP2929 - 1)
 	if !ctx.OutOfGas() {
 		t.Fatal("expected the account access to exhaust this budget")
@@ -313,7 +280,6 @@ func TestCAS20UninitializedExitReportsOutOfGas(t *testing.T) {
 		t.Errorf("err = %v, want ErrOutOfGas — an unaffordable charge is not a revert", err)
 	}
 
-	// With room to pay for it, the same exit is an ordinary empty revert.
 	ctx, err = call(1_000_000)
 	if ctx.OutOfGas() {
 		t.Fatal("did not expect exhaustion with a generous budget")
@@ -323,10 +289,8 @@ func TestCAS20UninitializedExitReportsOutOfGas(t *testing.T) {
 	}
 }
 
-// TestCAS20RoutingFollowsTheFork pins the whole gate: the reserved space is routed
-// exactly when Jenner is active, and behaves as it did before CAS20 existed
-// otherwise. The gate used to have a second half — a usable activation admin in
-// configuration — which governance-held authority removed.
+// The reserved space is routed exactly when Jenner is active, and behaves as it
+// did before CAS20 existed otherwise.
 func TestCAS20RoutingFollowsTheFork(t *testing.T) {
 	token := cas20Addr(cas20VariantAsset, 1)
 	for _, tc := range []struct {

@@ -37,8 +37,6 @@ func cas20StablecoinParams(name, symbol string, admin common.Address, currency s
 	)
 }
 
-// encodeCreateCAS20 ABI-encodes createCAS20(uint8,bytes32,bytes,bytes[]) with the
-// variant's default params, which is what most tests want.
 func encodeCreateCAS20(variant byte, salt common.Hash, admin common.Address, calls [][]byte) []byte {
 	params := cas20AssetParams("Test Token", "TT", admin, 18)
 	if variant == cas20VariantStablecoin {
@@ -47,8 +45,6 @@ func encodeCreateCAS20(variant byte, salt common.Hash, admin common.Address, cal
 	return encodeCreateCAS20WithParams(variant, salt, params, calls)
 }
 
-// encodeCreateCAS20WithParams is encodeCreateCAS20 with an explicit params blob,
-// for tests that exercise the validation paths.
 func encodeCreateCAS20WithParams(variant byte, salt common.Hash, params []byte, calls [][]byte) []byte {
 	elems := make([][]byte, len(calls))
 	for i, c := range calls {
@@ -92,7 +88,6 @@ func TestCAS20Factory(t *testing.T) {
 		return ret, err
 	}
 
-	// predict address.
 	predicted, err := call(creator, CAS20FactoryAddress, cas20Call(selGetCAS20Address, u256hash(cas20VariantAsset), addrKey(creator), salt))
 	if err != nil {
 		t.Fatalf("getCAS20Address: %v", err)
@@ -102,7 +97,6 @@ func TestCAS20Factory(t *testing.T) {
 		t.Fatalf("getCAS20Address = %s, want %s", common.BytesToAddress(predicted).Hex(), want.Hex())
 	}
 
-	// create the token with bootstrap initCalls: grant MINT to minter, mint 1000 to alice.
 	initCalls := [][]byte{
 		cas20Call(selGrantRole, roleMint, addrKey(minter)),
 		cas20Call(selMint, addrKey(cas20Alice), u256hash(1000)),
@@ -116,12 +110,10 @@ func TestCAS20Factory(t *testing.T) {
 		t.Fatalf("createCAS20 returned %s, want %s", token.Hex(), want.Hex())
 	}
 
-	// isCAS20Initialized(token) == true.
 	if r, _ := call(creator, CAS20FactoryAddress, cas20Call(selIsCAS20Initialized, addrKey(token))); !bytes.Equal(r, encBool(true)) {
 		t.Fatal("token should be initialized")
 	}
 
-	// the created token is live: bootstrap state applied.
 	view := newUnmeteredCAS20Storage(statedb, token)
 	if view.totalSupply().Uint64() != 1000 || view.balanceOf(cas20Alice).Uint64() != 1000 {
 		t.Fatalf("supply %d aliceBal %d, want 1000/1000", view.totalSupply().Uint64(), view.balanceOf(cas20Alice).Uint64())
@@ -133,7 +125,6 @@ func TestCAS20Factory(t *testing.T) {
 		t.Fatal("minter should hold MINT_ROLE")
 	}
 
-	// and it behaves like a token through the EVM: alice transfers to bob.
 	if r, err := call(cas20Alice, token, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(400))); err != nil || !bytes.Equal(r, encBool(true)) {
 		t.Fatalf("transfer via created token: ret %x err %v", r, err)
 	}
@@ -141,14 +132,11 @@ func TestCAS20Factory(t *testing.T) {
 		t.Fatalf("bob balance %d, want 400", view.balanceOf(cas20Bob).Uint64())
 	}
 
-	// re-creating at the same salt collides.
 	if _, err := call(creator, CAS20FactoryAddress, encodeCreateCAS20(cas20VariantAsset, salt, creator, nil)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("duplicate createCAS20 err = %v, want revert", err)
 	}
 }
 
-// TestCAS20FactoryOwnerless creates a token with initialAdmin == 0: roles are set
-// up during the privileged bootstrap and the token is then ungovernable.
 func TestCAS20FactoryOwnerless(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	cfg := *cas20TestChainConfig()
@@ -158,7 +146,6 @@ func TestCAS20FactoryOwnerless(t *testing.T) {
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x02")
 
-	// initCalls grant MINT to creator despite no admin (privileged bootstrap).
 	initCalls := [][]byte{cas20Call(selGrantRole, roleMint, addrKey(creator))}
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantStablecoin, salt, common.Address{}, initCalls),
@@ -174,16 +161,12 @@ func TestCAS20FactoryOwnerless(t *testing.T) {
 	if !view.hasRole(roleMint, creator) {
 		t.Fatal("bootstrap should have granted MINT despite ownerless")
 	}
-	// post-creation, role mutations are impossible (no admin).
 	if _, _, err := evm.Call(creator, token, cas20Call(selGrantRole, roleBurn, addrKey(creator)),
 		NewGasBudget(1_000_000), uint256.NewInt(0)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("grant on ownerless token err = %v, want revert", err)
 	}
 }
 
-// TestCAS20CreateParams exercises the create-params blob: the version gate that
-// precedes every field check, the per-variant validation, and the metadata the
-// token ends up carrying.
 func TestCAS20CreateParams(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -193,8 +176,7 @@ func TestCAS20CreateParams(t *testing.T) {
 	}
 	salt := func(n uint64) common.Hash { return u256hash(n) }
 
-	// An unsupported version is reported before any field is looked at, so a
-	// blob that is also invalid downstream still fails on the version.
+	// Also invalid downstream, so the version is what must be reported.
 	bad := abiEncodeStruct(abiWord(wU8(2)), abiString("N"), abiString("S"), abiWord(addrKey(creator)), abiWord(wU8(3)))
 	ret, err := call(encodeCreateCAS20WithParams(cas20VariantAsset, salt(1), bad, nil))
 	if !errors.Is(err, ErrExecutionReverted) {
@@ -206,7 +188,6 @@ func TestCAS20CreateParams(t *testing.T) {
 		t.Fatalf("revert data = %x, want UnsupportedVersion(2, ASSET) = %x", ret, want)
 	}
 
-	// Asset decimals are bounded.
 	for _, d := range []byte{5, 19} {
 		p := cas20AssetParams("N", "S", creator, d)
 		ret, err := call(encodeCreateCAS20WithParams(cas20VariantAsset, salt(uint64(d)), p, nil))
@@ -219,7 +200,6 @@ func TestCAS20CreateParams(t *testing.T) {
 		}
 	}
 
-	// Stablecoin currency must be present and uppercase A-Z.
 	if _, err := call(encodeCreateCAS20WithParams(cas20VariantStablecoin, salt(20), cas20StablecoinParams("N", "S", creator, ""), nil)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("empty currency err = %v, want MissingRequiredField", err)
 	}
@@ -227,7 +207,6 @@ func TestCAS20CreateParams(t *testing.T) {
 		t.Fatalf("lowercase currency err = %v, want InvalidCurrency", err)
 	}
 
-	// A valid Asset carries its metadata and its chosen decimals.
 	ret, err = call(encodeCreateCAS20WithParams(cas20VariantAsset, salt(30), cas20AssetParams("Gold Fund", "GLD", creator, 8), nil))
 	if err != nil {
 		t.Fatalf("createCAS20 asset: %v", err)
@@ -245,7 +224,6 @@ func TestCAS20CreateParams(t *testing.T) {
 		t.Fatalf("decimals() = %x (err %v), want 8", dec, err)
 	}
 
-	// A valid Stablecoin exposes its immutable currency and fixed 6 decimals.
 	ret, err = call(encodeCreateCAS20WithParams(cas20VariantStablecoin, salt(31), cas20StablecoinParams("Euro Coin", "EURC", creator, "EUR"), nil))
 	if err != nil {
 		t.Fatalf("createCAS20 stablecoin: %v", err)
@@ -261,8 +239,6 @@ func TestCAS20CreateParams(t *testing.T) {
 	}
 }
 
-// TestCAS20CreatedEvent pins the creation event's topics and payload: an indexer
-// must be able to build a token index from the factory address alone.
 func TestCAS20CreatedEvent(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xe7e17")
@@ -299,8 +275,6 @@ func TestCAS20CreatedEvent(t *testing.T) {
 		t.Fatalf("indexed variant = %x, want STABLECOIN", created.Topics[2])
 	}
 
-	// Data is (name, symbol, decimals, variantEventParams); the last carries
-	// the versioned currency struct for a Stablecoin.
 	wantParams := abiEncodeStruct(abiWord(wU8(cas20ParamsVersion)), abiString("USD"))
 	wantData := encodeTuple(
 		abiString("Dollar Coin"), abiString("USDX"), abiWord(wU8(6)), abiBytes(wantParams),
@@ -310,11 +284,8 @@ func TestCAS20CreatedEvent(t *testing.T) {
 	}
 }
 
-// TestCAS20CreateParamsCanonicalEncoding decodes a params blob written out by
-// hand, byte for byte, as `abi.encode(CAS20AssetCreateParams{...})` would produce
-// it. The other tests build their input with the same helper the expected
-// output uses, so a shared mistake in that helper would pass unnoticed; this
-// vector is independent of it.
+// A hand-written vector, independent of the helper every other params test both
+// builds its input with and measures against.
 func TestCAS20CreateParamsCanonicalEncoding(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad3111")
@@ -332,8 +303,6 @@ func TestCAS20CreateParamsCanonicalEncoding(t *testing.T) {
 	blob = append(blob, word(1)...) // w8 symbol length
 	blob = append(blob, rightPad32([]byte("B"))...)
 
-	// The helper must agree with the hand-written vector; if it does not, every
-	// other params test is measuring the helper against itself.
 	if got := cas20AssetParams("A", "B", admin, 18); !bytes.Equal(got, blob) {
 		t.Fatalf("cas20AssetParams disagrees with the canonical encoding:\n got %x\nwant %x", got, blob)
 	}
@@ -350,10 +319,6 @@ func TestCAS20CreateParamsCanonicalEncoding(t *testing.T) {
 	}
 }
 
-// TestCAS20CreateParamsRejectsMalformed covers the decoder's strictness: dirty
-// high bits in a uint8 field or an out-of-range offset are malformed
-// encodings, reported as a bare revert rather than decoded into something
-// plausible.
 func TestCAS20CreateParamsRejectsMalformed(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad3111")
@@ -364,24 +329,19 @@ func TestCAS20CreateParamsRejectsMalformed(t *testing.T) {
 		return err
 	}
 
-	// A version word carrying dirty high bits.
 	dirty := cas20AssetParams("A", "B", admin, 18)
 	dirty[32] = 0xff // first byte of the version word, inside the struct
 	if err := call(common.HexToHash("0x1"), dirty); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("dirty version word err = %v, want revert", err)
 	}
 
-	// An outer offset pointing past the end of the blob.
 	bad := cas20AssetParams("A", "B", admin, 18)
 	copy(bad[:32], u256hash(uint64(len(bad)+32)).Bytes())
 	if err := call(common.HexToHash("0x2"), bad); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("out-of-range offset err = %v, want revert", err)
 	}
 
-	// A dirty length word on a dynamic field. Truncating it to uint64 would
-	// silently read a zero-length name; it must fail the decode instead.
-	// The name length sits at the start of the first string tail: outer offset
-	// (1 word) + 5 struct head words = word 6.
+	// The name length word: outer offset (1 word) + 5 struct head words = word 6.
 	dirtyLen := cas20AssetParams("A", "B", admin, 18)
 	dirtyLen[6*32] = 0x01 // high byte of the length word
 	ret, _, err := evm.Call(admin, CAS20FactoryAddress,
@@ -390,17 +350,11 @@ func TestCAS20CreateParamsRejectsMalformed(t *testing.T) {
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("dirty length word err = %v, want revert", err)
 	}
-	// A malformed encoding reverts bare, the way an ABI decode failure does —
-	// it is not a business-rule error and carries no typed payload.
 	if len(ret) != 0 {
 		t.Fatalf("malformed encoding revert data = %x, want empty", ret)
 	}
 }
 
-// TestCAS20FieldValidationPrecedesOccupancy pins the precedence: an invalid
-// currency is reported as such even when the salt in the same call is already
-// taken, because every field is validated before the address is derived, which
-// puts MissingRequiredField and InvalidCurrency ahead of TokenAlreadyExists.
 func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdup)")
@@ -416,7 +370,6 @@ func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 	if _, err := call(salt, "USD"); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
-	// Same salt AND an invalid currency: the currency is what is reported.
 	ret, err := call(salt, "usd")
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("duplicate salt with a bad currency: err = %v, want revert", err)
@@ -424,7 +377,6 @@ func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 	if len(ret) < 4 || [4]byte(ret[:4]) != errSelInvalidCurrency {
 		t.Fatalf("revert selector = %x, want InvalidCurrency %x", ret[:min(4, len(ret))], errSelInvalidCurrency)
 	}
-	// An empty one likewise outranks the duplicate salt.
 	ret, err = call(salt, "")
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("empty currency: err = %v, want a revert", err)
@@ -433,8 +385,7 @@ func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 		t.Fatalf("empty currency: selector = %x, want MissingRequiredField %x",
 			ret[:min(4, len(ret))], errSelMissingField)
 	}
-	// And with a valid currency the duplicate salt is what binds, so the cases
-	// above had two failing conditions rather than one.
+	// Shows the cases above had two failing conditions rather than one.
 	ret, err = call(salt, "EUR")
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("valid currency, duplicate salt: err = %v, want a revert", err)
@@ -445,10 +396,8 @@ func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 	}
 }
 
-// TestCAS20OutOfEnumVariantRevertsEmpty covers the variant word no enum member
-// claims. Solidity's external decoder validates an enum argument and reverts with
-// empty returndata; Panic(0x21) comes from an internal uint-to-enum cast and is
-// not what a caller passing 2 to an enum parameter receives.
+// Solidity's external decoder rejects an out-of-range enum with empty returndata;
+// Panic(0x21) belongs to an internal uint-to-enum cast.
 func TestCAS20OutOfEnumVariantRevertsEmpty(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := common.HexToAddress("0xca11e4")
@@ -472,8 +421,6 @@ func TestCAS20OutOfEnumVariantRevertsEmpty(t *testing.T) {
 		}
 	}
 
-	// And a word inside the enum still routes, so the bound is not simply refusing
-	// everything.
 	ret, _, err := evm.Call(caller, CAS20FactoryAddress,
 		cas20Call(selGetCAS20Address, u256hash(uint64(cas20VariantStablecoin)), addrKey(caller), common.Hash{}),
 		NewGasBudget(5_000_000), uint256.NewInt(0))
@@ -485,8 +432,6 @@ func TestCAS20OutOfEnumVariantRevertsEmpty(t *testing.T) {
 	}
 }
 
-// TestCAS20BootstrapReachesTheVariant covers the six Asset write selectors that the
-// bootstrap could not reach.
 func TestCAS20BootstrapReachesTheVariant(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -514,7 +459,6 @@ func TestCAS20BootstrapReachesTheVariant(t *testing.T) {
 			cas20Call(selGrantRole, roleMint, addrKey(creator)),
 			cas20Call(selGrantRole, roleOperator, addrKey(creator)),
 			cas20Call(selGrantRole, roleMetadata, addrKey(creator)),
-			// Asset-only, every one an unknown selector before this fix.
 			cas20Call(selUpdateMultiplier, u256hash(oneAndAHalf)),
 			encodeBatchMint([]common.Address{cas20Alice, cas20Bob}, []uint64{10, 20}),
 			encodeStringCall(selUpdateExtraMetadata, "issuer", "acme"),
@@ -527,7 +471,6 @@ func TestCAS20BootstrapReachesTheVariant(t *testing.T) {
 	if got := u(at(token, cas20Call(selMultiplier))); got != oneAndAHalf {
 		t.Errorf("multiplier = %d, want %d — updateMultiplier did not run", got, oneAndAHalf)
 	}
-	// Raw balances from batchMint, and the scaled views the multiplier drives.
 	if got := u(at(token, cas20Call(selBalanceOf, addrKey(cas20Alice)))); got != 10 {
 		t.Errorf("balanceOf(alice) = %d, want 10 — batchMint did not run", got)
 	}
@@ -540,8 +483,6 @@ func TestCAS20BootstrapReachesTheVariant(t *testing.T) {
 		t.Errorf("extraMetadata(issuer) = %q, want %q", s, "acme")
 	}
 
-	// The shared surface still reaches the same way, so the variant dispatcher's
-	// fallback is intact rather than having replaced it.
 	if got := u(at(token, cas20Call(selTotalSupply))); got != 30 {
 		t.Errorf("totalSupply = %d, want 30", got)
 	}

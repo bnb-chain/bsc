@@ -10,12 +10,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// Guards that were correct and that nothing failed on when removed.
-
-// TestCAS20CreateRejectsStaticCall uses grantRole in a non-empty bootstrap bundle so
-// it covers both createCAS20's ReadOnly rejection and the flag spawnBootstrap
-// carries; with no initCalls the factory's own writes land regardless, since
-// StateDB and cas20Storage do not consult ReadOnly.
+// A non-empty bootstrap bundle, so the ReadOnly flag spawnBootstrap carries is covered too.
 func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := common.HexToAddress("0xc4ea70")
@@ -24,8 +19,6 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 	minter := common.HexToAddress("0x33333")
 	bundle := [][]byte{cas20Call(selGrantRole, roleMint, addrKey(minter))}
 	input := encodeCreateCAS20(cas20VariantAsset, salt, caller, bundle)
-	// A refused write is a revert carrying StaticCallNotAllowed(), not an
-	// exceptional halt: the caller keeps its gas and can decode the reason.
 	budget := NewGasBudget(5_000_000)
 	ret, left, err := evm.StaticCall(caller, CAS20FactoryAddress, input, budget)
 	if !errors.Is(err, ErrExecutionReverted) {
@@ -39,7 +32,6 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 		t.Error("the whole budget was consumed; a revert refunds what it did not spend")
 	}
 
-	// Nothing may have been written: no sentinel, so the address stays free.
 	addr := cas20DeriveAddress(cas20VariantAsset, caller, salt)
 	if code := evm.StateDB.GetCode(addr); len(code) != 0 {
 		t.Errorf("code at %s after a refused STATICCALL: %x", addr.Hex(), code)
@@ -48,8 +40,6 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 		t.Error("the bundle's grantRole took effect under STATICCALL")
 	}
 
-	// The registries' write paths under STATICCALL too, since they share the
-	// same class of guard.
 	for _, tc := range []struct {
 		name  string
 		to    common.Address
@@ -57,12 +47,6 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 	}{
 		{"activate", CAS20ActivationRegistryAddress, cas20Call(selActivate, common.HexToHash("0xf2"))},
 		{"deactivate", CAS20ActivationRegistryAddress, cas20Call(selDeactivate, featureCAS20Asset)},
-		// The governance entry point is refused for the same reason. Note that this
-		// case cannot witness updateParam's own ReadOnly check: the metering layer
-		// refuses the write in a read-only frame and the exit reports the identical
-		// StaticCallNotAllowed, so removing the handler's guard changes no
-		// returndata. What that guard buys is refusing before the decode and the
-		// authorization, not the error itself.
 		{"updateParam", CAS20ActivationRegistryAddress, encodeSetAdmin(common.HexToAddress("0xad4152"))},
 		{"createPolicy", CAS20PolicyRegistryAddress, cas20Call(selCreatePolicy, addrKey(caller), u256hash(cas20PolicyBlocklist))},
 	} {
@@ -76,11 +60,8 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 	}
 }
 
-// TestCAS20AdminCountGuards covers the two conditions that keep adminCount honest:
-// grant counts only a role that was absent, revoke only one that was present. An
-// inflated count makes the sole-admin protection see two admins where there is
-// one, so the last becomes revocable. The other tests walk 1 -> 2 -> 1 -> 0 and
-// never repeat a grant or remove an absent holder.
+// An inflated adminCount makes the sole-admin protection see two admins where
+// there is one, so the last becomes revocable.
 func TestCAS20AdminCountGuards(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	second := common.HexToAddress("0x5ec0nd")
@@ -91,7 +72,6 @@ func TestCAS20AdminCountGuards(t *testing.T) {
 	})
 	view := func() *uint256.Int { return newUnmeteredCAS20Storage(statedb, token).adminCount() }
 
-	// Granting a role its holder already has must not count twice.
 	if _, err := run(admin, cas20Call(selGrantRole, roleDefaultAdmin, addrKey(admin))); err != nil {
 		t.Fatalf("re-granting DEFAULT_ADMIN to its holder: %v", err)
 	}
@@ -99,7 +79,6 @@ func TestCAS20AdminCountGuards(t *testing.T) {
 		t.Errorf("adminCount = %s after a duplicate grant, want 1", got)
 	}
 
-	// A real second admin does count.
 	if _, err := run(admin, cas20Call(selGrantRole, roleDefaultAdmin, addrKey(second))); err != nil {
 		t.Fatalf("granting DEFAULT_ADMIN to a new account: %v", err)
 	}
@@ -107,7 +86,6 @@ func TestCAS20AdminCountGuards(t *testing.T) {
 		t.Fatalf("adminCount = %s after a real grant, want 2", got)
 	}
 
-	// Revoking an account that does not hold the role must not decrement.
 	third := common.HexToAddress("0x7h1rd")
 	if _, err := run(admin, cas20Call(selRevokeRole, roleDefaultAdmin, addrKey(third))); err != nil {
 		t.Fatalf("revoking DEFAULT_ADMIN from a non-holder: %v", err)
@@ -117,11 +95,6 @@ func TestCAS20AdminCountGuards(t *testing.T) {
 	}
 }
 
-// TestCAS20AnnounceKeepsInnerRoleChecks covers that an announcement does not lend
-// its bundle the announcer's absent roles. The other announce test grants its
-// operator MINT_ROLE too and bundles only updateMultiplier, which needs the same
-// role the outer check already required, so nothing there distinguished "roles
-// still apply" from "roles are skipped".
 func TestCAS20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -133,7 +106,6 @@ func TestCAS20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 		return ret, err
 	}
 
-	// OPERATOR_ROLE only — deliberately no MINT_ROLE.
 	ret, err := call(creator, CAS20FactoryAddress, encodeCreateCAS20(cas20VariantAsset, salt, creator,
 		[][]byte{cas20Call(selGrantRole, roleOperator, addrKey(operator))}))
 	if err != nil {
@@ -141,14 +113,12 @@ func TestCAS20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// Positive control: an announcement this operator IS entitled to make must
-	// succeed, so a failure below cannot be blamed on the setup.
+	// Positive control, so a failure below cannot be blamed on the setup.
 	if _, err := call(operator, token, encodeAnnounce(
 		[][]byte{cas20Call(selUpdateMultiplier, u256hash(2_000_000_000_000_000_000))}, "2026-Q1-NAV")); err != nil {
 		t.Fatalf("an OPERATOR_ROLE holder could not announce updateMultiplier: %v", err)
 	}
 
-	// And the bundle must not gain a role its announcer lacks.
 	inner := encodeBatchMint([]common.Address{cas20Alice}, []uint64{1000})
 	if _, err := call(operator, token, encodeAnnounce([][]byte{inner}, "2026-Q2-NAV")); err == nil {
 		t.Fatal("an announcer without MINT_ROLE ran batchMint inside its announcement")
@@ -158,12 +128,8 @@ func TestCAS20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	}
 }
 
-// TestCAS20NonDirectCallPlumbing drives the non-direct paths through the EVM's own
-// entry points rather than a hand-built context, so the DirectCall flag evm.go
-// sets is covered rather than assumed. It says nothing about the Caller and
-// Value evm.go passes alongside it — the guard fires before either is read, so
-// this test holds whatever they are; TestStatefulPrecompileCallContext pins
-// those. TestCAS20DelegateCallGuard covers the guard itself.
+// Through the EVM's own entry points, so the DirectCall flag evm.go sets is
+// covered rather than assumed.
 func TestCAS20NonDirectCallPlumbing(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -178,8 +144,6 @@ func TestCAS20NonDirectCallPlumbing(t *testing.T) {
 	caller := common.HexToAddress("0xca11e5")
 	origin := common.HexToAddress("0x0416019")
 
-	// Both revert with DelegateCallNotAllowed() and refund; see
-	// TestCAS20DelegateCallGuard for the payload.
 	wantDelegate, _ := finishCAS20(nil, revCAS20("DelegateCallNotAllowed()", errSelDelegateCallDenied))
 	for _, tc := range []struct {
 		name string
@@ -205,11 +169,8 @@ func TestCAS20NonDirectCallPlumbing(t *testing.T) {
 	}
 }
 
-// TestCAS20MeteringRefusesWritesInStaticFrames covers the backstop under the 25
-// hand-written ReadOnly guards. Removing any one of them used to let a
-// STATICCALL write: approve() with its guard deleted returned nil and left the
-// allowance slot holding the amount. The metering layer now refuses first, as
-// gasSStoreEIP2200 does, so a missing guard costs a revert rather than consensus.
+// The backstop under the hand-written ReadOnly guards: a missing one costs a
+// revert rather than consensus.
 func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	ret, _, err := evm.Call(cas20TestCaller, CAS20FactoryAddress,
@@ -219,8 +180,8 @@ func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 		t.Fatalf("createCAS20: %v", err)
 	}
 	token := common.BytesToAddress(ret)
-	// Driven with readOnly set but reaching the handler directly, which is the
-	// state a frame is in when its own guard is missing.
+	// Reaching the handler directly with readOnly set is the state of a frame whose
+	// own guard is missing.
 	tok := cas20Token{
 		ctx: &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: cas20Alice,
 			ReadOnly: true, DirectCall: true, Value: uint256.NewInt(0), gas: &GasBudget{RegularGas: 5_000_000}},
@@ -240,13 +201,11 @@ func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 		t.Error("the frame was marked out of gas; a static write is a protection failure, not exhaustion")
 	}
 
-	// And the exit turns it into the same typed revert a hand-written guard gives.
 	_, err = finishCAS20Metered(tok.ctx, nil, nil)
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("exit err = %v, want the StaticCallNotAllowed revert", err)
 	}
 
-	// A log is equally a write.
 	before := len(statedb.Logs())
 	if tok.ctx.AddLog([]common.Hash{cas20TopicApproval}, nil) {
 		t.Error("AddLog reported success in a read-only frame")
@@ -256,17 +215,8 @@ func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicyWritesAllRefuseStaticFrames covers every write selector the
-// PolicyRegistry dispatches, because one guard now stands for all nine. The
-// handlers used to repeat the check; removing those left this switch as the only
-// place a write path consults ReadOnly, so a selector added to the switch without
-// the guard — or the guard removed — must fail here rather than in whichever
-// handler happened to keep a copy.
-//
-// The metering layer refuses the write in a read-only frame regardless, and the
-// exit reports the same error, so this cannot witness the guard by returndata
-// alone. What it witnesses is that no write path is missing from the switch and
-// that none of them mutates state under STATICCALL.
+// One guard stands for every registry write selector, so a selector added outside
+// it must fail here.
 func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	caller := cas20TestCaller
@@ -285,8 +235,6 @@ func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 		{"stageUpdateAdmin", cas20Call(selStageUpdateAdmin, id, admin)},
 		{"finalizeUpdateAdmin", cas20Call(selFinalizeUpdateAdmin, id)},
 		{"renounceAdmin", cas20Call(selRenounceAdmin, id)},
-		// The two composite selectors take a dynamic array; a bare selector is
-		// enough here, since the guard precedes decoding.
 		{"createCompositePolicy", selCreateComposite[:]},
 		{"updateComposite", selUpdateComposite[:]},
 	} {
@@ -300,9 +248,6 @@ func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 		}
 	}
 
-	// And the switch covers every write selector the registry declares: a new one
-	// added below the guard rather than inside the case list would be routed to
-	// the default arm and rejected as unknown, not silently let through.
 	for _, sel := range [][4]byte{
 		selCreatePolicy, selCreatePolicyWithAccounts, selUpdateAllowlist, selUpdateBlocklist,
 		selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin,
@@ -314,15 +259,8 @@ func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 	}
 }
 
-// TestCAS20MalformedArgsRevertEmpty pins the returndata of every decode failure,
-// not merely that one occurred.
-//
-// Solidity's external decoder validates each narrow argument and reverts with
-// `revert(0, 0)` — empty returndata — both for dirty padding and for a clean
-// value outside an enum's range. Panic(0x21) is what an *internal* uint-to-enum
-// cast produces and is not what a caller passing 2 to an enum parameter receives.
-// Asserting only that the call reverted cannot tell the two apart, so every case
-// here compares the returndata itself.
+// Every case compares the returndata: a bare revert cannot be told from Panic(0x21)
+// by the error alone.
 func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := cas20TestCaller
@@ -339,7 +277,6 @@ func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 		}
 	}
 
-	// The registry's enum and bool arguments.
 	outOfEnum := u256hash(uint64(cas20PolicyIntersect) + 1)
 	for _, tc := range []struct {
 		name  string
@@ -358,8 +295,7 @@ func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 		assertEmpty(tc.name, ret, err)
 	}
 
-	// A live policy, so the bool below fails on its own encoding rather than on
-	// the policy's absence.
+	// A live policy, so the bool fails on its own encoding rather than on the policy's absence.
 	ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(caller), u256hash(cas20PolicyAllowlist)),
 		NewGasBudget(5_000_000), uint256.NewInt(0))
@@ -372,10 +308,8 @@ func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 		NewGasBudget(5_000_000), uint256.NewInt(0))
 	assertEmpty("updateAllowlist, allowed = 2", ret, err)
 
-	// The token's own narrow arguments. These go through evm.Call on a real token
-	// rather than a bare dispatch: a revert's data is materialized on the way out
-	// of the precompile, so a handler-level call returns nil returndata for every
-	// failure and an emptiness assertion over it would hold vacuously.
+	// Through evm.Call, not a bare dispatch: revert data is materialized on the way
+	// out of the precompile, so an emptiness assertion over dispatch would hold vacuously.
 	initCalls := [][]byte{cas20Call(selGrantRole, rolePause, addrKey(caller))}
 	ret, _, err = evm.Call(caller, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x9174d5"), caller, initCalls),
@@ -411,13 +345,65 @@ func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 	assertEmpty2("supportsInterface, bytes4 with nonzero padding",
 		cas20Call(selSupportsInterface, dirtyID))
 
-	// The clean form answers rather than reverting, so the guard above is not
-	// simply refusing every bytes4.
 	clean := common.Hash{}
 	copy(clean[:4], selIsPaused[:])
 	if ret, err := onToken(cas20Call(selSupportsInterface, clean)); err != nil {
 		t.Errorf("supportsInterface with a clean bytes4: %v", err)
 	} else if !bytes.Equal(ret, encBool(false)) {
 		t.Errorf("supportsInterface(unknown id) = %x, want false", ret)
+	}
+}
+
+// Solidity decodes before any modifier runs, so an undecodable payload is reported
+// as such whoever sends it and whatever the token's state.
+func TestCAS20DecodePrecedesBusinessChecks(t *testing.T) {
+	_, evm := newCAS20EVM(t)
+	creator := cas20TestCaller
+	// Both business checks would fire if they ran first.
+	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
+		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xde0de"), creator,
+			[][]byte{
+				cas20Call(selGrantRole, rolePause, addrKey(creator)),
+				cas20CallU8Array(selPause, byte(cas20PauseMint)),
+			}),
+		NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createCAS20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	stranger := common.HexToAddress("0x57ra9e")
+	for _, tc := range []struct {
+		name string
+		sel  [4]byte
+	}{
+		{"announce, no role and no arguments", selAnnounce},
+		{"batchMint, mint paused and no arguments", selBatchMint},
+	} {
+		ret, _, err := evm.Call(stranger, token, tc.sel[:], NewGasBudget(5_000_000), uint256.NewInt(0))
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want a revert", tc.name, err)
+			continue
+		}
+		if len(ret) != 0 {
+			t.Errorf("%s: returndata = %x, want empty. Arguments are decoded before "+
+				"the caller or the token's state is looked at", tc.name, ret)
+		}
+	}
+
+	if ret, _, _ := evm.Call(stranger, token,
+		encodeAnnounceWith(nil, "id", "d", "u"), NewGasBudget(5_000_000), uint256.NewInt(0)); len(ret) < 4 ||
+		[4]byte(ret[:4]) != errSelACUnauthorized {
+		t.Errorf("announce with valid args: revert data %x, want AccessControlUnauthorizedAccount", ret)
+	}
+	emptyPair := append([]byte{}, selBatchMint[:]...)
+	emptyPair = append(emptyPair, u256hash(0x40).Bytes()...) // offset to recipients
+	emptyPair = append(emptyPair, u256hash(0x60).Bytes()...) // offset to amounts
+	emptyPair = append(emptyPair, u256hash(0).Bytes()...)    // len(recipients)
+	emptyPair = append(emptyPair, u256hash(0).Bytes()...)    // len(amounts)
+	if ret, _, _ := evm.Call(stranger, token, emptyPair,
+		NewGasBudget(5_000_000), uint256.NewInt(0)); len(ret) < 4 ||
+		[4]byte(ret[:4]) != errSelContractPaused {
+		t.Errorf("batchMint with valid args: revert data %x, want ContractPaused", ret)
 	}
 }

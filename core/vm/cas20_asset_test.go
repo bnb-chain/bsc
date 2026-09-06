@@ -55,7 +55,6 @@ func TestCAS20AssetExtension(t *testing.T) {
 		return new(uint256.Int).SetBytes(ret).Uint64()
 	}
 
-	// create an Asset token: minter=MINT, operator=OPERATOR, mint 1000 to alice.
 	initCalls := [][]byte{
 		cas20Call(selGrantRole, roleMint, addrKey(minter)),
 		cas20Call(selGrantRole, roleOperator, addrKey(operator)),
@@ -67,7 +66,6 @@ func TestCAS20AssetExtension(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// defaults from extension storage.
 	if got := u(call(creator, token, cas20Call(selDecimals))); got != 18 {
 		t.Errorf("decimals = %d, want 18", got)
 	}
@@ -81,11 +79,9 @@ func TestCAS20AssetExtension(t *testing.T) {
 		t.Errorf("scaledBalanceOf(alice) = %d, want 1000", got)
 	}
 
-	// non-operator updateMultiplier reverts.
 	if _, err := call(minter, token, cas20Call(selUpdateMultiplier, u256hash(2e18))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("non-operator updateMultiplier err = %v, want revert", err)
 	}
-	// operator sets multiplier to 1.5x.
 	if _, err := call(operator, token, cas20Call(selUpdateMultiplier, u256hash(1_500_000_000_000_000_000))); err != nil {
 		t.Fatalf("updateMultiplier: %v", err)
 	}
@@ -93,7 +89,6 @@ func TestCAS20AssetExtension(t *testing.T) {
 		t.Errorf("multiplier = %d, want 1.5e18", got)
 	}
 
-	// scaled views reflect the multiplier; raw balance is unchanged.
 	if got := u(call(creator, token, cas20Call(selScaledBalanceOf, addrKey(cas20Alice)))); got != 1500 {
 		t.Errorf("scaledBalanceOf(alice) = %d, want 1500", got)
 	}
@@ -106,12 +101,10 @@ func TestCAS20AssetExtension(t *testing.T) {
 	if got := u(call(creator, token, cas20Call(selBalanceOf, addrKey(cas20Alice)))); got != 1000 {
 		t.Errorf("balanceOf(alice) = %d, want 1000 (raw unchanged)", got)
 	}
-	// updateMultiplier to 0 reverts.
 	if _, err := call(operator, token, cas20Call(selUpdateMultiplier, u256hash(0))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("zero multiplier err = %v, want revert", err)
 	}
 
-	// batchMint to bob and carol.
 	if _, err := call(minter, token, encodeBatchMint([]common.Address{cas20Bob, cas20Carol}, []uint64{10, 20})); err != nil {
 		t.Fatalf("batchMint: %v", err)
 	}
@@ -122,21 +115,15 @@ func TestCAS20AssetExtension(t *testing.T) {
 	if view.totalSupply().Uint64() != 1030 {
 		t.Errorf("supply = %d, want 1030", view.totalSupply().Uint64())
 	}
-	// mismatched array lengths revert.
 	if _, err := call(minter, token, encodeBatchMint([]common.Address{cas20Bob}, []uint64{1, 2})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("length-mismatch batchMint err = %v, want revert", err)
 	}
 }
 
-// abiStr encodes a string's tail: its length followed by the bytes padded up to
-// a word. An empty string is one zero word and nothing else.
 func abiStr(s string) []byte {
 	return append(u256hash(uint64(len(s))).Bytes(), rightPad32([]byte(s))...)
 }
 
-// encodeAnnounce ABI-encodes announce(bytes[],string,string,string) with the
-// bytes[] placed right after the head and empty description/uri strings. All
-// four arguments are dynamic, so the head is four offsets.
 func encodeAnnounce(calls [][]byte, id string) []byte {
 	return encodeAnnounceWith(calls, id, "", "")
 }
@@ -203,7 +190,6 @@ func TestCAS20Announce(t *testing.T) {
 
 	const id1 = "2026-Q1-NAV"
 
-	// happy path: announce bundling an updateMultiplier runs atomically.
 	inner := [][]byte{cas20Call(selUpdateMultiplier, u256hash(1_200_000_000_000_000_000))}
 	if _, err := call(operator, token, encodeAnnounce(inner, id1)); err != nil {
 		t.Fatalf("announce: %v", err)
@@ -215,15 +201,12 @@ func TestCAS20Announce(t *testing.T) {
 		t.Fatal("id1 should be marked used")
 	}
 
-	// reusing the id reverts.
 	if _, err := call(operator, token, encodeAnnounce(nil, id1)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("reused id err = %v, want revert", err)
 	}
-	// non-operator reverts.
 	if _, err := call(creator, token, encodeAnnounce(nil, "2026-Q2-NAV")); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("non-operator announce err = %v, want revert", err)
 	}
-	// nesting announce inside announce reverts (and rolls back, id unused).
 	const nestedID = "2026-Q3-NAV"
 	nested := [][]byte{encodeAnnounce(nil, "2026-Q4-NAV")}
 	if _, err := call(operator, token, encodeAnnounce(nested, nestedID)); !errors.Is(err, ErrExecutionReverted) {
@@ -233,9 +216,8 @@ func TestCAS20Announce(t *testing.T) {
 		t.Fatal("failed announce must not mark its id (atomic rollback)")
 	}
 
-	// a failing internal call rolls the whole announce back.
 	const badID = "2027-Q1-NAV"
-	bad := [][]byte{cas20Call(selUpdateMultiplier, u256hash(0))} // zero multiplier reverts
+	bad := [][]byte{cas20Call(selUpdateMultiplier, u256hash(0))}
 	if _, err := call(operator, token, encodeAnnounce(bad, badID)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("failing internal call err = %v, want revert", err)
 	}
@@ -281,7 +263,6 @@ func TestCAS20ExtraMetadata(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read: %v", err)
 		}
-		// decode ABI string: [offset][len][data]
 		n := new(uint256.Int).SetBytes(ret[32:64]).Uint64()
 		return string(ret[64 : 64+n])
 	}
@@ -293,18 +274,15 @@ func TestCAS20ExtraMetadata(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// unset key returns empty.
 	if got := readStr(token, encodeStringCall(selExtraMetadata, "category")); got != "" {
 		t.Fatalf("unset extraMetadata = %q, want empty", got)
 	}
-	// set + read a short value.
 	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "category", "fund")); err != nil {
 		t.Fatalf("updateExtraMetadata: %v", err)
 	}
 	if got := readStr(token, encodeStringCall(selExtraMetadata, "category")); got != "fund" {
 		t.Fatalf("extraMetadata(category) = %q, want fund", got)
 	}
-	// long value (> 32 bytes) exercises the long-string path at a mapping slot.
 	long := "an-international-securities-identification-number-XS1234567890"
 	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "isin", long)); err != nil {
 		t.Fatalf("updateExtraMetadata long: %v", err)
@@ -312,25 +290,20 @@ func TestCAS20ExtraMetadata(t *testing.T) {
 	if got := readStr(token, encodeStringCall(selExtraMetadata, "isin")); got != long {
 		t.Fatalf("extraMetadata(isin) = %q, want %q", got, long)
 	}
-	// empty value deletes.
 	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "category", "")); err != nil {
 		t.Fatalf("delete extraMetadata: %v", err)
 	}
 	if got := readStr(token, encodeStringCall(selExtraMetadata, "category")); got != "" {
 		t.Fatalf("deleted extraMetadata = %q, want empty", got)
 	}
-	// empty key reverts.
 	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "", "x")); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("empty key err = %v, want revert", err)
 	}
-	// non-METADATA caller reverts.
 	if _, err := call(cas20Alice, token, encodeStringCall(selUpdateExtraMetadata, "k", "v")); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unauthorized err = %v, want revert", err)
 	}
 }
 
-// TestCAS20AnnounceEncoderIsCanonical checks the hand-rolled encoder above against
-// go-ethereum's ABI packer.
 func TestCAS20AnnounceEncoderIsCanonical(t *testing.T) {
 	mustType := func(s string) abi.Type {
 		t.Helper()
@@ -370,8 +343,7 @@ func TestCAS20AnnounceEncoderIsCanonical(t *testing.T) {
 			calls: [][]byte{{1, 2, 3, 4}, bytes.Repeat([]byte{9}, 40)},
 			id:    strings.Repeat("L", 70), desc: strings.Repeat("d", 33), uri: "u",
 		},
-		// Either side of the word boundary, where a string's tail either fits
-		// exactly or spills into a second word and moves every later offset.
+		// Either side of the word boundary, where a spilled tail moves every later offset.
 		{name: "id of 31 bytes", id: strings.Repeat("L", 31), desc: "d", uri: "u"},
 		{name: "id of 32 bytes", id: strings.Repeat("L", 32), desc: "d", uri: "u"},
 		{name: "id of 33 bytes", id: strings.Repeat("L", 33), desc: "d", uri: "u"},
@@ -388,7 +360,6 @@ func TestCAS20AnnounceEncoderIsCanonical(t *testing.T) {
 	}
 }
 
-// TestCAS20AnnouncementIDShapes covers the id lengths the fixed test ids do not.
 func TestCAS20AnnouncementIDShapes(t *testing.T) {
 	for _, id := range []string{
 		"",
@@ -439,10 +410,8 @@ func TestCAS20AnnouncementIDShapes(t *testing.T) {
 	}
 }
 
-// TestCAS20MultiplierCeilingIsOneConstant pins the ceiling both setters enforce to
-// the one MAX_UI_MULTIPLIER() advertises. Nothing tested either bound, so the
-// instant setter had been expressing it with the supply-cap sentinel — the same
-// number today, and a silent divergence the moment that sentinel changes.
+// Both setters must enforce the ceiling MAX_UI_MULTIPLIER() advertises, not the
+// supply-cap sentinel that happens to equal it.
 func TestCAS20MultiplierCeilingIsOneConstant(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	operator := common.HexToAddress("0x09e7a70a")

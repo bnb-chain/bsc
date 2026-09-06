@@ -26,8 +26,6 @@ func encodeUpdateList(sel [4]byte, id uint64, flag bool, addrs []common.Address)
 	return out
 }
 
-// cas20BlockContext is the block context every CAS20 test runs under: post-merge, so
-// the fork rules resolve, with transfers stubbed out.
 func cas20BlockContext(time uint64) BlockContext {
 	return BlockContext{
 		Random:      &common.Hash{},
@@ -50,15 +48,10 @@ func newCAS20EVM(t *testing.T) (*state.StateDB, *EVM) {
 	return statedb, NewEVM(bc, statedb, &cfg, Config{})
 }
 
-// cas20TestCaller is the activation admin the test harness seeds.
 var cas20TestCaller = common.HexToAddress("0x60feed")
 
-// seedActivation puts the harness in the state a live network reaches once the
-// fork has run and governance has opened everything. The fork part delegates to
-// SeedCAS20Activation so the harness cannot drift from it; opening the features
-// stays local, since the fork deliberately opens nothing (BEP-702 3.15).
-// seedActivation puts the harness in the state a network reaches after
-// governance has appointed an admin and the admin has opened every feature.
+// The fork part delegates to SeedCAS20Activation so the harness cannot drift from
+// it; opening the features stays local, since the fork opens nothing (BEP-702 3.15).
 func seedActivation(statedb *state.StateDB, admin common.Address) {
 	SeedCAS20Activation(statedb)
 	reg := cas20Storage{state: statedb, token: CAS20ActivationRegistryAddress}
@@ -85,7 +78,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 		return bytes.Equal(ret, encBool(true))
 	}
 
-	// create a blocklist policy.
 	ret, err := call(admin, cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyBlocklist)))
 	if err != nil {
 		t.Fatalf("createPolicy: %v", err)
@@ -101,7 +93,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 		t.Fatal("policyAdmin mismatch")
 	}
 
-	// empty blocklist allows everyone; adding bob blocks him.
 	if !authorized(block, cas20Bob) {
 		t.Fatal("empty blocklist should allow")
 	}
@@ -115,7 +106,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 		t.Fatal("carol should still be allowed")
 	}
 
-	// create an allowlist policy: empty blocks everyone; adding carol allows her.
 	ret, _ = call(admin, cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyAllowlist)))
 	allow := new(uint256.Int).SetBytes(ret).Uint64()
 	if byte(allow>>56) != cas20PolicyAllowlist {
@@ -131,7 +121,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 		t.Fatal("carol should be allowed")
 	}
 
-	// type mismatch and authorization guards.
 	if _, err := call(admin, encodeUpdateList(selUpdateAllowlist, block, true, []common.Address{cas20Alice})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("updateAllowlist on blocklist should revert")
 	}
@@ -139,7 +128,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 		t.Fatal("non-admin update should revert")
 	}
 
-	// two-step admin transfer.
 	newAdmin := common.HexToAddress("0x9ead")
 	if _, err := call(admin, cas20Call(selStageUpdateAdmin, u256hash(block), addrKey(newAdmin))); err != nil {
 		t.Fatalf("stageUpdateAdmin: %v", err)
@@ -154,7 +142,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 		t.Fatal("old admin should no longer update")
 	}
 
-	// renounce freezes the policy; reads still work.
 	if _, err := call(newAdmin, cas20Call(selRenounceAdmin, u256hash(block))); err != nil {
 		t.Fatalf("renounceAdmin: %v", err)
 	}
@@ -166,8 +153,6 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicyIntegration binds policies to a token's compliance scopes and
-// checks they gate transfers and mints.
 func TestCAS20PolicyIntegration(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
@@ -179,7 +164,6 @@ func TestCAS20PolicyIntegration(t *testing.T) {
 		return ret, err
 	}
 
-	// token with creator as admin + minter, 1000 to alice.
 	initCalls := [][]byte{
 		cas20Call(selGrantRole, roleMint, addrKey(creator)),
 		cas20Call(selMint, addrKey(cas20Alice), u256hash(1000)),
@@ -190,7 +174,6 @@ func TestCAS20PolicyIntegration(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// blocklist bob, bind to TRANSFER_RECEIVER.
 	ret, _ = call(creator, CAS20PolicyRegistryAddress, cas20Call(selCreatePolicy, addrKey(creator), u256hash(cas20PolicyBlocklist)))
 	blk := new(uint256.Int).SetBytes(ret).Uint64()
 	if _, err := call(creator, CAS20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{cas20Bob})); err != nil {
@@ -200,7 +183,6 @@ func TestCAS20PolicyIntegration(t *testing.T) {
 		t.Fatalf("updatePolicy(receiver): %v", err)
 	}
 
-	// transfer to bob (blocked receiver) reverts; to carol succeeds.
 	if _, err := call(cas20Alice, token, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(10))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("transfer to blocked receiver err = %v, want revert", err)
 	}
@@ -208,7 +190,6 @@ func TestCAS20PolicyIntegration(t *testing.T) {
 		t.Fatalf("transfer to allowed receiver: %v", err)
 	}
 
-	// allowlist for MINT_RECEIVER: only custody may receive newly minted supply.
 	ret, _ = call(creator, CAS20PolicyRegistryAddress, cas20Call(selCreatePolicy, addrKey(creator), u256hash(cas20PolicyAllowlist)))
 	al := new(uint256.Int).SetBytes(ret).Uint64()
 	if _, err := call(creator, CAS20PolicyRegistryAddress, encodeUpdateList(selUpdateAllowlist, al, true, []common.Address{custody})); err != nil {
@@ -227,7 +208,6 @@ func TestCAS20PolicyIntegration(t *testing.T) {
 	if view.balanceOf(custody).Uint64() != 500 {
 		t.Fatalf("custody balance = %d, want 500", view.balanceOf(custody).Uint64())
 	}
-	// binding a never-created policy id is rejected.
 	if _, err := call(creator, token, cas20Call(selUpdatePolicy, scopeTransferSender, u256hash(0x99999))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("binding nonexistent policy should revert")
 	}
@@ -243,7 +223,6 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 		return ret, err
 	}
 
-	// token: creator is admin, MINT and SEIZE holder; 1000 minted to bob.
 	initCalls := [][]byte{
 		cas20Call(selGrantRole, roleMint, addrKey(creator)),
 		cas20Call(selGrantRole, roleSeize, addrKey(creator)),
@@ -258,12 +237,10 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 
 	memo := common.HexToHash("0x5e12e")
 
-	// seizing an un-frozen account fails (must freeze first).
 	if _, err := call(creator, token, cas20Call(selSeizeWithMemo, addrKey(cas20Bob), addrKey(cas20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("seize before freeze err = %v, want revert (AccountNotSeizable)", err)
 	}
 
-	// step 1: blacklist bob on the SEIZE_HOLDER scope.
 	ret, _ = call(creator, CAS20PolicyRegistryAddress, cas20Call(selCreatePolicy, addrKey(creator), u256hash(cas20PolicyBlocklist)))
 	blk := new(uint256.Int).SetBytes(ret).Uint64()
 	if _, err := call(creator, CAS20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{cas20Bob})); err != nil {
@@ -273,17 +250,14 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 		t.Fatalf("updatePolicy(seizeHolder): %v", err)
 	}
 
-	// non-role caller cannot seize.
 	if _, err := call(cas20Alice, token, cas20Call(selSeizeWithMemo, addrKey(cas20Bob), addrKey(cas20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unauthorized seize err = %v, want revert", err)
 	}
 
-	// the zero address is never a valid destination.
 	if _, err := call(creator, token, cas20Call(selSeizeWithMemo, addrKey(cas20Bob), common.Hash{}, u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("seize to zero err = %v, want revert (InvalidReceiver)", err)
 	}
 
-	// step 2: seize part of the frozen balance. Value moves; supply does not.
 	if _, err := call(creator, token, cas20Call(selSeizeWithMemo, addrKey(cas20Bob), addrKey(cas20Alice), u256hash(400), memo)); err != nil {
 		t.Fatalf("seizeWithMemo: %v", err)
 	}
@@ -298,16 +272,11 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicyStorageLayout pins the registry's storage (BEP-702 3.17): the
-// namespaced root, the slot order, and the packed existence-and-admin word.
-// These are consensus-visible, so the assertions are on raw slots rather than on
-// what the ABI reports.
+// BEP-702 3.17, asserted on raw slots rather than on what the ABI reports.
 func TestCAS20PolicyStorageLayout(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 
-	// Slot order: policies, members, pendingAdmins, counter, then a reserved slot
-	// for composite children.
 	root := new(uint256.Int).SetBytes(erc7201Root("bsc.policy_registry").Bytes())
 	for offset, want := range map[uint64]uint64{
 		polSlotPolicies: 0, polSlotMembers: 1, polSlotPendingAdmins: 2, polSlotCounter: 3,
@@ -343,8 +312,7 @@ func TestCAS20PolicyStorageLayout(t *testing.T) {
 			break
 		}
 	}
-	// Two sentinels are seeded first, so the first caller id draws counter 2 and
-	// the counter lands on 3.
+	// Two sentinels are seeded first, so the first caller id draws counter 2.
 	if got := new(uint256.Int).SetBytes(view.getWord(polSlot(polSlotCounter)).Bytes()).Uint64(); got != 3 {
 		t.Errorf("counter = %d, want 3", got)
 	}
@@ -353,9 +321,6 @@ func TestCAS20PolicyStorageLayout(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicySentinels pins the sentinel semantics: they exist and answer
-// authorization from their id alone, so they are correct before any policy has
-// been created and no membership write can redefine them.
 func TestCAS20PolicySentinels(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := common.HexToAddress("0xad4149")
@@ -368,9 +333,7 @@ func TestCAS20PolicySentinels(t *testing.T) {
 		return ret
 	}
 
-	// Before anything is created: both sentinels report as existing, and their
-	// authorization is fixed. ALWAYS_ALLOW is the value every unset policy field
-	// holds, so it has to be right at this point in particular.
+	// Before anything is created; ALWAYS_ALLOW is what every unset policy field holds.
 	for _, id := range []uint64{cas20PolicyAlwaysAllow, cas20PolicyAlwaysBlock} {
 		if !bytes.Equal(ask(selPolicyExists, u256hash(id)), encBool(true)) {
 			t.Errorf("policyExists(%#x) = false, want true", id)
@@ -389,8 +352,6 @@ func TestCAS20PolicySentinels(t *testing.T) {
 		t.Error("ALWAYS_BLOCK must refuse")
 	}
 
-	// A malformed type byte is not a policy: it never exists, never authorizes,
-	// and has no admin.
 	bad := uint64(5) << 56
 	if !bytes.Equal(ask(selPolicyExists, u256hash(bad)), encBool(false)) {
 		t.Error("a malformed type byte must not exist")
@@ -402,7 +363,6 @@ func TestCAS20PolicySentinels(t *testing.T) {
 		t.Errorf("policyAdmin(malformed) = %s, want zero", got.Hex())
 	}
 
-	// Neither sentinel can be administered: both are seeded with a zero admin.
 	for _, id := range []uint64{cas20PolicyAlwaysAllow, cas20PolicyAlwaysBlock} {
 		_, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
 			cas20Call(selStageUpdateAdmin, u256hash(id), addrKey(caller)),
@@ -413,9 +373,7 @@ func TestCAS20PolicySentinels(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicyCheckOrder pins the order a membership update applies its checks.
-// The order is observable through which error a caller receives, so the
-// existence -> type -> admin -> batch sequence is part of the surface.
+// existence -> type -> admin -> batch, observable through which error the caller receives.
 func TestCAS20PolicyCheckOrder(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad4149")
@@ -436,8 +394,6 @@ func TestCAS20PolicyCheckOrder(t *testing.T) {
 		}
 	}
 
-	// An id no createPolicy produced: existence is checked first, so this is
-	// PolicyNotFound and not Unauthorized.
 	ghost := uint64(cas20PolicyAllowlist)<<56 | 999
 	revertsWith("nonexistent policy", stranger,
 		encodeUpdateList(selUpdateAllowlist, ghost, true, []common.Address{cas20Bob}), errSelPolicyNotFound)
@@ -448,14 +404,10 @@ func TestCAS20PolicyCheckOrder(t *testing.T) {
 	}
 	block := new(uint256.Int).SetBytes(ret).Uint64()
 
-	// Type is checked before admin, so a stranger calling the wrong method on a
-	// real policy sees IncompatiblePolicyType rather than Unauthorized.
 	revertsWith("wrong type, wrong caller", stranger,
 		encodeUpdateList(selUpdateAllowlist, block, true, []common.Address{cas20Bob}), errSelIncompatibleType)
-	// Right method, wrong caller: now admin is what fails.
 	revertsWith("right type, wrong caller", stranger,
 		encodeUpdateList(selUpdateBlocklist, block, true, []common.Address{cas20Bob}), errSelUnauthorized)
-	// Admin passes, so an oversized batch is what fails, last.
 	oversized := make([]common.Address, cas20PolicyBatchMax+1)
 	for i := range oversized {
 		oversized[i] = common.BigToAddress(new(big.Int).SetUint64(uint64(i + 1)))
@@ -463,7 +415,6 @@ func TestCAS20PolicyCheckOrder(t *testing.T) {
 	revertsWith("oversized batch", admin,
 		encodeUpdateList(selUpdateBlocklist, block, true, oversized), errSelBatchTooLarge)
 
-	// The same ordering applies to the admin-handover paths.
 	revertsWith("stage on nonexistent", stranger,
 		cas20Call(selStageUpdateAdmin, u256hash(ghost), addrKey(stranger)), errSelPolicyNotFound)
 	revertsWith("finalize on nonexistent", stranger,
@@ -472,15 +423,11 @@ func TestCAS20PolicyCheckOrder(t *testing.T) {
 		cas20Call(selRenounceAdmin, u256hash(ghost)), errSelPolicyNotFound)
 }
 
-// TestCAS20PolicySentinelsIgnoreMembership pins why the sentinel fast-paths exist.
-// Their emptiness alone would give the same answers, so a membership-derived
-// implementation looks correct — until something writes membership under a
-// sentinel id, which a counter that carried into the type byte could do.
-// Answering from the id makes them constant by construction.
+// Emptiness alone would give the same answers, so a membership-derived sentinel
+// looks correct until something writes membership under its id.
 func TestCAS20PolicySentinelsIgnoreMembership(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 
-	// Plant membership under both sentinels, bypassing the ABI entirely.
 	view := policyReg{s: newUnmeteredCAS20Storage(statedb, CAS20PolicyRegistryAddress)}
 	view.setMember(cas20PolicyAlwaysAllow, cas20Bob, true) // "block bob" on ALWAYS_ALLOW
 	view.setMember(cas20PolicyAlwaysBlock, cas20Bob, true) // "allow bob" on ALWAYS_BLOCK
@@ -502,11 +449,8 @@ func TestCAS20PolicySentinelsIgnoreMembership(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicyCounterExhaustion pins the 56-bit counter bound. Reaching it
-// takes more createPolicy calls than any chain will see, so the counter is
-// driven there directly; what matters is that the boundary is refused rather
-// than allowed to carry into the type byte, where an id would change type,
-// collide with another type's policy, or land on a sentinel.
+// The counter is driven to the bound directly; a carry into the type byte would
+// change an id's type or land on a sentinel.
 func TestCAS20PolicyCounterExhaustion(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad4149")
@@ -519,7 +463,6 @@ func TestCAS20PolicyCounterExhaustion(t *testing.T) {
 		return ret, err
 	}
 
-	// One short of the bound still works, and stays inside its own type space.
 	view.setCounter(cas20PolicyCounterMax - 1)
 	ret, err := create()
 	if err != nil {
@@ -529,7 +472,6 @@ func TestCAS20PolicyCounterExhaustion(t *testing.T) {
 		t.Errorf("id %#x escaped its type byte", id)
 	}
 
-	// At the bound, creation is refused: Panic(0x11), the arithmetic-overflow code.
 	view.setCounter(cas20PolicyCounterMax)
 	ret, err = create()
 	if !errors.Is(err, ErrExecutionReverted) {
@@ -541,11 +483,8 @@ func TestCAS20PolicyCounterExhaustion(t *testing.T) {
 	}
 }
 
-// TestCAS20PolicyEvents pins the registry's log surface: which events each write
-// emits, in what order, and with what payload. The membership events mix a
-// static bool with a dynamic address[], so their data is also checked against
-// go-ethereum's own ABI packer — a head/tail mistake in that shape would
-// otherwise be invisible to an expectation built with the same encoder.
+// The membership events mix a static bool with a dynamic address[], so their data
+// is also checked against go-ethereum's packer.
 func TestCAS20PolicyEvents(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad4149")
@@ -576,8 +515,8 @@ func TestCAS20PolicyEvents(t *testing.T) {
 		}
 	}
 
-	// createPolicy: PolicyCreated then the initial admin as a transition from
-	// nobody, so creation lands in the same stream as every later handover.
+	// The initial admin is a transition from nobody, so creation lands in the same
+	// stream as every later handover.
 	logs := logsOf(admin, cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyBlocklist)))
 	if len(logs) != 2 {
 		t.Fatalf("createPolicy emitted %d logs, want 2", len(logs))
@@ -593,8 +532,7 @@ func TestCAS20PolicyEvents(t *testing.T) {
 		t.Errorf("PolicyAdminUpdated data = %x, want empty", logs[1].Data)
 	}
 
-	// creator is the caller, not the nominated admin: a policy created on someone
-	// else's behalf must name whoever sent the transaction.
+	// creator is the caller, not the nominated admin.
 	logs = logsOf(cas20Alice, cas20Call(selCreatePolicy, addrKey(heir), u256hash(cas20PolicyBlocklist)))
 	if len(logs) != 2 {
 		t.Fatalf("createPolicy (third party) emitted %d logs, want 2", len(logs))
@@ -605,8 +543,6 @@ func TestCAS20PolicyEvents(t *testing.T) {
 	wantTopics("PolicyAdminUpdated (third party)", logs[1],
 		cas20TopicPolicyAdminUpdated, idKey(third), addrKey(common.Address{}), addrKey(heir))
 
-	// updateBlocklist: one log under the blocklist event, carrying the flag and
-	// the accounts.
 	accounts := []common.Address{cas20Bob, cas20Carol}
 	logs = logsOf(admin, encodeUpdateList(selUpdateBlocklist, block, true, accounts))
 	if len(logs) != 1 {
@@ -630,7 +566,6 @@ func TestCAS20PolicyEvents(t *testing.T) {
 		t.Errorf("BlocklistUpdated data\n got = %x\nwant = %x", logs[0].Data, oracle)
 	}
 
-	// An allowlist reports under its own event, not the blocklist one.
 	ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyAllowlist)),
 		NewGasBudget(5_000_000), uint256.NewInt(0))
@@ -647,8 +582,7 @@ func TestCAS20PolicyEvents(t *testing.T) {
 		t.Errorf("AllowlistUpdated data\n got = %x\nwant = %x", logs[0].Data, oracle)
 	}
 
-	// createPolicyWithAccounts emits the seed membership event too — including
-	// for an empty batch, since the call form is part of the record.
+	// Emitted for an empty batch too: the call form is part of the record.
 	logs = logsOf(admin, encodeCreatePolicyWithAccounts(admin, cas20PolicyAllowlist, nil))
 	if len(logs) != 3 {
 		t.Fatalf("createPolicyWithAccounts emitted %d logs, want 3", len(logs))
@@ -661,8 +595,6 @@ func TestCAS20PolicyEvents(t *testing.T) {
 		t.Errorf("seed AllowlistUpdated data\n got = %x\nwant = %x", logs[2].Data, oracle)
 	}
 
-	// The handover pair, then renunciation. Staging names the incumbent as well
-	// as the nominee, so a stage log is self-contained.
 	logs = logsOf(admin, cas20Call(selStageUpdateAdmin, u256hash(block), addrKey(heir)))
 	if len(logs) != 1 {
 		t.Fatalf("stageUpdateAdmin emitted %d logs, want 1", len(logs))
@@ -670,12 +602,10 @@ func TestCAS20PolicyEvents(t *testing.T) {
 	wantTopics("PolicyAdminStaged", logs[0],
 		cas20TopicPolicyAdminStaged, idKey(block), addrKey(admin), addrKey(heir))
 
-	// Withdrawing a nomination is a governance action, not a silent one.
 	logs = logsOf(admin, cas20Call(selStageUpdateAdmin, u256hash(block), addrKey(common.Address{})))
 	wantTopics("PolicyAdminStaged (cancel)", logs[0],
 		cas20TopicPolicyAdminStaged, idKey(block), addrKey(admin), addrKey(common.Address{}))
 
-	// Re-nominate, then the nominee takes over.
 	logsOf(admin, cas20Call(selStageUpdateAdmin, u256hash(block), addrKey(heir)))
 	logs = logsOf(heir, cas20Call(selFinalizeUpdateAdmin, u256hash(block)))
 	if len(logs) != 1 {
@@ -704,9 +634,6 @@ func encodeCreatePolicyWithAccounts(admin common.Address, ptype byte, accounts [
 	return out
 }
 
-// TestCAS20MembershipArgsDecodeStrictly covers the two membership paths' narrow
-// arguments: an address element must not drop its high padding and a bool must be
-// 0 or 1, as Solidity's external decoder requires.
 func TestCAS20MembershipArgsDecodeStrictly(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	admin := cas20TestCaller
@@ -725,16 +652,13 @@ func TestCAS20MembershipArgsDecodeStrictly(t *testing.T) {
 	dirty := addrKey(cas20Alice)
 	dirty[0] = 0x01 // a byte above the low twenty
 
-	// updateAllowlist: the routine path, where a dirty element would add an
-	// account other than the one the encoding names.
+	// A dirty element would add an account other than the one the encoding names.
 	if _, err := call(encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(1), []common.Hash{dirty})); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("updateAllowlist with a dirty address element: err = %v, want a revert", err)
 	}
-	// The bool argument, likewise: 2 is neither true nor false.
 	if _, err := call(encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(2), []common.Hash{addrKey(cas20Alice)})); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("updateAllowlist with allowed = 2: err = %v, want a revert", err)
 	}
-	// And the clean form still works, so the guards are not refusing everything.
 	if _, err := call(encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(1), []common.Hash{addrKey(cas20Alice)})); err != nil {
 		t.Fatalf("updateAllowlist with clean args: %v", err)
 	}
@@ -744,15 +668,12 @@ func TestCAS20MembershipArgsDecodeStrictly(t *testing.T) {
 		t.Error("alice was not added by the clean call")
 	}
 
-	// createPolicyWithAccounts, the other path onto the same setter.
 	if _, err := call(encodeCreatePolicyWithAccountsRaw(addrKey(admin),
 		u256hash(cas20PolicyAllowlist), []common.Hash{dirty})); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("createPolicyWithAccounts with a dirty element: err = %v, want a revert", err)
 	}
 }
 
-// encodeUpdateListRaw is encodeUpdateList with the words passed through
-// unchanged, so a test can hand it an encoding Solidity would not produce.
 func encodeUpdateListRaw(sel [4]byte, id uint64, flag common.Hash, accounts []common.Hash) []byte {
 	out := append([]byte{}, sel[:]...)
 	out = append(out, wU64(id).Bytes()...)
@@ -777,8 +698,6 @@ func encodeCreatePolicyWithAccountsRaw(admin, ptype common.Hash, accounts []comm
 	return out
 }
 
-// TestCAS20SentinelErrorDoesNotDependOnInitialization covers the sentinels before
-// any policy exists, when ensureInitialized has never run.
 func TestCAS20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := common.HexToAddress("0xca11e4")
@@ -788,10 +707,8 @@ func TestCAS20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
 		return ret, err
 	}
 
-	// The registry is untouched: nothing has been created, so the sentinels' words
-	// are unwritten. Administering one must still fail as unauthorized, not as
-	// missing — reading the raw exists bit gave PolicyNotFound here and
-	// Unauthorized after the first unrelated creation.
+	// The sentinels' words are unwritten; administering one must still fail as
+	// unauthorized, not as missing.
 	want := func(input []byte, sel [4]byte, what string) {
 		t.Helper()
 		ret, err := call(input)
@@ -807,8 +724,7 @@ func TestCAS20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
 			errSelUnauthorized, "stageUpdateAdmin on a sentinel before initialization")
 	}
 
-	// Create something unrelated, which is what runs ensureInitialized, and the
-	// answer must not change.
+	// Creating anything runs ensureInitialized; the answer must not change.
 	if _, err := call(cas20Call(selCreatePolicy, addrKey(caller), u256hash(cas20PolicyAllowlist))); err != nil {
 		t.Fatalf("createPolicy: %v", err)
 	}
@@ -818,8 +734,6 @@ func TestCAS20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
 	}
 }
 
-// encodeComposite builds calldata for createCompositePolicy / updateComposite:
-// a fixed head, then the offset to the uint64[] and the array itself.
 func encodeComposite(sel [4]byte, head []common.Hash, kids []uint64) []byte {
 	out := append([]byte{}, sel[:]...)
 	for _, w := range head {
@@ -833,15 +747,8 @@ func encodeComposite(sel [4]byte, head []common.Hash, kids []uint64) []byte {
 	return out
 }
 
-// TestCAS20CompositeChildValidation pins the child-set rules, all four of which
-// are observable through which error a caller receives and none of which any
-// other test covers.
-//
-// The two-pass shape is the substantive one: a set holding both a missing child
-// and an ineligible one owes PolicyNotFound whatever their order in the array. An
-// implementation that validated each child fully before moving to the next would
-// answer InvalidChildPolicy for a set whose first element is a live composite,
-// and would pass every other assertion here.
+// A set holding both a missing child and an ineligible one owes PolicyNotFound
+// whatever their order; a per-child validator would pass every other assertion here.
 func TestCAS20CompositeChildValidation(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad4149")
@@ -884,21 +791,16 @@ func TestCAS20CompositeChildValidation(t *testing.T) {
 
 	ghost := uint64(cas20PolicyAllowlist)<<56 | 999
 
-	// Two passes: existence over the whole set precedes eligibility over the whole
-	// set, so a live composite ahead of a missing id still answers PolicyNotFound.
 	revertsWith("composite child before missing child",
 		encodeComposite(selCreateComposite, unionHead, []uint64{composite, ghost}), errSelPolicyNotFound)
-	// Both entry points, not just creation: they share one validator today, so a
-	// single case would keep passing if a refactor specialized either path.
+	// Both entry points, in case a refactor specializes either path.
 	revertsWith("composite child before missing child, on update",
 		encodeComposite(selUpdateComposite, []common.Hash{u256hash(composite)},
 			[]uint64{composite, ghost}), errSelPolicyNotFound)
-	// The registry's form carries no id: the caller supplied the set.
 	revertsWith("missing child alone",
 		encodeComposite(selCreateComposite, unionHead, []uint64{ghost, block}), errSelPolicyNotFound)
 
-	// Eligibility names the offending child, and a sentinel is as ineligible as a
-	// composite: only a simple policy the registry minted can be a child.
+	// Only a simple policy the registry minted can be a child.
 	revertsWith("composite as child",
 		encodeComposite(selCreateComposite, unionHead, []uint64{composite, block}),
 		errSelInvalidChildPolicy, wU64(composite))
@@ -909,46 +811,33 @@ func TestCAS20CompositeChildValidation(t *testing.T) {
 		encodeComposite(selCreateComposite, unionHead, []uint64{block, cas20PolicyAlwaysBlock}),
 		errSelInvalidChildPolicy, wU64(cas20PolicyAlwaysBlock))
 
-	// The count bound precedes both passes, so a lone missing child reports the
-	// count rather than the absence.
+	// The count bound precedes both passes.
 	revertsWith("count bound precedes child checks",
 		encodeComposite(selCreateComposite, unionHead, []uint64{ghost}), errSelChildrenOutOfRange)
 
-	// The zero-admin guard precedes the type check, as it does in the simple
-	// constructors: all three agree on the order.
+	// Zero admin before type, as in the simple constructors.
 	revertsWith("zero admin outranks incompatible type",
 		encodeComposite(selCreateComposite,
 			[]common.Hash{{}, u256hash(cas20PolicyBlocklist)}, []uint64{block, allow}),
 		errSelZeroAddress)
 
-	// updateComposite is the registry's own method, so its absence error carries
-	// no id either.
 	revertsWith("updateComposite on a missing composite",
 		encodeComposite(selUpdateComposite, []common.Hash{u256hash(ghost)}, []uint64{block, allow}),
 		errSelPolicyNotFound)
-	// A simple policy is not a composite, checked after existence.
 	revertsWith("updateComposite on a simple policy",
 		encodeComposite(selUpdateComposite, []common.Hash{u256hash(block)}, []uint64{block, allow}),
 		errSelIncompatibleType)
 
-	// And a well-formed replacement still lands, so the guards above are not
-	// simply refusing everything.
 	if _, err := call(encodeComposite(selUpdateComposite,
 		[]common.Hash{u256hash(composite)}, []uint64{allow, block})); err != nil {
 		t.Fatalf("updateComposite with a valid child set: %v", err)
 	}
 }
 
-// TestCAS20EmptyCompositeEvaluation pins how a composite with no children
-// answers, which is reachable only through a well-formed id the registry never
-// minted: a created composite carries two to four children and `updateComposite`
-// cannot empty it.
-//
-// The two types fall opposite ways, and neither is a special case: `isAuthorized`
-// runs the same loop for both, so an OR over nothing is false and an AND over
-// nothing is true. That makes a never-created INTERSECT behave as ALWAYS_ALLOW,
-// the same tolerance a never-created BLOCKLIST already has. It is safe for the
-// same reason: binding checks existence, so no token can reference either.
+// An empty composite is reachable only through an id the registry never minted.
+// OR over nothing is false and AND over nothing is true, so a never-created
+// INTERSECT behaves as ALWAYS_ALLOW; binding checks existence, so no token can
+// reference either.
 func TestCAS20EmptyCompositeEvaluation(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	caller := cas20TestCaller
@@ -975,16 +864,14 @@ func TestCAS20EmptyCompositeEvaluation(t *testing.T) {
 		t.Error("a never-created INTERSECT refused an account: an AND over no children is " +
 			"vacuously true, so it authorizes everyone")
 	}
-	// The two simple types for contrast, so the composite answers above are read
-	// against the same emptiness rule rather than in isolation.
+	// The simple types for contrast, under the same emptiness rule.
 	if !ask(ghostBlocklist) {
 		t.Error("a never-created BLOCKLIST refused an account: an empty blocklist blocks no one")
 	}
 	if ask(ghostAllowlist) {
 		t.Error("a never-created ALLOWLIST authorized an account: an empty allowlist admits no one")
 	}
-	// And none of them exists, which is what keeps the tolerance unreachable from
-	// a token: updatePolicy refuses to bind any of these ids.
+	// None of them exists, which is what keeps the tolerance unreachable from a token.
 	for _, id := range []uint64{ghostUnion, ghostIntersect, ghostBlocklist, ghostAllowlist} {
 		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
 			cas20Call(selPolicyExists, wU64(id)), NewGasBudget(5_000_000), uint256.NewInt(0))

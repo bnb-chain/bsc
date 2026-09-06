@@ -17,11 +17,8 @@ func cas20CallString(sel [4]byte, s string) []byte {
 	return append(append([]byte{}, sel[:]...), encString(s)...)
 }
 
-// decodeString reads an ABI-encoded single string return value. It follows the
-// head offset rather than assuming it, and requires the tail to be padded to a
-// word boundary — a helper that skipped those checks would accept payloads a
-// real ABI consumer rejects, and would hide exactly the encoder bugs these
-// tests exist to catch.
+// decodeString follows the head offset and requires word padding, as a real ABI
+// consumer would; a laxer helper would hide the encoder bugs these tests exist for.
 func decodeString(t *testing.T, ret []byte) string {
 	t.Helper()
 	if len(ret) < 64 {
@@ -51,7 +48,6 @@ func TestCAS20MetadataUpdates(t *testing.T) {
 	})
 	view := newUnmeteredCAS20Storage(statedb, token)
 
-	// A caller without METADATA_ROLE cannot touch any of the three fields.
 	for _, input := range [][]byte{
 		cas20CallString(selUpdateName, "Hijacked"),
 		cas20CallString(selUpdateSymbol, "HJK"),
@@ -69,7 +65,6 @@ func TestCAS20MetadataUpdates(t *testing.T) {
 		t.Fatalf("grant METADATA_ROLE: %v", err)
 	}
 
-	// DOMAIN_SEPARATOR is derived from the live name, so renaming must roll it.
 	before, err := run(editor, cas20Call(selDomainSeparator))
 	if err != nil {
 		t.Fatalf("DOMAIN_SEPARATOR: %v", err)
@@ -107,8 +102,6 @@ func TestCAS20MetadataUpdates(t *testing.T) {
 		t.Error("DOMAIN_SEPARATOR unchanged after updateName — outstanding permits would stay valid")
 	}
 
-	// A metadata write is still a write: every one is refused in a read-only
-	// frame, not just the first.
 	for _, c := range []struct {
 		what  string
 		input []byte
@@ -125,9 +118,6 @@ func TestCAS20MetadataUpdates(t *testing.T) {
 	}
 }
 
-// TestCAS20MetadataDuringBootstrap pins that the metadata writers are reachable
-// from createCAS20's privileged init calls without METADATA_ROLE, which is what
-// lets a creator finish configuring a token before any role holder exists.
 func TestCAS20MetadataDuringBootstrap(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -144,7 +134,6 @@ func TestCAS20MetadataDuringBootstrap(t *testing.T) {
 	if got := strOf(view.name()); got != "Configured" {
 		t.Errorf("name = %q, want Configured", got)
 	}
-	// The bypass is the bootstrap window only: it must not outlive creation.
 	if view.hasRole(roleMetadata, creator) {
 		t.Error("creator holds METADATA_ROLE after bootstrap — the bypass leaked into stored state")
 	}
@@ -155,9 +144,6 @@ func TestCAS20MetadataDuringBootstrap(t *testing.T) {
 	}
 }
 
-// TestCAS20MetadataEvents pins the log shape of the metadata writers: updateName
-// must also signal the EIP-712 domain change, and updateContractURI carries no
-// argument at all.
 func TestCAS20MetadataEvents(t *testing.T) {
 	editor := common.HexToAddress("0xed170r")
 	statedb, token, run := newTokenWithEVM(t, 1, func(s cas20Storage) {
@@ -166,8 +152,7 @@ func TestCAS20MetadataEvents(t *testing.T) {
 	txHash := common.HexToHash("0xbeef")
 	statedb.SetTxContext(txHash, 0)
 
-	// A name long enough to spill into the string's keccak-derived data region,
-	// so the encoders are exercised past the single-word case.
+	// Long enough to spill past the single-word case.
 	longName := strings.Repeat("Renamed ", 6) // 48 bytes
 	for _, c := range []struct {
 		what  string
@@ -183,9 +168,6 @@ func TestCAS20MetadataEvents(t *testing.T) {
 	}
 
 	logs := statedb.GetLogs(txHash, 1, common.Hash{}, 1)
-	// Only updateName touches the EIP-712 domain, so exactly four logs in this
-	// order. A spurious EIP712DomainChanged from updateSymbol would break both
-	// the count and the sequence.
 	wantTopics := []common.Hash{
 		cas20TopicNameUpdated, cas20TopicEIP712DomainChanged,
 		cas20TopicSymbolUpdated, cas20TopicContractURIUpdated,
@@ -194,8 +176,6 @@ func TestCAS20MetadataEvents(t *testing.T) {
 		t.Fatalf("got %d logs, want %d (NameUpdated, EIP712DomainChanged, SymbolUpdated, ContractURIUpdated)",
 			len(logs), len(wantTopics))
 	}
-	// NameUpdated and SymbolUpdated index the account that made the change; the
-	// other two take no arguments.
 	wantIndexed := map[common.Hash]bool{cas20TopicNameUpdated: true, cas20TopicSymbolUpdated: true}
 	for i, want := range wantTopics {
 		if logs[i].Address != token {
@@ -227,9 +207,7 @@ func TestCAS20MetadataEvents(t *testing.T) {
 	}
 }
 
-// TestCAS20PausedFeaturesAndSupplyCap covers the two configuration views and the
-// SupplyCapUpdated / Paused log payloads. The uint8[] encodings are written out
-// word by word rather than produced by the encoder under test.
+// The uint8[] expectations are written out word by word, not produced by the encoder under test.
 func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	statedb, _, run := newTokenWithEVM(t, 1, func(s cas20Storage) {
@@ -250,7 +228,6 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 		t.Errorf("supplyCap() = %d, want 1000", got)
 	}
 
-	// No feature paused yet: an empty uint8[] is offset ++ zero length.
 	ret, err = run(admin, cas20Call(selPausedFeatures))
 	if err != nil {
 		t.Fatalf("pausedFeatures: %v", err)
@@ -260,9 +237,7 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 		t.Errorf("pausedFeatures() = %x, want %x", ret, wantEmpty)
 	}
 
-	// Pause SEIZE, BURN and TRANSFER. SEIZE is the highest feature id, so
-	// including it pins the scan's upper bound; the report comes back ordered by
-	// feature id, not in the order they were requested.
+	// SEIZE pins the scan's upper bound; the report is ordered by id, not by request.
 	if _, err := run(admin, cas20CallU8Array(selPause, byte(cas20PauseSeize), byte(cas20PauseBurn), byte(cas20PauseTransfer))); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
@@ -279,8 +254,6 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 		t.Errorf("pausedFeatures() = %x, want %x", ret, want)
 	}
 
-	// Unpause SEIZE only: the remaining two must stay set, and the log must be
-	// Unpaused rather than Paused.
 	if _, err := run(admin, cas20CallU8Array(selUnpause, byte(cas20PauseSeize))); err != nil {
 		t.Fatalf("unpause: %v", err)
 	}
@@ -299,7 +272,6 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	if _, err := run(admin, cas20Call(selUpdateSupplyCap, u256hash(5000))); err != nil {
 		t.Fatalf("updateSupplyCap: %v", err)
 	}
-	// Read the cap back: emitting SupplyCapUpdated is not evidence the cap moved.
 	ret, err = run(admin, cas20Call(selSupplyCap))
 	if err != nil {
 		t.Fatalf("supplyCap: %v", err)
@@ -308,11 +280,9 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 		t.Errorf("supplyCap() after update = %d, want 5000", got)
 	}
 
-	// ALWAYS_BLOCK is a sentinel id, so binding it needs no registry entry.
 	if _, err := run(admin, cas20Call(selUpdatePolicy, scopeTransferSender, wU64(cas20PolicyAlwaysBlock))); err != nil {
 		t.Fatalf("updatePolicy: %v", err)
 	}
-	// Same again: the binding must be observable, not just logged.
 	ret, err = run(admin, cas20Call(selPolicyId, scopeTransferSender))
 	if err != nil {
 		t.Fatalf("policyId: %v", err)
@@ -325,8 +295,7 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	if len(logs) != 4 {
 		t.Fatalf("got %d logs, want 4 (Paused, Unpaused, SupplyCapUpdated, PolicyUpdated)", len(logs))
 	}
-	// Paused(address indexed updater, uint8[] features): the payload echoes the
-	// requested order, so it stays a record of the action rather than of state.
+	// The payload echoes the requested order: a record of the action, not of state.
 	if len(logs[0].Topics) != 2 || logs[0].Topics[0] != cas20TopicPaused || logs[0].Topics[1] != addrKey(admin) {
 		t.Errorf("Paused topics = %v, want [Paused, admin]", logs[0].Topics)
 	}
@@ -338,7 +307,6 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	if !bytes.Equal(logs[0].Data, wantPaused) {
 		t.Errorf("Paused data = %x, want %x", logs[0].Data, wantPaused)
 	}
-	// Unpaused carries its own topic0 and the single feature it released.
 	if len(logs[1].Topics) != 2 || logs[1].Topics[0] != cas20TopicUnpaused || logs[1].Topics[1] != addrKey(admin) {
 		t.Errorf("Unpaused topics = %v, want [Unpaused, admin]", logs[1].Topics)
 	}
@@ -348,7 +316,6 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	if !bytes.Equal(logs[1].Data, wantUnpaused) {
 		t.Errorf("Unpaused data = %x, want %x", logs[1].Data, wantUnpaused)
 	}
-	// SupplyCapUpdated(address indexed updater, uint256 previousCap, uint256 newCap).
 	if len(logs[2].Topics) != 2 || logs[2].Topics[0] != cas20TopicSupplyCapUpdated ||
 		logs[2].Topics[1] != addrKey(admin) {
 		t.Errorf("SupplyCapUpdated topics = %v, want [sig, updater %s]", logs[2].Topics, admin.Hex())
@@ -357,9 +324,6 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	if !bytes.Equal(logs[2].Data, wantCap) {
 		t.Errorf("SupplyCapUpdated data = %x, want %x", logs[2].Data, wantCap)
 	}
-	// PolicyUpdated(bytes32 indexed scope, uint64 oldPolicyId, uint64 newPolicyId).
-	// The old id is what lets an indexer reconstruct a scope's binding history
-	// without replaying every block since creation.
 	if len(logs[3].Topics) != 2 || logs[3].Topics[0] != cas20TopicPolicyUpdated || logs[3].Topics[1] != scopeTransferSender {
 		t.Errorf("PolicyUpdated topics = %v, want [PolicyUpdated, TRANSFER_SENDER]", logs[3].Topics)
 	}
@@ -369,10 +333,8 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 	}
 }
 
-// TestCAS20EIP712DomainEncoding pins eip712Domain() against a byte vector built
-// by hand. The return is a 7-member tuple with three dynamic members, and an
-// encoder mistake in the head/tail split would be invisible to a test that
-// produced the expectation with the same encoder.
+// A hand-built vector: a head/tail mistake would be invisible to an expectation
+// produced by the same encoder.
 func TestCAS20EIP712DomainEncoding(t *testing.T) {
 	_, token, run := newTokenWithEVM(t, 1, func(s cas20Storage) {
 		s.setName("Tok")
@@ -389,8 +351,7 @@ func TestCAS20EIP712DomainEncoding(t *testing.T) {
 		copy(out, s)
 		return out
 	}
-	// Head is 7 words (224 bytes); the tails follow in declaration order:
-	// name at 224, version at 224+64=288, extensions at 288+64=352.
+	// Head 7 words; tails at 224 (name), 288 (version), 352 (extensions).
 	var want []byte
 	want = append(want, common.Hash{0: 0x0f}.Bytes()...) // bytes1 fields, left-aligned
 	want = append(want, u256hash(224).Bytes()...)        // -> name
@@ -410,10 +371,7 @@ func TestCAS20EIP712DomainEncoding(t *testing.T) {
 	}
 }
 
-// TestCAS20ABIEncodingOracle re-checks the two non-trivial new encodings against
-// go-ethereum's own ABI packer. The hand-built vectors above pin the layout and
-// this pins conformance: a shared mistake between the CAS20 encoder and my
-// reading of the spec survives the first check but not the second.
+// Against go-ethereum's packer: the hand-built vectors pin the layout, this pins conformance.
 func TestCAS20ABIEncodingOracle(t *testing.T) {
 	mustType := func(s string) abi.Type {
 		t.Helper()
@@ -424,10 +382,7 @@ func TestCAS20ABIEncodingOracle(t *testing.T) {
 		return ty
 	}
 
-	// eip712Domain(): a 7-member tuple with three dynamic members. Both a
-	// single-word name and one spanning several words, since a name longer than
-	// 32 bytes moves the version and extensions tails — a fixed-size tail
-	// assumption survives the short case.
+	// A name past 32 bytes moves the later tails; a fixed-size assumption survives the short case.
 	domainArgs := abi.Arguments{
 		{Type: mustType("bytes1")}, {Type: mustType("string")}, {Type: mustType("string")},
 		{Type: mustType("uint256")}, {Type: mustType("address")}, {Type: mustType("bytes32")},
@@ -449,7 +404,6 @@ func TestCAS20ABIEncodingOracle(t *testing.T) {
 		}
 	}
 
-	// pausedFeatures(): a bare dynamic uint8[].
 	admin := common.HexToAddress("0xad4149")
 	_, _, runPause := newTokenWithEVM(t, 1, func(s cas20Storage) { s.setRole(rolePause, admin, true) })
 	if _, err := runPause(admin, cas20CallU8Array(selPause, byte(cas20PauseSeize), byte(cas20PauseTransfer))); err != nil {

@@ -8,18 +8,10 @@ import (
 	"testing"
 )
 
-// TestCAS20LayoutFixtureFollowsTheCode keeps testdata/cas20_layout.json in step with
-// the constants, because BEP-702 3.17 is generated from that fixture and is what a
-// second implementation builds from.
-//
-// It pins agreement, not values. The namespace strings are still undecided — a
-// rename of a namespace moves its ERC-7201 root and with it the absolute
-// position of every field — so nothing here asserts what they are. It asserts that
-// whatever the code says, the fixture says too: rename a namespace or renumber a
-// slot and this fails, telling you to regenerate the fixture, which regenerates the
-// spec section in the same commit.
+// BEP-702 3.17 is generated from testdata/cas20_layout.json. This pins agreement
+// with the code, not values: a rename or renumbering fails here and says to
+// regenerate the fixture.
 func TestCAS20LayoutFixtureFollowsTheCode(t *testing.T) {
-	// Derived from the code, never transcribed.
 	live := map[string]map[string]uint64{
 		cas20Namespace: {
 			"name": cas20SlotName, "symbol": cas20SlotSymbol, "contractURI": cas20SlotContractURI,
@@ -76,8 +68,6 @@ func TestCAS20LayoutFixtureFollowsTheCode(t *testing.T) {
 			continue
 		}
 		seenNS[ns.Name] = true
-		// Recomputed from the code's own string: a rename moves every slot in the
-		// namespace, so a stale root here would reach the spec unnoticed.
 		if want := erc7201Root(ns.Name).Hex(); ns.Root != want {
 			t.Errorf("namespace %q: fixture root %s, the code derives %s — %s",
 				ns.Name, ns.Root, want, regen)

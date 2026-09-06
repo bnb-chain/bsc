@@ -7,12 +7,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// cas20ParamsVersion is the encoding version every create-params struct carries
-// as its leading field. A struct that does not match is rejected before any
-// field is looked at, so a version error always takes precedence.
 const cas20ParamsVersion = 1
 
-// Asset decimals bounds (BEP-702 section 4.10).
+// BEP-702 4.10.
 const (
 	cas20MinDecimals = 6
 	cas20MaxDecimals = 18
@@ -28,23 +25,17 @@ var (
 	selIsCAS20Initialized = selector("isCAS20Initialized(address)")
 )
 
-// cas20VariantRecognized reports whether this variant reaches a handler.
 func cas20VariantRecognized(variant byte) bool {
 	_, ok := cas20Variants[variant]
 	return ok
 }
 
-// CAS20MarkerCode marks an initialized token, keeps the account clear of EIP-161
-// reaping, and uses EIP-3541's reserved 0xEF prefix so no deployment can forge
-// it (BEP-702 3.16). It is never executed. Exported so a genesis that starts
-// after the fork can pre-deploy it on the registries, the way the other system
-// accounts are.
+// 0xEF cannot be deployed (EIP-3541), so nothing can forge the marker, and it
+// keeps the account clear of EIP-161 reaping (BEP-702 3.16). Exported for genesis.
 var CAS20MarkerCode = []byte{0xEF}
 
-// cas20NoSupplyCap is the "unlimited" sentinel: type(uint128).max.
 var cas20NoSupplyCap = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 
-// cas20DeriveAddress computes a token's deterministic address:
 // 0xCA52 ++ 8×0x00 ++ variant ++ keccak256(abi.encode(creator, salt))[:9].
 func cas20DeriveAddress(variant byte, creator common.Address, salt common.Hash) common.Address {
 	h := crypto.Keccak256(common.LeftPadBytes(creator.Bytes(), 32), salt.Bytes())
@@ -77,10 +68,7 @@ func runCAS20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Decoded exactly as createCAS20 decodes the same argument. Prediction is
-		// only meaningful if the two agree on what the input means: truncating
-		// variant[31] answered for encodings creation rejects, and named
-		// addresses in unroutable variant spaces.
+		// Decoded as createCAS20 decodes it, so prediction and creation agree.
 		if !isEnumWord(variant, cas20VariantMax) {
 			return nil, ErrExecutionReverted
 		}
@@ -100,9 +88,8 @@ func runCAS20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Unlike isCAS20, this one validates the variant byte: the return type is
-		// an enum, so naming an unrecognized variant would hand the caller a
-		// value its own ABI decoder rejects.
+		// The return type is an enum, so an unrecognized variant reverts rather than
+		// handing the caller a value its decoder rejects.
 		if !IsCAS20Address(a) || !cas20VariantRecognized(a[10]) {
 			return nil, revCAS20("InvalidVariant()", errSelInvalidVariant)
 		}
@@ -140,9 +127,8 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Order follows BEP-702 3.4: the variant is resolved and its
-	// feature gate applied before the variant-specific params blob is decoded, so
-	// a closed feature is reported as such whatever the payload.
+	// Variant and feature gate before the params blob (BEP-702 3.4): a closed
+	// feature is reported as such whatever the payload.
 	if !isEnumWord(variantWord, cas20VariantMax) {
 		return nil, ErrExecutionReverted
 	}
@@ -158,8 +144,6 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Every field is validated before the address is derived, so a malformed
-	// currency is reported as such even when the salt is also taken.
 	if variant == cas20VariantStablecoin {
 		if err := validateCurrency(create.currency); err != nil {
 			return nil, err
@@ -179,13 +163,10 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	}
 	ctx.StateDB.SetCode(addr, CAS20MarkerCode, tracing.CodeChangeContractCreation)
 
-	// Bootstrap context/token bound to the new address, privileged so initCalls
-	// can grant roles and mint before any role holder exists.
 	decimals := create.decimals
 	tokenCtx := ctx.spawnBootstrap(addr, creator)
 	tok := newCAS20TokenBootstrap(tokenCtx, decimals)
 
-	// Initial state: metadata, no supply cap, and the variant's own storage.
 	if !tok.s.setName(create.name) || !tok.s.setSymbol(create.symbol) {
 		return nil, ErrOutOfGas
 	}
@@ -204,20 +185,16 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		}
 	}
 
-	// Each entry runs on the variant's full dispatcher, not the shared half: an
-	// Asset token has to be able to set its multiplier or batch its first
-	// distribution at creation. The bootstrap dispatched tok.dispatch directly
-	// from the commit that introduced it, when no variant layer existed yet, and
-	// was not revisited when one did.
+	// The variant's full dispatcher, not the shared half: an Asset token has to be
+	// able to set its multiplier at creation.
 	dispatch := func(call []byte) ([]byte, error) { return stablecoinDispatch(tok, newStablecoinExt(tokenCtx), call) }
 	if variant == cas20VariantAsset {
 		dispatch = func(call []byte) ([]byte, error) { return assetDispatch(tok, newAssetExt(tokenCtx), call) }
 	}
 
-	// Privileged bootstrap: any initCall failure reverts the whole creation.
 	for i, call := range initCalls {
-		// Same shape as announce's bundle: each entry dispatches a full token
-		// call, so without this the whole array runs on an exhausted budget.
+		// chargeGas only marks the frame; without this the whole array runs on an
+		// exhausted budget.
 		if ctx.OutOfGas() {
 			return nil, ErrOutOfGas
 		}
@@ -226,7 +203,7 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		}
 		if _, err := dispatch(call); err != nil {
 			if _, isRev := err.(*cas20RevertError); !isRev && err != ErrExecutionReverted {
-				return nil, err // out-of-gas / write-protection propagate as-is
+				return nil, err
 			}
 			return nil, revCAS20("InitCallFailed(uint256)", errSelInitCallFailed, wU64(uint64(i)))
 		}
@@ -234,10 +211,6 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
-	// CAS20Created is emitted by the factory, not the token, so an indexer can
-	// follow creation from one address. variantEventParams carries the
-	// variant's immutable identity data: empty for Asset, the versioned
-	// currency struct for Stablecoin.
 	if !ctx.AddLog(
 		[]common.Hash{cas20TopicCAS20Created, addrKey(addr), wU8(variant)},
 		encodeCAS20CreatedData(create),
@@ -256,24 +229,16 @@ type cas20CreateParams struct {
 	currency     string // Stablecoin only
 }
 
-// decodeCreateParams decodes and validates the variant's create-params struct.
-// The version check precedes every field check, so an unsupported encoding is
-// always reported as such.
 func decodeCreateParams(variant byte, params []byte) (cas20CreateParams, error) {
 	out := cas20CreateParams{variant: variant}
 
-	// abi.encode of a single dynamic struct wraps it in a one-element tuple, so
-	// the blob opens with an offset to the struct's own encoding rather than
-	// with its first field. Read through it before touching any field.
+	// The single-struct offset word; see abiEncodeStruct.
 	off, ok := wordU64(params, 0)
 	if !ok || off > uint64(len(params)) {
-		return out, ErrExecutionReverted // malformed encoding
+		return out, ErrExecutionReverted
 	}
 	body := params[off:]
 
-	// A uint8 field with dirty high bits is a malformed encoding, which the
-	// decode reports as such: version and decimals are plain integers, so their
-	// range is a field check rather than a decode failure.
 	version, err := readStrictUint8(body, 0)
 	if err != nil {
 		return out, err
@@ -302,9 +267,7 @@ func decodeCreateParams(variant byte, params []byte) (cas20CreateParams, error) 
 		return out, nil
 	}
 
-	// Stablecoin: decimals are fixed and not carried on the wire. The currency's
-	// content is checked by the caller before the address is derived, so a
-	// malformed one is reported ahead of TokenAlreadyExists.
+	// Stablecoin decimals are fixed and not carried on the wire.
 	out.decimals = 6
 	if out.currency, err = readStringArg(body, 4); err != nil {
 		return out, err
@@ -312,8 +275,6 @@ func decodeCreateParams(variant byte, params []byte) (cas20CreateParams, error) 
 	return out, nil
 }
 
-// validateCurrency is the Stablecoin content check. Its caller runs it before
-// deriving the address, so it reports ahead of TokenAlreadyExists.
 func validateCurrency(code string) error {
 	if code == "" {
 		return revCAS20Bytes("MissingRequiredField(string)", errSelMissingField, []byte("currency"))
@@ -326,26 +287,20 @@ func validateCurrency(code string) error {
 	return nil
 }
 
-// readStrictUint8 decodes a uint8 field: every byte above the last must be
-// zero, or the encoding is malformed.
 func readStrictUint8(args []byte, i int) (byte, error) {
 	w, err := readWord(args, i)
 	if err != nil {
 		return 0, err
 	}
 	if !isEnumWord(w, 0xff) {
-		return 0, ErrExecutionReverted // malformed encoding
+		return 0, ErrExecutionReverted
 	}
 	return w[31], nil
 }
 
-// encodeCAS20CreatedData ABI-encodes the non-indexed fields of CAS20Created:
-// (string name, string symbol, uint8 decimals, bytes variantEventParams).
 func encodeCAS20CreatedData(c cas20CreateParams) []byte {
 	var variantParams []byte
 	if c.variant == cas20VariantStablecoin {
-		// abi.encode(CAS20StablecoinEventParams{version, currency}) — a single
-		// dynamic struct, so it carries the same outer offset wrapper.
 		variantParams = abiEncodeStruct(
 			abiWord(wU8(cas20ParamsVersion)),
 			abiString(c.currency),
@@ -367,7 +322,7 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	}
 	n, ok2 := wordU64(args, base)
 	if !ok2 {
-		return nil, ErrExecutionReverted // malformed length word
+		return nil, ErrExecutionReverted
 	}
 	arrData := base + 32
 	if n > (L-arrData)/32 {
@@ -377,7 +332,7 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	for i := uint64(0); i < n; i++ {
 		elemOff, ok2 := wordU64(args, arrData+i*32)
 		if !ok2 {
-			return nil, ErrExecutionReverted // malformed element offset
+			return nil, ErrExecutionReverted
 		}
 		pos := arrData + elemOff
 		if elemOff > L-arrData || pos > L || L-pos < 32 {
@@ -385,7 +340,7 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 		}
 		elemLen, ok3 := wordU64(args, pos)
 		if !ok3 {
-			return nil, ErrExecutionReverted // malformed element length
+			return nil, ErrExecutionReverted
 		}
 		start := pos + 32
 		if elemLen > L-start {
@@ -396,10 +351,7 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	return out, nil
 }
 
-// wordU64 reads the 32-byte word at byte position pos as a uint64. It reports
-// false when the word is out of range or does not fit a uint64: an offset or
-// length with dirty high bits is a malformed encoding, not a large number to
-// be truncated into something plausible.
+// An offset or length with dirty high bits is a malformed encoding, not a large number.
 func wordU64(args []byte, pos uint64) (uint64, bool) {
 	if pos > uint64(len(args)) || uint64(len(args))-pos < 32 {
 		return 0, false

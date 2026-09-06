@@ -34,7 +34,6 @@ func TestCAS20TokenDispatch(t *testing.T) {
 	}
 	token := cas20Addr(cas20VariantAsset, 1)
 
-	// Seed initial state through the unmetered view.
 	view := newUnmeteredCAS20Storage(statedb, token)
 	view.setName("Test Token")
 	view.setSymbol("TT")
@@ -61,7 +60,6 @@ func TestCAS20TokenDispatch(t *testing.T) {
 		}
 	}
 
-	// views
 	if ret, err := run(cas20Alice, true, cas20Call(selName)); err != nil || string(bytes.TrimRight(ret[64:], "\x00")) != "Test Token" {
 		t.Fatalf("name() = %q, err %v", ret, err)
 	}
@@ -69,14 +67,12 @@ func TestCAS20TokenDispatch(t *testing.T) {
 	wantU("totalSupply", readU(cas20Call(selTotalSupply)), 1000)
 	wantU("balanceOf(alice)", readU(cas20Call(selBalanceOf, addrKey(cas20Alice))), 1000)
 
-	// transfer alice -> bob 100
 	if ret, err := run(cas20Alice, false, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(100))); err != nil || !bytes.Equal(ret, encBool(true)) {
 		t.Fatalf("transfer ret %x err %v", ret, err)
 	}
 	wantU("balanceOf(alice)", readU(cas20Call(selBalanceOf, addrKey(cas20Alice))), 900)
 	wantU("balanceOf(bob)", readU(cas20Call(selBalanceOf, addrKey(cas20Bob))), 100)
 
-	// approve alice -> carol 50, then carol transferFrom alice -> bob 30
 	if _, err := run(cas20Alice, false, cas20Call(selApprove, addrKey(cas20Carol), u256hash(50))); err != nil {
 		t.Fatalf("approve err %v", err)
 	}
@@ -88,19 +84,15 @@ func TestCAS20TokenDispatch(t *testing.T) {
 	wantU("balanceOf(bob)", readU(cas20Call(selBalanceOf, addrKey(cas20Bob))), 130)
 	wantU("allowance", readU(cas20Call(selAllowance, addrKey(cas20Alice), addrKey(cas20Carol))), 20)
 
-	// transferFrom beyond allowance reverts.
 	if _, err := run(cas20Carol, false, cas20Call(selTransferFrom, addrKey(cas20Alice), addrKey(cas20Bob), u256hash(100))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("over-allowance err = %v, want revert", err)
 	}
-	// transfer beyond balance reverts.
 	if _, err := run(cas20Bob, false, cas20Call(selTransfer, addrKey(cas20Alice), u256hash(1e9))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("over-balance err = %v, want revert", err)
 	}
-	// state-mutating call in a read-only frame throws.
 	if _, err := run(cas20Alice, true, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(1))); !errors.Is(err, ErrWriteProtection) {
 		t.Fatalf("readonly transfer err = %v, want write protection", err)
 	}
-	// unknown selector reverts.
 	if _, err := run(cas20Alice, true, []byte{0xde, 0xad, 0xbe, 0xef}); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unknown selector err = %v, want revert", err)
 	}
@@ -120,16 +112,12 @@ func TestCAS20TokenPauseBlocksTransfer(t *testing.T) {
 	}
 }
 
-// TestCAS20EndToEndTransfer drives a transfer through the full EVM Call path:
-// address resolution, the stateful precompile host, dispatch, state mutation
-// and the Transfer log.
 func TestCAS20EndToEndTransfer(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
 		t.Fatal(err)
 	}
 	token := cas20Addr(cas20VariantAsset, 1)
-	// Simulate factory creation: initialization marker + seed balance.
 	statedb.SetCode(token, CAS20MarkerCode, 0)
 	newUnmeteredCAS20Storage(statedb, token).setBalance(cas20Alice, uint256.NewInt(1000))
 
@@ -174,8 +162,7 @@ func TestCAS20EndToEndTransfer(t *testing.T) {
 	}
 }
 
-// TestCAS20CalldataStrictnessProfile pins which malformed encodings are refused and
-// which are not, so the profile is a decision rather than an accident.
+// Which malformed encodings are refused and which are not is a decision, not an accident.
 func TestCAS20CalldataStrictnessProfile(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
@@ -193,20 +180,17 @@ func TestCAS20CalldataStrictnessProfile(t *testing.T) {
 		return r, e
 	}
 
-	// Refused: one byte short of the second argument.
 	short := cas20Call(selTransfer, addrKey(cas20Bob), u256hash(1))
 	if _, err := call(cas20Alice, short[:len(short)-1]); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("truncated transfer args: err = %v, want a revert", err)
 	}
-	// Refused: an address word with bits above the low 20 bytes.
 	dirty := addrKey(cas20Bob)
 	dirty[0] = 0x01
 	if _, err := call(cas20Alice, cas20Call(selTransfer, dirty, u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("dirty address high bits: err = %v, want a revert", err)
 	}
 
-	// Accepted: a whole extra word after a complete argument list, as Solidity
-	// accepts it. The transfer must go through, not merely fail to revert.
+	// Accepted, as Solidity accepts it: a whole extra word after a complete argument list.
 	before := newUnmeteredCAS20Storage(statedb, token).balanceOf(cas20Bob).Uint64()
 	trailing := append(cas20Call(selTransfer, addrKey(cas20Bob), u256hash(7)), u256hash(0xdead).Bytes()...)
 	if r, err := call(cas20Alice, trailing); err != nil || !bytes.Equal(r, encBool(true)) {
@@ -219,15 +203,11 @@ func TestCAS20CalldataStrictnessProfile(t *testing.T) {
 	}
 }
 
-// TestCAS20TransferFromSelfSpendsAllowance covers the owner moving their own balance
-// through transferFrom: the allowance is spent, the executor policy is not
-// consulted.
 func TestCAS20TransferFromSelfSpendsAllowance(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	admin := cas20TestCaller
 
-	// A policy authorizing nobody, bound as the executor scope, so the shortcut is
-	// observable: without it the self transfer would be refused too.
+	// A deny-all executor policy, so the self shortcut is observable.
 	ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyAllowlist)),
 		NewGasBudget(9_000_000), uint256.NewInt(0))
@@ -252,8 +232,6 @@ func TestCAS20TransferFromSelfSpendsAllowance(t *testing.T) {
 		return r, e
 	}
 
-	// No self-approval yet: the allowance is consumed unconditionally, so this is
-	// InsufficientAllowance and not a free pass.
 	out, err := send(cas20Alice, cas20Call(selTransferFrom, addrKey(cas20Alice), addrKey(cas20Bob), u256hash(40)))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("self transferFrom without an approval: err = %v, want a revert", err)
@@ -262,8 +240,6 @@ func TestCAS20TransferFromSelfSpendsAllowance(t *testing.T) {
 		t.Errorf("revert = %x, want InsufficientAllowance", out[:min(4, len(out))])
 	}
 
-	// With one, it goes through and the allowance decrements — the executor policy
-	// authorizes nobody, so reaching the transfer at all is the self shortcut.
 	if _, err := send(cas20Alice, cas20Call(selApprove, addrKey(cas20Alice), u256hash(100))); err != nil {
 		t.Fatalf("self approve: %v", err)
 	}
@@ -278,8 +254,7 @@ func TestCAS20TransferFromSelfSpendsAllowance(t *testing.T) {
 		t.Errorf("bob's balance = %d, want 40", got)
 	}
 
-	// And the contrast: a third party with a full allowance is still refused by the
-	// executor policy, so the shortcut above is the executor check and nothing else.
+	// The contrast: a third party with a full allowance is still refused by the executor policy.
 	if _, err := send(admin, cas20Call(selApprove, addrKey(cas20Carol), u256hash(100))); err != nil {
 		t.Fatalf("approve carol: %v", err)
 	}
