@@ -72,6 +72,9 @@ func TestCAS20AssetExtension(t *testing.T) {
 	if got := u(call(creator, token, cas20Call(selMultiplier))); got != 1e18 {
 		t.Errorf("multiplier = %d, want 1e18", got)
 	}
+	if got := u(call(creator, token, cas20Call(selNewUIMultiplier))); got != 1e18 {
+		t.Errorf("newUIMultiplier with no schedule = %d, want the current multiplier 1e18", got)
+	}
 	if got := u(call(creator, token, cas20Call(selWadPrecision))); got != 1e18 {
 		t.Errorf("WAD_PRECISION = %d, want 1e18", got)
 	}
@@ -87,6 +90,9 @@ func TestCAS20AssetExtension(t *testing.T) {
 	}
 	if got := u(call(creator, token, cas20Call(selMultiplier))); got != 1_500_000_000_000_000_000 {
 		t.Errorf("multiplier = %d, want 1.5e18", got)
+	}
+	if got := u(call(creator, token, cas20Call(selNewUIMultiplier))); got != 1_500_000_000_000_000_000 {
+		t.Errorf("newUIMultiplier after an instant update = %d, want 1.5e18", got)
 	}
 
 	if got := u(call(creator, token, cas20Call(selScaledBalanceOf, addrKey(cas20Alice)))); got != 1500 {

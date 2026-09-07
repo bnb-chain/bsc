@@ -205,7 +205,11 @@ func dispatchAsset(tok cas20Token, ext assetExt, input []byte) (ret []byte, err 
 	case selOperatorRole:
 		return roleOperator.Bytes(), nil, true
 	case selNewUIMultiplier:
-		mul, _ := ext.pending()
+		// With no live schedule it answers as uiMultiplier does (ERC-8056).
+		mul, at := ext.pending()
+		if at <= tok.ctx.BlockTime() {
+			mul = effective()
+		}
 		return encU256(mul), nil, true
 	case selEffectiveAt:
 		_, at := ext.pending()
