@@ -20,7 +20,7 @@ import (
 )
 
 // laneMinerChain builds an Ethash-driven BSC lane harness and preallocates 0x2007.
-func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainConfig, *types.Header, *types.Header, *ecdsa.PrivateKey) {
+func laneMinerChain(t *testing.T, corruptRatio bool) (*worker, *params.ChainConfig, *types.Header, *types.Header, *ecdsa.PrivateKey) {
 	t.Helper()
 
 	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
@@ -49,7 +49,9 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 	}
 
 	lane := types.Account{Code: code, Balance: common.Big0}
-	if corruptParams {
+	if corruptRatio {
+		// Slot 0 is _paymentLaneRatio; 2^248 is far outside section 3.6.1's guard, and a direct
+		// write is the only way past updateParam's own check.
 		lane.Storage = map[common.Hash]common.Hash{{}: {0: 1}}
 	}
 	gspec := &core.Genesis{
@@ -71,7 +73,7 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 	require.True(t, config.IsJenner(parent.Number, parent.Time),
 		"the candidate must be a lane block, or every assertion built on it is vacuous")
 
-	return &worker{chain: chain, chainConfig: &config}, &config, parent, &types.Header{
+	return &worker{chain: chain, chainConfig: &config, engine: ethash.NewFullFaker()}, &config, parent, &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   parent.GasLimit,

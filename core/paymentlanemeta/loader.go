@@ -26,7 +26,7 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 		return nil, err
 	}
 	if !cacheable {
-		meta, err := loadMetaFromStateDB(config, header, statedb)
+		meta, err := readMeta(config, header, statedb)
 		if err != nil {
 			logMetaLoadFailure(header, statedb, false, nil, err)
 		}
@@ -34,7 +34,7 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 	}
 	key := metaCacheKeyFromStateDB(statedb)
 	return loadMetaCache.loadOrStore(key, func() (*Meta, error) {
-		meta, err := loadMetaFromStateDB(config, header, statedb)
+		meta, err := readMeta(config, header, statedb)
 		if err != nil {
 			logMetaLoadFailure(header, statedb, true, &key, err)
 		}
@@ -42,14 +42,14 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 	})
 }
 
-func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
+func readMeta(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
 	start := time.Now()
 
-	ratio, err := loadRatioFromStateDB(config, header, statedb)
+	ratio, err := readRatio(config, header, statedb)
 	if err != nil {
 		return nil, err
 	}
-	listed, err := loadListedFromStateDB(config, header, statedb)
+	listed, err := readListed(config, header, statedb)
 	if err != nil {
 		return nil, err
 	}
@@ -57,16 +57,16 @@ func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, state
 	return &Meta{ratio: ratio, listed: listed}, nil
 }
 
-func loadRatioFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (uint64, error) {
-	ret, err := callFromStateDB(config, header, statedb, packGetPaymentLaneRatio())
+func readRatio(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (uint64, error) {
+	ret, err := callGetter(config, header, statedb, packGetPaymentLaneRatio())
 	if err != nil {
 		return 0, err
 	}
 	return unpackGetPaymentLaneRatio(ret)
 }
 
-func loadListedFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (map[common.Address]struct{}, error) {
-	ret, err := callFromStateDB(config, header, statedb, packGetPaymentContracts(0, pageSize))
+func readListed(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (map[common.Address]struct{}, error) {
+	ret, err := callGetter(config, header, statedb, packGetPaymentContracts(0, pageSize))
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func loadListedFromStateDB(config *params.ChainConfig, header *types.Header, sta
 		return nil, err
 	}
 	for offset := uint64(len(page)); offset < total; {
-		ret, err := callFromStateDB(config, header, statedb, packGetPaymentContracts(offset, pageSize))
+		ret, err := callGetter(config, header, statedb, packGetPaymentContracts(offset, pageSize))
 		if err != nil {
 			return nil, err
 		}

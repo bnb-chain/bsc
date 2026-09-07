@@ -723,7 +723,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 	}
 	// Before StartPrefetcher: an error after it would leave a prefetcher with no env to discard it.
-	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, state)
+	lane, err := core.ResolveLaneState(w.chainConfig, w.engine, parent, header, state)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +743,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 		log.Debug("makeEnv", "number", header.Number.Uint64(), "time", header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
 	}
-
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
 		lane:     lane,

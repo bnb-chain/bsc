@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/paymentlanemeta"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -31,12 +32,12 @@ func laneReject(err error) error {
 	return err
 }
 
-// LaneState is one block's lane state: the quota derived from the parent post-state, plus the
-// payment total accumulated as the block executes.
+// LaneState is one block's lane: the quota derived from the parent post-state, plus the payment
+// total accumulated as the block executes.
 //
 // The zero value and a nil pointer both mean the lane is off, and every method is safe in that
-// state, so no call site needs a fork branch. Reading the Budget field is not: do that only
-// where the caller constructed the lane itself.
+// state, so no call site needs a fork branch. Reading the Budget field is not: do that only where
+// the caller constructed the lane itself.
 type LaneState struct {
 	Budget     paymentlane.Budget
 	classifier *paymentlane.Classifier
@@ -50,18 +51,17 @@ type laneStateDB interface {
 	Error() error
 }
 
-// ResolveLaneState derives one block's lane. One implementation for the importer and the
-// producer on purpose: the quota is a pure function of the parent post-state's ratio and this
-// block's gas limit, so both sides must reach the same value with no field to compare.
+// ResolveLaneState derives one block's lane. One implementation for the importer and the producer
+// on purpose: nothing is committed, so both sides must reach the same quota independently.
 //
-// The lane binds a block if and only if its parent is at or after activation (BEP-703 3.4.3):
-// the fork installs 0x2007 while the activation block executes, so its post-state is the first
-// to hold a ratio.
+// The lane binds a block if and only if its parent is at or after activation (BEP-703 3.4.3): the
+// fork installs 0x2007 while the activation block executes, so its post-state is the first to hold
+// a ratio.
 //
 // statedb must be the block's own state, opened on the parent root and not yet advanced: the
 // metadata read has to land on the witness-visible path, and classification then follows the same
 // StateDB as it advances.
-func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) (*LaneState, error) {
+func ResolveLaneState(config *params.ChainConfig, engine consensus.Engine, parent, header *types.Header, statedb *state.StateDB) (*LaneState, error) {
 	if !config.IsJenner(parent.Number, parent.Time) {
 		return &LaneState{}, nil
 	}
@@ -71,18 +71,27 @@ func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, 
 	}
 	return &LaneState{
 		Budget:     paymentlane.Budget{PaymentLaneQuota: meta.Quota(header.GasLimit)},
-		classifier: meta.NewClassifier(statedb),
+		classifier: meta.NewClassifier(systemTxOracle(engine, header), statedb),
 		state:      statedb,
 		gasLimit:   header.GasLimit,
 	}, nil
 }
 
-// On reports whether the lane binds this block.
+func systemTxOracle(engine consensus.Engine, header *types.Header) paymentlane.SystemTxOracle {
+	posa, ok := engine.(consensus.PoSA)
+	if !ok {
+		return paymentlane.NoSystemTxs
+	}
+	return func(tx *types.Transaction) bool {
+		isSystem, err := posa.IsSystemTransaction(tx, header)
+		return err == nil && isSystem
+	}
+}
+
 func (ls *LaneState) On() bool { return ls != nil && ls.classifier != nil }
 
-// Classify returns tx's lane type, or GeneralLane when the lane is off. Call it where the
-// transaction is about to run: the code gate reads the live state, so producer and importer agree
-// only if both ask at the same point in the sequence.
+// Classify must be called where the transaction is about to run: the code gate reads the live
+// state, so producer and importer agree only if both ask at the same point in the sequence.
 func (ls *LaneState) Classify(tx *types.Transaction) paymentlane.LaneType {
 	if !ls.On() {
 		return paymentlane.GeneralLane
@@ -90,17 +99,16 @@ func (ls *LaneState) Classify(tx *types.Transaction) paymentlane.LaneType {
 	return ls.classifier.Classify(tx)
 }
 
-// RecordUsedFrom books the gas the pool consumed since usedBefore, for a payment transaction; a
-// general one is a no-op, general gas being the header residual.
+// RecordUsedFrom books the gas the pool consumed since usedBefore. A pool rolled back below
+// usedBefore books nothing rather than wrapping: an underflow here would fill the quota with
+// phantom payment gas and switch the lane off for the block.
 func (ls *LaneState) RecordUsedFrom(laneType paymentlane.LaneType, gp *GasPool, usedBefore uint64) {
-	if !ls.On() {
-		return
+	if used := gp.Used(); ls.On() && used > usedBefore {
+		ls.Budget.RecordUsed(laneType, used-usedBefore)
 	}
-	ls.Budget.RecordUsed(laneType, gp.Used()-usedBefore)
 }
 
-// Admits reports whether this transaction may still be included, and admits everything while the
-// lane is off. shared is the shared remainder, i.e. gasPool.Gas().
+// Admits takes shared as the shared remainder, i.e. gasPool.Gas().
 func (ls *LaneState) Admits(shared uint64, laneType paymentlane.LaneType, txGasLimit uint64) bool {
 	if !ls.On() {
 		return true
@@ -122,9 +130,9 @@ func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 }
 
 // Verify is BEP-703 3.3 over a finished block, for the producer's self-check and the importer's
-// verdict alike. A failed state read is reported as the local fault it is, not the peer's:
-// StateDB answers such a read with the zero code hash - which classifies as payment - and holds
-// the error until Commit, after every verdict here.
+// verdict alike. A failed state read is the local fault it is, not the peer's: StateDB answers
+// such a read with the zero code hash - which classifies as payment - and holds the error until
+// Commit, after every verdict here.
 func (ls *LaneState) Verify(totalGasUsed uint64) error {
 	if !ls.On() {
 		return nil
@@ -135,7 +143,6 @@ func (ls *LaneState) Verify(totalGasUsed uint64) error {
 	return ls.Budget.Verify(ls.gasLimit, totalGasUsed)
 }
 
-// recordImported publishes what this node replayed, once the block is judged valid.
 func (ls *LaneState) recordImported() {
 	if !ls.On() {
 		return

@@ -17,12 +17,10 @@ type Meta struct {
 	listed map[common.Address]struct{}
 }
 
-// Ratio is BEP-703 section 3.6.1's value, already past its guard.
-func (m *Meta) Ratio() uint64 { return m.ratio }
-
-// Quota is this block's reservation, section 3.4.1 over the block's own gas limit.
+// Quota is BEP-703 section 3.4.1 over the block's own gas limit; the ratio is already past
+// section 3.6.1's guard.
 func (m *Meta) Quota(gasLimit uint64) uint64 { return paymentlane.Quota(m.ratio, gasLimit) }
 
-func (m *Meta) NewClassifier(code paymentlane.CodeReader) *paymentlane.Classifier {
-	return paymentlane.NewClassifier(code, m.listed)
+func (m *Meta) NewClassifier(isSystemTx paymentlane.SystemTxOracle, code paymentlane.CodeReader) *paymentlane.Classifier {
+	return paymentlane.NewClassifier(isSystemTx, code, m.listed)
 }

@@ -148,7 +148,7 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 						}
 
 						reader := absentAccounts()
-						got := NewClassifier(reader, listed).Classify(tx)
+						got := NewClassifier(NoSystemTxs, reader, listed).Classify(tx)
 						require.Equal(t, wantLaneType, got,
 							"type=%d dest=%s accessList=%v data=%v value=%v", txType, dest.name, withAL, withData, withValue)
 						require.Equal(t, wantRead, len(reader.reads) == 1,
@@ -175,7 +175,7 @@ func TestCodeGateFollowsTheLiveState(t *testing.T) {
 		}
 		return common.Hash{}
 	}}
-	c := NewClassifier(r, nil)
+	c := NewClassifier(NoSystemTxs, r, nil)
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 
 	require.Equal(t, PaymentLane, c.Classify(tx), "no code yet, so a plain transfer")
@@ -204,7 +204,7 @@ func TestCodeHashBoundaryCases(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &codeFn{fn: func(common.Address) common.Hash { return tc.codeHash }}
-			require.Equal(t, tc.want, NewClassifier(r, nil).Classify(tx))
+			require.Equal(t, tc.want, NewClassifier(NoSystemTxs, r, nil).Classify(tx))
 		})
 	}
 }
@@ -217,7 +217,7 @@ func TestListedContractDecidesBeforeValueAndCode(t *testing.T) {
 
 	for _, txType := range []byte{types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, data: calldata})
-		got := NewClassifier(forbidReads(t), listedSet(listedDest)).Classify(tx)
+		got := NewClassifier(NoSystemTxs, forbidReads(t), listedSet(listedDest)).Classify(tx)
 		require.Equal(t, PaymentLane, got, "tx type %d", txType)
 	}
 }
@@ -226,7 +226,41 @@ func TestListedContractDecidesBeforeValueAndCode(t *testing.T) {
 func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	for _, txType := range []byte{types.BlobTxType, types.SetCodeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, value: big.NewInt(1)})
-		got := NewClassifier(forbidReads(t), listedSet(listedDest)).Classify(tx)
+		got := NewClassifier(NoSystemTxs, forbidReads(t), listedSet(listedDest)).Classify(tx)
 		require.Equal(t, GeneralLane, got, "tx type %d", txType)
 	}
+}
+
+// systemTxs marks exactly the transactions in the set, the way the engine's own predicate does.
+func systemTxs(hashes ...common.Hash) SystemTxOracle {
+	set := make(map[common.Hash]struct{}, len(hashes))
+	for _, h := range hashes {
+		set[h] = struct{}{}
+	}
+	return func(tx *types.Transaction) bool {
+		_, ok := set[tx.Hash()]
+		return ok
+	}
+}
+
+// BEP-703 3.2's first gate. A Parlia system transaction can look exactly like a payment - the
+// deposit carries value - so without this gate consensus gas would be booked against the quota.
+func TestSystemTransactionIsGeneralBeforeAnythingElse(t *testing.T) {
+	// A bare transfer to a codeless account: payment by every other gate.
+	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
+	require.Equal(t, PaymentLane, NewClassifier(NoSystemTxs, absentAccounts(), nil).Classify(tx),
+		"premise: this transaction is a payment unless the system gate stops it")
+
+	// forbidReads: the gate must decide before any state is touched.
+	require.Equal(t, GeneralLane, NewClassifier(systemTxs(tx.Hash()), forbidReads(t), nil).Classify(tx))
+
+	// And it must win over the listed-destination gate, which otherwise returns payment first.
+	listedTx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &listedDest, value: big.NewInt(1)})
+	require.Equal(t, GeneralLane,
+		NewClassifier(systemTxs(listedTx.Hash()), forbidReads(t), listedSet(listedDest)).Classify(listedTx))
+}
+
+func TestNewClassifierRefusesANilOracle(t *testing.T) {
+	require.Panics(t, func() { NewClassifier(nil, absentAccounts(), nil) },
+		"a silently absent system gate is the one failure that books consensus gas as payment")
 }

@@ -15,13 +15,12 @@ import (
 
 const getterGasLimit uint64 = 50_000_000
 
-func callFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB, input []byte) ([]byte, error) {
+// callGetter static-calls one of BEP-703 section 3.6.4's getters against statedb, which must
+// still be opened on the parent post-state.
+func callGetter(config *params.ChainConfig, header *types.Header, statedb *state.StateDB, input []byte) ([]byte, error) {
 	snapshot := statedb.Snapshot()
 	defer statedb.RevertToSnapshot(snapshot)
-	return doStaticCall(config, header, statedb, input)
-}
 
-func doStaticCall(config *params.ChainConfig, header *types.Header, statedb *state.StateDB, input []byte) ([]byte, error) {
 	evm := vm.NewEVM(blockContext(header), statedb, config, vm.Config{NoBaseFee: true})
 	defer evm.Release()
 

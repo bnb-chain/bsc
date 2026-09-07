@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -290,7 +291,7 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 // The bid path's only lane verdict on a re-executed environment: whatever the quota still holds
 // idle must fit in what the pool has left.
 func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
-	ls := &LaneState{classifier: paymentlane.NewClassifier(liveState{}, nil), state: liveState{}}
+	ls := &LaneState{classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
 
 	ls.Budget.PaymentLaneQuota = 100
 	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
@@ -309,7 +310,7 @@ func TestPaymentLaneReportsAFailedReadAsLocal(t *testing.T) {
 	live := liveState{err: broken}
 	ls := &LaneState{
 		Budget:     paymentlane.Budget{PaymentLaneQuota: laneTestGasLimit},
-		classifier: paymentlane.NewClassifier(live, nil),
+		classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, live, nil),
 		state:      live,
 		gasLimit:   laneTestGasLimit,
 	}
@@ -384,4 +385,51 @@ func (k *ecdsaKey) sign(t *testing.T, signer types.Signer, nonce uint64, to comm
 	})
 	require.NoError(t, err)
 	return tx
+}
+
+// posaFaker answers only the one PoSA method the lane uses; the embedded nil interface makes it a
+// consensus.Engine without implementing thirty methods that are never called.
+type posaFaker struct {
+	consensus.PoSA
+	system map[common.Hash]struct{}
+	err    error
+}
+
+func (f posaFaker) IsSystemTransaction(tx *types.Transaction, _ *types.Header) (bool, error) {
+	_, ok := f.system[tx.Hash()]
+	return ok, f.err
+}
+
+// The lane's first gate comes from the engine, so this pins the wiring: a PoSA engine's verdict
+// reaches the classifier, and an engine that appends no system transactions answers no.
+func TestSystemTxOracleComesFromTheEngine(t *testing.T) {
+	config, _, key := laneGenesis(t, laneTestGasLimit)
+	tx := key.sign(t, types.LatestSigner(config), 0, common.Address{0xaa}, common.Big1, params.TxGas, nil)
+	header := &types.Header{Number: common.Big1}
+
+	require.False(t, systemTxOracle(ethash.NewFullFaker(), header)(tx),
+		"a non-PoSA engine appends no system transactions")
+	require.True(t, systemTxOracle(posaFaker{system: map[common.Hash]struct{}{tx.Hash(): {}}}, header)(tx))
+	require.False(t, systemTxOracle(posaFaker{system: map[common.Hash]struct{}{tx.Hash(): {}},
+		err: errors.New("UnAuthorized transaction")}, header)(tx),
+		"a sender that will not recover is a failing transaction, not a system one")
+}
+
+// The gas pool can move backwards: applyTransaction restores a snapshot when a transaction
+// fails, and the bid path calls AddGas before committing payBidTx. A negative delta in uint64
+// would fill the quota with phantom payment gas and switch the lane off for the block.
+func TestRecordUsedFromIgnoresARolledBackPool(t *testing.T) {
+	ls := &LaneState{classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
+	gp := NewGasPool(1000)
+	require.NoError(t, gp.SubGas(100))
+	usedBefore := gp.Used()
+
+	require.NoError(t, gp.SubGas(40))
+	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, usedBefore)
+	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed)
+
+	require.NoError(t, gp.AddGas(60)) // back past usedBefore
+	require.Less(t, gp.Used(), usedBefore)
+	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, usedBefore)
+	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed, "a rolled-back pool books nothing rather than wrapping")
 }

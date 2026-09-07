@@ -421,7 +421,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
-		lane, err := ResolveLaneState(config, parent.Header(), b.header, statedb)
+		lane, err := ResolveLaneState(config, engine, parent.Header(), b.header, statedb)
 		if err != nil {
 			panic(err)
 		}

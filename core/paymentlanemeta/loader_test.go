@@ -68,7 +68,7 @@ func TestLoadMetaReadsTheUnwrittenDefault(t *testing.T) {
 
 	got, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.NoError(t, err)
-	require.EqualValues(t, 500, got.Ratio(), "an unwritten slot must read as the contract's default, not as zero")
+	require.EqualValues(t, 500, got.ratio, "an unwritten slot must read as the contract's default, not as zero")
 	require.EqualValues(t, 2_750_000, got.Quota(55_000_000))
 	require.Nil(t, got.listed)
 }
@@ -87,7 +87,7 @@ func TestLoadMetaPagesLongListsAndReadsTheGovernedRatio(t *testing.T) {
 
 	got, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.NoError(t, err)
-	require.EqualValues(t, 800, got.Ratio())
+	require.EqualValues(t, 800, got.ratio)
 	require.Len(t, got.listed, len(listed))
 	for _, addr := range listed {
 		require.Contains(t, got.listed, addr)

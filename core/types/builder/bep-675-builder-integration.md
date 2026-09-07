@@ -57,7 +57,7 @@ Transaction selection and EVM execution are entirely builder-driven; this specif
 From the block after the Jenner activation block, BEP-703 reserves a fraction of the gas limit for payment transactions, and the builder is the only party that can honour it, because only the builder runs the packing loop. Nothing about it reaches the header: the quota is a pure function of the parent post-state and this block's gas limit, so the validator and every importer derive it independently. The activation block itself is outside the mechanism, and a builder never builds one — see the `-38001` rows in [Send and Fallback](#6-send-and-fallback).
 
 ```go
-lane, err := core.ResolveLaneState(chainConfig, parent, header, state)  // once per block
+lane, err := core.ResolveLaneState(chainConfig, parliaEngine, parent, header, state)  // once per block
 if err != nil {
     return err  // never ignore: a nil lane no-ops silently and the block ships over-full
 }
