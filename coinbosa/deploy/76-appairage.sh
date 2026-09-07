@@ -111,13 +111,67 @@ for d in node node-archive; do
   h=$(sudo -u "$NODE_USER" "$GETH" attach --exec 'eth.blockNumber' "$ipc" 2>/dev/null || echo 0)
   case "$h" in ''|*[!0-9]*) h=0 ;; esac
   retard=$(( hv > h ? hv - h : 0 ))
+
+  # ZERO PAIR : on reconnecte SANS attendre le retard.
+  #
+  # Mesure du 7 septembre 2026, redemarrage planifie de 04:17:51. Le noeud est
+  # debout en 2,5 s — chaine chargee, HTTP et P2P demarres — puis il reste
+  # 107 SECONDES sans rien faire. Le journal de geth dit pourquoi :
+  # « Looking for peers  peercount=0 ». Il n'a aucun pair, donc personne pour
+  # lui donner les blocs.
+  #
+  # Or pendant cette premiere minute son RETARD est encore petit : a la passe de
+  # 04:18:48 il accusait une dizaine de blocs, sous le seuil de 12. Le controleur
+  # est donc passe, l'a trouve « a jour », et n'a rien fait — pendant que le
+  # noeud etait coupe du monde. Il a fallu attendre que le retard franchisse 12
+  # pour que la reconnexion parte, et la synchronisation a alors repris en 11 ms.
+  #
+  # Mesurer le retard reste le bon critere pour un noeud EN MARCHE. Mais le
+  # nombre de pairs redevient decisif dans le seul cas ou il n'est pas ambigu :
+  # A ZERO PAIR, un noeud ne peut rien recevoir, quel que soit son retard. Ce
+  # test ne peut pas ramener le defaut miroir qu'on avait corrige — un noeud sain
+  # n'a jamais zero pair.
+  nb=$(sudo -u "$NODE_USER" "$GETH" attach --exec 'net.peerCount' "$ipc" 2>/dev/null | tr -cd '0-9')
+  if [ "${nb:-1}" = 0 ]; then
+    # ON N'ANNONCE PAS UNE RECONNEXION, ON LA MESURE.
+    #
+    # La premiere version de ce bloc journalisait « reconnexion immediate » juste
+    # apres l'appel. C'etait un faux vert, et il a ete pris sur le fait le
+    # 7 septembre 2026 : le message est parti deux fois pendant que net.peerCount
+    # restait a 0 et que le noeud decrochait de 28 blocs.
+    #
+    # admin.addPeer rend `true` sans rien garantir : il inscrit le pair dans la
+    # liste statique, le dial est asynchrone, et sur un noeud VIVANT qui a perdu
+    # ses pairs il peut ne jamais aboutir. Mesure du meme jour : deux appels, dix
+    # secondes d'attente, peerCount toujours a 0 ; seul un redemarrage du service
+    # a retabli l'appairage, en 38 s.
+    #
+    # Ce que geth fait de son cote, et qu'il faut savoir avant d'attribuer un
+    # merite : il redial ses pairs statiques tout seul. Au redemarrage du
+    # 7 septembre a 04:19:41, « Block synchronisation started » est arrive a
+    # .926 et le message du controleur a .931 — CINQ MILLISECONDES APRES. Ce
+    # n'est donc pas le controleur qui avait reconnecte, contrairement a ce que
+    # la lecture des journaux laissait croire.
+    #
+    # On demande donc la reconnexion — elle est gratuite et peut aider — puis on
+    # REGARDE si elle a pris, et on journalise ce qu'on a vu.
+    sudo -u "$NODE_USER" "$GETH" attach --exec "admin.addPeer(\"$enode\")" "$ipc" >/dev/null 2>&1
+    sleep 5
+    apres=$(sudo -u "$NODE_USER" "$GETH" attach --exec 'net.peerCount' "$ipc" 2>/dev/null | tr -cd '0-9')
+    if [ "${apres:-0}" != 0 ]; then
+      logger -t coinbosa "appairage $d : etait a zero pair (bloc $h contre $hv), addPeer a pris — ${apres} pair(s)"
+    else
+      logger -t coinbosa "appairage $d : AUCUN PAIR (bloc $h contre $hv, $retard de retard) — addPeer demande, TOUJOURS ZERO apres 5 s ; si cela dure, seul un redemarrage du service retablit l appairage"
+    fi
+    continue
+  fi
+
   [ "$retard" -le "$SEUIL" ] && continue
 
   # Il decroche. On regarde alors seulement s'il faut refaire le lien direct.
   vu=$(sudo -u "$NODE_USER" "$GETH" attach \
         --exec "admin.peers.filter(function(p){return p.enode.substr(8,128)=='$id'}).length" "$ipc" 2>/dev/null || echo 0)
   case "$vu" in ''|*[!0-9]*) vu=0 ;; esac
-  nb=$(sudo -u "$NODE_USER" "$GETH" attach --exec 'net.peerCount' "$ipc" 2>/dev/null || echo '?')
   sudo -u "$NODE_USER" "$GETH" attach --exec "admin.addPeer(\"$enode\")" "$ipc" >/dev/null 2>&1
   logger -t coinbosa "appairage $d : $retard blocs de retard (bloc $h contre $hv), $nb pair(s), validateur parmi eux : $vu — reconnexion demandée"
 done

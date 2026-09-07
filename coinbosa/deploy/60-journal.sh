@@ -83,7 +83,9 @@ hauteur_de() {
 # pas rendre la surveillance aveugle.
 # ---------------------------------------------------------------------------
 TEMOIN=/run/coinbosa-maintenance
-FENETRE=${FENETRE:-420}          # 2 noeuds x 60 s d'attente, plus la marge d'arret
+# 2 noeuds x ATTENTE, plus la marge d'arret. Voir ATTENTE ci-dessous : la valeur
+# de 420 s supposait 60 s par noeud, ce que la mesure a dementi.
+FENETRE=${FENETRE:-600}
 
 # Le temoin part quoi qu'il arrive : succes, echec, interruption. Sans ce filet,
 # un exit 1 en plein redemarrage laisserait la sonde muette jusqu'a l'echeance.
@@ -105,8 +107,34 @@ for R in node validator; do
 
   # On attend le retour du service ET la reprise de la hauteur. Un service
   # « active » qui ne produit plus de blocs serait un faux vert.
+  # COMBIEN DE TEMPS UN NOEUD MET-IL VRAIMENT A REPARTIR ? MESURE, PAS SUPPOSE.
+  #
+  # Cette boucle attendait 30 x 2 s = 60 s. Elle a declare « REDEMARRAGE PROPRE
+  # ECHOUE » CINQ NUITS D'AFFILEE — les 3, 4, 5, 6 et 7 septembre 2026 — sans que
+  # personne ne diagnostique pourquoi.
+  #
+  # Chronometre le 7 septembre sur le redemarrage de 04:17:51 :
+  #     04:17:51  le service redemarre
+  #     04:17:53  le noeud est DEBOUT : chaine chargee, HTTP et P2P demarres (2,5 s)
+  #     04:17:54  ... puis 107 SECONDES sans rien, « Looking for peers peercount=0 »
+  #     04:19:41  « Block synchronisation started », 22 blocs rattrapes en 11 ms
+  #
+  # Le noeud n'est pas lent a demarrer : il est lent a RETROUVER UN PAIR. Geth
+  # redial ses pairs statiques a son propre rythme, et cela prend entre 38 s
+  # (remesure le meme jour) et 107 s. Attendre 60 s, c'est donc declarer un echec
+  # sur un redemarrage qui se passe bien.
+  #
+  # Et cet echec n'est pas sans consequence : le script sort, son trap retire le
+  # temoin de maintenance, et la sonde — qui n'a plus de fenetre — publie dans
+  # Telegram « noeud RPC decroche ». Deux alertes pour un seul evenement, dont la
+  # seconde designe une panne d'appairage la ou il n'y a qu'un redemarrage encore
+  # en cours. C'est ce message-la que l'editeur a vu dans le canal.
+  #
+  # 240 s laisse plus du double du pire cas mesure. Si un noeud depasse cela, ce
+  # n'est plus de la lenteur.
+  ATTENTE=${ATTENTE:-240}
   OK=0
-  for i in $(seq 1 30); do
+  for i in $(seq 1 $(( ATTENTE / 2 )) ); do
     sleep 2
     systemctl is-active --quiet "$SVC" || continue
     H=$(hauteur_de "$R")
@@ -119,7 +147,7 @@ for R in node validator; do
   APRES_J=$(journal_de "$R")
 
   if [ "$OK" -ne 1 ]; then
-    alerte fatal "REDEMARRAGE PROPRE ECHOUE" "$SVC n a pas repris apres 60 s (hauteur avant $AVANT_H)"
+    alerte fatal "REDEMARRAGE PROPRE ECHOUE" "$SVC n a pas repris apres ${ATTENTE} s (hauteur avant $AVANT_H) — verifier net.peerCount : un noeud a zero pair ne recoit rien"
     # On s'arrête là : toucher au second nœud alors que le premier est mal en
     # point transformerait une gêne en panne totale.
     exit 1
