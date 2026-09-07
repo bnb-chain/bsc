@@ -25,7 +25,7 @@ import (
 func TestMetaCacheReusesLastSuccess(t *testing.T) {
 	var cache metaCache
 	key := metaCacheKey{codeHash: common.Hash{31: 1}, storageRoot: common.Hash{31: 2}}
-	want := &Meta{governanceParams: paymentlane.GovernanceParams{MinGas: 2_000_000}}
+	want := &Meta{ratio: 200}
 
 	var loads int32
 	got1, err := cache.loadOrStore(key, func() (*Meta, error) {
@@ -47,7 +47,7 @@ func TestMetaCacheReusesLastSuccess(t *testing.T) {
 func TestMetaCacheDeduplicatesConcurrentMisses(t *testing.T) {
 	var cache metaCache
 	key := metaCacheKey{codeHash: common.Hash{31: 3}, storageRoot: common.Hash{31: 4}}
-	want := &Meta{governanceParams: paymentlane.GovernanceParams{MinGas: 3_000_000}}
+	want := &Meta{ratio: 300}
 
 	start := make(chan struct{})
 	release := make(chan struct{})
@@ -93,7 +93,7 @@ func TestMetaCacheDoesNotStickErrors(t *testing.T) {
 	require.Nil(t, got)
 	require.ErrorIs(t, err, wantErr)
 
-	want := &Meta{governanceParams: paymentlane.GovernanceParams{MinGas: 4_000_000}}
+	want := &Meta{ratio: 400}
 	got, err = cache.loadOrStore(key, func() (*Meta, error) {
 		atomic.AddInt32(&loads, 1)
 		return want, nil

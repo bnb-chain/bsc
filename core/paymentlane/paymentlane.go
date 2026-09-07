@@ -4,17 +4,31 @@
 //
 // Section 3.3's rule with generalGasUsed as the header residual, so Parlia's system
 // transactions count as general gas. The subtrahend is the idle quota (Budget.IdleLane).
+//
+// Nothing here is committed to the block: the quota is a pure function of the parent post-state's
+// ratio and this block's gas limit, so every node derives the same value independently.
 
 package paymentlane
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"math/bits"
 
 	"github.com/ethereum/go-ethereum/common"
+)
+
+// ContractAddress is the PaymentLane system contract, installed by the Jenner fork.
+var ContractAddress = common.HexToAddress("0x0000000000000000000000000000000000002007")
+
+// BEP-703 section 3.6.1's constants, mirroring PaymentLane.sol. Drift here rejects blocks peers
+// accept. The default ratio is deliberately NOT mirrored: getPaymentLaneRatio() applies it, which
+// is why section 3.6.4 forbids reading the storage slot instead.
+const (
+	RatioDenom   = 10_000
+	MaxLaneRatio = 1_000 // the lane may never exceed 10% of the gas limit
 )
 
 type LaneType uint8
@@ -32,60 +46,31 @@ func (c LaneType) String() string {
 }
 
 var (
-	ErrViolated           = errors.New("payment lane inequality violated")
-	ErrPaymentExceedsPool = errors.New("payment lane payment gas exceeds the block's user-transaction gas")
-	ErrBadCommitment      = errors.New("payment lane commitment is malformed")
-	ErrUntruthy           = errors.New("payment lane commitment is not truthful")
-	ErrCorruptConfig      = errors.New("payment lane config mismatch")
-	ErrQuotaMismatch      = errors.New("payment lane quota does not match the parent derivation")
+	ErrViolated      = errors.New("payment lane inequality violated")
+	ErrCorruptConfig = errors.New("payment lane config mismatch")
 	// Local fault, not the peer's: this node could not read the required lane state.
 	ErrStateUnavailable = errors.New("payment lane state unavailable")
 )
 
-// Commitment is the two values BEP-703 section 3.5.2 commits. generalGasUsed needs no field of
-// its own, being the header residual. PaymentLaneQuota does: rebuilding it needs each parent's
-// classified payment total, which no header carries.
-type Commitment struct {
-	PaymentLaneQuota uint64
-	PaymentGasUsed   uint64
+// CheckRatio is BEP-703 section 3.6.1's guard, evaluated at the getter's full uint256 width: a
+// value narrowed to 64 bits first can land inside the guard when the value returned did not.
+func CheckRatio(ratio *big.Int) (uint64, error) {
+	if ratio == nil || !ratio.IsUint64() || ratio.Uint64() == 0 || ratio.Uint64() > MaxLaneRatio {
+		return 0, fmt.Errorf("%w: 3.6.1 ratio guard 0 < %v <= %d", ErrCorruptConfig, ratio, MaxLaneRatio)
+	}
+	return ratio.Uint64(), nil
 }
 
-// Encode packs a Commitment into 32 bytes:
-//
-//	[0:8]   paymentLaneQuota uint64 big-endian
-//	[8:16]  paymentGasUsed  uint64 big-endian
-//	[16:32] reserved, always zero
-func Encode(c Commitment) common.Hash {
-	var h common.Hash
-	binary.BigEndian.PutUint64(h[0:8], c.PaymentLaneQuota)
-	binary.BigEndian.PutUint64(h[8:16], c.PaymentGasUsed)
-	return h
-}
-
-// Decode is the inverse of Encode.
-func Decode(h common.Hash) (Commitment, error) {
-	for _, b := range h[16:] {
-		if b != 0 {
-			return Commitment{}, fmt.Errorf("%w: reserved bytes set", ErrBadCommitment)
-		}
+// Quota is BEP-703 section 3.4.1: ratio(h-1) * GasLimit(h) / RatioDenom, truncated toward zero.
+// The product is taken over 128 bits - it needs up to 73 at a consensus-legal gas limit - and the
+// guard saturates exactly where bits.Div64 would panic, so no precondition is left to the caller.
+func Quota(ratio, gasLimit uint64) uint64 {
+	hi, lo := bits.Mul64(ratio, gasLimit)
+	if hi >= RatioDenom {
+		return math.MaxUint64
 	}
-	return Commitment{
-		PaymentLaneQuota: binary.BigEndian.Uint64(h[0:8]),
-		PaymentGasUsed:   binary.BigEndian.Uint64(h[8:16]),
-	}, nil
-}
-
-// CheckHeaderBounds refuses a forged header from its fields alone, before the body is executed.
-func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
-	if c.PaymentGasUsed > gasUsed {
-		return fmt.Errorf("%w: committed payment %d exceeds header gas used %d",
-			ErrUntruthy, c.PaymentGasUsed, gasUsed)
-	}
-	if c.PaymentLaneQuota > gasLimit {
-		return fmt.Errorf("%w: committed lane quota %d exceeds header gas limit %d",
-			ErrViolated, c.PaymentLaneQuota, gasLimit)
-	}
-	return CheckInequality(gasLimit, gasUsed, c.PaymentGasUsed, c.PaymentLaneQuota)
+	q, _ := bits.Div64(hi, lo, RatioDenom)
+	return q
 }
 
 // CheckInequality is the block validity rule. gasUsed must be the block's real total, system
@@ -105,13 +90,4 @@ func satSub(a, b uint64) uint64 {
 		return 0
 	}
 	return a - b
-}
-
-// satAdd is saturating addition, capped at MaxUint64.
-func satAdd(a, b uint64) uint64 {
-	sum, carry := bits.Add64(a, b, 0)
-	if carry != 0 {
-		return math.MaxUint64
-	}
-	return sum
 }

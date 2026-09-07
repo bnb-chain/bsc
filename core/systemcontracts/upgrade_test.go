@@ -48,7 +48,7 @@ func TestAllCodesHash(t *testing.T) {
 
 // Pin the Jenner payment-lane address and bytecode on all three networks.
 func TestJennerPaymentLaneCode(t *testing.T) {
-	const wantCodeHash = "2e0fa3189b43957fcf25c9bec3e83f52a5bd5115f1e5f1cb3f6782c5ea1c1fcc"
+	const wantCodeHash = "8fd1686e0e53d7d6840d05ac4a3a1da1d322c3a742012428eaa63b6931add259"
 
 	for _, network := range []string{mainNet, chapelNet, rialtoNet} {
 		upgrade := jennerUpgrade[network]

@@ -13,13 +13,15 @@ const (
 // Meta is the parent-derived lane metadata needed before the block executes.
 // Once loaded, it is shared as read-only cache data.
 type Meta struct {
-	governanceParams paymentlane.GovernanceParams
-	listed           map[common.Address]struct{}
+	ratio  uint64
+	listed map[common.Address]struct{}
 }
 
-func (m *Meta) GovernanceParams() paymentlane.GovernanceParams {
-	return m.governanceParams
-}
+// Ratio is BEP-703 section 3.6.1's value, already past its guard.
+func (m *Meta) Ratio() uint64 { return m.ratio }
+
+// Quota is this block's reservation, section 3.4.1 over the block's own gas limit.
+func (m *Meta) Quota(gasLimit uint64) uint64 { return paymentlane.Quota(m.ratio, gasLimit) }
 
 func (m *Meta) NewClassifier(code paymentlane.CodeReader) *paymentlane.Classifier {
 	return paymentlane.NewClassifier(code, m.listed)

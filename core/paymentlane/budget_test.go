@@ -125,10 +125,10 @@ func TestLaneQuotaExceedsCapacity(t *testing.T) {
 	})
 	require.Equal(t, []int{1}, taken, "only the payment transaction should have been admitted")
 
-	require.ErrorIs(t, b.Verify(capacity, poolUsed, poolUsed), ErrViolated,
+	require.ErrorIs(t, b.Verify(capacity, poolUsed), ErrViolated,
 		"a quota larger than capacity must make the self-check report ErrViolated")
 
-	require.NoError(t, (Budget{PaymentLaneQuota: capacity}).Verify(capacity, 0, 0),
+	require.NoError(t, (Budget{PaymentLaneQuota: capacity}).Verify(capacity, 0),
 		"with the quota exactly equal to capacity the empty block must be valid")
 }
 
@@ -204,44 +204,20 @@ func TestOverflowIsNotAWayIn(t *testing.T) {
 // TestVerifyFailureTriggers keeps the Verify error mapping stable.
 func TestVerifyFailureTriggers(t *testing.T) {
 	for _, tc := range []struct {
-		name              string
-		b                 Budget
-		gasUsed, poolUsed uint64
-		wantErr           error
+		name    string
+		b       Budget
+		gasUsed uint64
+		wantErr error
 	}{
-		{"consistent and valid", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}, 80, 80, nil},
-		{"payment booked beyond the pool total", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 81}, 80, 80, ErrPaymentExceedsPool},
-		{"accounting consistent but the quota does not fit this block", Budget{PaymentLaneQuota: 200}, 0, 0, ErrViolated},
-		{"system gas overran the reservation and burst the block", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}, 101, 80, ErrViolated},
-		{"when both fail, the pool bound is reported first (it names the cause)", Budget{PaymentLaneQuota: 200, PaymentLaneUsed: 100}, 99, 99, ErrPaymentExceedsPool},
+		{"consistent and valid", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}, 80, nil},
+		{"accounting consistent but the quota does not fit this block", Budget{PaymentLaneQuota: 200}, 0, ErrViolated},
+		{"system gas overran the reservation and burst the block", Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}, 101, ErrViolated},
 	} {
-		err := tc.b.Verify(100, tc.gasUsed, tc.poolUsed)
+		err := tc.b.Verify(100, tc.gasUsed)
 		if tc.wantErr == nil {
 			require.NoErrorf(t, err, "%s: expected to pass", tc.name)
 		} else {
 			require.ErrorIsf(t, err, tc.wantErr, "%s", tc.name)
 		}
-	}
-}
-
-// TestVerifyCommitmentComparesThePaymentFigure checks the committed payment total.
-func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
-	b := Budget{PaymentLaneQuota: 20, PaymentLaneUsed: 20}
-	const gasLimit, gasUsed, pool = 100, 80, 80
-
-	require.NoError(t, b.VerifyCommitment(gasLimit, gasUsed, pool, Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 20}))
-
-	for _, tc := range []struct {
-		name string
-		lie  Commitment
-	}{
-		{"payment understated", Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 19}},
-		{"payment overstated", Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 21}},
-		{"payment claimed as the whole block", Commitment{PaymentLaneQuota: 20, PaymentGasUsed: 80}},
-		{"payment claimed as zero", Commitment{PaymentLaneQuota: 20}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require.ErrorIs(t, b.VerifyCommitment(gasLimit, gasUsed, pool, tc.lie), ErrUntruthy)
-		})
 	}
 }

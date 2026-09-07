@@ -425,7 +425,6 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if err != nil {
 			panic(err)
 		}
-		lane.SetQuota()
 		b.lane = lane
 
 		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
@@ -468,14 +467,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
 
-		// The same stamp and self-check the miner runs. A nil pool means addTx never ran, so
-		// PaymentLaneUsed is zero too and a zero poolUsed is exact rather than merely safe.
-		var poolUsed uint64
-		if b.gasPool != nil {
-			poolUsed = b.gasPool.Used()
-		}
-		if err := b.lane.WriteCommitmentAndVerify(block, poolUsed); err != nil {
-			panic(fmt.Sprintf("payment lane commitment failed: %v", err))
+		// The same self-check the miner runs.
+		if err := b.lane.Verify(block.GasUsed()); err != nil {
+			panic(fmt.Sprintf("payment lane check failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {
 			for _, s := range b.sidecars {

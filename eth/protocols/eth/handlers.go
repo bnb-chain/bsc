@@ -385,20 +385,6 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	return backend.Handle(peer, ann)
 }
 
-func allowBEP703UncleHash(chain *core.BlockChain, header *types.Header) bool {
-	config := chain.Config()
-	if !config.IsInBSC() {
-		return false
-	}
-	// Blocks arrive out of order while syncing, so the parent may not be local yet. Staying
-	// permissive is safe: this is not the consensus check, verifyCascadingFields is.
-	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
-	if parent != nil {
-		return config.IsJenner(parent.Number, parent.Time)
-	}
-	return config.IsJenner(header.Number, header.Time)
-}
-
 func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	// Retrieve and decode the propagated block
 	ann := new(NewBlockPacket)
@@ -411,8 +397,7 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() &&
-		!(hash == types.EmptyUncleHash && ann.Block.Header().BEP703CommitsNoUncles() && allowBEP703UncleHash(backend.Chain(), ann.Block.Header())) {
+	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
 		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}

@@ -90,15 +90,10 @@ var (
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side. The two
 	// disagreeing means the block was not packed here.
-	paymentLaneQuotaGauge             = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
-	paymentLaneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
-	generalLaneYieldedCounter         = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
-	paymentLaneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
-	paymentLaneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
-	// The clamp bounds, so a flat payment-lane quota can be attributed to one of them.
-	paymentLaneFloorGauge   = metrics.NewRegisteredGauge("paymentlane/paymentLaneFloor", nil)
-	paymentLaneCeilingGauge = metrics.NewRegisteredGauge("paymentlane/paymentLaneCeiling", nil)
-	paymentLaneCapGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneCap", nil)
+	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
+	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
+	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -732,7 +727,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	if err != nil {
 		return nil, err
 	}
-	lane.SetQuota()
 
 	state.StartPrefetcher("miner", bundle)
 	// Parlia reserves gas for the system txs it applies in FinalizeAndAssemble,
@@ -1290,7 +1284,7 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.WriteCommitmentAndVerify(block, work.gasPool.Used()); err != nil {
+	if err := work.lane.Verify(block.GasUsed()); err != nil {
 		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
@@ -1566,13 +1560,8 @@ LOOP:
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
 		bidBlockWinGauge.Inc(1)
-		if err := w.verifyBidBlockLaneQuota(bestBidBlock, bestWork); err != nil {
-			log.Error("BidBlock rejected by the payment lane, fallback",
-				"builder", bestBidBlock.Builder,
-				"err", err)
-			paymentLaneBidBlockDeclineCounter.Inc(1)
-			bidBlockFallback = true
-		} else if task, err := w.prepareBidBlockTask(bestBidBlock, start); err != nil {
+		task, err := w.prepareBidBlockTask(bestBidBlock, start)
+		if err != nil {
 			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)
@@ -1621,9 +1610,7 @@ LOOP:
 		}
 	}
 
-	if err := w.commit(bestWork, w.fullTaskHook, start); err != nil {
-		log.Error("Failed to commit sealing work", "number", bestWork.header.Number, "err", err)
-	}
+	w.commit(bestWork, w.fullTaskHook, start)
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
@@ -1667,18 +1654,14 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.WriteCommitmentAndVerify(block, env.gasPool.Used()); err != nil {
+		if err := env.lane.Verify(block.GasUsed()); err != nil {
 			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
 		if env.lane.On() {
-			floor, ceiling, safetyCap := env.lane.Bounds()
 			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
 			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
-			paymentLaneFloorGauge.Update(int64(floor))
-			paymentLaneCeilingGauge.Update(int64(ceiling))
-			paymentLaneCapGauge.Update(int64(safetyCap))
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.

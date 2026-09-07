@@ -21,7 +21,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const paymentContractsLenSlot = 8
+// Storage layout of the new PaymentLane: slot 0 is _paymentLaneRatio, slot 1 is the
+// EnumerableSet's _values array (its length here, its elements at keccak(1)+i).
+const (
+	ratioSlot               = 0
+	paymentContractsLenSlot = 1
+)
 
 func deployedContractState(t *testing.T) *state.StateDB {
 	t.Helper()
@@ -34,7 +39,7 @@ func deployedContractState(t *testing.T) *state.StateDB {
 	return statedb
 }
 
-func paramSlot(i int) common.Hash {
+func slot(i int) common.Hash {
 	return common.Hash{31: byte(i)}
 }
 
@@ -57,46 +62,24 @@ func laneHeader(number uint64) *types.Header {
 	}
 }
 
-func TestLoadMetaReadsDefaults(t *testing.T) {
+func TestLoadMetaReadsTheUnwrittenDefault(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
 
 	got, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.NoError(t, err)
-	require.Equal(t, paymentlane.GovernanceParams{
-		MinRatio:      200,
-		MaxRatio:      800,
-		ExpandTrigger: 8_000,
-		ShrinkTrigger: 7_000,
-		ExpandStep:    200,
-		ShrinkStep:    50,
-		MinGas:        2_000_000,
-		MaxGas:        8_000_000,
-	}, got.GovernanceParams())
+	require.EqualValues(t, 500, got.Ratio(), "an unwritten slot must read as the contract's default, not as zero")
+	require.EqualValues(t, 2_750_000, got.Quota(55_000_000))
 	require.Nil(t, got.listed)
 }
 
-func TestLoadMetaPagesLongListsAndReadsGovernedParams(t *testing.T) {
+func TestLoadMetaPagesLongListsAndReadsTheGovernedRatio(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
-	wantGovernanceParams := paymentlane.GovernanceParams{
-		MinRatio:      150,
-		MaxRatio:      900,
-		ExpandTrigger: 9_000,
-		ShrinkTrigger: 2_500,
-		ExpandStep:    300,
-		ShrinkStep:    25,
-		MinGas:        1_000_000,
-		MaxGas:        9_000_000,
-	}
-	for i, v := range []uint64{
-		wantGovernanceParams.MinRatio, wantGovernanceParams.MaxRatio, wantGovernanceParams.ExpandTrigger, wantGovernanceParams.ShrinkTrigger,
-		wantGovernanceParams.ExpandStep, wantGovernanceParams.ShrinkStep, wantGovernanceParams.MinGas, wantGovernanceParams.MaxGas,
-	} {
-		statedb.SetState(paymentlane.ContractAddress, paramSlot(i), word(v))
-	}
+	statedb.SetState(paymentlane.ContractAddress, slot(ratioSlot), word(800))
+
 	listed := make([]common.Address, 300)
-	statedb.SetState(paymentlane.ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(uint64(len(listed))))
+	statedb.SetState(paymentlane.ContractAddress, slot(paymentContractsLenSlot), word(uint64(len(listed))))
 	for i := range listed {
 		listed[i] = common.BigToAddress(new(big.Int).SetUint64(uint64(i + 0x10000)))
 		statedb.SetState(paymentlane.ContractAddress, paymentContractSlot(uint64(i)), common.BytesToHash(listed[i][:]))
@@ -104,7 +87,7 @@ func TestLoadMetaPagesLongListsAndReadsGovernedParams(t *testing.T) {
 
 	got, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.NoError(t, err)
-	require.Equal(t, wantGovernanceParams, got.GovernanceParams())
+	require.EqualValues(t, 800, got.Ratio())
 	require.Len(t, got.listed, len(listed))
 	for _, addr := range listed {
 		require.Contains(t, got.listed, addr)
@@ -125,7 +108,7 @@ func TestLoadMetaReusesCachedMeta(t *testing.T) {
 func TestLoadMetaRejectsListedSetAboveContractLimit(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
-	statedb.SetState(paymentlane.ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(maxListedContracts+1))
+	statedb.SetState(paymentlane.ContractAddress, slot(paymentContractsLenSlot), word(maxListedContracts+1))
 
 	_, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
@@ -146,39 +129,17 @@ func TestAppendPageRejectsOverflowingPageLength(t *testing.T) {
 	require.Contains(t, err.Error(), "length 2 exceeds totalLength")
 }
 
-func TestLoadGovernanceParamsForQuotaStaysOnParentRoot(t *testing.T) {
-	db := state.NewDatabaseForTesting()
-	statedb, err := state.New(types.EmptyRootHash, db)
-	require.NoError(t, err)
+// The one governance value a node reads, and the only way past updateParam's own guard is a
+// direct write - which is exactly the corruption 3.6.4 says must reject the block.
+func TestLoadMetaRejectsARatioOutsideTheGuard(t *testing.T) {
+	for _, bad := range []uint64{paymentlane.MaxLaneRatio + 1, math.MaxUint64} {
+		loadMetaCache = metaCache{}
+		statedb := deployedContractState(t)
+		statedb.SetState(paymentlane.ContractAddress, slot(ratioSlot), word(bad))
 
-	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
-	require.NoError(t, err)
-	statedb.SetCode(paymentlane.ContractAddress, code, tracing.CodeChangeSystemContractUpgrade)
-	statedb.SetState(paymentlane.ContractAddress, paramSlot(6), word(3_000_000))
-
-	root, err := statedb.Commit(1, false, false)
-	require.NoError(t, err)
-
-	live, err := state.New(root, db)
-	require.NoError(t, err)
-	live.SetState(paymentlane.ContractAddress, paramSlot(6), word(9_000_000))
-
-	parent := laneHeader(60_000_000)
-	parent.Root = root
-	header := laneHeader(60_000_001)
-
-	got, err := LoadGovernanceParamsForQuota(params.BSCChainConfig, parent, header, live)
-	require.NoError(t, err)
-	require.Equal(t, uint64(3_000_000), got.MinGas)
-}
-
-// Slot 1 is paymentLaneMaxRatio; a direct write is the only way past updateParam's validation.
-func TestLoadMetaRejectsATupleViolatingTheGuards(t *testing.T) {
-	statedb := deployedContractState(t)
-	statedb.SetState(paymentlane.ContractAddress, paramSlot(1), word(paymentlane.MaxLaneRatio+1))
-
-	_, err := LoadMeta(params.BSCChainConfig, laneHeader(1), statedb)
-	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)
+		_, err := LoadMeta(params.BSCChainConfig, laneHeader(1), statedb)
+		require.ErrorIsf(t, err, paymentlane.ErrCorruptConfig, "ratio %d", bad)
+	}
 }
 
 // A full page is the most one getter call can cost: the walk pages at pageSize, so this figure
@@ -207,7 +168,7 @@ func TestPageGasStaysFarBelowTheGetterBudget(t *testing.T) {
 		require.Equal(t, tc.fork, cfg.LatestFork(header.Time))
 
 		statedb := deployedContractState(t)
-		statedb.SetState(paymentlane.ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(pageSize))
+		statedb.SetState(paymentlane.ContractAddress, slot(paymentContractsLenSlot), word(pageSize))
 		for i := uint64(0); i < pageSize; i++ {
 			statedb.SetState(paymentlane.ContractAddress, paymentContractSlot(i), word(i+1))
 		}
@@ -219,7 +180,7 @@ func TestPageGasStaysFarBelowTheGetterBudget(t *testing.T) {
 		require.NoError(t, err, tc.fork)
 
 		used := left.Used(budget)
-		require.EqualValues(t, 356_819, used, "%s: getter gas moved; confirm getterGasLimit still leaves room, then update this figure", tc.fork)
+		require.EqualValues(t, 356_774, used, "%s: getter gas moved; confirm getterGasLimit still leaves room, then update this figure", tc.fork)
 		require.Less(t, used*10, getterGasLimit, "%s: getterGasLimit no longer leaves an order of magnitude", tc.fork)
 	}
 }

@@ -197,12 +197,10 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 	}
 
 	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
-	// BSC post-Jenner reuses sha3Uncles for the BEP-703 commitment while still carrying no uncles.
-	commitsNoUncles := head.BEP703CommitsNoUncles()
-	if commitsNoUncles && len(body.UncleHashes) > 0 {
+	if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
 		return nil, errors.New("server returned non-empty uncle list but block header indicates no uncles")
 	}
-	if !commitsNoUncles && len(body.UncleHashes) == 0 {
+	if head.UncleHash != types.EmptyUncleHash && len(body.UncleHashes) == 0 {
 		return nil, errors.New("server returned empty uncle list but block header indicates uncles")
 	}
 	if head.TxHash == types.EmptyTxsHash && len(body.Transactions) > 0 {

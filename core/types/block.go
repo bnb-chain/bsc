@@ -214,7 +214,7 @@ func (h *Header) EmptyBody() bool {
 	var (
 		emptyWithdrawals = h.WithdrawalsHash == nil || *h.WithdrawalsHash == EmptyWithdrawalsHash
 	)
-	return h.TxHash == EmptyTxsHash && h.IsEmptyUncleHash() && emptyWithdrawals
+	return h.TxHash == EmptyTxsHash && h.UncleHash == EmptyUncleHash && emptyWithdrawals
 }
 
 // EmptyReceipts returns true if there are no receipts for this header/block.
@@ -509,10 +509,6 @@ func (b *Block) Size() uint64 {
 
 func (b *Block) SetRoot(root common.Hash) { b.header.Root = root }
 
-// SetUncleHash overwrites the uncle slot, which from the block after BEP-703's activation
-// carries the payment lane commitment instead of an uncle list hash.
-func (b *Block) SetUncleHash(hash common.Hash) { b.header.UncleHash = hash }
-
 // SanityCheck can be used to prevent that unbounded fields are
 // stuffed with junk data to add processing overhead
 func (b *Block) SanityCheck() error {
@@ -539,26 +535,6 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 		return EmptyUncleHash
 	}
 	return rlpHash(uncles)
-}
-
-// isBEP703Commitment reports whether h has BEP-703's zero-tail framing. Shape only; validity
-// stays in core/paymentlane.
-func isBEP703Commitment(h common.Hash) bool {
-	for _, b := range h[16:] {
-		if b != 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// IsEmptyUncleHash reports whether this header carries the empty-uncle-list hash.
-func (h *Header) IsEmptyUncleHash() bool { return h.UncleHash == EmptyUncleHash }
-
-// BEP703CommitsNoUncles reports whether this header encodes an empty uncle list through either the
-// legacy empty-uncle hash or BEP-703 framing. Fork activation is the caller's job.
-func (h *Header) BEP703CommitsNoUncles() bool {
-	return h.UncleHash == EmptyUncleHash || isBEP703Commitment(h.UncleHash)
 }
 
 // CalcRequestsHash creates the block requestsHash value for a list of requests.

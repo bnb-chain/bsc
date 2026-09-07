@@ -49,55 +49,13 @@
   },
   {
     "type": "function",
-    "name": "getPaymentLaneParams",
+    "name": "getPaymentLaneRatio",
     "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "tuple",
-        "internalType": "struct IPaymentLaneMeta.Params",
-        "components": [
-          {
-            "name": "paymentLaneMinRatio",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "paymentLaneMaxRatio",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "expandTriggerRatio",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "shrinkTriggerRatio",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "expandStepRatio",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "shrinkStepRatio",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "paymentLaneMin",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "paymentLaneMax",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"

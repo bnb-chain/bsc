@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
-	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -1628,22 +1627,7 @@ func (api *BlockChainAPI) rpcMarshalHeader(ctx context.Context, header *types.He
 	fields := RPCMarshalHeader(header)
 	fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, header.Hash()))
 	fields["milliTimestamp"] = hexutil.Uint64(header.MilliTimestamp())
-	addPaymentLaneFields(fields, header)
 	return fields
-}
-
-func addPaymentLaneFields(fields map[string]interface{}, header *types.Header) {
-	// Pre-Jenner headers carry EmptyUncleHash, and an active lane with a zero quota commits the
-	// all-zero hash, so this is the one test that separates the two eras.
-	if header.UncleHash == types.EmptyUncleHash {
-		return
-	}
-	c, err := paymentlane.Decode(header.UncleHash)
-	if err != nil {
-		return
-	}
-	fields["paymentLaneQuota"] = hexutil.Uint64(c.PaymentLaneQuota)
-	fields["paymentGasUsed"] = hexutil.Uint64(c.PaymentGasUsed)
 }
 
 // rpcMarshalBlock uses the generalized output filler, then adds the total difficulty field, which requires
@@ -1654,7 +1638,6 @@ func (api *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, i
 		fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, b.Hash()))
 		fields["milliTimestamp"] = hexutil.Uint64(b.Header().MilliTimestamp())
 	}
-	addPaymentLaneFields(fields, b.Header())
 	return fields, nil
 }
 

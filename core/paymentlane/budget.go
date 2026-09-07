@@ -1,14 +1,10 @@
 package paymentlane
 
-import (
-	"fmt"
-)
-
 // Budget states the block validity rule as an admission predicate. Payment is the only tracked
 // figure, general gas being the header residual. Capacity is passed in per call rather than
 // stored, so no stale capacity can be held.
 type Budget struct {
-	PaymentLaneQuota uint64 // this block's quota, straight from NextLaneQuota
+	PaymentLaneQuota uint64 // this block's quota, straight from Quota()
 	PaymentLaneUsed  uint64
 }
 
@@ -37,26 +33,8 @@ func (b *Budget) RecordUsed(laneType LaneType, delta uint64) {
 	}
 }
 
-// Verify checks a finished block: poolUsed <= gasUsed, PaymentLaneUsed <= poolUsed, then the rule
-// inequality.
-func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
-	// Unreachable with the arguments in order; it catches them swapped.
-	if poolUsed > gasUsed {
-		return fmt.Errorf("payment lane pool used %d exceeds block total %d", poolUsed, gasUsed)
-	}
-	if b.PaymentLaneUsed > poolUsed {
-		return fmt.Errorf("%w: payment %d pool %d", ErrPaymentExceedsPool, b.PaymentLaneUsed, poolUsed)
-	}
+// Verify checks a finished block. PaymentLaneUsed is always this node's own replay - no header
+// field carries the producer's word for it - so the rule inequality is the whole check.
+func (b Budget) Verify(gasLimit, gasUsed uint64) error {
 	return CheckInequality(gasLimit, gasUsed, b.PaymentLaneUsed, b.PaymentLaneQuota)
-}
-
-// VerifyCommitment is the only authoritative check on the committed payment figure: it compares
-// it against local replay, which no self-check can do. poolUsed is gp.Used() over user
-// transactions. PaymentLaneQuota is CheckNextLaneQuota's job, not this one.
-func (b Budget) VerifyCommitment(gasLimit, gasUsed, poolUsed uint64, c Commitment) error {
-	if b.PaymentLaneUsed != c.PaymentGasUsed {
-		return fmt.Errorf("%w: committed payment %d, replayed %d",
-			ErrUntruthy, c.PaymentGasUsed, b.PaymentLaneUsed)
-	}
-	return b.Verify(gasLimit, gasUsed, poolUsed)
 }

@@ -21,14 +21,6 @@ func callFromStateDB(config *params.ChainConfig, header *types.Header, statedb *
 	return doStaticCall(config, header, statedb, input)
 }
 
-func callFromParentState(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB, input []byte) ([]byte, error) {
-	parentState, err := state.NewWithReader(parent.Root, statedb.Database(), statedb.Reader())
-	if err != nil {
-		return nil, fmt.Errorf("%w: parent state at %x: %w", paymentlane.ErrStateUnavailable, parent.Root, err)
-	}
-	return doStaticCall(config, header, parentState, input)
-}
-
 func doStaticCall(config *params.ChainConfig, header *types.Header, statedb *state.StateDB, input []byte) ([]byte, error) {
 	evm := vm.NewEVM(blockContext(header), statedb, config, vm.Config{NoBaseFee: true})
 	defer evm.Release()

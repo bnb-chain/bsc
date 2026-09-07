@@ -22,15 +22,6 @@ var (
 	laneUnavailableCounter = metrics.NewRegisteredCounter("paymentlane/stateUnavailable", nil)
 )
 
-func recordLaneImported(c paymentlane.Commitment) {
-	paymentLaneImportedQuotaGauge.Update(int64(c.PaymentLaneQuota))
-	paymentLaneImportedGasUsedGauge.Update(int64(c.PaymentGasUsed))
-	paymentLaneImportedIdleGauge.Update(int64(paymentlane.Budget{
-		PaymentLaneQuota: c.PaymentLaneQuota,
-		PaymentLaneUsed:  c.PaymentGasUsed,
-	}.IdleLane()))
-}
-
 func laneReject(err error) error {
 	if errors.Is(err, paymentlane.ErrStateUnavailable) {
 		laneUnavailableCounter.Inc(1)
@@ -40,19 +31,17 @@ func laneReject(err error) error {
 	return err
 }
 
-// LaneState is one block's lane state: the recursion inputs read from the parent, plus the
+// LaneState is one block's lane state: the quota derived from the parent post-state, plus the
 // payment total accumulated as the block executes.
 //
 // The zero value and a nil pointer both mean the lane is off, and every method is safe in that
 // state, so no call site needs a fork branch. Reading the Budget field is not: do that only
 // where the caller constructed the lane itself.
 type LaneState struct {
-	Budget           paymentlane.Budget
-	governanceParams paymentlane.GovernanceParams
-	signal           paymentlane.Signal
-	classifier       *paymentlane.Classifier
-	state            laneStateDB
-	gasLimit         uint64
+	Budget     paymentlane.Budget
+	classifier *paymentlane.Classifier
+	state      laneStateDB
+	gasLimit   uint64
 }
 
 // laneStateDB is the live state: what the classifier reads, and whether reading it worked.
@@ -61,8 +50,13 @@ type laneStateDB interface {
 	Error() error
 }
 
-// ResolveLaneState derives one block's lane. One implementation for the importer and
-// the producer on purpose: every input is a choice the two must make identically.
+// ResolveLaneState derives one block's lane. One implementation for the importer and the
+// producer on purpose: the quota is a pure function of the parent post-state's ratio and this
+// block's gas limit, so both sides must reach the same value with no field to compare.
+//
+// The lane binds a block if and only if its parent is at or after activation (BEP-703 3.4.3):
+// the fork installs 0x2007 while the activation block executes, so its post-state is the first
+// to hold a ratio.
 //
 // statedb must be the block's own state, opened on the parent root and not yet advanced: the
 // metadata read has to land on the witness-visible path, and classification then follows the same
@@ -75,90 +69,16 @@ func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, 
 	if err != nil {
 		return nil, err
 	}
-	signal, err := paymentlane.NewSignalFromParent(parent)
-	if err != nil {
-		return nil, err
-	}
 	return &LaneState{
-		governanceParams: meta.GovernanceParams(),
-		signal:           signal,
-		classifier:       meta.NewClassifier(statedb),
-		state:            statedb,
-		gasLimit:         header.GasLimit,
+		Budget:     paymentlane.Budget{PaymentLaneQuota: meta.Quota(header.GasLimit)},
+		classifier: meta.NewClassifier(statedb),
+		state:      statedb,
+		gasLimit:   header.GasLimit,
 	}, nil
-}
-
-// checkState reports a failed state read as the local fault it is, not the peer's: StateDB
-// answers such a read with the zero code hash - which classifies as payment - and holds the
-// error until Commit, after every verdict below.
-func (ls *LaneState) checkState() error {
-	if err := ls.state.Error(); err != nil {
-		return fmt.Errorf("%w: %w", paymentlane.ErrStateUnavailable, err)
-	}
-	return nil
-}
-
-// VerifyHeaderQuota adjudicates a committed quota against its parent derivation - the whole of
-// the lane that is settled before any transaction runs. It exists for BEP-675's blind-seal path,
-// which has no execution state for the block it is about to sign and so cannot classify. statedb
-// is used only to rebuild a parent-root-bound read-only StateDB for the governance params read.
-func VerifyHeaderQuota(config *params.ChainConfig, parent, header *types.Header, statedb *state.StateDB) error {
-	if !config.IsJenner(parent.Number, parent.Time) {
-		return nil
-	}
-	c, err := paymentlane.Decode(header.UncleHash)
-	if err != nil {
-		return err
-	}
-	governanceParams, err := paymentlanemeta.LoadGovernanceParamsForQuota(config, parent, header, statedb)
-	if err != nil {
-		return err
-	}
-	signal, err := paymentlane.NewSignalFromParent(parent)
-	if err != nil {
-		return err
-	}
-	return signal.CheckNextLaneQuota(c.PaymentLaneQuota, governanceParams, header.GasLimit)
 }
 
 // On reports whether the lane binds this block.
 func (ls *LaneState) On() bool { return ls != nil && ls.classifier != nil }
-
-// SetQuota records the quota this block must reserve, for the producing side.
-func (ls *LaneState) SetQuota() {
-	if !ls.On() {
-		return
-	}
-	ls.Budget.PaymentLaneQuota = ls.signal.NextLaneQuota(ls.governanceParams, ls.gasLimit)
-}
-
-// CheckQuota verifies a committed quota against the parent derivation and adopts it, for the
-// importing side.
-func (ls *LaneState) CheckQuota(committed uint64) error {
-	if !ls.On() {
-		return nil
-	}
-	if err := ls.signal.CheckNextLaneQuota(committed, ls.governanceParams, ls.gasLimit); err != nil {
-		return err
-	}
-	ls.Budget.PaymentLaneQuota = committed
-	return nil
-}
-
-func (ls *LaneState) Bounds() (floor, ceiling, safetyCap uint64) {
-	if !ls.On() {
-		return 0, 0, 0
-	}
-	return paymentlane.Bounds(ls.governanceParams, ls.gasLimit)
-}
-
-// GovernanceParams returns the tuple this node read from 0x2007 for this block.
-func (ls *LaneState) GovernanceParams() paymentlane.GovernanceParams {
-	if !ls.On() {
-		return paymentlane.GovernanceParams{}
-	}
-	return ls.governanceParams
-}
 
 // Classify returns tx's lane type, or GeneralLane when the lane is off. Call it where the
 // transaction is about to run: the code gate reads the live state, so producer and importer agree
@@ -201,37 +121,26 @@ func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 	return nil
 }
 
-// VerifyImported is the importer's replay verdict on nodes that classify against trie-backed
-// state; modes that skip that replay can still settle the committed quota exactly.
-func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane.Commitment) error {
+// Verify is BEP-703 3.3 over a finished block, for the producer's self-check and the importer's
+// verdict alike. A failed state read is reported as the local fault it is, not the peer's:
+// StateDB answers such a read with the zero code hash - which classifies as payment - and holds
+// the error until Commit, after every verdict here.
+func (ls *LaneState) Verify(totalGasUsed uint64) error {
 	if !ls.On() {
 		return nil
 	}
-	if err := ls.checkState(); err != nil {
-		return err
+	if err := ls.state.Error(); err != nil {
+		return fmt.Errorf("%w: %w", paymentlane.ErrStateUnavailable, err)
 	}
-	return ls.Budget.VerifyCommitment(ls.gasLimit, totalGasUsed, poolUsed, c)
+	return ls.Budget.Verify(ls.gasLimit, totalGasUsed)
 }
 
-// WriteCommitmentAndVerify stamps the commitment onto an assembled block, then checks the block
-// rule over it. It refuses a block that carries uncles, or whose hash was cached before the
-// stamp - the hash is memoised on first read and never invalidated.
-func (ls *LaneState) WriteCommitmentAndVerify(block *types.Block, poolUsed uint64) error {
+// recordImported publishes what this node replayed, once the block is judged valid.
+func (ls *LaneState) recordImported() {
 	if !ls.On() {
-		return nil
+		return
 	}
-	if len(block.Uncles()) != 0 {
-		return errors.New("payment lane and uncles cannot share the uncle hash slot")
-	}
-	if err := ls.checkState(); err != nil {
-		return err
-	}
-	block.SetUncleHash(paymentlane.Encode(paymentlane.Commitment{
-		PaymentLaneQuota: ls.Budget.PaymentLaneQuota,
-		PaymentGasUsed:   ls.Budget.PaymentLaneUsed,
-	}))
-	if block.Hash() != block.Header().Hash() {
-		return errors.New("block hash was cached before the commitment was written")
-	}
-	return ls.Budget.Verify(ls.gasLimit, block.GasUsed(), poolUsed)
+	paymentLaneImportedQuotaGauge.Update(int64(ls.Budget.PaymentLaneQuota))
+	paymentLaneImportedGasUsedGauge.Update(int64(ls.Budget.PaymentLaneUsed))
+	paymentLaneImportedIdleGauge.Update(int64(ls.Budget.IdleLane()))
 }
