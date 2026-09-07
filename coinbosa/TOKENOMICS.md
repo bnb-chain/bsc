@@ -35,15 +35,49 @@ BOSA est donc définitive. Aucun mécanisme du protocole ne peut l'augmenter.
 L'offre native est de **700 000 000 BOSA**, fixée au genesis, et revient **intégralement au
 projet**, répartie selon les treize postes ci-dessous.
 
-Des jetons Coinbosa historiques existent sur **Solana** (500 000 000). Ils sont **détenus dans
-leur totalité par le projet**, consolidés sur son portefeuille
-`5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf`. Il n'y a donc pas de détenteurs tiers à migrer, et
-aucune réserve de migration n'est prélevée sur l'offre native. *(Des jetons avaient aussi été émis
-sur BNB Chain ; ce jeton n'existe plus.)*
+### Les jetons historiques sur Solana — ce que la mesure dit
 
-Ces 500 000 000 de jetons Solana **ne sont pas migrés** — le projet reçoit son offre directement
-au genesis — et seront **retirés de la circulation sur Solana**, de manière publique et
-vérifiable, pour qu'aucun jeton ne soit compté deux fois.
+Des jetons Coinbosa historiques existent sur **Solana**, mint
+`8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf`. *(Des jetons avaient aussi été émis sur
+BNB Chain ; ce jeton n'existe plus.)*
+
+Ce paragraphe affirmait qu'ils étaient « détenus dans leur totalité par le projet » et
+qu'« il n'y a donc pas de détenteurs tiers à migrer ». **Mesuré le 2026-09-07 sur Solana
+mainnet, ce n'est pas exact** — et il vaut mieux le lire ici que le découvrir en une
+requête :
+
+| | mesure |
+|---|---|
+| offre du jeton | **499 999 940,39** unités (décimales : 10) |
+| détenues par le portefeuille projet `5pdFbZ…edQf` | **479 990 400**, soit **96,00 %** |
+| **hors de ce portefeuille** | **20 009 540,39 unités — 4,00 %** |
+| autorité de frappe (`mintAuthority`) | **active**, sur `3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq` |
+| autorité de gel (`freezeAuthority`) | **active**, sur la même adresse |
+
+*Reproductible : `getTokenSupply`, `getAccountInfo` et `getTokenAccountsByOwner` sur
+`https://api.mainnet-beta.solana.com`.*
+
+**Nous ignorons si les 4,00 % restants appartiennent à d'autres portefeuilles du projet ou
+à des tiers.** Tant que ce n'est pas établi, il ne faut pas écrire qu'il n'y a pas de
+détenteur tiers.
+
+**Deux conséquences qu'il faut énoncer plutôt que laisser découvrir :**
+
+1. **Le retrait de la circulation ne peut porter, aujourd'hui, que sur ce que le projet
+   détient.** Les 20 009 540,39 unités hors du portefeuille projet ne peuvent pas être
+   retirées par nous. Ce document a promis « aucun jeton ne sera compté deux fois » ; cette
+   promesse ne pourra être tenue que sur 96 % de l'offre, et il faut le dire ainsi.
+
+2. **L'autorité de frappe du jeton Solana est active, sur une adresse qui n'est pas le
+   portefeuille projet.** Tant qu'elle l'est, l'offre Solana peut être regonflée, et
+   n'importe quel compte peut être gelé. C'est le motif de refus que cherche un agrégateur.
+   La seule réponse qui vaille est une révocation publique — `SetAuthority` vers `null`
+   pour les deux autorités — dont la signature de transaction sera publiée ici. Elle n'est
+   **pas encore faite**.
+
+Ces jetons Solana **ne sont pas migrés** : le projet reçoit son offre native directement au
+genesis, et rien n'est prélevé sur les 700 000 000 BOSA au titre d'une migration. L'offre
+native est indépendante de ce qui existe sur Solana.
 
 Le [portail de migration](docs/MIGRATION.md) reste disponible pour le cas résiduel d'un détenteur
 tiers qui apparaîtrait — par exemple un ancien contributeur —, crédité alors depuis la réserve
