@@ -17,7 +17,7 @@ var loadMetaCache metaCache
 
 // LoadMeta returns parent-pinned lane metadata, reading it through the PaymentLane getters on a
 // miss. The cache key is 0x2007's account in the supplied StateDB, so callers MUST pass a block
-// state still opened on the parent root and not yet advanced by execution.
+// state of the parent block post-execution.
 func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
 	cacheable := canCacheMeta(statedb)
 	if err := statedb.Error(); err != nil {
@@ -26,7 +26,7 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 		return nil, err
 	}
 	if !cacheable {
-		meta, err := readMeta(config, header, statedb)
+		meta, err := loadMetaFromStateDB(config, header, statedb)
 		if err != nil {
 			logMetaLoadFailure(header, statedb, false, nil, err)
 		}
@@ -34,7 +34,7 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 	}
 	key := metaCacheKeyFromStateDB(statedb)
 	return loadMetaCache.loadOrStore(key, func() (*Meta, error) {
-		meta, err := readMeta(config, header, statedb)
+		meta, err := loadMetaFromStateDB(config, header, statedb)
 		if err != nil {
 			logMetaLoadFailure(header, statedb, true, &key, err)
 		}
@@ -42,14 +42,14 @@ func LoadMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 	})
 }
 
-func readMeta(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
+func loadMetaFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (*Meta, error) {
 	start := time.Now()
 
-	ratio, err := readRatio(config, header, statedb)
+	ratio, err := loadRatioFromStateDB(config, header, statedb)
 	if err != nil {
 		return nil, err
 	}
-	listed, err := readListed(config, header, statedb)
+	listed, err := loadListedFromStateDB(config, header, statedb)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func readMeta(config *params.ChainConfig, header *types.Header, statedb *state.S
 	return &Meta{ratio: ratio, listed: listed}, nil
 }
 
-func readRatio(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (uint64, error) {
+func loadRatioFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (uint64, error) {
 	ret, err := callGetter(config, header, statedb, packGetPaymentLaneRatio())
 	if err != nil {
 		return 0, err
@@ -65,7 +65,7 @@ func readRatio(config *params.ChainConfig, header *types.Header, statedb *state.
 	return unpackGetPaymentLaneRatio(ret)
 }
 
-func readListed(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (map[common.Address]struct{}, error) {
+func loadListedFromStateDB(config *params.ChainConfig, header *types.Header, statedb *state.StateDB) (map[common.Address]struct{}, error) {
 	ret, err := callGetter(config, header, statedb, packGetPaymentContracts(0, pageSize))
 	if err != nil {
 		return nil, err
@@ -74,8 +74,8 @@ func readListed(config *params.ChainConfig, header *types.Header, statedb *state
 	if err != nil {
 		return nil, err
 	}
-	if total > maxListedContracts {
-		return nil, fmt.Errorf("%w: getPaymentContracts totalLength %d exceeds limit %d", paymentlane.ErrCorruptConfig, total, maxListedContracts)
+	if total > paymentlane.MaxListedContracts {
+		return nil, fmt.Errorf("%w: getPaymentContracts totalLength %d exceeds limit %d", paymentlane.ErrCorruptConfig, total, paymentlane.MaxListedContracts)
 	}
 	if total == 0 {
 		return nil, nil

@@ -54,7 +54,7 @@ err := parliaEngine.PrepareForBidBlock(chain, header)
 
 Transaction selection and EVM execution are entirely builder-driven; this specification does not constrain them. The builder runs selected user transactions against the parent state and maintains `state` / `receipts` / `body.Transactions` / `sidecars`.
 
-From the block after the Jenner activation block, BEP-703 reserves a fraction of the gas limit for payment transactions, and the builder is the only party that can honour it, because only the builder runs the packing loop. Nothing about it reaches the header: the quota is a pure function of the parent post-state and this block's gas limit, so the validator and every importer derive it independently. The activation block itself is outside the mechanism, and a builder never builds one — see the `-38001` rows in [Send and Fallback](#6-send-and-fallback).
+From the block after the Jenner activation block, BEP-703 reserves a fraction of the gas limit for payment transactions, and the builder is the only party that can honour it, because only the builder runs the packing loop. Nothing about it reaches the header: the quota is a pure function of the parent post-state and this block's gas limit, so the validator and every importer derive it independently. The activation block itself is outside the mechanism, and a builder never builds one — validators self-produce them, and `mev_sendBidBlock` refuses one with `-38001`.
 
 ```go
 lane, err := core.ResolveLaneState(chainConfig, parliaEngine, parent, header, state)  // once per block
@@ -146,10 +146,10 @@ A bare keccak digest, with no EIP-191/712 prefix, consistent with the existing `
 
 Builders poll `mev_getBidBlockPermission` to determine whether the BidBlock path is currently open for them on a given validator, and fall back to legacy `mev_sendBid` when it is not.
 
-The RPC does not surface permission denial through a JSON-RPC error; state is carried in the `allowed` field of the result. When `allowed` is false, `reason` identifies why. Current values are the same strings the validator records:
+The RPC does not surface permission denial through a JSON-RPC error; state is carried in the `allowed` field of the result. When `allowed` is false, `reason` identifies why. Current values:
 
-- `InsertChain err: <detail>` — the last sealed BidBlock from this builder failed validator-side `InsertChain` (e.g. invalid state root, mismatched receipt hash, KZG proof failure).
-- `BidBlock average gas price too low, avg:<avg>, min:<min>` — the sealed BidBlock imported successfully, but its average gas price (excluding system transactions) was below the validator's configured minimum.
+- `insertchain_failed` — the last sealed BidBlock from this builder failed validator-side `InsertChain` (e.g. invalid state root, mismatched receipt hash, KZG proof failure).
+- `gasprice_too_low` — the sealed BidBlock imported successfully, but its average gas price (excluding system transactions) was below the validator's configured minimum.
 - `manual` — admin revoke via `admin_setBidBlockPermission`.
 
 `mev_getBidBlockPermission` response:
@@ -157,7 +157,7 @@ The RPC does not surface permission denial through a JSON-RPC error; state is ca
 ```jsonc
 {
   "allowed": false,
-  "reason": "InsertChain err: invalid state root",
+  "reason": "insertchain_failed",
   "blockHash": "0x...",
   "blockNumber": "0x123",
   "revokedAt": "2026-05-22T...",       // when the revoke happened
@@ -172,7 +172,6 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 | Error message contains | JSON-RPC code | Builder action |
 | --- | --- | --- |
 | `BidBlock disabled, fallback to SendBid` | -38001 | fallback to `mev_sendBid` |
-| `BidBlock disabled at block N (hard-fork activation block)` | -38001 | validators self-produce fork activation blocks; fallback to `mev_sendBid` |
 | `builder BidBlock permission revoked, fallback to SendBid` | -38006 | permission not allowed; fallback to `mev_sendBid` |
 | `pre-seal verify failed: ...` | -38007 | **fix build logic; do NOT retry the same BidBlock** |
 | `too late, expected before ...` | -38008 | dropped; next slot |

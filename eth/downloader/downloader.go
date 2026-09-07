@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -1482,8 +1481,7 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 			// of the blocks delivered from the downloader, and the indexing will be off.
 			log.Debug("Downloaded item processing failed on sidechain import", "index", index, "err", err)
 		}
-		// Not the peer's fault, and the next peer serves the same block, so dropping walks the set.
-		if errors.Is(err, core.ErrAncestorHasNotBeenVerified) || errors.Is(err, paymentlane.ErrStateUnavailable) {
+		if errors.Is(err, core.ErrAncestorHasNotBeenVerified) {
 			return err
 		}
 		return fmt.Errorf("%w: %v", errInvalidChain, err)

@@ -1386,11 +1386,10 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, core.NewReceiptBloomGenerator())
 	if err != nil {
 		return err
-	}
-	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
-	if unRevertible && receipt.Status == types.ReceiptStatusFailed {
+	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {
 		return errors.New("no revertible transaction failed")
 	}
+	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
 	env.header.GasUsed = env.gasPool.Used()
 
 	if tx.Type() == types.BlobTxType {

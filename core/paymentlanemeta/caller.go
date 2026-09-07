@@ -15,8 +15,7 @@ import (
 
 const getterGasLimit uint64 = 50_000_000
 
-// callGetter static-calls one of BEP-703 section 3.6.4's getters against statedb, which must
-// still be opened on the parent post-state.
+// query payment lane state from the parent post-state.
 func callGetter(config *params.ChainConfig, header *types.Header, statedb *state.StateDB, input []byte) ([]byte, error) {
 	snapshot := statedb.Snapshot()
 	defer statedb.RevertToSnapshot(snapshot)

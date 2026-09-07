@@ -88,8 +88,7 @@ var (
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
-	// Producing-side lane metrics; core/payment_lane.go reports the imported side. The two
-	// disagreeing means the block was not packed here.
+	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
 	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
 	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
 	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
@@ -145,8 +144,7 @@ type environment struct {
 
 	// lane is this block's BEP-703 state, resolved from the parent in makeEnv.
 	lane *core.LaneState
-	// generalLaneYielded counts drops this env made for the quota, so the seal log reports it
-	// once; the counter metric accumulates across discarded envs and cannot be read per block.
+	// generalLaneYielded counts drops this env made for the quota.
 	generalLaneYielded int
 }
 
@@ -722,7 +720,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 			return nil, err
 		}
 	}
-	// Before StartPrefetcher: an error after it would leave a prefetcher with no env to discard it.
 	lane, err := core.ResolveLaneState(w.chainConfig, w.engine, parent, header, state)
 	if err != nil {
 		return nil, err
@@ -808,8 +805,6 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	// The authoritative classification, at the point replaying importers take it. Nothing between
-	// commitTransactions' advisory call and this one touches state - keep it that way.
 	laneType := env.lane.Classify(tx)
 	var (
 		snap       = env.state.Snapshot()
@@ -947,7 +942,6 @@ LOOP:
 		}
 		prefetchCurr.Store(tx)
 
-		// Advisory, to size the budget below; applyTransaction re-asks authoritatively.
 		laneType := env.lane.Classify(tx)
 		if !env.lane.Admits(env.gasPool.Gas(), laneType, tx.Gas()) {
 			generalLaneYieldedCounter.Inc(1)

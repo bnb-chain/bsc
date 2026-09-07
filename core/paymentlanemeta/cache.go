@@ -8,9 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 )
 
-// metaCacheKey rests on one invariant: the getters are a pure function of 0x2007's own account.
-// A getter reading anything else - the block number, the time - would make cached and uncached
-// nodes derive different quotas, which is a consensus split along node-configuration lines.
+// metaCacheKey's two fields uniquely anchor the payment lane's code and state.
 type metaCacheKey struct {
 	codeHash    common.Hash
 	storageRoot common.Hash

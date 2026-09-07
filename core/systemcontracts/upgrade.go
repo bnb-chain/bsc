@@ -1110,8 +1110,6 @@ func init() {
 		},
 	}
 
-	// PaymentLane (BEP-703) needs no initialize(): every unwritten slot reads as its default in
-	// the contract itself, so Jenner ships bytecode only.
 	jennerUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "jenner",
 		Configs: []*UpgradeConfig{

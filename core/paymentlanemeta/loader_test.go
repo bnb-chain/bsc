@@ -108,7 +108,7 @@ func TestLoadMetaReusesCachedMeta(t *testing.T) {
 func TestLoadMetaRejectsListedSetAboveContractLimit(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
-	statedb.SetState(paymentlane.ContractAddress, slot(paymentContractsLenSlot), word(maxListedContracts+1))
+	statedb.SetState(paymentlane.ContractAddress, slot(paymentContractsLenSlot), word(paymentlane.MaxListedContracts+1))
 
 	_, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), statedb)
 	require.ErrorIs(t, err, paymentlane.ErrCorruptConfig)

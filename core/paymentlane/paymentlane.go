@@ -16,17 +16,16 @@ import (
 	"math/bits"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // ContractAddress is the PaymentLane system contract, installed by the Jenner fork.
 var ContractAddress = common.HexToAddress("0x0000000000000000000000000000000000002007")
 
-// BEP-703 section 3.6.1's constants, mirroring PaymentLane.sol; drift here rejects blocks peers
-// accept. The default ratio is deliberately NOT mirrored - getPaymentLaneRatio() applies it, which
-// is why section 3.6.4 forbids reading the storage slot instead.
 const (
-	RatioDenom   = 10_000
-	MaxLaneRatio = 1_000 // the lane may never exceed 10% of the gas limit
+	RatioDenom                = 10_000
+	MaxLaneRatio              = 1_000   // the lane may never exceed 10% of the gas limit
+	MaxListedContracts uint64 = 100_000 // the contract enforces it on governance writes
 )
 
 type LaneType uint8
@@ -44,35 +43,34 @@ func (c LaneType) String() string {
 }
 
 var (
-	ErrViolated      = errors.New("payment lane inequality violated")
-	ErrCorruptConfig = errors.New("payment lane config mismatch")
-	// Local fault, not the peer's: this node could not read the required lane state.
+	ErrViolated         = errors.New("payment lane inequality violated")
+	ErrCorruptConfig    = errors.New("payment lane config mismatch")
 	ErrStateUnavailable = errors.New("payment lane state unavailable")
 )
 
-// CheckRatio is BEP-703 section 3.6.1's guard, at the getter's full uint256 width: a value
-// narrowed to 64 bits first can land inside the guard when the value returned did not.
+// CheckRatio checks the ratio is legal, at the getter's full uint256 width: a value narrowed to
+// 64 bits first can land inside the guard when the value returned did not.
 func CheckRatio(ratio *big.Int) (uint64, error) {
 	if ratio == nil || !ratio.IsUint64() || ratio.Uint64() == 0 || ratio.Uint64() > MaxLaneRatio {
-		return 0, fmt.Errorf("%w: 3.6.1 ratio guard 0 < %v <= %d", ErrCorruptConfig, ratio, MaxLaneRatio)
+		return 0, fmt.Errorf("%w: ratio 0 < %v <= %d", ErrCorruptConfig, ratio, MaxLaneRatio)
 	}
 	return ratio.Uint64(), nil
 }
 
-// Quota is BEP-703 section 3.4.1: ratio(h-1) * GasLimit(h) / RatioDenom, truncated toward zero.
-// The product needs 128 bits - up to 73 at a consensus-legal gas limit - and the guard saturates
-// exactly where bits.Div64 would panic.
+// Quota is paymentLaneQuota(h) = PAYMENT_LANE_RATIO(h−1) × GasLimit(h) / RATIO_DENOM.
 func Quota(ratio, gasLimit uint64) uint64 {
 	hi, lo := bits.Mul64(ratio, gasLimit)
 	if hi >= RatioDenom {
+		// Unreachable: hi <= ratio-1 for any gasLimit, and CheckRatio caps ratio well below
+		// RatioDenom. Getting here means the ratio never passed that guard.
+		log.Error("Payment lane quota overflowed", "ratio", ratio, "max", MaxLaneRatio, "gasLimit", gasLimit)
 		return math.MaxUint64
 	}
 	q, _ := bits.Div64(hi, lo, RatioDenom)
 	return q
 }
 
-// CheckInequality is the block validity rule. gasUsed must be the block's real total, system gas
-// included.
+// CheckInequality is the block validity rule.
 func CheckInequality(gasLimit, gasUsed, paymentGasUsed, paymentLaneQuota uint64) error {
 	sum, carry := bits.Add64(gasUsed, satSub(paymentLaneQuota, paymentGasUsed), 0)
 	if carry != 0 || sum > gasLimit {

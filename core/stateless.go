@@ -18,7 +18,6 @@ package core
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -51,9 +50,6 @@ func ExecuteStateless(ctx context.Context, config *params.ChainConfig, vmconfig 
 	}
 	if block.ReceiptHash() != (common.Hash{}) {
 		log.Error("stateless runner received receipt root it's expected to calculate (faulty consensus client)", "block", block.Number())
-	}
-	if len(witness.Headers) == 0 || witness.Headers[0] == nil {
-		return common.Hash{}, common.Hash{}, errors.New("witness missing parent header")
 	}
 	// Create and populate the state database to serve as the stateless backend
 	memdb := witness.MakeHashDB()

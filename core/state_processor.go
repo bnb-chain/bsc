@@ -94,9 +94,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		return nil, errors.New("could not get parent block")
 	}
 
-	// BEP-703 reads the parent post-state, so this must run before the block mutates anything.
-	// Nothing is committed to the header, so only a node that replays classification can judge
-	// the rule; a no-tries node cannot read code hashes and skips the lane entirely.
+	// BEP-703 payment-lane, fastnode skip the payment-lane check.
 	lane := &LaneState{}
 	if !statedb.NoTries() {
 		if lane, err = ResolveLaneState(config, p.chain.Engine(), lastBlock, header, statedb); err != nil {
@@ -158,8 +156,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		// Classified after every earlier transaction has run and before this one does - the
-		// point the producer classified at too.
 		laneType := lane.Classify(tx)
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",

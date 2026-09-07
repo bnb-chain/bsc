@@ -118,7 +118,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
 		miner.worker.chainConfig.IsOnJenner(bb.Header.Number, parent.Time, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
-			"BidBlock disabled at block %d (hard-fork activation block), fallback to SendBid", blockNumber))
+			"BidBlock disabled on hard-fork activation block %d, fallback to SendBid", blockNumber))
 	}
 	// Reserve the quota slot atomically (check + insert under one lock).
 	if err := miner.bidSimulator.ReservePending(blockNumber, builder, bidHash); err != nil {
