@@ -102,7 +102,7 @@ var (
 	errSelLastAdminRenounce   = cas20ErrorSel("LastAdminCannotRenounce()")
 	errSelNotSoleAdmin        = cas20ErrorSel("NotSoleAdmin()")
 	errSelPolicyForbids       = cas20ErrorSel("PolicyForbids(bytes32,uint64)")
-	// IPolicyRegistry answers about the id the caller named; IB20 reports which one it could not find.
+	// IPolicyRegistry answers about the id the caller named; ICAS20 reports which one it could not find.
 	errSelPolicyNotFound     = cas20ErrorSel("PolicyNotFound()")
 	errSelPolicyNotFoundID   = cas20ErrorSel("PolicyNotFound(uint64)")
 	errSelUnsupportedScope   = cas20ErrorSel("UnsupportedPolicyType(bytes32)")

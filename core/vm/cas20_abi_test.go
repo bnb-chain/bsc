@@ -66,7 +66,7 @@ func TestCAS20RevertData(t *testing.T) {
 		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)
 	}
 
-	// The hashes base-std publishes in full; a getter can return the right shape and the wrong constant.
+	// The hashes the standard publishes in full; a getter can return the right shape and the wrong constant.
 	for _, tc := range []struct {
 		name string
 		got  common.Hash
@@ -77,17 +77,17 @@ func TestCAS20RevertData(t *testing.T) {
 		{"SEIZE_RECEIVER_POLICY", scopeSeizeReceiver, "0xbf15b19caf5c77422c038bc25f26b8b815c3a14f6d04c6616076b81bcfe07b3d"},
 	} {
 		if got := tc.got.Hex(); got != tc.want {
-			t.Errorf("%s = %s, want %s (base-std's published value)", tc.name, got, tc.want)
+			t.Errorf("%s = %s, want the published value %s", tc.name, got, tc.want)
 		}
 	}
 
 	const wantSeized = "0xa9aec5d8b86e2fa2fd6ac3af62f2622e3dfdab1967d4cbbb56a5df7d74cb887c"
 	if got := cas20TopicSeized.Hex(); got != wantSeized {
-		t.Errorf("Seized topic0 = %s, want %s (base-std's published value)", got, wantSeized)
+		t.Errorf("Seized topic0 = %s, want the published value %s", got, wantSeized)
 	}
 	const wantComposite = "0x4ff6adaab31b0df87aa7b8b7320c52b8b3b5eede3bf28a6baaaa8b8b7e1d6363"
 	if got := cas20TopicCompositeUpdated.Hex(); got != wantComposite {
-		t.Errorf("CompositePolicyUpdated topic0 = %s, want %s (base-std's published value)", got, wantComposite)
+		t.Errorf("CompositePolicyUpdated topic0 = %s, want the published value %s", got, wantComposite)
 	}
 }
 
