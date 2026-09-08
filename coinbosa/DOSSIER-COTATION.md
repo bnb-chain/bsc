@@ -152,11 +152,30 @@ Le total tombe **exactement** sur 700 000 000. Aucune émission, aucune destruct
 
 ### Ce que « offre en circulation » veut dire ici
 
-La notion n'a pas de contenu marchand aujourd'hui : **BOSA n'a pas de marché**, aucune place
-d'échange ne le cote, et aucun BOSA n'est détenu par un tiers. Les 700 000 000 sont sur
-13 clés du projet, plus 1 000 BOSA sur l'adresse du gouverneur — elle aussi du projet.
+La notion n'a presque pas de contenu marchand aujourd'hui : **BOSA n'a pas de marché** et
+aucune place d'échange ne le cote. Les 700 000 000 sont sur 13 clés du projet, plus
+1 000 BOSA sur l'adresse du gouverneur — elle aussi du projet — **et 100 BOSA sur une
+seizième adresse, hors de l'allocation du genesis.**
 
-- **Offre en circulation au sens « détenue hors du projet » : 0 BOSA (0,00 %).**
+Ce paragraphe affirmait « aucun BOSA n'est détenu par un tiers » et « 0 BOSA (0,00 %) ».
+Ce n'est plus exact depuis le 5 septembre 2026, et il vaut mieux le lire ici que le
+découvrir en une requête :
+
+| | |
+|---|---|
+| adresse | `0x45010bd571E2AfC94303D05FDCB542a0C7B06468` |
+| solde | **100,000000 BOSA** — `eth_getBalance` = `0x56bc75e2d63100000` |
+| code | aucun (`eth_getCode` → `0x`) ; nonce 0 |
+| origine | bloc 502 125, le 2026-09-05T15:20:46Z, depuis le poste `equipe` |
+| transaction | `0xc26ccf9d3c9fa7d32b9aa0255b9d2d43e0c8c00a751c607e1069d091d0e1b32b` |
+| nature | adresse de dépôt `bite-fast.com`, **déclarée par l'éditeur — non vérifiable depuis la chaîne** |
+
+**Sans ce seizième compte, la réconciliation ne boucle plus :** les 15 comptes publiés ne
+totalisent que 699 999 900 BOSA. L'intégrateur qui recompte doit s'attendre à seize
+comptes non nuls.
+
+- **Offre en circulation au sens « détenue hors des 15 comptes du genesis » :
+  100 BOSA (0,0000143 %)**, depuis le bloc 502 125.
 - **Offre débloquée (aucun verrou contractuel, aucun séquestre) : 700 000 000 BOSA (100 %).**
 
 Ce second chiffre est celui qui compte pour un risque de marché : **il n'existe aucun
@@ -322,10 +341,16 @@ nonce de 0 : **aucune sortie de fonds** depuis le genesis.
 
 ## 8 — Le jeton historique sur Solana : écart mesuré
 
-Le projet a émis, avant cette chaîne, un jeton SPL sur Solana. Le livre blanc
-(`WHITEPAPER.md` § 4) écrit qu'il est « **détenu dans sa totalité par le projet** » et que les
-500 000 000 unités « **seront retirées de la circulation sur Solana, de manière publique et
-vérifiable** ».
+Le projet a émis, avant cette chaîne, un jeton SPL sur Solana. **`TOKENOMICS.md`** — et non
+`WHITEPAPER.md`, qui ne contient aucune occurrence du mot « Solana » ; la référence était
+fausse et une bourse qui l'aurait vérifiée n'aurait rien trouvé — écrivait qu'il est
+« **détenu dans sa totalité par le projet** » et que les 500 000 000 unités « **seront
+retirées de la circulation sur Solana, de manière publique et vérifiable** ».
+
+Cette phrase a été **corrigée dans le dépôt le 2026-09-07** sur la foi d'une nouvelle
+mesure (96,00 %, autorités de frappe et de gel actives). **Attention : au moment d'écrire
+ces lignes, la correction n'est PAS encore sur la branche `master`**, donc le fichier servi
+publiquement par `raw.githubusercontent.com` porte toujours l'ancienne affirmation.
 
 **Mesure faite sur Solana mainnet le 2026-08-30**, mint
 `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf` :
@@ -895,7 +920,7 @@ publiquement vérifiables.
 | Inflation | **none** — no block reward, the consensus engine mints nothing |
 | Burn | **none** — base fee is 0 |
 | Supply conservation | verified to the wei: 699,998,999.999979 (13 addresses) + 1,000 (governor) + 0.000021 (system contract `0x…1000`) = **700,000,000.000000** |
-| **Circulating supply (held outside the project)** | **0 BOSA (0.00%)** — no market, no exchange listing, no third-party holder |
+| **Circulating supply (held outside the 15 genesis accounts)** | **100 BOSA (0.0000143%)** — `0x45010bd571E2AfC94303D05FDCB542a0C7B06468`, since block 502,125 (2026-09-05). Declared by the publisher as the bite-fast.com deposit address; not verifiable on-chain. No market, no exchange listing. |
 | **Unlocked supply (no contractual lock, no escrow, no timelock)** | **700,000,000 BOSA (100%)** |
 | Vesting schedule | **none exists** |
 

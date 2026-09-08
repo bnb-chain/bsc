@@ -67,7 +67,7 @@ window.__I18N.zh = {
  "a-propos.small.offre-fixe-scellee-au-bloc-genesis": "供应量固定，封存于创世区块",
  "a-propos.span.a-propos": "关于",
  "a-propos.span.aucun-membre-de-l-equipe-ne-vous-demandera": "<b>团队成员绝不会向你索要助记词、私钥，也绝不会要求你做“验证用”的转账。</b>任何这类要求都是盗窃企图，无论发出请求的账号看上去多么正规。",
- "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>本站不构成对 BOSA 的任何公开发售。</b>它描述的是一个网络及其代币，并不出售它们。发行方为 coinbosa, Inc.，美国 Delaware 州。适用法律与管辖法院将在任何发售文件中另行说明。",
+ "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>\u672c\u7ad9\u4e0d\u6784\u6210\u5bf9 BOSA \u7684\u4efb\u4f55\u516c\u5f00\u53d1\u552e\u3002</b>\u516c\u5f00\u9875\u9762\u63cf\u8ff0\u7684\u662f\u4e00\u4e2a\u7f51\u7edc\u53ca\u5176\u4ea7\u54c1\uff0c\u65e2\u4e0d\u6784\u6210\u8981\u7ea6\u9080\u8bf7\uff0c\u4e5f\u4e0d\u6784\u6210\u6295\u8d44\u5efa\u8bae\u3002\u53d1\u884c\u65b9\u4e3a coinbosa, Inc.\uff0c\u7f8e\u56fd Delaware \u5dde\u3002",
  "a-propos.span.l-ecosysteme-en-bref": "生态系统概览",
  "a-propos.span.l-editeur": "发行方",
  "a-propos.span.la-tokenomique": "代币经济",

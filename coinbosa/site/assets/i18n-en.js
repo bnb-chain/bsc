@@ -67,7 +67,7 @@ window.__I18N.en = {
  "a-propos.small.offre-fixe-scellee-au-bloc-genesis": "fixed supply, sealed in the genesis block",
  "a-propos.span.a-propos": "About",
  "a-propos.span.aucun-membre-de-l-equipe-ne-vous-demandera": "<b>No member of the team will ever ask you for your recovery phrase, your private key or a “verification” transfer.</b> Any such request is an attempt at theft, whatever the account making it may look like.",
- "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>No public offering of BOSA is made by this site.</b> It describes a network and its\n      token; it does not offer them for sale. The publisher is coinbosa, Inc., Delaware,\n      United States. The governing law and the competent jurisdiction will be specified in\n      any offering document.",
+ "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>No public offering of BOSA is made by this site.</b> The public pages describe a network and its products; they constitute neither a solicitation nor investment advice. The publisher is coinbosa, Inc., Delaware, United States.",
  "a-propos.span.l-ecosysteme-en-bref": "The ecosystem at a glance",
  "a-propos.span.l-editeur": "The publisher",
  "a-propos.span.la-tokenomique": "The tokenomics",

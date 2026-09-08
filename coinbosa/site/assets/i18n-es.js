@@ -67,7 +67,7 @@ window.__I18N.es = {
  "a-propos.small.offre-fixe-scellee-au-bloc-genesis": "oferta fija, sellada en el bloque génesis",
  "a-propos.span.a-propos": "Acerca de",
  "a-propos.span.aucun-membre-de-l-equipe-ne-vous-demandera": "<b>Ningún miembro del equipo le pedirá nunca su frase de recuperación, su clave privada ni una transferencia «de verificación».</b> Una petición así es un intento de robo, sea cual sea la apariencia de la cuenta que la envía.",
- "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>Este sitio no realiza ninguna oferta pública de BOSA.</b> Describe una red y su token; no los pone a la venta. El editor es coinbosa, Inc., Delaware, Estados Unidos. El derecho aplicable y la jurisdicción competente se precisarán en todo documento de oferta.",
+ "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>Este sitio no realiza ninguna oferta p\u00fablica de BOSA.</b> Las p\u00e1ginas p\u00fablicas describen una red y sus productos; no constituyen ni una solicitud de inversi\u00f3n ni asesoramiento financiero. El editor es coinbosa, Inc., Delaware, Estados Unidos.",
  "a-propos.span.l-ecosysteme-en-bref": "El ecosistema en resumen",
  "a-propos.span.l-editeur": "El editor",
  "a-propos.span.la-tokenomique": "La tokenómica",

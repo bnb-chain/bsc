@@ -67,7 +67,7 @@ window.__I18N.ar = {
  "a-propos.small.offre-fixe-scellee-au-bloc-genesis": "عرض ثابت، مختوم في كتلة genesis",
  "a-propos.span.a-propos": "من نحن",
  "a-propos.span.aucun-membre-de-l-equipe-ne-vous-demandera": "<b>لن يطلب منك أي فرد من الفريق عبارة الاسترداد أو المفتاح الخاص أو تحويلاً «للتحقق» أبداً.</b> وأي طلب من هذا القبيل هو محاولة سرقة، أياً كان مظهر الحساب الذي يصدر عنه.",
- "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>لا يجري هذا الموقع أي طرح عام لـ BOSA.</b> فهو يصف شبكة ورمزها؛ ولا يعرضهما للبيع. والناشر هو coinbosa, Inc.، Delaware، الولايات المتحدة. وسيُحدَّد القانون الواجب التطبيق والجهة القضائية المختصة في أي مستند طرح.",
+ "a-propos.span.aucune-offre-au-public-de-bosa-n-est-reali": "<b>\u0644\u0627 \u064a\u062c\u0631\u064a \u0647\u0630\u0627 \u0627\u0644\u0645\u0648\u0642\u0639 \u0623\u064a \u0637\u0631\u062d \u0639\u0627\u0645 \u0644\u0640 BOSA.</b> \u062a\u0635\u0641 \u0627\u0644\u0635\u0641\u062d\u0627\u062a \u0627\u0644\u0639\u0627\u0645\u0629 \u0634\u0628\u0643\u0629\u064b \u0648\u0645\u0646\u062a\u062c\u0627\u062a\u0647\u0627\u061b \u0648\u0647\u064a \u0644\u0627 \u062a\u0634\u0643\u0651\u0644 \u062f\u0639\u0648\u0629\u064b \u0644\u0644\u0627\u0633\u062a\u062b\u0645\u0627\u0631 \u0648\u0644\u0627 \u0646\u0635\u064a\u062d\u0629\u064b \u0627\u0633\u062a\u062b\u0645\u0627\u0631\u064a\u0629. \u0648\u0627\u0644\u0646\u0627\u0634\u0631 \u0647\u0648 coinbosa, Inc.\u060c Delaware\u060c \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629.",
  "a-propos.span.l-ecosysteme-en-bref": "المنظومة باختصار",
  "a-propos.span.l-editeur": "الناشر",
  "a-propos.span.la-tokenomique": "اقتصاد الرمز",
