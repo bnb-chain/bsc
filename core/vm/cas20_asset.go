@@ -357,9 +357,6 @@ func readStringArg(args []byte, argIndex int) (string, error) {
 }
 
 func announce(tok cas20Token, ext assetExt, args []byte) error {
-	if tok.ctx.ReadOnly {
-		return ErrWriteProtection
-	}
 	calls, err := readBytesArray(args, 0)
 	if err != nil {
 		return err
@@ -375,6 +372,9 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 	uri, err := readStringArg(args, 3)
 	if err != nil {
 		return err
+	}
+	if tok.ctx.ReadOnly {
+		return ErrWriteProtection
 	}
 	if tok.inAnnounce {
 		return revCAS20("AnnouncementInProgress()", errSelAnnounceInProgress)
@@ -504,9 +504,6 @@ func updateMultiplier(tok cas20Token, ext assetExt, newMul *uint256.Int) error {
 }
 
 func batchMint(tok cas20Token, args []byte) error {
-	if tok.ctx.ReadOnly {
-		return ErrWriteProtection
-	}
 	recipients, err := readWordArray(args, 0)
 	if err != nil {
 		return err
@@ -514,6 +511,9 @@ func batchMint(tok cas20Token, args []byte) error {
 	amounts, err := readWordArray(args, 1)
 	if err != nil {
 		return err
+	}
+	if tok.ctx.ReadOnly {
+		return ErrWriteProtection
 	}
 	if tok.isPaused(cas20PauseMint) {
 		return revCAS20("ContractPaused(uint8)", errSelContractPaused, wU8(cas20PauseMint))

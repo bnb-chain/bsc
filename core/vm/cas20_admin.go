@@ -385,12 +385,12 @@ func (t cas20Token) ensureRoleMutable(role common.Hash) error {
 // --- Pausable ---------------------------------------------------------------
 
 func (t cas20Token) setPause(args []byte, on bool) error {
-	if t.ctx.ReadOnly {
-		return ErrWriteProtection
-	}
 	features, err := readUint8Array(args)
 	if err != nil {
 		return err
+	}
+	if t.ctx.ReadOnly {
+		return ErrWriteProtection
 	}
 	role := rolePause
 	if !on {
