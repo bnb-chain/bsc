@@ -274,6 +274,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
 	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
 	//   - Blob sidecar checks (KZG proofs, blob hashes)
+	//   - BEP-703's payment lane rule
 	verifyStart := time.Now()
 	_, insertErr := w.chain.InsertChain(types.Blocks{block})
 	bidBlockVerifyTimer.UpdateSince(verifyStart)

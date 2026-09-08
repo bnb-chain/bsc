@@ -62,7 +62,6 @@ func ExecuteStateless(ctx context.Context, config *params.ChainConfig, vmconfig 
 		config:      config,
 		chainDb:     memdb,
 		headerCache: lru.NewCache[common.Hash, *types.Header](256),
-		numberCache: lru.NewCache[common.Hash, uint64](256),
 		engine:      beacon.New(ethash.NewFaker()),
 	}
 	processor := NewStateProcessor(chain)
