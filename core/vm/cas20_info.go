@@ -21,8 +21,8 @@ var ErrCAS20StringTooLong = errors.New("CAS20 string exceeds the RPC read bound"
 const cas20RPCMaxStringLen = 256 << 10
 
 // CAS20TokenInfo is a token's whole configuration read from one state, the way a
-// sequence of eth_calls at one block would read it. It is the cas20_getTokenInfo
-// RPC result, off the consensus path. Variant-specific fields are omitted for the
+// sequence of eth_calls at one block would read it. It is the eth_getCAS20TokenInfo
+// result, off the consensus path. Variant-specific fields are omitted for the
 // other variant, and PendingMultiplier is omitted unless a schedule is live at
 // the block; Multiplier is the effective value, a matured schedule folded in.
 type CAS20TokenInfo struct {

@@ -10,24 +10,14 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// cas20BatchLimit bounds one cas20_getTokenInfoBatch request.
+// cas20BatchLimit bounds one eth_getCAS20TokenInfoBatch request.
 const cas20BatchLimit = 20
 
-// CAS20API reads CAS20 token configuration straight from state, so a wallet gets
-// in one call, at one block, what would otherwise take a dozen eth_calls. It is
-// not in the default module list; enable it with --http.api or --ws.api.
-type CAS20API struct {
-	b Backend
-}
-
-func NewCAS20API(b Backend) *CAS20API {
-	return &CAS20API{b: b}
-}
-
-// GetTokenInfo returns a CAS20 token's configuration as of the given block
-// (latest when omitted). It errors for an address that holds no token there.
-func (api *CAS20API) GetTokenInfo(ctx context.Context, address common.Address, blockNrOrHash *rpc.BlockNumberOrHash) (*vm.CAS20TokenInfo, error) {
-	infos, err := api.tokenInfos(ctx, []common.Address{address}, blockNrOrHash)
+// GetCAS20TokenInfo returns a CAS20 token's configuration as of the given block
+// (latest when omitted), read straight from state: in one call what would
+// otherwise take a dozen eth_calls. It errors for an address that holds no token.
+func (api *BlockChainAPI) GetCAS20TokenInfo(ctx context.Context, address common.Address, blockNrOrHash *rpc.BlockNumberOrHash) (*vm.CAS20TokenInfo, error) {
+	infos, err := api.cas20TokenInfos(ctx, []common.Address{address}, blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -37,16 +27,16 @@ func (api *CAS20API) GetTokenInfo(ctx context.Context, address common.Address, b
 	return infos[0], nil
 }
 
-// GetTokenInfoBatch is GetTokenInfo over a list, answering null for an address
-// that holds no token so one stranger does not fail the whole portfolio.
-func (api *CAS20API) GetTokenInfoBatch(ctx context.Context, addresses []common.Address, blockNrOrHash *rpc.BlockNumberOrHash) ([]*vm.CAS20TokenInfo, error) {
+// GetCAS20TokenInfoBatch is GetCAS20TokenInfo over a list, answering null for an
+// address that holds no token so one stranger does not fail the whole portfolio.
+func (api *BlockChainAPI) GetCAS20TokenInfoBatch(ctx context.Context, addresses []common.Address, blockNrOrHash *rpc.BlockNumberOrHash) ([]*vm.CAS20TokenInfo, error) {
 	if len(addresses) > cas20BatchLimit {
 		return nil, fmt.Errorf("batch of %d exceeds the limit of %d", len(addresses), cas20BatchLimit)
 	}
-	return api.tokenInfos(ctx, addresses, blockNrOrHash)
+	return api.cas20TokenInfos(ctx, addresses, blockNrOrHash)
 }
 
-func (api *CAS20API) tokenInfos(ctx context.Context, addresses []common.Address, blockNrOrHash *rpc.BlockNumberOrHash) ([]*vm.CAS20TokenInfo, error) {
+func (api *BlockChainAPI) cas20TokenInfos(ctx context.Context, addresses []common.Address, blockNrOrHash *rpc.BlockNumberOrHash) ([]*vm.CAS20TokenInfo, error) {
 	at := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	if blockNrOrHash != nil {
 		at = *blockNrOrHash
