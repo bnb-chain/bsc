@@ -109,6 +109,13 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 			config = HashDefaults
 		}
 	}
+	// Work on a private copy of the configuration. Callers routinely hand over a
+	// shared singleton such as HashDefaults, while both the sanitization below
+	// and consumers reaching for Config() mutate it. Sharing it would make those
+	// mutations visible to every other database configured the same way.
+	cpy := *config
+	config = &cpy
+
 	if config.PathDB == nil && config.HashDB == nil {
 		if dbScheme == rawdb.PathScheme {
 			config.PathDB = pathdb.Defaults

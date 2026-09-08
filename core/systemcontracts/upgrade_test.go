@@ -53,7 +53,7 @@ func TestUpgradeBuildInSystemContractNilInterface(t *testing.T) {
 		statedb       vm.StateDB
 	)
 
-	GenesisHash = params.BSCGenesisHash
+	SetGenesisHash(params.BSCGenesisHash)
 
 	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
 }
@@ -67,7 +67,7 @@ func TestUpgradeBuildInSystemContractNilValue(t *testing.T) {
 		statedb       vm.StateDB = (*state.StateDB)(nil)
 	)
 
-	GenesisHash = params.BSCGenesisHash
+	SetGenesisHash(params.BSCGenesisHash)
 
 	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
 }

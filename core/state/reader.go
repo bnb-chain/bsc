@@ -417,6 +417,11 @@ func newStateReaderWithCache(sr StateReader) *stateReaderWithCache {
 // indicating whether it's found in the cache or not. The returned account
 // might be nil if it's not existent.
 //
+// The returned account is always a fresh copy, never the cached instance. A
+// single cache is shared by every state which was derived from the same reader
+// (e.g. the per-transaction StateDB copies used by the parallel block tracer),
+// and handing out the cached instance would alias account data across them.
+//
 // An error will be returned if the state is corrupted in the underlying reader.
 func (r *stateReaderWithCache) account(addr common.Address) (*types.StateAccount, bool, error) {
 	// Try to resolve the requested account in the local cache
@@ -424,7 +429,7 @@ func (r *stateReaderWithCache) account(addr common.Address) (*types.StateAccount
 	acct, ok := r.accounts[addr]
 	r.accountLock.RUnlock()
 	if ok {
-		return acct, true, nil
+		return copyAccount(acct), true, nil
 	}
 	// Try to resolve the requested account from the underlying reader
 	acct, err := r.StateReader.Account(addr)
@@ -434,7 +439,16 @@ func (r *stateReaderWithCache) account(addr common.Address) (*types.StateAccount
 	r.accountLock.Lock()
 	r.accounts[addr] = acct
 	r.accountLock.Unlock()
-	return acct, false, nil
+	return copyAccount(acct), false, nil
+}
+
+// copyAccount returns a deep copy of the given account, retaining nil for
+// non-existent accounts.
+func copyAccount(acct *types.StateAccount) *types.StateAccount {
+	if acct == nil {
+		return nil
+	}
+	return acct.Copy()
 }
 
 // Account implements StateReader, retrieving the account specified by the address.
