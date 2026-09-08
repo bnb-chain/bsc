@@ -159,6 +159,9 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 		}, {
 			Namespace: "mev",
 			Service:   NewMevAPI(apiBackend),
+		}, {
+			Namespace: "cas20",
+			Service:   NewCAS20API(apiBackend),
 		},
 	}
 }

@@ -146,17 +146,21 @@ func (t cas20Token) domainSeparator() (common.Hash, bool) {
 		!t.ctx.chargeKeccak(160) {
 		return common.Hash{}, false
 	}
+	return cas20DomainSeparator(name, t.ctx.ChainID(), t.ctx.Self), true
+}
+
+func cas20DomainSeparator(name string, chainID *uint256.Int, self common.Address) common.Hash {
 	nameHash := crypto.Keccak256Hash([]byte(name))
 	versionHash := crypto.Keccak256Hash([]byte(cas20EIP712Version))
-	chainID := t.ctx.ChainID().Bytes32()
+	id := chainID.Bytes32()
 
 	enc := make([]byte, 0, 160)
 	enc = append(enc, cas20DomainTypehash.Bytes()...)
 	enc = append(enc, nameHash.Bytes()...)
 	enc = append(enc, versionHash.Bytes()...)
-	enc = append(enc, chainID[:]...)
-	enc = append(enc, addrKey(t.ctx.Self).Bytes()...)
-	return crypto.Keccak256Hash(enc), true
+	enc = append(enc, id[:]...)
+	enc = append(enc, addrKey(self).Bytes()...)
+	return crypto.Keccak256Hash(enc)
 }
 
 func (t cas20Token) decodePermit(args []byte) ([]byte, error) {
