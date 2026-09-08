@@ -46,6 +46,10 @@ func (ctx *PrecompileContext) chargeAccountAccess(addr common.Address) bool {
 // The creation cost is owed even at a prefunded address: balance alone does not
 // make an account a contract.
 func (ctx *PrecompileContext) chargeCodeWrite(addr common.Address, code []byte) bool {
+	if ctx.ReadOnly {
+		ctx.markWriteProtected()
+		return false
+	}
 	cost := params.CreateDataGas * uint64(len(code))
 	if hadNoCode(ctx.StateDB, addr) {
 		cost += params.CreateGas

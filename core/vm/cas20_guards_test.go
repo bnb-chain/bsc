@@ -207,6 +207,9 @@ func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 	}
 
 	before := len(statedb.Logs())
+	if tok.ctx.chargeCodeWrite(tok.ctx.Self, CAS20MarkerCode) {
+		t.Error("chargeCodeWrite reported success in a read-only frame")
+	}
 	if tok.ctx.AddLog([]common.Hash{cas20TopicApproval}, nil) {
 		t.Error("AddLog reported success in a read-only frame")
 	}
