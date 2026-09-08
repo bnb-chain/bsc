@@ -55,9 +55,12 @@ alerte() {  # $1=niveau $2=titre $3=détail
   cle="${reste%%@*}"; hote="${reste#*@}"; projet="${hote##*/}"; hote="${hote%%/*}"
   charge=$(printf '{"level":"%s","logger":"coinbosa-journal","platform":"other","server_name":"%s","message":{"formatted":"%s — %s"},"tags":{"composant":"chaine","reseau":"coinbosa"}}' \
     "$1" "$(hostname)" "$2" "$3")
-  curl -s -o /dev/null -m 20 -X POST "$proto://$hote/api/$projet/store/" \
+  # La cle Sentry ne doit pas passer par la ligne de commande : /proc/<pid>/cmdline
+  # est lisible par tout compte de la machine. Meme parade que pour le jeton
+  # Telegram — l'en-tete qui la porte arrive par l'entree standard.
+  printf 'header = "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=%s, sentry_client=coinbosa-journal/1.0"\n' "$cle" \
+    | curl -s --config - -o /dev/null -m 20 -X POST "$proto://$hote/api/$projet/store/" \
     -H "Content-Type: application/json" \
-    -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=$cle, sentry_client=coinbosa-journal/1.0" \
     --data "$charge" || true
 }
 

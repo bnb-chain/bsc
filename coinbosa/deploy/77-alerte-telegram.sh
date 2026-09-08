@@ -98,14 +98,36 @@ ETAT=/var/lib/coinbosa-alertes
 CANAL="${TELEGRAM_CANAL:-@Coinbosaofficial}"
 RAPPEL=${COINBOSA_RAPPEL_SEC:-21600}      # six heures
 
+# LE JETON NE DOIT PAS PASSER PAR LA LIGNE DE COMMANDE.
+#
+# /proc/<pid>/cmdline est en -r--r--r-- : lisible par TOUT compte de la machine.
+# Mesure du 8 septembre 2026, sur la production, avec un jeton factice :
+#
+#   AVANT   le compte `coinbosa` lit : JETON-SECRET-123
+#   APRES   il lit : RIEN
+#           ligne vue : curl -sS --config - --max-time 6 -o /dev/null
+#
+# `coinbosa` est le compte qui fait tourner le noeud RPC EXPOSE A INTERNET. Ce
+# jeton parle au nom du projet : qui l'obtient peut publier « voici l'adresse
+# officielle » dans le canal, et c'est ainsi qu'on vide des portefeuilles.
+#
+# La parade : l'URL — seule partie qui porte le secret — arrive par l'ENTREE
+# STANDARD, via `curl --config -`. Le reste des options peut rester en clair.
 envoyer() {  # $1 = texte
   local t
   t=$(cat "$JETON" 2>/dev/null | tr -d '\r\n') || return 0
   [ -n "$t" ] || return 0
+  # Forme attendue d'un jeton BotFather : <chiffres>:<alphanumerique>. On la
+  # verifie avant usage — un fichier corrompu produirait sinon une URL malformee,
+  # et un jeton contenant un guillemet casserait le fichier de configuration.
+  case "$t" in
+    *[!0-9A-Za-z:_-]*|'') logger -t coinbosa-telegram "jeton de forme inattendue — envoi refuse"; return 1 ;;
+  esac
   # On ne journalise JAMAIS le corps de la réponse : il peut contenir le jeton.
   local code
-  code=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' \
-    -X POST "https://api.telegram.org/bot$t/sendMessage" \
+  code=$(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$t" \
+    | curl -sS --config - --max-time 15 -o /dev/null -w '%{http_code}' \
+    -X POST \
     --data-urlencode "chat_id=$CANAL" \
     --data-urlencode "text=$1" \
     --data-urlencode "disable_web_page_preview=true" 2>/dev/null || echo 000)
@@ -189,8 +211,12 @@ if [ "$ESSAI" = 1 ]; then
   # jeton invalide passait pour un canal fonctionnel. C'est exactement le faux
   # vert que ce depot traque partout ailleurs — il n'a pas sa place ici non plus.
   t=$(tr -d '\r\n' < "$JETON")
-  rep=$(curl -sS --max-time 15 -w '\n%{http_code}' \
-    -X POST "https://api.telegram.org/bot$t/sendMessage" \
+  case "$t" in *[!0-9A-Za-z:_-]*|'') ko "le jeton contient un caractere inattendu — ne pas l utiliser" ;; esac
+  # Meme parade que dans l'aide : l'URL passe par l'entree standard, jamais par
+  # la ligne de commande, que tout compte de la machine peut lire dans /proc.
+  rep=$(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$t" \
+    | curl -sS --config - --max-time 15 -w '\n%{http_code}' \
+    -X POST \
     --data-urlencode "chat_id=$CANAL" \
     --data-urlencode "text=Coinbosa — essai du canal d'alerte. Si vous lisez ceci, la supervision peut vous joindre." \
     --data-urlencode "disable_web_page_preview=true" 2>/dev/null || echo $'\n000')

@@ -88,9 +88,12 @@ alerte() {  # $1=niveau  $2=titre  $3=détail  [$4=ponctuel]
   # fonctionne est un placebo : le jour de la panne, le silence serait pris pour « tout va
   # bien ». Un envoi refusé est donc journalisé comme une panne à part entière.
   local code
-  code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -X POST "$url" \
+  # La cle Sentry ne doit pas passer par la ligne de commande : /proc/<pid>/cmdline
+  # est lisible par tout compte de la machine. Meme parade que pour le jeton
+  # Telegram — l'en-tete qui la porte arrive par l'entree standard.
+  code=$(printf 'header = "X-Sentry-Auth: Sentry sentry_version=7, sentry_client=coinbosa-watchdog/1.0, sentry_key=%s"\n' "$cle" \
+    | curl -sS --config - --max-time 10 -o /dev/null -w '%{http_code}' -X POST "$url" \
     -H "Content-Type: application/json" \
-    -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_client=coinbosa-watchdog/1.0, sentry_key=$cle" \
     --data "$charge" 2>/dev/null || echo 000)
   case "$code" in
     200|201|202) ;;
