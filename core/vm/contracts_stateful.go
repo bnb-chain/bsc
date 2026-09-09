@@ -106,6 +106,13 @@ func (ctx *PrecompileContext) traceStorageRead(addr common.Address, slot common.
 	}
 }
 
+// traceAccountRead announces a native account access the same way.
+func (ctx *PrecompileContext) traceAccountRead(addr common.Address) {
+	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnAccountRead != nil {
+		ctx.evm.Config.Tracer.OnAccountRead(addr)
+	}
+}
+
 // chargeGas is where every CAS20 charge arrives. False means stop before the
 // operation the charge pays for, as the interpreter checks gas before an opcode.
 func (ctx *PrecompileContext) chargeGas(cost uint64) bool {

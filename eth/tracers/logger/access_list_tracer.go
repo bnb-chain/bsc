@@ -130,6 +130,15 @@ func (a *AccessListTracer) Hooks() *tracing.Hooks {
 	return &tracing.Hooks{
 		OnOpcode:      a.OnOpcode,
 		OnStorageRead: a.OnStorageRead,
+		OnAccountRead: a.OnAccountRead,
+	}
+}
+
+// OnAccountRead records an account a stateful precompile read outside the
+// interpreter.
+func (a *AccessListTracer) OnAccountRead(addr common.Address) {
+	if _, ok := a.excl[addr]; !ok {
+		a.list.addAddress(addr)
 	}
 }
 

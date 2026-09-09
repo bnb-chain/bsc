@@ -284,6 +284,11 @@ type (
 	// tracer that discovers storage through opcodes sees the same slots.
 	StorageReadHook = func(addr common.Address, slot common.Hash)
 
+	// AccountReadHook is called when native code reads an account — its code hash,
+	// balance or nonce — outside the interpreter, where no opcode announces it.
+	// Emitted before the read, so a tracer captures the account as it was.
+	AccountReadHook = func(addr common.Address)
+
 	// LogHook is called when a log is emitted.
 	LogHook = func(log *types.Log)
 
@@ -324,6 +329,7 @@ type Hooks struct {
 	OnCodeChangeV2  CodeChangeHookV2
 	OnStorageChange StorageChangeHook
 	OnStorageRead   StorageReadHook
+	OnAccountRead   AccountReadHook
 	OnLog           LogHook
 	// Block hash read
 	OnBlockHashRead BlockHashReadHook

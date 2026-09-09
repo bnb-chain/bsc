@@ -77,7 +77,7 @@ func (diff *StateOverride) Apply(statedb *state.StateDB, precompiles vm.Precompi
 		}
 		// A CAS20 address is routed to native code by prefix, not through this map,
 		// so a code override has to disable that routing explicitly.
-		if account.Code != nil && vm.IsCAS20Routed(addr) {
+		if account.Code != nil && precompiles != nil && vm.IsCAS20Routed(addr) {
 			precompiles[addr] = vm.DisabledPrecompile
 		}
 		// The MoveTo feature makes it possible to move a precompile

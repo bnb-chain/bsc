@@ -44,6 +44,7 @@ func (ctx *PrecompileContext) chargeLog(topics int, dataLen int) bool {
 }
 
 func (ctx *PrecompileContext) chargeAccountAccess(addr common.Address) bool {
+	ctx.traceAccountRead(addr)
 	if ctx.StateDB.AddressInAccessList(addr) {
 		return ctx.chargeGas(params.WarmStorageReadCostEIP2929)
 	}

@@ -7,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -53,5 +55,23 @@ func TestCAS20GetTokenInfoBeforeJenner(t *testing.T) {
 	api := NewBlockChainAPI(newTestBackend(t, 1, gspec, ethash.NewFaker(), func(i int, b *core.BlockGen) {}))
 	if _, err := api.GetCAS20TokenInfo(context.Background(), common.HexToAddress("0x5714a9e7"), nil); err == nil || errors.Is(err, vm.ErrNotCAS20Token) {
 		t.Errorf("before the fork: err = %v, want the not-active error", err)
+	}
+}
+
+// eth_createAccessList applies the overrides before it builds its EVM, so a code
+// override on a CAS20 address has to reach that EVM's precompile set too.
+func TestCAS20CreateAccessListWithCodeOverride(t *testing.T) {
+	t.Parallel()
+	api := NewBlockChainAPI(newJennerBSCBackend(t))
+	token := common.HexToAddress("0xca52000000000000000000000000000000000001")
+	returns42 := hexutil.Bytes(common.FromHex("602a60005260206000f3"))
+	overrides := &override.StateOverride{token: override.OverrideAccount{Code: &returns42}}
+	from := common.HexToAddress("0xf00d")
+	res, err := api.CreateAccessList(context.Background(), TransactionArgs{From: &from, To: &token}, nil, overrides)
+	if err != nil {
+		t.Fatalf("eth_createAccessList with a CAS20 code override: %v", err)
+	}
+	if res.Error != "" {
+		t.Errorf("the overridden code did not run: %s", res.Error)
 	}
 }
