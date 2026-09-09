@@ -45,6 +45,9 @@ type (
 
 func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	if p, ok := evm.precompiles[addr]; ok {
+		if p == DisabledPrecompile {
+			return nil, false
+		}
 		return p, ok
 	}
 	// CAS20 tokens have no fixed address, so they cannot live in the static map:

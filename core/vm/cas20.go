@@ -28,6 +28,25 @@ var (
 )
 
 // IsCAS20Address: byte[0:2] == 0xCA52 and byte[2:10] all zero.
+// IsCAS20Routed reports whether dispatch resolves addr to native CAS20 code once
+// Jenner is active: the token space and the three singletons.
+func IsCAS20Routed(addr common.Address) bool {
+	return IsCAS20Address(addr) || addr == CAS20FactoryAddress ||
+		addr == CAS20PolicyRegistryAddress || addr == CAS20ActivationRegistryAddress
+}
+
+// DisabledPrecompile, placed in an EVM's precompile map, makes dispatch treat the
+// address as an ordinary account. A state override that replaces a CAS20
+// account's code puts it there, since the address would otherwise be routed to
+// native code whatever the override said.
+var DisabledPrecompile PrecompiledContract = disabledPrecompile{}
+
+type disabledPrecompile struct{}
+
+func (disabledPrecompile) RequiredGas([]byte) uint64  { return 0 }
+func (disabledPrecompile) Run([]byte) ([]byte, error) { return nil, ErrExecutionReverted }
+func (disabledPrecompile) Name() string               { return "disabled" }
+
 func IsCAS20Address(addr common.Address) bool {
 	if addr[0] != cas20MarkerPrefix[0] || addr[1] != cas20MarkerPrefix[1] {
 		return false
