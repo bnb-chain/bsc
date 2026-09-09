@@ -56,7 +56,7 @@ func seedActivation(statedb *state.StateDB, admin common.Address) {
 	SeedCAS20Activation(statedb)
 	reg := cas20Storage{state: statedb, token: CAS20ActivationRegistryAddress}
 	reg.setWord(actSlot(actSlotAdmin), addrKey(admin))
-	for _, f := range []common.Hash{featureCAS20Asset, featureCAS20Stablecoin, featurePolicyRegistry} {
+	for _, f := range []common.Hash{featureCAS20Asset, featureCAS20Stablecoin, featurePolicyRegistry, featureMemoRegistry} {
 		reg.setWord(mappingSlot(actSlot(actSlotFeatures), f), common.Hash{31: 1})
 	}
 }

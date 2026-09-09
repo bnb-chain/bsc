@@ -105,7 +105,8 @@ func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
 	}
 	planted := func(statedb *state.StateDB) bool {
 		return len(statedb.GetCode(vm.CAS20ActivationRegistryAddress)) != 0 &&
-			len(statedb.GetCode(vm.CAS20PolicyRegistryAddress)) != 0
+			len(statedb.GetCode(vm.CAS20PolicyRegistryAddress)) != 0 &&
+			len(statedb.GetCode(vm.CAS20MemoFormatRegistryAddress)) != 0
 	}
 
 	// Born Jenner-active: nothing ever crosses the fork, so the sentinels have to

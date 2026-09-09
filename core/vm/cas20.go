@@ -32,7 +32,8 @@ var (
 // Jenner is active: the token space and the three singletons.
 func IsCAS20Routed(addr common.Address) bool {
 	return IsCAS20Address(addr) || addr == CAS20FactoryAddress ||
-		addr == CAS20PolicyRegistryAddress || addr == CAS20ActivationRegistryAddress
+		addr == CAS20PolicyRegistryAddress || addr == CAS20ActivationRegistryAddress ||
+		addr == CAS20MemoFormatRegistryAddress
 }
 
 // DisabledPrecompile, placed in an EVM's precompile map, makes dispatch treat the
@@ -127,6 +128,8 @@ func resolveCAS20(addr common.Address) (cas20Precompile, bool) {
 		return cas20Policy, true
 	case CAS20ActivationRegistryAddress:
 		return cas20Activation, true
+	case CAS20MemoFormatRegistryAddress:
+		return cas20Memo, true
 	}
 	if IsCAS20Address(addr) {
 		return resolveCAS20Token(addr)
@@ -138,6 +141,7 @@ var (
 	cas20Factory    = &cas20FactoryPrecompile{}
 	cas20Policy     = &cas20PolicyPrecompile{}
 	cas20Activation = &cas20ActivationPrecompile{}
+	cas20Memo       = &cas20MemoPrecompile{}
 	cas20Asset      = &cas20AssetPrecompile{}
 	cas20Stablecoin = &cas20StablecoinPrecompile{}
 )

@@ -37,6 +37,8 @@ type CAS20TokenInfo struct {
 	PausedFeatures  []hexutil.Uint      `json:"pausedFeatures"`
 	Policies        CAS20PolicyBindings `json:"policies"`
 	DomainSeparator common.Hash         `json:"domainSeparator"`
+	// The formats the issuer expects transfers to declare; advisory.
+	ExpectedMemoFormats []hexutil.Uint64 `json:"expectedMemoFormats"`
 
 	// Asset only.
 	Multiplier        *hexutil.Big            `json:"multiplier,omitempty"`
@@ -116,6 +118,10 @@ func CAS20TokenInfoAt(state StateDB, chainID *big.Int, addr common.Address, bloc
 	}
 	id, _ := uint256.FromBig(chainID)
 	info.DomainSeparator = cas20DomainSeparator(info.Name, id, addr)
+	info.ExpectedMemoFormats = []hexutil.Uint64{}
+	for _, f := range s.u64ArrayAt(slotAt(cas20SlotExpectedMemoFormats), cas20MemoMaxFields) {
+		info.ExpectedMemoFormats = append(info.ExpectedMemoFormats, hexutil.Uint64(f))
+	}
 
 	switch addr[10] {
 	case cas20VariantAsset:

@@ -142,6 +142,10 @@ var (
 	errSelInvalidDecimals    = cas20ErrorSel("InvalidDecimals(uint8)")
 	errSelMissingField       = cas20ErrorSel("MissingRequiredField(string)")
 	errSelInvalidCurrency    = cas20ErrorSel("InvalidCurrency(string)")
+	errSelFormatNotFound     = cas20ErrorSel("FormatNotFound(uint64)")
+	errSelInvalidCategory    = cas20ErrorSel("InvalidCategory()")
+	errSelInvalidFieldCount  = cas20ErrorSel("InvalidFieldCount(uint256)")
+	errSelInvalidFieldSpec   = cas20ErrorSel("InvalidFieldSpec(uint256)")
 )
 
 // Only 0x11 arises here: a malformed argument is a decode failure and reverts empty.

@@ -50,6 +50,7 @@ const (
 	featureNameAsset      = "bsc.cas20_asset"
 	featureNameStablecoin = "bsc.cas20_stablecoin"
 	featureNamePolicy     = "bsc.policy_registry"
+	featureNameMemo       = "bsc.memo_registry"
 )
 
 func TestCAS20ActivationRegistry(t *testing.T) {
@@ -274,6 +275,7 @@ func TestCAS20FeatureNamesArePinned(t *testing.T) {
 		{featureNameAsset, featureCAS20Asset},
 		{featureNameStablecoin, featureCAS20Stablecoin},
 		{featureNamePolicy, featurePolicyRegistry},
+		{featureNameMemo, featureMemoRegistry},
 	} {
 		if got := crypto.Keccak256Hash([]byte(tc.name)); got != tc.id {
 			t.Errorf("keccak256(%q) = %x, want %x", tc.name, got, tc.id)

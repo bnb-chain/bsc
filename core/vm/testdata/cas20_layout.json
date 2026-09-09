@@ -1,5 +1,5 @@
 {
-  "_comment": "Authoritative CAS20 storage layout, and consensus-critical: a slot number decides the state root, so two implementations that disagree here diverge on the first token operation that touches it. TestCAS20LayoutFixtureFollowsTheCode holds every namespace, root and slot against the Go constants in both directions, so this file cannot drift from the implementation. BEP-702 3.17 is rendered from it \u2014 the namespace table, the field table, the derivation rules, the packed-word lanes and the not-persisted list, in that order \u2014 so a change here has to be carried into that section in the same commit.",
+  "_comment": "Authoritative CAS20 storage layout, and consensus-critical: a slot number decides the state root, so two implementations that disagree here diverge on the first token operation that touches it. TestCAS20LayoutFixtureFollowsTheCode holds every namespace, root and slot against the Go constants in both directions, so this file cannot drift from the implementation. BEP-702 3.17 is rendered from it — the namespace table, the field table, the derivation rules, the packed-word lanes and the not-persisted list, in that order — so a change here has to be carried into that section in the same commit.",
   "erc7201": "keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))",
   "derivation": {
     "fixed_field": "root + offset",
@@ -92,6 +92,11 @@
           "slot": 14,
           "name": "seizePolicies",
           "type": "packed 4x uint64"
+        },
+        {
+          "slot": 15,
+          "name": "expectedMemoFormats",
+          "type": "uint64[]"
         }
       ]
     },
@@ -185,6 +190,28 @@
           "slot": 1,
           "name": "admin",
           "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "bsc.memo_registry",
+      "held_by": "the MemoFormatRegistry singleton",
+      "root": "0x5a6c5f5e6cf79d21be49b950b0b58ab5e8436ce422b034de12307bc971a5d000",
+      "fields": [
+        {
+          "slot": 0,
+          "name": "formats",
+          "type": "mapping(uint64 => packed word)"
+        },
+        {
+          "slot": 1,
+          "name": "fields",
+          "type": "mapping(uint64 => uint64[])"
+        },
+        {
+          "slot": 2,
+          "name": "counters",
+          "type": "mapping(uint8 => uint64)"
         }
       ]
     }
@@ -323,9 +350,66 @@
         }
       ],
       "note": "a shrink rewrites the whole word, so orphaned lanes are zeroed"
+    },
+    {
+      "where": "bsc.memo_registry slot 0, the mapping value",
+      "lanes": [
+        {
+          "name": "creator",
+          "bit_offset": 0,
+          "width": 160
+        },
+        {
+          "name": "category",
+          "bit_offset": 160,
+          "width": 8
+        },
+        {
+          "name": "fieldCount",
+          "bit_offset": 168,
+          "width": 16
+        },
+        {
+          "name": "totalLen",
+          "bit_offset": 184,
+          "width": 16
+        },
+        {
+          "name": "exists",
+          "bit_offset": 255,
+          "width": 1
+        }
+      ],
+      "note": "format 0, UNSTRUCTURED, exists without a word; the exists bit is what a read consults for every other id"
+    },
+    {
+      "where": "bsc.memo_registry slot 1, each array lane",
+      "lanes": [
+        {
+          "name": "offset",
+          "bit_offset": 0,
+          "width": 16
+        },
+        {
+          "name": "length",
+          "bit_offset": 16,
+          "width": 16
+        },
+        {
+          "name": "kind",
+          "bit_offset": 32,
+          "width": 8
+        },
+        {
+          "name": "required",
+          "bit_offset": 40,
+          "width": 8
+        }
+      ],
+      "note": "one FieldSpec per uint64 lane, four lanes per word, LSB-first"
     }
   ],
   "not_storage": [
-    "`adminRenounced` is per-frame only, so a bootstrap bundle cannot renounce the last admin and then grant again (\u00a73.4)"
+    "`adminRenounced` is per-frame only, so a bootstrap bundle cannot renounce the last admin and then grant again (§3.4)"
   ]
 }

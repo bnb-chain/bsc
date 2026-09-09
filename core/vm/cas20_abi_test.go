@@ -110,6 +110,7 @@ func TestCAS20UndecodableCalldataRevertsEmpty(t *testing.T) {
 		"factory":             CAS20FactoryAddress,
 		"policy registry":     CAS20PolicyRegistryAddress,
 		"activation registry": CAS20ActivationRegistryAddress,
+		"memo registry":       CAS20MemoFormatRegistryAddress,
 		"token":               token,
 	}
 	inputs := map[string][]byte{

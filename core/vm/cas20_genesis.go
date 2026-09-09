@@ -13,6 +13,7 @@ import (
 func SeedCAS20Activation(state StateDB) {
 	seedCAS20Sentinel(state, CAS20ActivationRegistryAddress)
 	seedCAS20Sentinel(state, CAS20PolicyRegistryAddress)
+	seedCAS20Sentinel(state, CAS20MemoFormatRegistryAddress)
 }
 
 func seedCAS20Sentinel(state StateDB, addr common.Address) {

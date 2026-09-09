@@ -21,6 +21,7 @@ func TestCAS20LayoutFixtureFollowsTheCode(t *testing.T) {
 			"transferPolicies": cas20SlotTransferPolicies, "mintPolicy": cas20SlotMintPolicy,
 			"paused": cas20SlotPaused, "supplyCap": cas20SlotSupplyCap,
 			"nonces": cas20SlotNonces, "seizePolicies": cas20SlotSeizePolicies,
+			"expectedMemoFormats": cas20SlotExpectedMemoFormats,
 		},
 		cas20AssetNamespace: {
 			"decimals": cas20AssetSlotDecimals, "multiplier": cas20AssetSlotMultiplier,
@@ -34,6 +35,7 @@ func TestCAS20LayoutFixtureFollowsTheCode(t *testing.T) {
 			"children": polSlotChildren,
 		},
 		cas20ActivationNamespace: {"features": actSlotFeatures, "admin": actSlotAdmin},
+		cas20MemoNamespace:       {"formats": memoSlotFormats, "fields": memoSlotFields, "counters": memoSlotCounters},
 	}
 
 	var ref struct {

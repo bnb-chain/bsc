@@ -10,21 +10,22 @@ import (
 const cas20Namespace = "bsc.cas20"
 
 const (
-	cas20SlotName             = 0
-	cas20SlotSymbol           = 1
-	cas20SlotContractURI      = 2
-	cas20SlotTotalSupply      = 3
-	cas20SlotBalances         = 4
-	cas20SlotAllowances       = 5
-	cas20SlotRoles            = 6
-	cas20SlotRoleAdmins       = 7
-	cas20SlotAdminCount       = 8
-	cas20SlotTransferPolicies = 9
-	cas20SlotMintPolicy       = 10
-	cas20SlotPaused           = 11
-	cas20SlotSupplyCap        = 12
-	cas20SlotNonces           = 13
-	cas20SlotSeizePolicies    = 14
+	cas20SlotName                = 0
+	cas20SlotSymbol              = 1
+	cas20SlotContractURI         = 2
+	cas20SlotTotalSupply         = 3
+	cas20SlotBalances            = 4
+	cas20SlotAllowances          = 5
+	cas20SlotRoles               = 6
+	cas20SlotRoleAdmins          = 7
+	cas20SlotAdminCount          = 8
+	cas20SlotTransferPolicies    = 9
+	cas20SlotMintPolicy          = 10
+	cas20SlotPaused              = 11
+	cas20SlotSupplyCap           = 12
+	cas20SlotNonces              = 13
+	cas20SlotSeizePolicies       = 14
+	cas20SlotExpectedMemoFormats = 15
 )
 
 // The free lanes of each policy slot are reserved for that group, which is why
@@ -306,6 +307,49 @@ func (s cas20Storage) setSeizeHolderPolicy(id uint64) {
 }
 func (s cas20Storage) setSeizeReceiverPolicy(id uint64) {
 	s.setPackedU64(cas20SlotSeizePolicies, cas20OffSeizeReceiver, id)
+}
+
+// --- uint64[] (Solidity storage encoding, four lanes per word) --------------
+
+// u64ArrayAt reads a uint64[] whose length word is at slot, refusing a length
+// above max as a word no write could have produced.
+func (s cas20Storage) u64ArrayAt(slot common.Hash, max uint64) []uint64 {
+	n := new(uint256.Int).SetBytes(s.getWord(slot).Bytes()).Uint64()
+	if n == 0 || n > max {
+		return nil
+	}
+	base := s.stringDataRoot(slot)
+	out := make([]uint64, 0, n)
+	for i := uint64(0); i < n; i++ {
+		if s.ctx != nil && s.ctx.OutOfGas() {
+			return nil
+		}
+		w := new(uint256.Int).SetBytes(s.getWord(new(uint256.Int).AddUint64(base, i/4).Bytes32()).Bytes())
+		out = append(out, new(uint256.Int).Rsh(w, uint(i%4)*64).Uint64())
+	}
+	return out
+}
+
+// setU64ArrayAt writes a uint64[] at slot, clearing the words a shorter value no
+// longer needs, as a Solidity assignment would.
+func (s cas20Storage) setU64ArrayAt(slot common.Hash, vals []uint64) {
+	oldWords := (new(uint256.Int).SetBytes(s.getWord(slot).Bytes()).Uint64() + 3) / 4
+	newWords := (uint64(len(vals)) + 3) / 4
+	s.setWord(slot, wU64(uint64(len(vals))))
+	if oldWords == 0 && newWords == 0 {
+		return
+	}
+	base := s.stringDataRoot(slot)
+	for w := uint64(0); w < newWords || w < oldWords; w++ {
+		if s.ctx != nil && s.ctx.OutOfGas() {
+			return
+		}
+		packed := new(uint256.Int)
+		for lane := uint64(0); lane < 4 && w*4+lane < uint64(len(vals)); lane++ {
+			packed.Or(packed, new(uint256.Int).Lsh(uint256.NewInt(vals[w*4+lane]), uint(lane)*64))
+		}
+		s.setWord(new(uint256.Int).AddUint64(base, w).Bytes32(), packed.Bytes32())
+	}
 }
 
 // --- strings (Solidity storage encoding) ------------------------------------

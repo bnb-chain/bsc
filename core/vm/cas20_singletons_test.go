@@ -16,6 +16,7 @@ func TestCAS20SingletonAddresses(t *testing.T) {
 		{"CAS20Factory", CAS20FactoryAddress, "0xCA5F000000000000000000000000000000000000"},
 		{"ActivationRegistry", CAS20ActivationRegistryAddress, "0x7020000000000000000000000000000000000001"},
 		{"PolicyRegistry", CAS20PolicyRegistryAddress, "0x7020000000000000000000000000000000000002"},
+		{"MemoFormatRegistry", CAS20MemoFormatRegistryAddress, "0x7020000000000000000000000000000000000003"},
 	} {
 		if want := common.HexToAddress(tc.want); tc.got != want {
 			t.Errorf("%s = %s, want %s", tc.name, tc.got.Hex(), want.Hex())

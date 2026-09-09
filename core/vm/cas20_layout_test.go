@@ -157,6 +157,10 @@ func TestCAS20SlotNumbers(t *testing.T) {
 		{"policy.members", polSlotMembers, 1},
 		{"policy.pendingAdmins", polSlotPendingAdmins, 2},
 		{"policy.counter", polSlotCounter, 3},
+		{"core.expectedMemoFormats", cas20SlotExpectedMemoFormats, 15},
+		{"memo.formats", memoSlotFormats, 0},
+		{"memo.fields", memoSlotFields, 1},
+		{"memo.counters", memoSlotCounters, 2},
 
 		{"asset.decimals", cas20AssetSlotDecimals, 0},
 		{"asset.multiplier", cas20AssetSlotMultiplier, 1},
