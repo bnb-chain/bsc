@@ -75,6 +75,14 @@ func TestUpgradeBuildInSystemContractNilValue(t *testing.T) {
 
 // TestCAS20SentinelsPlantedAtFork pins the boundary hook: the two registries get
 // their account sentinels on the block that crosses Jenner, and on no other.
+// The constant is duplicated because this package imports core/vm; a drift would
+// silently move the ActivationRegistry's governance root.
+func TestCAS20GovHubAddressMatchesTheSystemContract(t *testing.T) {
+	if params.CAS20GovHubAddress != common.HexToAddress(GovHubContract) {
+		t.Fatalf("params.CAS20GovHubAddress = %s, GovHubContract = %s", params.CAS20GovHubAddress, GovHubContract)
+	}
+}
+
 func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
 	const forkTime = 1000
 	// The fork is timestamp-based but still requires London, which on BSC is at
