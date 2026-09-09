@@ -384,16 +384,20 @@ func TestCAS20InternalDispatchIsCharged(t *testing.T) {
 		t.Errorf("one more constant getter cost %d, want %d (warm CALL + its input word + three calldata words)", two-one, want)
 	}
 
-	// The charge is taken before the entry runs: a bundle the budget cannot pay
-	// for is out of gas, not executed and then reverted.
+	// The charge is taken before each entry runs, so the budget decides how far
+	// into the bundle execution gets. Budget for the announcement itself plus
+	// exactly 200 dispatches succeeds; the same budget short of the last 100
+	// dispatches is out of gas — and only the dispatch charges separate the two.
 	many := make([][]byte, 200)
 	for i := range many {
 		many[i] = cas20Call(selWadPrecision)
 	}
-	input := encodeAnnounce(many, "id-many")
-	words := (uint64(len(input)) + 31) / 32
-	budget := words*cas20CalldataWordGas + 200*(params.WarmStorageReadCostEIP2929+cas20CalldataWordGas)/2
-	if _, _, err := evm.Call(creator, token, input, NewGasBudget(budget), uint256.NewInt(0)); !errors.Is(err, ErrOutOfGas) {
-		t.Errorf("200 dispatches on half their price: err = %v, want out of gas", err)
+	perEntry := params.WarmStorageReadCostEIP2929 + cas20CalldataWordGas + 3*cas20CalldataWordGas
+	enough := one + 199*perEntry
+	if _, _, err := evm.Call(creator, token, encodeAnnounce(many, "id-200"), NewGasBudget(enough), uint256.NewInt(0)); err != nil {
+		t.Fatalf("200 dispatches on their exact price: %v", err)
+	}
+	if _, _, err := evm.Call(creator, token, encodeAnnounce(many, "id-200-short"), NewGasBudget(enough-100*perEntry), uint256.NewInt(0)); !errors.Is(err, ErrOutOfGas) {
+		t.Errorf("200 dispatches short of the last hundred: err = %v, want out of gas", err)
 	}
 }
