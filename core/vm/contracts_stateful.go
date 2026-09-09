@@ -98,6 +98,14 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
+// traceStorageRead announces a native slot access to a tracer, which would
+// otherwise learn of it only through the SLOAD it did not see.
+func (ctx *PrecompileContext) traceStorageRead(addr common.Address, slot common.Hash) {
+	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnStorageRead != nil {
+		ctx.evm.Config.Tracer.OnStorageRead(addr, slot)
+	}
+}
+
 // chargeGas is where every CAS20 charge arrives. False means stop before the
 // operation the charge pays for, as the interpreter checks gas before an opcode.
 func (ctx *PrecompileContext) chargeGas(cost uint64) bool {

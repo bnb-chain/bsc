@@ -111,6 +111,7 @@ func (s cas20Storage) chargeRead(slot common.Hash) bool {
 	if s.ctx == nil {
 		return true
 	}
+	s.ctx.traceStorageRead(s.token, slot)
 	if _, warm := s.state.SlotInAccessList(s.token, slot); warm {
 		return s.ctx.chargeGas(params.WarmStorageReadCostEIP2929)
 	}

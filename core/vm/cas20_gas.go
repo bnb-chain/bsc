@@ -85,6 +85,7 @@ func (s cas20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 		s.ctx.markOutOfGas()
 		return false
 	}
+	s.ctx.traceStorageRead(s.token, slot)
 	var (
 		current, original = s.state.GetStateAndCommittedState(s.token, slot)
 		clearingRefund    = params.SstoreClearsScheduleRefundEIP3529

@@ -104,13 +104,24 @@ func newPrestateTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *p
 	}
 	return &tracers.Tracer{
 		Hooks: &tracing.Hooks{
-			OnTxStart: t.OnTxStart,
-			OnTxEnd:   t.OnTxEnd,
-			OnOpcode:  t.OnOpcode,
+			OnTxStart:     t.OnTxStart,
+			OnTxEnd:       t.OnTxEnd,
+			OnOpcode:      t.OnOpcode,
+			OnStorageRead: t.OnStorageRead,
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
 	}, nil
+}
+
+// OnStorageRead records a slot a stateful precompile touched outside the
+// interpreter, where no opcode announced it.
+func (t *prestateTracer) OnStorageRead(addr common.Address, slot common.Hash) {
+	if t.interrupt.Load() {
+		return
+	}
+	t.lookupAccount(addr)
+	t.lookupStorage(addr, slot)
 }
 
 // OnOpcode implements the EVMLogger interface to trace a single step of VM execution.
