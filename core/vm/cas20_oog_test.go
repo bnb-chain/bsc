@@ -345,3 +345,55 @@ func TestCAS20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
 			answered, refused)
 	}
 }
+
+// One entry of an announce bundle or an initCalls array costs what the reference
+// contract pays to route it: a warm CALL plus the copy of the entry. Aliased
+// offsets are accepted, so without this a shared tail could be dispatched N×M
+// times for the price of one.
+func TestCAS20InternalDispatchIsCharged(t *testing.T) {
+	_, evm := newCAS20EVM(t)
+	creator := common.HexToAddress("0xdec0de")
+	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
+		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xd15"), creator, [][]byte{
+			cas20Call(selGrantRole, roleOperator, addrKey(creator)),
+		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createCAS20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// A constant getter reads no state, so the difference between announcing n
+	// and n+1 of them is the dispatch charge alone, once the id's own cost is out.
+	used := func(n int, id string) uint64 {
+		calls := make([][]byte, n)
+		for i := range calls {
+			calls[i] = cas20Call(selWadPrecision)
+		}
+		gas := NewGasBudget(5_000_000)
+		_, left, err := evm.Call(creator, token, encodeAnnounce(calls, id), gas, uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("announce with %d calls: %v", n, err)
+		}
+		return gas.RegularGas - left.RegularGas
+	}
+	one, two := used(1, "id-1"), used(2, "id-2")
+	// The second announce also carries three more words of outer calldata: the
+	// entry's offset, its length and its data.
+	want := params.WarmStorageReadCostEIP2929 + cas20CalldataWordGas + 3*cas20CalldataWordGas
+	if two-one != want {
+		t.Errorf("one more constant getter cost %d, want %d (warm CALL + its input word + three calldata words)", two-one, want)
+	}
+
+	// The charge is taken before the entry runs: a bundle the budget cannot pay
+	// for is out of gas, not executed and then reverted.
+	many := make([][]byte, 200)
+	for i := range many {
+		many[i] = cas20Call(selWadPrecision)
+	}
+	input := encodeAnnounce(many, "id-many")
+	words := (uint64(len(input)) + 31) / 32
+	budget := words*cas20CalldataWordGas + 200*(params.WarmStorageReadCostEIP2929+cas20CalldataWordGas)/2
+	if _, _, err := evm.Call(creator, token, input, NewGasBudget(budget), uint256.NewInt(0)); !errors.Is(err, ErrOutOfGas) {
+		t.Errorf("200 dispatches on half their price: err = %v, want out of gas", err)
+	}
+}

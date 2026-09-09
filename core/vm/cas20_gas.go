@@ -15,6 +15,15 @@ import (
 
 const cas20CalldataWordGas = params.CopyGas + params.MemoryGas
 
+// chargeInternalDispatch is what the reference contract pays to route one entry of
+// an announce bundle or an initCalls array: a warm CALL plus the copy of that
+// entry into the callee's input. Without it a shared tail could be dispatched N×M
+// times for the price of one.
+func (ctx *PrecompileContext) chargeInternalDispatch(call []byte) bool {
+	words := (uint64(len(call)) + 31) / 32
+	return ctx.chargeGas(params.WarmStorageReadCostEIP2929 + words*cas20CalldataWordGas)
+}
+
 func (ctx *PrecompileContext) chargeCalldata(input []byte) bool {
 	words := (uint64(len(input)) + 31) / 32
 	if words == 0 {

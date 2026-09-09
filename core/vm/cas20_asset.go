@@ -399,7 +399,7 @@ func announce(tok cas20Token, ext assetExt, args []byte) error {
 
 	tok.inAnnounce = true
 	for _, c := range calls {
-		if tok.ctx.OutOfGas() {
+		if !tok.ctx.chargeInternalDispatch(c) {
 			return ErrOutOfGas
 		}
 		if len(c) < 4 {

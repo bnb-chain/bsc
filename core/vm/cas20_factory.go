@@ -193,9 +193,7 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	}
 
 	for i, call := range initCalls {
-		// chargeGas only marks the frame; without this the whole array runs on an
-		// exhausted budget.
-		if ctx.OutOfGas() {
+		if !ctx.chargeInternalDispatch(call) {
 			return nil, ErrOutOfGas
 		}
 		if len(call) < 4 {
