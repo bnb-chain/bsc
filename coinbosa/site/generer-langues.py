@@ -259,7 +259,12 @@ def traduire(texte: str, lg: str, dico: dict, chemin: str) -> tuple[str, int, in
     texte = re.sub(r'\n?<link rel="alternate" hreflang="[^"]*" href="[^"]*">', "", texte)
     texte = re.sub(r'\n?<script type="application/ld\+json">.*?</script>', "", texte, flags=re.S)
 
-    injection = "\n" + alternates(chemin, lg) + "\n" + jsonld() + "\n"
+    # PAS de saut de ligne final : le retrait ci-dessus consomme celui qui
+    # PRECEDE chaque balise, jamais celui qui suit la derniere. En poser un
+    # rendait la fonction non idempotente — une ligne vide de plus a chaque
+    # execution, donc une page qui change sans raison, donc un sitemap qui
+    # bouge, donc un commit. Verifie le 2026-09-10 sur une double execution.
+    injection = "\n" + alternates(chemin, lg) + "\n" + jsonld()
     m = re.search(r'<link rel="canonical"[^>]*>', texte)
     if m:
         texte = texte[:m.end()] + injection + texte[m.end():]
@@ -333,7 +338,7 @@ def poser_sur_le_francais() -> list:
         m = re.search(r'<link rel="canonical"[^>]*>', s)
         if not m:
             continue
-        s = s[:m.end()] + "\n" + alternates(chemin, "fr") + "\n" + jsonld() + "\n" + s[m.end():]
+        s = s[:m.end()] + "\n" + alternates(chemin, "fr") + "\n" + jsonld() + s[m.end():]
         if s != avant:
             f.write_text(s, encoding="utf-8")
             touchees.append(fichier)
