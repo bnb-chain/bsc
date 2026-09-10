@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -291,7 +292,10 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"builder", task.bidBlockInfo.builder,
 			"err", insertErr)
 		bidBlockVerifyFailedGauge.Inc(1)
-		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
+		// A failed local state read left the block unjudged, so it says nothing about the builder.
+		if !errors.Is(insertErr, paymentlane.ErrStateUnavailable) {
+			w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
+		}
 		return
 	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.
