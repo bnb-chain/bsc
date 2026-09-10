@@ -2736,7 +2736,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
-		bc.reportBadBidBlockEvidence(block)
+		bc.reportBadBidBlockEvidence(block, err)
 		return nil, err
 	}
 	ptime := time.Since(pstart)
@@ -2748,7 +2748,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
-		bc.reportBadBidBlockEvidence(block)
+		bc.reportBadBidBlockEvidence(block, err)
 		return nil, err
 	}
 	vtime := time.Since(vstart)
@@ -3465,7 +3465,11 @@ func (bc *BlockChain) publishBadBidBlockEvidence() {
 // Only call it for blocks past header and body verification: the sync path feeds
 // unverified blocks straight to InsertChain, so an earlier reject proves nothing
 // about the sealer and would let any peer frame a builder.
-func (bc *BlockChain) reportBadBidBlockEvidence(block *types.Block) {
+func (bc *BlockChain) reportBadBidBlockEvidence(block *types.Block, err error) {
+	// A block this node could not judge is no evidence against the builder.
+	if errors.Is(err, paymentlane.ErrStateUnavailable) {
+		return
+	}
 	builder, ok := badBidBlockBuilder(block)
 	if !ok {
 		return
