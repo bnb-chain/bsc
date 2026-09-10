@@ -373,8 +373,29 @@ Trois conclusions, toutes défavorables au texte publié :
    hors du portefeuille désigné comme portefeuille projet. Si des détenteurs tiers existent,
    la phrase « sans détenteurs tiers, ils ne donnent lieu à aucune migration » ne tient plus,
    et la réserve de migration à 0 devient une décision à réexaminer.
-3. **L'autorité d'émission n'est pas révoquée.** Plus d'unités peuvent être créées sur
-   Solana à tout moment, par le détenteur de cette clé.
+3. **L'autorité d'émission n'est pas révoquée, et le projet ne peut pas la révoquer.** Plus
+   d'unités peuvent être créées sur Solana à tout moment, par le détenteur de cette clé.
+
+**Le portefeuille qui détient les deux autorités n'appartient pas au projet.** L'éditeur l'a
+confirmé par écrit le 2026-09-10 : il n'a ni l'accès ni la propriété de
+`3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq`. Trois conséquences, et aucune n'est
+négociable :
+
+- le projet **ne peut pas révoquer** `mintAuthority` ni `freezeAuthority` — on ne révoque pas
+  une autorité qu'on ne détient pas ;
+- le projet **ne peut donc garantir aucune offre** sur ce jeton : elle peut être regonflée à
+  tout instant par le détenteur de la clé, et n'importe quel compte peut être gelé ;
+- le projet **ne peut pas retirer de la circulation ce qu'il ne détient pas** — ni les
+  20 009 540,39 unités hors de son portefeuille, ni celles qui seraient frappées après coup.
+
+**Ce que cela ne change pas.** L'offre native de BOSA sur Coinbosa Chain vaut 700 000 000,
+fixée au bloc de genèse, et reste vérifiable au wei près : empreinte du bloc 0 conforme à la
+référence publiée (§ 1), aucune émission, base de frais nulle, réconciliation des comptes à
+zéro d'écart (§ 3, § 7). **Les deux jetons sont indépendants** : rien n'est migré, aucune part
+des 700 000 000 BOSA n'est adossée au jeton Solana, et ce qui arrive sur Solana ne peut ni
+créer ni détruire un seul BOSA. Le jeton SPL `8Uyvx…yFaf` doit être traité comme un
+**artefact historique, hors du contrôle du projet** — c'est ce que `TOKENOMICS.md` déclare
+désormais.
 
 **Non vérifié :** la liste détaillée des détenteurs Solana. `getTokenLargestAccounts` est
 limité par débit sur les points d'accès publics (HTTP 429 sur trois tentatives ;
@@ -817,7 +838,10 @@ reste du réseau. Ces risques sont réels tant que l'audit externe n'a pas eu li
 - **Aucun bloc n'est jamais finalisé** ; `finalized` reste au bloc 0 (§ 9).
 - **État historique limité à ~36 heures** (25 758 blocs mesurés) : un rapprochement
   comptable rétroactif est impossible sur le point d'accès public (§ 12).
-- **Le jeton SPL Solana reste vivant et émissible** (§ 8).
+- **Le jeton SPL Solana reste vivant et émissible, et hors du contrôle du projet** : les
+  autorités de frappe et de gel sont détenues par un portefeuille dont l'éditeur n'a ni
+  l'accès ni la propriété (§ 8). L'offre native de 700 000 000 BOSA n'est pas affectée : les
+  deux jetons sont indépendants.
 
 ---
 
@@ -1045,11 +1069,11 @@ BNB Chain bytecode written into block 0 with **no source in the Coinbosa reposit
 have been verified byte-identical to the upstream bytecode, and they cannot be replaced: their
 bytecode fixes the genesis state root, hence the chain's identity.
 
-### Legacy Solana token — discrepancy against the published whitepaper
+### Legacy Solana token — outside the project's control
 
-The whitepaper states the 500,000,000 legacy SPL tokens are held **in full** by the project
-and **will be removed from circulation, publicly and verifiably**. Measured on Solana mainnet,
-mint `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf`:
+`TOKENOMICS.md` used to state the 500,000,000 legacy SPL tokens were held **in full** by the
+project and **would be removed from circulation, publicly and verifiably**. Measured on Solana
+mainnet, mint `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf`:
 
 | Item | Measured |
 |---|---|
@@ -1061,7 +1085,13 @@ mint `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf`:
 | `freezeAuthority` | **still active** (same key) |
 
 **The retirement has not happened, the project does not hold 100%, and more tokens can still
-be minted on Solana.** Not verified: the identity of the holders of the remaining 4.00%
+be minted on Solana. The publisher confirmed in writing on 2026-09-10 that it has neither
+access to nor ownership of `3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq`, the wallet holding
+both authorities: the project cannot revoke them, cannot guarantee that token's supply, and
+cannot retire from circulation what it does not hold.** The two tokens are independent:
+nothing is migrated, no part of the 700,000,000 BOSA is backed by the Solana token, and
+nothing that happens on Solana can create or destroy a single BOSA. Not verified: the identity
+of the holders of the remaining 4.00%
 (public Solana RPC rate-limited `getTokenLargestAccounts`), and the claim that a legacy BNB
 Chain token "no longer exists" (no contract address published for it).
 

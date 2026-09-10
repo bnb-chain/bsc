@@ -95,6 +95,26 @@ ssh "$SERVER" "${SUDO} install -d -o caddy -g caddy /var/www/coinbosa/site/.well
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/security.txt" "$SERVER:/var/www/coinbosa/site/.well-known/security.txt"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/security.txt" "$SERVER:/var/www/coinbosa/explorer/.well-known/security.txt"
 
+# --- Les cinq versions de langue -------------------------------------------
+# Le site est traduit par un script qui s'exécute DANS LE NAVIGATEUR : le HTML
+# servi est en français, toujours. Un moteur de recherche n'indexe donc que le
+# français, et cinq des six publics du site ne peuvent pas le trouver dans leur
+# langue. On produit ici une page réelle par langue, à son URL propre.
+#
+# La génération est refaite À CHAQUE PUBLICATION, jamais versionnée : une page
+# dérivée qu'on garderait finirait par diverger de sa source.
+echo "==> Versions de langue"
+python3 "$BASE/site/generer-langues.py" || { echo "ARRÊT — génération des langues en échec" >&2; exit 1; }
+for lg in en es pt zh ar; do
+  [ -d "$BASE/site/_langues/$lg" ] || { echo "ARRÊT — site/_langues/$lg absent" >&2; exit 1; }
+  ssh "$SERVER" "${SUDO} install -d -o caddy -g caddy /var/www/coinbosa/site/$lg"
+  rsync -avz --delete --rsync-path="$RSYNC_PATH" \
+    "$BASE/site/_langues/$lg/" "$SERVER:/var/www/coinbosa/site/$lg/"
+  # Chaque langue reçoit les mêmes favicons que la racine.
+  rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/favicon-32.png"       "$SERVER:/var/www/coinbosa/site/$lg/favicon-32.png"
+  rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/apple-touch-icon.png" "$SERVER:/var/www/coinbosa/site/$lg/apple-touch-icon.png"
+done
+
 echo "==> Droits + rechargement de Caddy"
 ssh "$SERVER" "${SUDO} chown -R caddy:caddy /var/www/coinbosa && ${SUDO} chmod -R u=rwX,go=rX /var/www/coinbosa && ${SUDO} systemctl reload caddy"
 

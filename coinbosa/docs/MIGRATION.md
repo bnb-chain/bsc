@@ -5,8 +5,8 @@
 </div>
 
 Des jetons Coinbosa ont été émis lors de phases antérieures sur **Solana** et sur **BNB Chain**.
-Le portail de migration permet à leurs détenteurs de les échanger contre du **BOSA natif** sur
-Coinbosa Chain.
+Le portail de migration est **prévu, pas ouvert** : il permettrait à leurs détenteurs d'échanger
+ces jetons contre du **BOSA natif** sur Coinbosa Chain. Voir *État* en fin de document.
 
 Ce document décrit le fonctionnement du portail, le formulaire, la preuve remise au détenteur, et
 les règles de sécurité et de conformité. Il sert de cahier des charges pour le développement.
@@ -23,7 +23,15 @@ La migration ne crée pas de pont permanent entre les réseaux. C'est un **écha
    détruits si le contrat le permet) ;
 3. un montant équivalent de **BOSA natif** est **crédité** au détenteur sur Coinbosa Chain.
 
-Ce sens unique est ce qui garantit qu'un jeton n'existe jamais deux fois. Il n'y a pas de retour
+> **Cette garantie a une condition, et elle n'est pas remplie.** Retirer un jeton de la
+> circulation ne vaut que si personne ne peut en refrapper. Or l'autorité d'émission du jeton
+> SPL est **active**, sur un portefeuille dont l'éditeur a confirmé le 2026-09-10 n'avoir ni
+> l'accès ni la propriété. Ce que le portail retirerait pourrait donc être recréé derrière,
+> et le projet n'a aucun moyen de l'empêcher. **Le mécanisme décrit ci-dessous ne peut pas,
+> en l'état, garantir le non-double-comptage.**
+
+Ce sens unique serait ce qui garantit qu'un jeton n'existe jamais deux fois — à condition que
+l'émission soit close, ce qu'elle n'est pas. Il n'y a pas de retour
 possible : une fois migrés, les jetons historiques ne circulent plus.
 
 ---
@@ -132,29 +140,47 @@ public. Ils sont énoncés ici pour qu'ils soient traités en amont.
 
 **Un seul réseau d'origine : Solana.**
 
-| Réseau | Offre | Contrat |
+| Réseau | Offre mesurée (10/09/2026) | Contrat |
 |---|---|---|
-| Solana | 500 000 000 | `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf` |
+| Solana | 499 999 940,39 (10 décimales) | `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf` |
 
 Le jeton précédemment émis sur **BNB Chain n'existe plus** et n'entre pas dans la migration ;
 l'adresse de contrat fournie était par ailleurs invalide. BNB Chain est donc écarté : seule la
 migration depuis Solana est retenue.
 
-**La totalité de l'offre Solana est contrôlée par le projet**, consolidée sur le portefeuille
-`5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf`. Il n'y a pas de détenteurs tiers.
+**96,00 % de l'offre Solana est détenue par le projet** : 479 990 400 unités sur le portefeuille
+`5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf`. Les 4,00 % restants — 20 009 540,39 unités — sont
+détenus ailleurs, par des tiers que le projet n'identifie pas.
+
+**Le projet ne contrôle pas ce jeton.** L'autorité de frappe (*mintAuthority*) et l'autorité de gel
+(*freezeAuthority*) sont **actives**, rattachées à
+`3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq`, un portefeuille ordinaire dont le projet n'a pas la
+clé. Le projet ne peut donc ni les révoquer, ni garantir l'offre de ce jeton : elle peut être
+augmentée à tout instant et n'importe quel compte peut être gelé, sans qu'il puisse s'y opposer.
 
 ## Réconciliation avec l'offre native
 
-Le projet contrôlant les 500 000 000 de jetons Solana, **aucune réserve de migration n'est
-prélevée** sur l'offre native : les 700 000 000 BOSA reviennent intégralement au projet, répartis
-selon les treize postes de la [tokenomique](../TOKENOMICS.md).
+**Aucune réserve de migration n'est prélevée** sur l'offre native : les 700 000 000 BOSA
+reviennent intégralement au projet, répartis selon les treize postes de la
+[tokenomique](../TOKENOMICS.md). Ce paragraphe justifiait cette décision par le fait que « le
+projet contrôle les 500 000 000 de jetons Solana ». **La mesure du 2026-09-07 dit 96,00 %** :
+479 990 400 unités sur 499 999 940,39, soit 20 009 540,39 unités hors du portefeuille projet,
+dont on ignore à qui elles appartiennent. La décision de ne rien réserver reste possible, mais
+elle doit être assumée comme une décision — elle ne découle plus d'une absence de tiers.
 
-**Non-double-comptage — mesure de transparence.** Les 500 000 000 de jetons Solana ne sont pas
-migrés : le projet reçoit son offre directement au genesis. Pour prouver qu'il ne double pas son
-offre, ces 500 000 000 seront **retirés de la circulation sur Solana** — envoyés à une adresse
-hors-usage ou détruits —, de manière publique et vérifiable. Sans cette étape, un observateur ne
-peut exclure que le projet détienne à la fois 700 000 000 BOSA natifs et 500 000 000 jetons
-Solana.
+**Non-double-comptage — ce qui était promis, et pourquoi ce n'est plus tenable.** Ce document
+annonçait que les 500 000 000 seraient « retirés de la circulation sur Solana, de manière
+publique et vérifiable ». **Le projet ne peut pas le faire**, pour deux raisons mesurées :
+
+- il ne détient pas 4,00 % de l'offre, et on ne retire pas ce qu'on ne détient pas ;
+- l'autorité d'émission est **active** sur un portefeuille hors de son contrôle, donc tout
+  retrait peut être défait par une nouvelle frappe.
+
+**Ce que le projet peut affirmer, et qui suffit.** Les deux jetons sont **indépendants** :
+aucun BOSA n'est adossé au jeton Solana, rien n'est migré, et l'offre native de 700 000 000
+est fixée au bloc de genèse — vérifiable au wei près, recomptée chaque jour par
+`scripts/audit-argent.js`. Ce qui arrive sur Solana ne peut ni créer ni détruire un seul BOSA.
+Le jeton SPL doit être traité comme un **artefact historique, hors du contrôle du projet**.
 
 **Cas résiduel — anciens contributeurs.** Si un ancien contributeur détenait encore des jetons
 Solana, sa migration serait **honorée comme celle de tout détenteur**, à parité, et créditée
@@ -169,7 +195,7 @@ portail ci-dessus serait utilisé.
    le **taux** (la parité) et le **niveau de connaissance du client** requis.
 
 Le formulaire et le déroulement sont construits. Le portail ne s'ouvrirait au public qu'en cas de
-besoin résiduel, et seulement une fois ces points établis.
+demande de détenteurs tiers, et seulement une fois ces points établis.
 
 ---
 

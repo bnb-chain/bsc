@@ -13,6 +13,13 @@ pw.txt
 *.log
 .env*
 
+# Versions de langue du site : DÉRIVÉES de site/*.html et des dictionnaires
+# i18n, produites par site/generer-langues.py au moment de la publication. Les
+# versionner reviendrait à entretenir six copies d'une même page, qui finiraient
+# par diverger — et une divergence dans une langue qu'on ne lit pas ne se voit
+# jamais. On régénère, on ne corrige pas.
+site/_langues/
+
 # Genesis de DÉVELOPPEMENT : dépend du validateur jetable de la machine, régénéré à volonté
 # avec scripts/build-genesis.js. Il n'a aucune valeur en dehors du poste qui l'a produit.
 genesis/genesis-coinbosa-dev.json

@@ -39,7 +39,14 @@
     ar: { nom: "العربية",     locale: "ar",    rtl: true  },
     zh: { nom: "中文",         locale: "zh-CN", rtl: false }
   };
-  var SOURCE = "fr";            // la langue écrite dans le HTML
+  /* La langue RÉELLEMENT écrite dans le HTML servi.
+     Elle valait « fr » en dur, ce qui était vrai tant qu'une seule version
+     existait. Depuis `site/generer-langues.py`, le serveur sert aussi des pages
+     déjà traduites sous /en/, /es/, /pt/, /zh/, /ar/ ; chacune se déclare par
+     `data-i18n-source` sur <html>. La lire ici évite de retraduire une page
+     depuis un français qui n'y est plus. */
+  var SOURCE = (document.documentElement.getAttribute("data-i18n-source") || "fr");
+  var PAGE_TRADUITE = SOURCE !== "fr";   // page pré-rendue dans sa langue
   var MEMOIRE = "coinbosa.lang";
 
   window.__I18N = window.__I18N || {};
@@ -79,6 +86,18 @@
     var m = null;
     try { m = localStorage.getItem(MEMOIRE); } catch (e) {}
     if (m && LANGUES[m]) return m;
+
+    /* UNE PAGE DÉJÀ TRADUITE EST DANS SA LANGUE, ET C'EST UN CHOIX.
+       Mesuré le 10 septembre 2026 : /ar/ s'affichait EN ANGLAIS, parce que la
+       détection ci-dessous prenait la langue du navigateur et écrasait une page
+       dont le HTML était pourtant en arabe. Quelqu'un qui ouvre /ar/ — ou qui
+       arrive dessus depuis un moteur de recherche — a demandé l'arabe : lui
+       servir autre chose est une erreur, et cela ruine aussi le référencement,
+       car le visiteur ne voit pas ce que le moteur a indexé.
+       Le paramètre ?lang= et un choix mémorisé restent prioritaires : ce sont
+       des demandes explicites. La langue du navigateur, non. */
+    if (PAGE_TRADUITE) return SOURCE;
+
     var nav = navigator.languages || [navigator.language || ""];
     for (var i = 0; i < nav.length; i++) {
       var deux = String(nav[i]).slice(0, 2).toLowerCase();

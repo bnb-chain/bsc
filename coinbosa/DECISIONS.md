@@ -276,3 +276,49 @@ stratégique, et non depuis une réserve dédiée. Aucune exclusion d'adresse n'
 **Conformité à ne pas éluder.** Le portail collecte des données personnelles (nom, prénom) et
 opère un transfert de valeur : protection des données, obligations anti-blanchiment et
 qualification de l'opération relèvent d'un conseil juridique préalable, pas postérieur.
+
+### Addendum du 10 septembre 2026 — le retrait de circulation ne peut pas être exécuté
+
+L'entrée ci-dessus reste telle qu'elle a été écrite ; le registre n'efface pas. Ce qui suit dit
+ce qu'on sait depuis, et pourquoi la mesure annoncée n'aura pas lieu.
+
+**Mesuré le 7 septembre 2026 sur Solana mainnet** (`getTokenSupply`, `getAccountInfo` et
+`getTokenAccountsByOwner` sur `https://api.mainnet-beta.solana.com`) :
+
+| | mesure |
+|---|---|
+| offre du jeton `8Uyvx…yFaf` | **499 999 940,39** unités (10 décimales), et non 500 000 000 |
+| détenues par `5pdFbZ…edQf` | **479 990 400**, soit **96,00 %** |
+| hors de ce portefeuille | **20 009 540,39 unités — 4,00 %**, chez qui nous l'ignorons |
+| `mintAuthority` et `freezeAuthority` | **actives**, sur `3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq` |
+
+**Établi le 10 septembre 2026 :** l'éditeur n'a ni l'accès ni la propriété du portefeuille
+`3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq` qui porte les deux autorités. Trois conséquences,
+et aucune n'est négociable :
+
+- le projet **ne peut pas révoquer** ces autorités — on ne révoque pas ce qu'on ne détient pas ;
+- le projet **ne peut pas garantir l'offre** de ce jeton : elle peut être regonflée à tout instant
+  par le détenteur de la clé, et n'importe quel compte peut être gelé ;
+- le projet **ne peut pas retirer de la circulation ce qu'il ne détient pas** — ni les 4,00 %, ni
+  ce qui serait frappé après coup. La mesure de transparence annoncée plus haut est donc
+  inexécutable, et la preuve d'absence de double compte ne peut pas venir de là.
+
+**Ce que cela ne change pas.** L'offre native de BOSA sur Coinbosa Chain vaut 700 000 000, fixée
+au bloc de genèse, et cela reste vérifiable au wei près : hash du bloc 0 identique à la référence
+publiée, aucune émission, base de frais nulle, `scripts/audit-argent.js` la recompte et la CI le
+relance chaque jour. Les deux jetons sont **indépendants** : rien n'est migré, aucune part des
+700 000 000 BOSA n'est adossée au jeton Solana, et ce qui arrive sur Solana ne peut ni créer ni
+détruire un seul BOSA.
+
+**Ce que D12 devient.** Le jeton SPL `8Uyvx…yFaf` est traité comme un **artefact historique, hors
+du contrôle du projet** : le projet n'assume ni son offre, ni sa valeur, ni les actes de qui
+détient ses autorités. [TOKENOMICS.md](TOKENOMICS.md) est déjà rédigé dans ce sens.
+
+**Point laissé ouvert.** L'autorité de frappe étant active, des unités peuvent apparaître après
+coup. Avant toute ouverture du portail pour un cas résiduel, il faudra donc trancher explicitement
+ce qu'on accepte de créditer depuis la réserve stratégique : cela ne peut pas être automatique.
+
+**Réversible, sous condition.** L'éditeur indique ne pas être propriétaire de ce portefeuille *à
+ce jour*. Si le contrôle en était acquis, la conduite à tenir serait de révoquer les deux autorités
+(`SetAuthority` vers `null`) et de publier ici la signature de la transaction. Tant que ce n'est
+pas fait, cet addendum reste vrai.

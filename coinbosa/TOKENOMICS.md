@@ -61,19 +61,52 @@ requête :
 à des tiers.** Tant que ce n'est pas établi, il ne faut pas écrire qu'il n'y a pas de
 détenteur tiers.
 
-**Deux conséquences qu'il faut énoncer plutôt que laisser découvrir :**
+**Et l'offre mesurée aujourd'hui n'est pas un plafond** : l'autorité de frappe étant active
+(voir plus bas), rien n'empêche que ce nombre augmente demain.
 
-1. **Le retrait de la circulation ne peut porter, aujourd'hui, que sur ce que le projet
-   détient.** Les 20 009 540,39 unités hors du portefeuille projet ne peuvent pas être
-   retirées par nous. Ce document a promis « aucun jeton ne sera compté deux fois » ; cette
-   promesse ne pourra être tenue que sur 96 % de l'offre, et il faut le dire ainsi.
+### Le jeton Solana n'est pas sous le contrôle du projet
 
-2. **L'autorité de frappe du jeton Solana est active, sur une adresse qui n'est pas le
-   portefeuille projet.** Tant qu'elle l'est, l'offre Solana peut être regonflée, et
-   n'importe quel compte peut être gelé. C'est le motif de refus que cherche un agrégateur.
-   La seule réponse qui vaille est une révocation publique — `SetAuthority` vers `null`
-   pour les deux autorités — dont la signature de transaction sera publiée ici. Elle n'est
-   **pas encore faite**.
+**C'est le fait le plus important de cette section, et il a été établi le 10 septembre 2026 :
+l'éditeur n'a ni l'accès ni la propriété du portefeuille
+`3zADMByrBhWTnQETN2gv5Gt7jhQKyyprjLCLVVnv2Pkq` qui détient les deux autorités.**
+
+Trois conséquences en découlent, et aucune n'est négociable :
+
+1. **Le projet ne peut pas révoquer ces autorités.** On ne révoque pas une autorité qu'on ne
+   détient pas. La « révocation publique » qu'annonçait la version précédente de ce document
+   n'est pas une action que l'éditeur peut entreprendre.
+
+2. **Le projet ne peut donc pas garantir l'offre du jeton Solana.** Tant que l'autorité de
+   frappe existe, son détenteur peut créer de nouvelles unités quand il veut ; l'autorité de
+   gel lui permet en outre de bloquer n'importe quel compte. **Aucune promesse d'offre fixe
+   ne peut être faite sur ce jeton**, et ce document n'en fait plus.
+
+3. **Le projet ne peut pas retirer de la circulation ce qu'il ne détient pas.** Ni les
+   20 009 540,39 unités hors de son portefeuille, ni celles qui pourraient être frappées
+   après coup. La phrase « aucun jeton ne sera compté deux fois » ne peut pas être tenue, et
+   elle est retirée.
+
+> ### Ce que cela ne change pas — et c'est l'essentiel
+>
+> **L'offre native de BOSA sur Coinbosa Chain n'est pas affectée.** Elle vaut
+> 700 000 000 BOSA, fixée au bloc de genèse, et ce fait est vérifiable par n'importe qui en
+> quelques requêtes : le hash du bloc 0 est identique à la référence publiée, le moteur de
+> consensus ne crée pas de monnaie, la base de frais vaut zéro, et la somme des comptes
+> retombe sur l'offre déclarée au wei près. `scripts/audit-argent.js` le recompte, et la CI
+> le relance chaque jour.
+>
+> **Les deux jetons sont indépendants.** Rien n'est migré, aucune part des 700 000 000 BOSA
+> n'est adossée au jeton Solana, et ce qui arrive sur Solana ne peut ni créer ni détruire un
+> seul BOSA.
+
+**Le jeton SPL `8Uyvx…yFaf` doit donc être traité comme un artefact historique, hors du
+contrôle du projet.** Il ne doit pas être confondu avec BOSA sur Coinbosa Chain, et le projet
+n'assume ni son offre, ni sa valeur, ni les actes de qui détient ses autorités.
+
+Cette situation peut évoluer : l'éditeur indique ne pas être propriétaire de ce portefeuille
+**à ce jour**. Si le contrôle en était acquis, la conduite à tenir serait de révoquer les deux
+autorités (`SetAuthority` vers `null`) et de publier ici la signature de la transaction. Tant
+que ce n'est pas fait, ce paragraphe reste vrai.
 
 Ces jetons Solana **ne sont pas migrés** : le projet reçoit son offre native directement au
 genesis, et rien n'est prélevé sur les 700 000 000 BOSA au titre d'une migration. L'offre
