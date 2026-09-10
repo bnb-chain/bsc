@@ -13,7 +13,7 @@ Contact: https://github.com/Coinbosa/coinbosa-chain/security/advisories/new
 #
 # CE QUI MANQUE ENCORE, et qui ne concerne pas la reception mais l USURPATION :
 # le domaine ne publie ni SPF, ni DKIM, ni DMARC. N importe qui peut donc envoyer
-# un courriel qui semble venir de info@coinbosa.com. Sur un projet de cryptomonnaie
+# un courriel qui semble venir de a.bougma@coinbosa.com. Sur un projet de cryptomonnaie
 # c est le vecteur d hameconnage le plus banal — « voici l adresse officielle de
 # depot ». Tant que ces trois enregistrements manquent, un message signe Coinbosa
 # ne prouve rien, et il faut le savoir avant de s y fier.

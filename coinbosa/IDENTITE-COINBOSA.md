@@ -267,6 +267,12 @@ Mesures faites contre le résolveur public `1.1.1.1` :
 
 Deux conséquences directes :
 
+> **Corrigé le 2026-09-11.** Le constat ci-dessous décrit l'état du 3 septembre et reste
+> écrit tel quel — c'est un relevé, pas une opinion à réviser. Depuis : `coinbosa.com` publie
+> `5 mx1.hostinger.com.` et `10 mx2.hostinger.com.`, le port 25 y répond, `security@coinbosa.com`
+> est rétabli en premier contact, et le profil de l'organisation déclare `a.bougma@coinbosa.com`.
+> **Ce qui reste vrai : ni SPF, ni DKIM, ni DMARC.** Recevoir marche ; prouver l'expéditeur, non.
+
 - **`security@coinbosa.com` est publié dans `deploy/static/security.txt` (RFC 9116) et
   `info@coinbosa.com` dans le profil GitHub de l'organisation, alors que le domaine n'a aucun
   `MX`.** À défaut de `MX`, un serveur expéditeur se rabat sur l'enregistrement `A`
@@ -528,7 +534,7 @@ de dépense, ni de décision de trésorerie.
 | **I6** | **Vérifier le domaine chez GitHub** (organisation → domaines vérifiés, par `TXT`) : l'organisation est aujourd'hui `is_verified: false` | éditeur | même accès DNS que I5. Gratuit, immédiat, visible de tous sur la page de l'organisation |
 | **I7** | **Vérification de domaine chez les agrégateurs** — procédure publique CoinGecko, formulaire GeckoTerminal | dossier | l'existence de `@coinbosacrypto` **change la donne enregistrée** : `SURVEILLANCE-LANCEMENT.md` § 6 conclut que « c'est la page Facebook qui portera cette preuve d'identité » faute de compte X, et `PLAN-AGREGATEURS.md` A5 tient le guichet GeckoTerminal pour bloqué. **Les deux constats sont à revoir** une fois I2 fait |
 | **I8** | **Page « Identité officielle »** sur `coinbosa.com` | porte-parole écrit, éditeur valide | son contenu est **déjà spécifié** par `SURVEILLANCE-LANCEMENT.md` § 6 (*« Ce qu'on publie, une fois, à un seul endroit »*). Trois ajouts, et pas davantage : le lien vers la déclaration signée et son mode d'emploi ; le compte X ; la correction des lignes Telegram |
-| **I9** | **Rendre joignable ce qu'on publie** : `MX` pour `coinbosa.com`, ou remplacer `security@coinbosa.com` et `info@coinbosa.com` par l'URL d'avis de sécurité GitHub dans `deploy/static/security.txt` et le profil de l'organisation | éditeur | accès DNS ou décision éditoriale. Un canal de signalement injoignable est pire qu'absent : il absorbe les alertes en silence |
+| ~~**I9**~~ | ~~**Rendre joignable ce qu'on publie** : `MX` pour `coinbosa.com`~~ — **FAIT le 2026-09-11.** `dig MX coinbosa.com` rend `5 mx1.hostinger.com. / 10 mx2.hostinger.com.`, et le port 25 y répond. `security@coinbosa.com` est rétabli en premier contact dans `security.txt` ; le profil de l'organisation déclare désormais `a.bougma@coinbosa.com`. **Reste ouvert : le domaine ne publie ni SPF, ni DKIM, ni DMARC** — la réception marche, mais rien ne prouve l'expéditeur, et n'importe qui peut usurper une adresse `@coinbosa.com` | éditeur | trois enregistrements DNS, chez le même hébergeur que le MX |
 | **I10** | **Poser un enregistrement `CAA`** sur `coinbosa.com`, restreignant l'émission de certificats à l'autorité utilisée | exploitation | accès DNS. Mesure d'identité, pas de confort : elle réduit le nombre d'acteurs capables de produire un certificat valide pour notre nom |
 | **I11** | **Réépingler l'icône du registre des chaînes** (référencée par IPFS dans `chainlist/coinbosa.json`, non servie par les passerelles testées) | exploitation | rien. Motif détaillé dans `SURVEILLANCE-LANCEMENT.md` § 6 : qui veut notre logo et ne l'obtient pas de la source officielle le prendra ailleurs |
 | **I12** | **Régler les artefacts hérités** de l'organisation GitHub : le fichier `info` de `smart-chain-token` déclare un actif BEP2 « active » ; `Coinbosa-Token-solana` contient du NEO/NEP-5 | éditeur | une décision : archiver, corriger, ou documenter. Lié à `DOSSIER-COTATION.md` § 8, à ne pas trancher séparément |
