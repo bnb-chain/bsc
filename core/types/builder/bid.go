@@ -309,11 +309,13 @@ type MevParams struct {
 	ValidatorCommission   uint64 // 100 means 1%
 	BidSimulationLeftOver time.Duration
 	NoInterruptLeftOver   time.Duration
-	MaxBidsPerBuilder     uint32 // Maximum number of bids allowed per builder per block
+	DelayLeftOver         time.Duration // Time reserved to finalize a block; BidMustBefore = header.Time - DelayLeftOver
+	MaxBidsPerBuilder     uint32        // Maximum number of bids allowed per builder per block
 	GasCeil               uint64
 	GasPrice              *big.Int // Minimum avg gas price for bid block
 	BuilderFeeCeil        *big.Int
 	BidBlockEnabled       bool // whether mev_sendBidBlock is accepted
+	GRPCEnabled           bool // whether the MEV gRPC transport is enabled
 	Version               string
 }
 

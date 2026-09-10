@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -436,6 +437,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
 
+	// BidBlock revoke lockouts (validator-local MEV policy) journal to a file
+	// under the datadir rather than chaindata.
+	if config.Miner.BidBlockRevokesJournal != "" {
+		config.Miner.BidBlockRevokesJournal = stack.ResolvePath(config.Miner.BidBlockRevokesJournal)
+	}
+
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
 	}
@@ -526,6 +533,25 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	stack.RegisterAPIs(eth.APIs())
 	stack.RegisterProtocols(eth.Protocols())
 	stack.RegisterLifecycle(eth)
+	grpcEnabled := !config.Miner.Mev.GRPCDisabled &&
+		config.Miner.Mev.Enabled != nil && *config.Miner.Mev.Enabled &&
+		config.Miner.Mev.BidBlockEnabled != nil && *config.Miner.Mev.BidBlockEnabled
+	if grpcEnabled {
+		if config.Miner.Mev.GRPCPort <= 0 || config.Miner.Mev.GRPCPort > 65535 {
+			return nil, fmt.Errorf("invalid MEV gRPC port %d", config.Miner.Mev.GRPCPort)
+		}
+		grpcHost := stack.Config().HTTPHost
+		if grpcHost == "" {
+			grpcHost = node.DefaultHTTPHost
+		}
+		grpcListenAddr := net.JoinHostPort(grpcHost, fmt.Sprintf("%d", config.Miner.Mev.GRPCPort))
+		stack.RegisterLifecycle(ethapi.NewMevGRPCService(
+			grpcListenAddr,
+			config.Miner.Mev.GRPCConcurrency,
+			config.Miner.Mev.GRPCRequestTimeout,
+			eth.APIBackend,
+		))
+	}
 
 	// Successful startup; push a marker and check previous unclean shutdowns.
 	eth.shutdownTracker.MarkStartup()

@@ -91,8 +91,9 @@ var (
 		Timeout:   5 * time.Second,
 		Transport: transport,
 	}
-	errBetterBid  = errors.New("simulation abort due to better bid arrived")
-	errNoTimeLeft = errors.New("bid discarded due to lack of simulation time")
+	errBetterBid             = errors.New("simulation abort due to better bid arrived")
+	errNoTimeLeft            = errors.New("bid discarded due to lack of simulation time")
+	errZeroBidBlockStateRoot = errors.New("bid block rejected due to zero state root")
 )
 
 type bidWorker interface {
@@ -714,11 +715,16 @@ func (b *bidSimulator) recordBidBlockBuilder(builder common.Address) {
 func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlock) error {
 	start := time.Now()
 	defer bidBlockPreSealVerifyTimer.UpdateSince(start)
+	header := decoded.Header
+
+	if header.Root == (common.Hash{}) {
+		return errZeroBidBlockStateRoot
+	}
+
 	parliaEngine, ok := b.engine.(*parlia.Parlia)
 	if !ok {
 		return errors.New("consensus engine is not parlia")
 	}
-	header := decoded.Header
 
 	if header.Coinbase != b.bidWorker.etherbase() {
 		return fmt.Errorf("invalid coinbase: got %s, want %s",
