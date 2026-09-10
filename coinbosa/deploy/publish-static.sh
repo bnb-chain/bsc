@@ -70,7 +70,18 @@ COMMUN=(-avz --delete --rsync-path="$RSYNC_PATH"
         # C'est une barriere de chantier, comme coque.py : la publier n'apporte
         # rien au visiteur et expose l'etat interne du site.
         --exclude '*.py' --exclude 'i18n-fr.json' --exclude 'i18n-source.json'
-        --exclude '.DS_Store')
+        --exclude '.DS_Store'
+        # _langues/ est la SORTIE du generateur, pas une ressource : les cinq
+        # langues partent plus bas, chacune a sa place (/en/, /es/, ...). Sans
+        # cette exclusion le dossier entier se retrouvait publie en double, sous
+        # /_langues/ — constate le 2026-09-10.
+        --exclude '_langues/'
+        # api/ est ECRIT PAR LE SERVEUR, pas par ce depot : coinbosa-offre y
+        # recalcule l'offre en circulation toutes les dix minutes. Sans cette
+        # exclusion, --delete l'effacait a chaque publication, et l'URL que
+        # CoinGecko et CoinMarketCap interrogent rendait 404. Constate le
+        # 2026-09-10, quelques minutes apres l'avoir installee.
+        --exclude 'api/')
 
 echo "==> Envoi des fichiers vers $SERVER"
 rsync "${COMMUN[@]}" "$BASE/site/"       "$SERVER:/var/www/coinbosa/site/"
