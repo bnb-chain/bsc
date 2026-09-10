@@ -1,19 +1,22 @@
+Contact: mailto:security@coinbosa.com
 Contact: https://github.com/Coinbosa/coinbosa-chain/security/advisories/new
-# Contact: mailto:security@coinbosa.com
 #
-# ADRESSE RETIREE, PAS SUPPRIMEE — a retablir des que le courrier fonctionne.
+# L adresse etait commentee depuis le 2026-09-03, parce que coinbosa.com ne
+# publiait AUCUN enregistrement MX : le courrier retombait sur l enregistrement A
+# — le VPS — ou rien n ecoute, et rebondissait. Annoncer un canal de signalement
+# qui n aboutit pas est pire que de n en annoncer qu un seul : un chercheur ecrit,
+# n obtient rien, et considere avoir prevenu.
 #
-# Mesure le 2026-09-03 : coinbosa.com ne publie AUCUN enregistrement MX. Un
-# expediteur retombe alors sur l enregistrement A (RFC 5321, MX implicite), soit
-# 168.231.113.53 — le VPS — ou les ports 25 et 587 sont FERMES et ou aucun
-# serveur de messagerie n est installe. Le courrier vers cette adresse rebondit.
+# RETABLIE le 2026-09-11, sur mesure et non sur parole :
+#   dig MX coinbosa.com  ->  5 mx1.hostinger.com. / 10 mx2.hostinger.com.
+#   port 25 sur mx1      ->  joignable
 #
-# Annoncer un canal de signalement qui n aboutit pas est pire que de n en
-# annoncer qu un seul : un chercheur qui trouve une faille ecrit, n obtient rien,
-# et considere avoir prevenu. Le canal GitHub ci-dessus, lui, repond.
-#
-# Pour retablir : publier un MX sur coinbosa.com, verifier qu un message y
-# arrive reellement, puis decommenter cette ligne.
+# CE QUI MANQUE ENCORE, et qui ne concerne pas la reception mais l USURPATION :
+# le domaine ne publie ni SPF, ni DKIM, ni DMARC. N importe qui peut donc envoyer
+# un courriel qui semble venir de info@coinbosa.com. Sur un projet de cryptomonnaie
+# c est le vecteur d hameconnage le plus banal — « voici l adresse officielle de
+# depot ». Tant que ces trois enregistrements manquent, un message signe Coinbosa
+# ne prouve rien, et il faut le savoir avant de s y fier.
 Expires: 2027-07-26T00:00:00Z
 Preferred-Languages: fr, en
 Canonical: https://coinbosa.com/.well-known/security.txt
