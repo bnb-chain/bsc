@@ -98,15 +98,12 @@ func (ctx *PrecompileContext) frameGas() *frameAccounting {
 
 func (ctx *PrecompileContext) markOutOfGas() { ctx.frameGas().outOfGas = true }
 
-// traceStorageRead announces a native slot access to a tracer, which would
-// otherwise learn of it only through the SLOAD it did not see.
 func (ctx *PrecompileContext) traceStorageRead(addr common.Address, slot common.Hash) {
 	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnStorageRead != nil {
 		ctx.evm.Config.Tracer.OnStorageRead(addr, slot)
 	}
 }
 
-// traceAccountRead announces a native account access the same way.
 func (ctx *PrecompileContext) traceAccountRead(addr common.Address) {
 	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnAccountRead != nil {
 		ctx.evm.Config.Tracer.OnAccountRead(addr)

@@ -278,15 +278,15 @@ type (
 	// StorageChangeHook is called when the storage of an account changes.
 	StorageChangeHook = func(addr common.Address, slot common.Hash, prev, new common.Hash)
 
-	// StorageReadHook is called when native code reads a storage slot outside the
-	// interpreter, where no SLOAD or SSTORE opcode announces the access. Stateful
-	// precompiles emit it for every slot they read or are about to write, so a
-	// tracer that discovers storage through opcodes sees the same slots.
+	// StorageReadHook is called before native code reads or writes a storage slot
+	// outside the interpreter, where no SLOAD or SSTORE announces it. It fires
+	// before the gas charge and again on every access, including same-value writes.
+	// Ordinary StateDB reads do not trigger it.
 	StorageReadHook = func(addr common.Address, slot common.Hash)
 
-	// AccountReadHook is called when native code reads an account — its code hash,
-	// balance or nonce — outside the interpreter, where no opcode announces it.
-	// Emitted before the read, so a tracer captures the account as it was.
+	// AccountReadHook is the account counterpart of StorageReadHook: called before
+	// native code reads an account's code hash, balance or nonce, under the same
+	// contract.
 	AccountReadHook = func(addr common.Address)
 
 	// LogHook is called when a log is emitted.

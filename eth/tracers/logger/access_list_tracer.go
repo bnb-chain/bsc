@@ -134,16 +134,14 @@ func (a *AccessListTracer) Hooks() *tracing.Hooks {
 	}
 }
 
-// OnAccountRead records an account a stateful precompile read outside the
-// interpreter.
+// OnAccountRead implements tracing.AccountReadHook.
 func (a *AccessListTracer) OnAccountRead(addr common.Address) {
 	if _, ok := a.excl[addr]; !ok {
 		a.list.addAddress(addr)
 	}
 }
 
-// OnStorageRead records a slot a stateful precompile touched outside the
-// interpreter, where no opcode announced it.
+// OnStorageRead implements tracing.StorageReadHook.
 func (a *AccessListTracer) OnStorageRead(addr common.Address, slot common.Hash) {
 	a.list.addSlot(addr, slot)
 }

@@ -115,8 +115,7 @@ func newPrestateTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *p
 	}, nil
 }
 
-// OnAccountRead records an account a stateful precompile read outside the
-// interpreter, before it can have changed it.
+// OnAccountRead implements tracing.AccountReadHook.
 func (t *prestateTracer) OnAccountRead(addr common.Address) {
 	if t.interrupt.Load() {
 		return
@@ -124,8 +123,7 @@ func (t *prestateTracer) OnAccountRead(addr common.Address) {
 	t.lookupAccount(addr)
 }
 
-// OnStorageRead records a slot a stateful precompile touched outside the
-// interpreter, where no opcode announced it.
+// OnStorageRead implements tracing.StorageReadHook.
 func (t *prestateTracer) OnStorageRead(addr common.Address, slot common.Hash) {
 	if t.interrupt.Load() {
 		return
