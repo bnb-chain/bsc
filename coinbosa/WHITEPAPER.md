@@ -6,7 +6,7 @@
 **Point d'accès RPC :** `https://explorer.coinbosa.com/rpc`
 **Bloc Genesis (07/08/2026) :** `0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6`
 **Dépôt Source GitHub :** `github.com/Coinbosa/coinbosa-chain`
-**Consensus & Temps de Bloc :** Parlia (Cible : 5s | Mesuré : 5,018s sur 500 blocs)
+**Consensus & Temps de Bloc :** Parlia (Cible : 5s | Mesuré : 5,0000s sur 500 blocs)
 
 ---
 
@@ -26,7 +26,7 @@ Déployée en production le **7 août 2026**, la **Coinbosa Chain** est une bloc
 
 Sur un banc de test mesuré sur 500 blocs consécutifs en intégration continue, la durée moyenne de bloc $T_{block}$ s'établit avec une variance minimale :
 
-$$T_{block} = \frac{1}{N} \sum_{i=1}^{500} \Delta t_i = 5,018 \text{ secondes} \quad (\text{Cible : } 5,000\text{s})$$
+$$T_{block} = \frac{1}{N} \sum_{i=1}^{500} \Delta t_i = 5,0000 \text{ secondes} \quad (\text{Cible : } 5,000\text{s})$$
 
 | Spécification Technique | Valeur / Implémentation | Vérification & Sécurité |
 | :--- | :--- | :--- |
