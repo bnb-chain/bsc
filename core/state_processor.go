@@ -77,6 +77,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockNumber = block.Number()
 		allLogs     []*types.Log
 		gp          = NewGasPool(block.GasLimit())
+		err         error
 	)
 	var tracingStateDB = vm.StateDB(statedb)
 	if hooks := cfg.Tracer; hooks != nil {
@@ -92,6 +93,15 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
+
+	// BEP-703 payment-lane, fastnode skip the payment-lane check.
+	lane := &LaneState{}
+	if !statedb.NoTries() {
+		if lane, err = ResolveLaneState(config, p.chain.Engine(), lastBlock, header, statedb); err != nil {
+			return nil, laneReject(err)
+		}
+	}
+
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, lastBlock.Time, block.Time(), statedb, true)
 
@@ -99,7 +109,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		context vm.BlockContext
 		signer  = types.MakeSigner(p.chain.Config(), header.Number, header.Time)
 		txNum   = len(block.Transactions())
-		err     error
 	)
 
 	// Apply pre-execution system calls.
@@ -147,18 +156,20 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		laneType := lane.Classify(tx)
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
 			telemetry.StringAttribute("tx.hash", tx.Hash().Hex()),
 			telemetry.Int64Attribute("tx.index", int64(i)),
 		)
-
+		usedBefore := gp.Used()
 		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
 			spanEnd(&err)
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		lane.RecordUsedFrom(laneType, gp, usedBefore)
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 		spanEnd(nil)
@@ -185,6 +196,11 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	for _, receipt := range receipts[numUserReceipts:] {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
+
+	if err := lane.Verify(gasUsed); err != nil {
+		return nil, laneReject(err)
+	}
+	lane.recordImported()
 
 	return &ProcessResult{
 		Receipts: receipts,

@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -360,14 +361,19 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
 	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
 	//   - Blob sidecar checks (KZG proofs, blob hashes)
+	//   - BEP-703's payment lane rule
 	verifyStart := time.Now()
 	_, insertErr := w.chain.InsertChain(types.Blocks{block})
 	bidBlockVerifyTimer.UpdateSince(verifyStart)
 	if insertErr != nil {
 		bidBlockVerifyFailedGauge.Inc(1)
-		reason := fmt.Sprintf("InsertChain err: %v", insertErr)
-		violationCount := w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
-		w.afterBidBlockRevoke()
+		// A failed local state read left the block unjudged, so it says nothing about the builder.
+		var violationCount int
+		if !errors.Is(insertErr, paymentlane.ErrStateUnavailable) {
+			reason := fmt.Sprintf("InsertChain err: %v", insertErr)
+			violationCount = w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
+			w.afterBidBlockRevoke()
+		}
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
