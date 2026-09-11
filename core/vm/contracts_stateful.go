@@ -48,7 +48,7 @@ type PrecompileContext struct {
 	adminRenounced bool
 
 	// frame is shared with every context spawned in this EVM frame, so a child's
-	// exhaustion and charges are not lost. Lazily allocated.
+	// execution failure is not lost. Lazily allocated.
 	frame *frameAccounting
 }
 
@@ -58,8 +58,6 @@ type frameAccounting struct {
 	// writeProtected outranks outOfGas at the exit: the frame had no business
 	// writing at all, whatever it could afford.
 	writeProtected bool
-
-	meteredGasUsed uint64
 }
 
 // UseGas exhausts the budget when the charge cannot be covered, as the EVM does.
@@ -120,20 +118,10 @@ func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 		ctx.markOutOfGas()
 		return false
 	}
-	ctx.frameGas().meteredGasUsed += cost
 	return true
 }
 
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
-
-// meteredGasUsed is read only by the metering tests. It is not GasCosts.StateGas:
-// half of what it counts is computation.
-func (ctx *PrecompileContext) meteredGasUsed() uint64 {
-	if ctx.frame == nil {
-		return 0
-	}
-	return ctx.frame.meteredGasUsed
-}
 
 func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.RegularGas }
 

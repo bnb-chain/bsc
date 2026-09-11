@@ -201,8 +201,8 @@ func TestCAS20StorageGas(t *testing.T) {
 	}
 	_ = reset
 
-	if got, want := ctx.meteredGasUsed(), 4*keccak64+cold+set+warm+warm+warm; got != want {
-		t.Errorf("meteredGasUsed = %d, want %d", got, want)
+	if got, want := 1_000_000-gas.RegularGas, 4*keccak64+cold+set+warm+warm+warm; got != want {
+		t.Errorf("gas used = %d, want %d", got, want)
 	}
 	if ctx.OutOfGas() {
 		t.Error("should not be out of gas")
@@ -423,9 +423,9 @@ func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	}
 }
 
-// A bootstrap is the same EVM frame with a different Self, so its charges count
-// toward the frame's tally.
-func TestCAS20SpawnedContextSharesStateGasTally(t *testing.T) {
+// A bootstrap is the same EVM frame with a different Self, so both contexts
+// spend the same gas budget.
+func TestCAS20SpawnedContextSharesGasBudget(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	gas := NewGasBudget(10_000_000)
 	parent := &PrecompileContext{
@@ -434,14 +434,15 @@ func TestCAS20SpawnedContextSharesStateGasTally(t *testing.T) {
 	}
 	child := parent.spawnBootstrap(cas20Addr(cas20VariantAsset, 2), cas20Alice)
 
+	before := parent.gas.RegularGas
 	parent.chargeGas(700)
 	child.chargeGas(300)
 
-	if got := parent.meteredGasUsed(); got != 1000 {
-		t.Errorf("spawner StateGasUsed = %d, want 1000 — the child's charges are missing", got)
+	if got := before - parent.gas.RegularGas; got != 1000 {
+		t.Errorf("spawner gas used = %d, want 1000 — the child's charges are missing", got)
 	}
-	if got := child.meteredGasUsed(); got != 1000 {
-		t.Errorf("child StateGasUsed = %d, want 1000 — the tally is not frame-wide", got)
+	if got := before - child.gas.RegularGas; got != 1000 {
+		t.Errorf("child gas used = %d, want 1000 — the budget is not shared", got)
 	}
 }
 
