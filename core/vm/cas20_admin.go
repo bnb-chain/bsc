@@ -602,31 +602,3 @@ func (t cas20Token) updatePolicy(scope common.Hash, id uint64) error {
 	}
 	return nil
 }
-
-// --- ABI: dynamic uint8[] ---------------------------------------------------
-
-func readUint8Array(args []byte) ([]uint8, error) {
-	L := uint64(len(args))
-	off, ok := wordU64(args, 0)
-	if !ok || off > L || L-off < 32 {
-		return nil, ErrExecutionReverted
-	}
-	n, ok := wordU64(args, off)
-	if !ok {
-		return nil, ErrExecutionReverted
-	}
-	dataPos := off + 32
-	if n > (L-dataPos)/32 {
-		return nil, ErrExecutionReverted
-	}
-	out := make([]uint8, n)
-	for i := uint64(0); i < n; i++ {
-		// Byte-addressed: the caller-supplied head offset need not be 32-aligned.
-		v, ok := wordU64(args, dataPos+i*32)
-		if !ok || v > 0xff {
-			return nil, ErrExecutionReverted
-		}
-		out[i] = byte(v)
-	}
-	return out, nil
-}

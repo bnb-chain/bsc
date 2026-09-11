@@ -339,23 +339,6 @@ func updateExtraMetadata(tok cas20Token, ext assetExt, key, value string) error 
 	return nil
 }
 
-func readStringArg(args []byte, argIndex int) (string, error) {
-	L := uint64(len(args))
-	off, ok := wordU64(args, uint64(argIndex)*32)
-	if !ok || off > L || L-off < 32 {
-		return "", ErrExecutionReverted
-	}
-	n, ok2 := wordU64(args, off)
-	if !ok2 {
-		return "", ErrExecutionReverted
-	}
-	dataPos := off + 32
-	if n > L-dataPos {
-		return "", ErrExecutionReverted
-	}
-	return string(args[dataPos : dataPos+n]), nil
-}
-
 func announce(tok cas20Token, ext assetExt, args []byte) error {
 	calls, err := readBytesArray(args, 0)
 	if err != nil {
@@ -544,25 +527,4 @@ func batchMint(tok cas20Token, args []byte) error {
 		}
 	}
 	return nil
-}
-
-func readWordArray(args []byte, argIndex int) ([]common.Hash, error) {
-	L := uint64(len(args))
-	base, ok := wordU64(args, uint64(argIndex)*32)
-	if !ok || base > L || L-base < 32 {
-		return nil, ErrExecutionReverted
-	}
-	n, ok2 := wordU64(args, base)
-	if !ok2 {
-		return nil, ErrExecutionReverted
-	}
-	dataPos := base + 32
-	if n > (L-dataPos)/32 {
-		return nil, ErrExecutionReverted
-	}
-	out := make([]common.Hash, n)
-	for i := uint64(0); i < n; i++ {
-		out[i] = common.BytesToHash(args[dataPos+i*32 : dataPos+i*32+32])
-	}
-	return out, nil
 }
