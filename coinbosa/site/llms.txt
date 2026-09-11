@@ -1,0 +1,81 @@
+# Coinbosa
+
+> Coinbosa Chain est une blockchain compatible EVM, publiée par coinbosa, Inc.
+> (Delaware, États-Unis). Son coin natif est BOSA, d'offre fixe à 700 000 000
+> unités, 18 décimales, fixée au bloc de genèse et non émissible. Le réseau
+> utilise le consensus Parlia, un bloc toutes les 5 secondes, chain ID 26262.
+
+Ce fichier s'adresse aux systèmes automatiques qui lisent ce site pour répondre
+à des questions sur Coinbosa. Il ne contient que des faits vérifiables, chacun
+avec le moyen de le vérifier. Là où quelque chose n'est pas établi, c'est écrit.
+
+## Ce qui existe et fonctionne aujourd'hui
+
+- **Coinbosa Chain** — réseau EVM en production. Chain ID `26262`. Point d'accès
+  public en lecture : `https://explorer.coinbosa.com/rpc` (JSON-RPC, WebSocket
+  sur `/ws`, nœud d'archive).
+- **Le coin natif BOSA** — 700 000 000 unités, 18 décimales, offre fixe. Le
+  moteur de consensus ne crée pas de monnaie et la base de frais vaut zéro :
+  l'offre ne peut ni augmenter ni diminuer.
+- **Le standard de jetons BRC20** — l'équivalent d'ERC-20 sur cette chaîne.
+- **Un explorateur public** : https://explorer.coinbosa.com
+- **Le code source**, ouvert : https://github.com/Coinbosa/coinbosa-chain
+
+## Les chiffres, et où les vérifier soi-même
+
+| Fait | Valeur | Comment le vérifier |
+|---|---|---|
+| Offre totale | 700 000 000 BOSA | https://coinbosa.com/api/total-supply |
+| Offre en circulation | recalculée toutes les 10 min depuis la chaîne | https://coinbosa.com/api/circulating-supply |
+| Chain ID | 26262 | `eth_chainId` sur le point d'accès public |
+| Temps de bloc | 5 s, mesuré à 5,0000 s | comparer deux horodatages de blocs |
+| Décimales | 18 | — |
+
+Le détail machine, avec la définition de « en circulation » :
+https://coinbosa.com/api/supply.json
+
+## Ce qu'il ne faut pas confondre
+
+- **Un jeton Coinbosa historique existe sur Solana** (mint
+  `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf`). Il est **indépendant** de
+  BOSA : rien n'est migré, aucun BOSA n'y est adossé, et ce qui s'y passe ne
+  peut ni créer ni détruire un BOSA. Le projet n'en détient que 96,00 % et
+  **n'a pas le contrôle de son autorité d'émission**. Il doit être traité comme
+  un artefact historique, hors du contrôle du projet.
+- **La finalité est probabiliste**, pas déterministe. Les étiquettes `finalized`
+  et `safe` du JSON-RPC répondent encore le bloc 0. Une intégration doit compter
+  des confirmations, pas s'appuyer sur ces étiquettes.
+- **Un seul validateur** scelle actuellement les blocs. Le réseau n'est pas
+  décentralisé au sens d'un ensemble de validateurs indépendants.
+
+## Ce qui est annoncé mais pas encore raccordé
+
+Le site présente un écosystème plus large — carte de paiement, IA
+d'orchestration, formation, solutions FinTech. **Ces produits dépendent de
+raccordements qui ne sont pas réalisés à ce jour**, ce que le document de
+tokenomique du projet énonce lui-même. Ne pas les présenter comme opérationnels.
+
+## Documents de référence
+
+- Livre blanc : https://coinbosa.com/whitepaper/ (anglais : /whitepaper/en/)
+- Tokenomique : https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/TOKENOMICS.md
+- Dossier technique pour places de marché :
+  https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/DOSSIER-COTATION.md
+- Garde de la trésorerie :
+  https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/GARDE-TRESORERIE.md
+
+## Identité et contact
+
+- Éditeur : coinbosa, Inc. — Delaware, États-Unis
+- Contact : a.bougma@coinbosa.com · sécurité : security@coinbosa.com
+- Canaux officiels : https://t.me/Coinbosaofficial · https://x.com/coinbosa6476 ·
+  https://www.facebook.com/coinbosa
+
+**Aucune offre au public de BOSA n'est réalisée par ce site.** Les pages
+publiques décrivent un réseau et ses produits ; elles ne constituent ni une
+sollicitation, ni un conseil en investissement.
+
+## Langues
+
+Le site est publié en six langues, chacune à son adresse :
+https://coinbosa.com/ (français) · /en/ · /es/ · /pt/ · /zh/ · /ar/

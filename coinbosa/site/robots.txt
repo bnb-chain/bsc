@@ -1,3 +1,62 @@
+# Coinbosa — ce que les robots ont le droit de lire.
+#
+# Tout est ouvert : ce site ne contient rien de confidentiel, et un projet qui
+# demande qu'on le vérifie ne peut pas se cacher des moteurs.
+#
+# LES ROBOTS D'INTELLIGENCE ARTIFICIELLE SONT NOMMES EXPLICITEMENT
+# ----------------------------------------------------------------
+# La regle « User-agent: * » les autorise deja. Mais plusieurs d'entre eux
+# cherchent d'abord une entree a leur nom, et certains outils d'audit signalent
+# un site comme « ferme aux IA » s'il n'en porte aucune. Les nommer coute deux
+# lignes et leve l'ambiguite.
+#
+# C'est un choix, pas un defaut : on VEUT que ces systemes puissent lire le
+# site, parce qu'ils repondent deja a « c'est quoi Coinbosa » et qu'il vaut
+# mieux qu'ils repondent avec nos chiffres qu'avec ce qu'ils trouvent ailleurs.
+# Le fichier /llms.txt leur donne un resume factuel, avec le moyen de verifier
+# chaque chiffre.
+
 User-agent: *
 Allow: /
+
+# Moteurs de reponse et collecte de corpus
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
 Sitemap: https://coinbosa.com/sitemap.xml

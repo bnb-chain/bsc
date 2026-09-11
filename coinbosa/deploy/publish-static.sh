@@ -33,7 +33,7 @@ for f in site/index.html site/ecosysteme.html site/chaine.html \
          site/app.js site/assets/style.css site/assets/scene.js \
          site/assets/i18n.js site/assets/i18n-en.js site/assets/i18n-es.js \
          site/assets/i18n-pt.js site/assets/i18n-ar.js site/assets/i18n-zh.js \
-         site/robots.txt site/sitemap.xml site/version.json \
+         site/robots.txt site/sitemap.xml site/version.json site/llms.txt \
          explorer/index.html explorer/app.js \
          whitepaper/index.html whitepaper/app.js \
          whitepaper/en/index.html; do
