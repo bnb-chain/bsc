@@ -59,6 +59,8 @@ const (
 
 	// chainHeadChanSize is the size of channel listening to ChainHeadEvent.
 	chainHeadChanSize = 10
+	// badBidBlockChanSize is the size of channel listening to BadBidBlockEvent.
+	badBidBlockChanSize = 10
 
 	// minRecommitInterval is the minimal time interval to recreate the sealing block with
 	// any newly arrived transactions.
@@ -87,6 +89,15 @@ var (
 	bidBlockVerifyFailedGauge = metrics.NewRegisteredGauge("worker/bidBlockVerifyFailed", nil)
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
+	// bidBlockEvidenceRevokeCounter counts revokes driven by other validators' bad
+	// BidBlocks rather than by this node's own InsertChain failure.
+	bidBlockEvidenceRevokeCounter = metrics.NewRegisteredCounter("worker/bidBlockEvidenceRevoke", nil)
+
+	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
+	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
+	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
+	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -135,6 +146,11 @@ type environment struct {
 	// discarded by its clearLoop). The worker must not discard it even when a
 	// winning bid's env becomes w.current, or the EVM arena is released twice.
 	fromBid bool
+
+	// lane is this block's BEP-703 state, resolved from the parent in makeEnv.
+	lane *core.LaneState
+	// generalLaneYielded counts drops this env made for the quota.
+	generalLaneYielded int
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -225,9 +241,12 @@ type worker struct {
 	chain       *core.BlockChain
 
 	// Subscriptions
-	mux          *event.TypeMux
-	chainHeadCh  chan core.ChainHeadEvent
-	chainHeadSub event.Subscription
+	mux            *event.TypeMux
+	chainHeadCh    chan core.ChainHeadEvent
+	chainHeadSub   event.Subscription
+	badBidBlockCh  chan core.BadBidBlockEvent
+	badBidBlockSub event.Subscription
+	badBidBlocks   *badBidBlockTracker
 
 	// Channels
 	newWorkCh          chan *newWorkReq
@@ -268,7 +287,7 @@ type worker struct {
 
 func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, permMgr *BidBlockPermissionManager) *worker {
 	if permMgr == nil {
-		permMgr = NewBidBlockPermissionManager()
+		permMgr = NewBidBlockPermissionManager("")
 	}
 	chainConfig := eth.BlockChain().Config()
 	prefetcher := core.NewStatePrefetcher(chainConfig, eth.BlockChain().HeadChain())
@@ -289,6 +308,8 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 		tip:                uint256.MustFromBig(config.GasPrice),
 		pendingTasks:       make(map[common.Hash]*task),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
+		badBidBlockCh:      make(chan core.BadBidBlockEvent, badBidBlockChanSize),
+		badBidBlocks:       newBadBidBlockTracker(),
 		newWorkCh:          make(chan *newWorkReq),
 		getWorkCh:          make(chan *getWorkReq),
 		taskCh:             make(chan *task),
@@ -313,6 +334,12 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+
+	// Subscribed unconditionally: BidBlock acceptance depends on the Pasteur fork
+	// being active, which it need not be when the worker is built.
+	worker.badBidBlockSub = eth.BlockChain().SubscribeBadBidBlockEvent(worker.badBidBlockCh)
+	worker.wg.Add(1)
+	go worker.badBidBlockLoop()
 
 	return worker
 }
@@ -710,6 +737,15 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 	}
 	state.StartPrefetcher("miner", bundle)
+	lane, err := core.ResolveLaneState(w.chainConfig, w.engine, parent, header, state)
+	if err != nil {
+		state.StopPrefetcher()
+		paymentLaneDeclineCounter.Inc(1)
+		log.Error("Failed to mine due to payment lane unresolved", "number", header.Number,
+			"time", header.Time, "gasLimit", header.GasLimit, "parent", parent.Hash(),
+			"parentroot", parent.Root, "witness", bundle != nil, "err", err)
+		return nil, err
+	}
 	// Parlia reserves gas for the system txs it applies in FinalizeAndAssemble,
 	// so user txs must leave room for them. Initialise the gas pool at
 	// GasLimit-gasReserved (rather than reserving via SubGas afterwards) so
@@ -726,6 +762,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	}
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
+		lane:     lane,
 		signer:   types.MakeSigner(w.chainConfig, header.Number, header.Time),
 		state:    state,
 		size:     uint64(header.Size()),
@@ -788,9 +825,11 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
+	laneType := env.lane.Classify(tx)
 	var (
-		snap = env.state.Snapshot()
-		gp   = env.gasPool.Snapshot()
+		snap       = env.state.Snapshot()
+		gp         = env.gasPool.Snapshot()
+		usedBefore = env.gasPool.Used()
 	)
 
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, receiptProcessors...)
@@ -799,6 +838,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		env.gasPool.Set(gp)
 	}
 	env.header.GasUsed = env.gasPool.Used()
+	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
 	return receipt, err
 }
 
@@ -921,6 +961,15 @@ LOOP:
 			continue
 		}
 		prefetchCurr.Store(tx)
+
+		laneType := env.lane.Classify(tx)
+		if !env.lane.Admits(env.gasPool.Gas(), laneType, tx.Gas()) {
+			generalLaneYieldedCounter.Inc(1)
+			env.generalLaneYielded++
+			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			txs.Pop()
+			continue
+		}
 
 		// if inclusion of the transaction would put the block size over the
 		// maximum we allow, don't add any more txs to the payload.
@@ -1246,6 +1295,11 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	fees := work.state.GetBalance(consensus.SystemAddress)
 	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts)
 	if err != nil {
+		return &newPayloadResult{err: err}
+	}
+	if err := work.lane.Verify(block.GasUsed()); err != nil {
+		paymentLaneDeclineCounter.Inc(1)
+		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
 	}
 
@@ -1613,6 +1667,16 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
+		if err := env.lane.Verify(block.GasUsed()); err != nil {
+			paymentLaneDeclineCounter.Inc(1)
+			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
+			return err
+		}
+		if env.lane.On() {
+			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
+			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+		}
+
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
 			env.sidecars = make(types.BlobSidecars, 0)
@@ -1622,7 +1686,9 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
+				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
+				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

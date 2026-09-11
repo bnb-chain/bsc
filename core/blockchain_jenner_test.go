@@ -1,12 +1,16 @@
 package core
 
 import (
+	"encoding/hex"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -103,6 +107,10 @@ func TestJennerForkTransition(t *testing.T) {
 		0x55, // SSTORE slot0 = mload(0)
 		0x00, // STOP
 	}
+	code, err := hex.DecodeString(strings.TrimSpace(jenner.RialtoPaymentLaneContract))
+	if err != nil {
+		t.Fatalf("decode payment lane contract: %v", err)
+	}
 
 	var (
 		caller = common.HexToAddress("0x000000000000000000000000000000000000aaaa")
@@ -116,8 +124,9 @@ func TestJennerForkTransition(t *testing.T) {
 		gspec = &Genesis{
 			Config: jennerTestChainConfig(jennerTime),
 			Alloc: types.GenesisAlloc{
-				sender: {Balance: big.NewInt(params.Ether)},
-				caller: {Code: callerCode, Balance: big.NewInt(0)},
+				sender:                      {Balance: big.NewInt(params.Ether)},
+				caller:                      {Code: callerCode, Balance: big.NewInt(0)},
+				paymentlane.ContractAddress: {Code: code},
 			},
 		}
 		genesis = gspec.MustCommit(db, triedb.NewDatabase(db, nil))

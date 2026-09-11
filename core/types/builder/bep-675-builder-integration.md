@@ -54,6 +54,29 @@ err := parliaEngine.PrepareForBidBlock(chain, header)
 
 Transaction selection and EVM execution are entirely builder-driven; this specification does not constrain them. The builder runs selected user transactions against the parent state and maintains `state` / `receipts` / `body.Transactions` / `sidecars`.
 
+From the block after the Jenner activation block, BEP-703 reserves a fraction of the gas limit for payment transactions, and the builder is the only party that can honour it, because only the builder runs the packing loop. Nothing about it reaches the header: the quota is a pure function of the parent post-state and this block's gas limit, so the validator and every importer derive it independently. The activation block itself is outside the mechanism, and a builder never builds one — validators self-produce them, and `mev_sendBidBlock` refuses one with `-38001`.
+
+```go
+lane, err := core.ResolveLaneState(chainConfig, parliaEngine, parent, header, state)  // once per block
+if err != nil {
+    return err  // never ignore: a nil lane no-ops silently and the block ships over-full
+}
+
+class := lane.Classify(tx)                         // before each apply
+if !lane.Admits(gasPool.Gas(), class, tx.Gas()) {  // general must leave the quota intact
+    continue
+}
+usedBefore := gasPool.Used()
+// ... apply tx ...
+lane.RecordUsedFrom(class, gasPool, usedBefore)
+```
+
+`state` and not a detached reader: `ResolveLaneState` reads the parent-pinned ratio and payment
+contract list from the still-unadvanced block `StateDB`, while `Classify` reads the live code view
+from that same state as execution advances.
+
+A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so, and neither will admission: the rule needs execution, so the validator's own `InsertChain` after the broadcast is what catches it, and the builder's permission is revoked like any other invalid BidBlock. Check it yourself with `lane.Verify(block.GasUsed())` before sending.
+
 ## 3. Finalize (generate unsigned system tx)
 
 ```go
@@ -160,15 +183,17 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 **Recommended practice:**
 
 - Poll `mev_getBidBlockPermission` once every 5–10 seconds and cache the current validator's BidBlock permission for that builder.
-- For each validator, periodically query `mev_params` to check whether that validator has BidBlock enabled (`BidBlockEnabled` field). When disabled, treat it the same as permission denied and fall back to legacy `mev_sendBid`.
+- For each validator, periodically query `mev_params`. Use gRPC only when both `BidBlockEnabled` and `GRPCEnabled` are true; otherwise fall back to legacy `mev_sendBid`.
 
 ### BidBlock send window
 
 The BidBlock path skips validator-side simulation, so the receive deadline is:
 
 ```
-BidMustBefore = parent.MilliTimestamp + BlockInterval - DelayLeftOver  // 15ms
+BidMustBefore = parent.MilliTimestamp + BlockInterval - DelayLeftOver
 ```
+
+`DelayLeftOver` is the validator's `--miner.delayleftover` (default 15ms), exposed as `mev_params.DelayLeftOver`. Builders should read it from `mev_params` rather than assuming 15ms.
 
 As the validator still needs µs-level time for signature recovery, tx decoding, pre-seal verification, and `Extra` overwrite before sealing, arrivals **exactly at** `BidMustBefore` may still miss the seal. We recommend builders leave a buffer of ≈100µs–1ms before `BidMustBefore`.
 
@@ -180,6 +205,7 @@ The transmission latency on the wire is not constant: the number of transactions
 2. The validator overwrites `Extra` and recomputes `TxHash` after bind-signing the system tx; all other header fields are used as-is from the builder.
 3. The BidBlock send window is later than legacy `mev_sendBid` because no validator-side simulation is needed (see [BidBlock send window](#bidblock-send-window)).
 4. BidBlock and the legacy bid share the same per-block quota, exposed via `mev_params.MaxBidsPerBuilder`.
-5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". When `mev_params.BidBlockEnabled == false`, treat it the same as permission denied.
+5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". Use gRPC only when both `mev_params.BidBlockEnabled` and `mev_params.GRPCEnabled` are true.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
+8. From Jenner+1 the builder owns the BEP-703 lane: honour `Admits` while packing and check `lane.Verify(block.GasUsed())` before sending. A block that breaks the rule is caught by the validator's own import after it has already been signed and broadcast, which costs the builder its permission.

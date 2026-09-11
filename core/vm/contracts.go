@@ -451,7 +451,7 @@ var PrecompiledContractsJenner = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidateDeprecated{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidatePasteur{},
-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidenceJenner{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
 
 	// BEP-706: millisecond-precision block timestamp, new in Jenner.
@@ -1975,6 +1975,17 @@ type verifyDoubleSignEvidence struct{}
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *verifyDoubleSignEvidence) RequiredGas(input []byte) uint64 {
 	return params.DoubleSignEvidenceVerifyGas
+}
+
+// verifyDoubleSignEvidenceJenner prices the double-sign evidence precompile per input
+// byte from the Jenner fork, so oversized RLP-encoded headers cannot impose unbounded
+// SealHash work for a flat fee. The verification logic is inherited unchanged.
+type verifyDoubleSignEvidenceJenner struct {
+	verifyDoubleSignEvidence
+}
+
+func (c *verifyDoubleSignEvidenceJenner) RequiredGas(input []byte) uint64 {
+	return params.DoubleSignEvidenceVerifyGas + uint64(len(input))*params.DoubleSignEvidenceVerifyPerByteGas
 }
 
 type DoubleSignEvidence struct {
