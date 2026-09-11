@@ -278,6 +278,17 @@ type (
 	// StorageChangeHook is called when the storage of an account changes.
 	StorageChangeHook = func(addr common.Address, slot common.Hash, prev, new common.Hash)
 
+	// StorageReadHook is called before native code reads or writes a storage slot
+	// outside the interpreter, where no SLOAD or SSTORE announces it. It fires
+	// before the gas charge and again on every access, including same-value writes.
+	// Ordinary StateDB reads do not trigger it.
+	StorageReadHook = func(addr common.Address, slot common.Hash)
+
+	// AccountReadHook is the account counterpart of StorageReadHook: called before
+	// native code reads an account's code hash, balance or nonce, under the same
+	// contract.
+	AccountReadHook = func(addr common.Address)
+
 	// LogHook is called when a log is emitted.
 	LogHook = func(log *types.Log)
 
@@ -317,6 +328,8 @@ type Hooks struct {
 	OnCodeChange    CodeChangeHook
 	OnCodeChangeV2  CodeChangeHookV2
 	OnStorageChange StorageChangeHook
+	OnStorageRead   StorageReadHook
+	OnAccountRead   AccountReadHook
 	OnLog           LogHook
 	// Block hash read
 	OnBlockHashRead BlockHashReadHook

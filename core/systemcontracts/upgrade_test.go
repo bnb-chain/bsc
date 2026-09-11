@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
@@ -94,4 +95,80 @@ func TestJennerUpgradeApplies(t *testing.T) {
 	require.NoError(t, err)
 	upgradeBuildInSystemContract(&config, new(big.Int).Add(blockNumber, common.Big1), blockTime, blockTime+3, next)
 	require.Empty(t, next.GetCode(addr))
+}
+
+// TestCAS20SentinelsPlantedAtFork pins the boundary hook: the two registries get
+// their account sentinels on the block that crosses Jenner, and on no other.
+// The constant is duplicated because this package imports core/vm; a drift would
+// silently move the ActivationRegistry's governance root.
+func TestCAS20GovHubAddressMatchesTheSystemContract(t *testing.T) {
+	if params.CAS20GovHubAddress != common.HexToAddress(GovHubContract) {
+		t.Fatalf("params.CAS20GovHubAddress = %s, GovHubContract = %s", params.CAS20GovHubAddress, GovHubContract)
+	}
+}
+
+func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
+	const forkTime = 1000
+	// The fork is timestamp-based but still requires London, which on BSC is at
+	// block 31302048 — a block number below it would make the predicate false for
+	// reasons that have nothing to do with the fork under test.
+	postLondon := big.NewInt(50_000_000)
+
+	newState := func() *state.StateDB {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return statedb
+	}
+	bscConfig := func() *params.ChainConfig {
+		cfg := *params.BSCChainConfig
+		ft := uint64(forkTime)
+		cfg.JennerTime = &ft
+		return &cfg
+	}
+	planted := func(statedb *state.StateDB) bool {
+		return len(statedb.GetCode(vm.CAS20ActivationRegistryAddress)) != 0 &&
+			len(statedb.GetCode(vm.CAS20PolicyRegistryAddress)) != 0
+	}
+
+	// Born Jenner-active: nothing ever crosses the fork, so the sentinels have to
+	// come from the genesis alloc.
+	nonBSC := func() *params.ChainConfig {
+		cfg := *bscConfig()
+		cfg.Parlia = nil
+		return &cfg
+	}
+	bornActive := func() *params.ChainConfig {
+		cfg := *params.BSCChainConfig
+		zero := uint64(0)
+		cfg.JennerTime = &zero
+		cfg.LondonBlock = big.NewInt(0)
+		return &cfg
+	}
+
+	for _, tc := range []struct {
+		name                     string
+		cfg                      *params.ChainConfig
+		number                   *big.Int
+		lastBlockTime, blockTime uint64
+		atBlockBegin             bool
+		want                     bool
+	}{
+		{"the block crossing the fork", bscConfig(), postLondon, forkTime - 1, forkTime, true, true},
+		{"wholly before the fork", bscConfig(), postLondon, forkTime - 2, forkTime - 1, true, false},
+		{"wholly after the boundary", bscConfig(), postLondon, forkTime + 1, forkTime + 2, true, false},
+		{"the block-end pass", bscConfig(), postLondon, forkTime - 1, forkTime, false, false},
+
+		{"block 1 of a chain born active", bornActive(), big.NewInt(1), 100, 200, true, false},
+		{"block 2 of a chain born active", bornActive(), big.NewInt(2), 200, 300, true, false},
+		{"block 1 before the fork is scheduled", bscConfig(), big.NewInt(1), 1, 2, true, false},
+		{"a non-BSC chain at the boundary", nonBSC(), postLondon, forkTime - 1, forkTime, true, false},
+	} {
+		statedb := newState()
+		TryUpdateBuildInSystemContract(tc.cfg, tc.number, tc.lastBlockTime, tc.blockTime, statedb, tc.atBlockBegin)
+		if got := planted(statedb); got != tc.want {
+			t.Errorf("%s: sentinels planted = %v, want %v", tc.name, got, tc.want)
+		}
+	}
 }

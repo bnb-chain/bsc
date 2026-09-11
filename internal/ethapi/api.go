@@ -1943,8 +1943,11 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	// Apply state overrides immediately after StateAndHeaderByNumberOrHash.
 	// If not applied here, there could be cases where user-specified overrides (e.g., nonce)
 	// may conflict with default values from the database, leading to inconsistencies.
+	// The overrides may disable a CAS20 address's native routing, which the
+	// simulated EVM has to see, so the precompile set is built here and handed on.
+	precompileContracts := vm.ActivePrecompiledContracts(b.ChainConfig().Rules(header.Number, header.Difficulty.Sign() == 0, header.Time))
 	if stateOverrides != nil {
-		if err := stateOverrides.Apply(db, nil); err != nil {
+		if err := stateOverrides.Apply(db, precompileContracts); err != nil {
 			return nil, 0, nil, err
 		}
 	}
@@ -2018,6 +2021,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
 		config := vm.Config{Tracer: tracer.Hooks(), NoBaseFee: true}
 		evm := b.GetEVM(ctx, statedb, header, &config, nil)
+		evm.SetPrecompiles(precompileContracts)
 
 		// Lower the basefee to 0 to avoid breaking EVM
 		// invariants (basefee < feecap).

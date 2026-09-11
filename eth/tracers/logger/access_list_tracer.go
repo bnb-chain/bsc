@@ -128,8 +128,22 @@ func NewAccessListTracer(acl types.AccessList, addressesToExclude map[common.Add
 
 func (a *AccessListTracer) Hooks() *tracing.Hooks {
 	return &tracing.Hooks{
-		OnOpcode: a.OnOpcode,
+		OnOpcode:      a.OnOpcode,
+		OnStorageRead: a.OnStorageRead,
+		OnAccountRead: a.OnAccountRead,
 	}
+}
+
+// OnAccountRead implements tracing.AccountReadHook.
+func (a *AccessListTracer) OnAccountRead(addr common.Address) {
+	if _, ok := a.excl[addr]; !ok {
+		a.list.addAddress(addr)
+	}
+}
+
+// OnStorageRead implements tracing.StorageReadHook.
+func (a *AccessListTracer) OnStorageRead(addr common.Address, slot common.Hash) {
+	a.list.addSlot(addr, slot)
 }
 
 // OnOpcode captures all opcodes that touch storage or addresses and adds them to the accesslist.

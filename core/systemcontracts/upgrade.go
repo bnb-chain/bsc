@@ -1155,6 +1155,12 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 			statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeNewContract)
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
+		// The CAS20 registries are precompiles, not upgradeable contracts, so their
+		// sentinels are planted here rather than through an Upgrade config.
+		if config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
+			vm.SeedCAS20Activation(statedb)
+			log.Info("Planted CAS20 registry sentinels", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
+		}
 	} else {
 		if config.IsFeynman(blockNumber, lastBlockTime) {
 			upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
