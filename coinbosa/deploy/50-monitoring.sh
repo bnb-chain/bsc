@@ -179,18 +179,46 @@ else
   fi
 fi
 
-# --- 2. les deux nœuds racontent-ils la même chaîne ? ------------------------
-if [ -n "${hv:-}" ] && [ -n "${hn:-}" ]; then
-  ecart=$((hv - hn)); [ "$ecart" -lt 0 ] && ecart=$((-ecart))
-  [ "$ecart" -gt 20 ] && alerte_transitoire error "noeud RPC decroche" "validateur=$hv noeud=$hn ecart=$ecart blocs"
+# --- 2. les nœuds racontent-ils la même chaîne que le validateur ? -----------
+#
+# LE NŒUD D'ARCHIVE N'ÉTAIT PAS SURVEILLÉ, ET C'EST LUI QUI SERT LE PUBLIC.
+#
+# Ce contrôle ne comparait que `coinbosa-node`. Or depuis 75-bascule-archive.sh,
+# c'est `coinbosa-node-archive` (port 8547) qui est derrière /rpc — donc celui
+# qu'interrogent les portefeuilles et la place de cotation. Il pouvait servir des
+# données périmées, ou diverger, sans que rien ne crie : exactement la panne du
+# 3 septembre, mais sur le nœud dont personne ne regardait la hauteur.
+#
+# Les deux nœuds sont donc traités par la même fonction. Celui qui sert le public
+# alerte sous un titre distinct : ce n'est pas la même urgence qu'un nœud interne
+# qui décroche, et les deux ne doivent pas se confondre dans le canal d'alerte.
+comparer_noeud() {   # $1=nom du datadir  $2=titre de l'alerte  $3=hauteur relevée
+  local d="$1" titre="$2" h="$3"
+  local ipc="/var/lib/coinbosa/$d/geth.ipc"
+  [ -S "$ipc" ] || return 0
+
+  if [ -z "${h:-}" ]; then
+    alerte_transitoire error "$titre injoignable" "aucune reponse sur $ipc"
+    return 0
+  fi
+
+  local ecart=$((hv - h)); [ "$ecart" -lt 0 ] && ecart=$((-ecart))
+  [ "$ecart" -gt 20 ] && alerte_transitoire error "$titre decroche" \
+    "validateur=$hv $d=$h ecart=$ecart blocs"
+
   # Un désaccord de hash à hauteur égale = fork silencieux, le pire des cas.
   if [ "$ecart" -eq 0 ] && [ "$hv" -gt 0 ]; then
+    local a b
     a=$(sudo -u "$VAL_USER" "$GETH" attach --exec "eth.getBlock($hv).hash" "$VAL_IPC" 2>/dev/null | tr -d '"')
-    b=$(sudo -u "$NODE_USER" "$GETH" attach --exec "eth.getBlock($hv).hash" "$NODE_IPC" 2>/dev/null | tr -d '"')
-    [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ] && alerte fatal "FORK : hash divergents" "bloc $hv : $a vs $b"
+    b=$(sudo -u "$NODE_USER" "$GETH" attach --exec "eth.getBlock($hv).hash" "$ipc" 2>/dev/null | tr -d '"')
+    [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ] \
+      && alerte fatal "FORK : hash divergents ($d)" "bloc $hv : $a vs $b"
   fi
-else
-  [ -z "${hn:-}" ] && alerte_transitoire error "noeud RPC injoignable" "aucune reponse sur $NODE_IPC"
+}
+
+if [ -n "${hv:-}" ]; then
+  comparer_noeud node         "noeud RPC"      "${hn:-}"
+  comparer_noeud node-archive "noeud ARCHIVE"  "$(hauteur "/var/lib/coinbosa/node-archive/geth.ipc" "$NODE_USER")"
 fi
 
 # --- 3. services ------------------------------------------------------------
