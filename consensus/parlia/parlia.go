@@ -1394,8 +1394,8 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 	if p.chainConfig.IsJenner(header.Number, header.Time) {
 		epochLength, err := p.epochLength(chain, header, nil)
 		if err != nil || header.Number.Uint64()%epochLength == epochLength-1 {
-			// BEP-714 scans the validator set and may admit several maintenance
-			// sessions. Reserve the existing hard limit on these epoch-end blocks.
+			// BEP-714: checkMaintenance scans the validator set and may admit several
+			// maintenance sessions, so reserve the hard limit on these epoch-end blocks
 			return params.SystemTxsGasHardLimit
 		}
 	}
@@ -2380,7 +2380,8 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 			delay = lorentzInitialBackOffTime
 		}
 		if p.chainConfig.IsJenner(parent.Number, parent.Time) {
-			delay = defaultInitialBackOffTime // BEP-714: restore the one-second backup delay.
+			// BEP-714: Restore the one-second initial backoff
+			delay = defaultInitialBackOffTime
 		}
 		initialBackOffTime := delay
 		validators := snap.validators()

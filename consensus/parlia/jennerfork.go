@@ -9,8 +9,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 )
 
-// checkMaintenance runs after slashing and daily validator settlement, so the
-// next epoch header selects validators from the resulting maintenance state.
+// checkMaintenance issues the BEP-714 system transaction on the last block of each epoch.
+// It runs after slashing and daily validator settlement, so the next epoch header selects
+// validators from the resulting maintenance state.
 func (p *Parlia) checkMaintenance(chain consensus.ChainHeaderReader, state vm.StateDB, header *types.Header,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mode systemTxMode, tracer *tracing.Hooks,
 ) error {
