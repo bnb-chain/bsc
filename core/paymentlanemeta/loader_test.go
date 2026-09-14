@@ -105,6 +105,39 @@ func TestLoadMetaReusesCachedMeta(t *testing.T) {
 	require.Same(t, got1, got2)
 }
 
+func TestLoadMetaReloadsWhenStateRootChanges(t *testing.T) {
+	loadMetaCache = metaCache{}
+	initial := deployedContractState(t)
+	db := initial.Database()
+	rootA, err := initial.Commit(1, false, false)
+	require.NoError(t, err)
+
+	stateA, err := state.New(rootA, db)
+	require.NoError(t, err)
+	gotA, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_000), stateA)
+	require.NoError(t, err)
+	require.EqualValues(t, 500, gotA.ratio)
+	require.Nil(t, gotA.listed)
+
+	stateB, err := state.New(rootA, db)
+	require.NoError(t, err)
+	stateB.SetState(paymentlane.ContractAddress, slot(ratioSlot), word(800))
+	listed := common.Address{0xaa}
+	stateB.SetState(paymentlane.ContractAddress, slot(paymentContractsLenSlot), word(1))
+	stateB.SetState(paymentlane.ContractAddress, paymentContractSlot(0), common.BytesToHash(listed[:]))
+	rootB, err := stateB.Commit(2, false, false)
+	require.NoError(t, err)
+
+	stateB, err = state.New(rootB, db)
+	require.NoError(t, err)
+	require.NotEqual(t, metaCacheKeyFromStateDB(stateA), metaCacheKeyFromStateDB(stateB))
+	gotB, err := LoadMeta(params.BSCChainConfig, laneHeader(60_000_001), stateB)
+	require.NoError(t, err)
+	require.NotSame(t, gotA, gotB)
+	require.EqualValues(t, 800, gotB.ratio)
+	require.Contains(t, gotB.listed, listed)
+}
+
 func TestLoadMetaRejectsListedSetAboveContractLimit(t *testing.T) {
 	loadMetaCache = metaCache{}
 	statedb := deployedContractState(t)
