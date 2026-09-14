@@ -1391,14 +1391,6 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 }
 
 func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
-	if p.chainConfig.IsJenner(header.Number, header.Time) {
-		epochLength, err := p.epochLength(chain, header, nil)
-		if err != nil || header.Number.Uint64()%epochLength == epochLength-1 {
-			// BEP-714: checkMaintenance scans the validator set and may admit several
-			// maintenance sessions, so reserve the hard limit on these epoch-end blocks
-			return params.SystemTxsGasHardLimit
-		}
-	}
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent != nil {
 		// Mainnet and Chapel have both passed Feynman. Now, simplify the logic before and during the Feynman hard fork.
@@ -1533,10 +1525,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 
-	if err := p.checkMaintenance(chain, state, header, txs, receipts, systemTxs, usedGas, systemTxImporting, tracer); err != nil {
-		return err
-	}
-
 	if len(*systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
 	}
@@ -1633,10 +1621,6 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 				return nil, nil, err
 			}
 		}
-	}
-
-	if err := p.checkMaintenance(chain, state, header, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer); err != nil {
-		return nil, nil, err
 	}
 
 	// should not happen. Once happen, stop the node is better than broadcast the block

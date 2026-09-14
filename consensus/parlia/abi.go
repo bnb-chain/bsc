@@ -1394,13 +1394,6 @@ const validatorSetABIBeforeLuban = `
 const validatorSetABI = `
 [
   {
-    "inputs": [],
-    "name": "checkMaintenance",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "type": "receive",
     "stateMutability": "payable"
   },

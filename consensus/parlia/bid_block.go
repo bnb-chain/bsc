@@ -27,7 +27,6 @@ var signableSystemTxSelectors = map[string][4]byte{
 	"deposit":                  {0xf3, 0x40, 0xfa, 0x01},
 	"distributeFinalityReward": {0x30, 0x0c, 0x35, 0x67},
 	"updateValidatorSetV2":     {0x1e, 0x4c, 0x15, 0x24},
-	"checkMaintenance":         {0xe2, 0x49, 0x0b, 0xaa},
 }
 
 type expectedSystemTxEntry struct {
@@ -98,11 +97,11 @@ func (p *Parlia) isSignableSystemTx(tx *types.Transaction) bool {
 
 // expectedSystemTxShape returns the expected trailing system-tx order for accepted BidBlocks:
 //
-//	deposit -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.) -> checkMaintenance (cond.)
+//	deposit -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.)
 //
 // Precondition: BidBlock admission has already enforced a non-zero deposit value.
-func (p *Parlia) expectedSystemTxShape(header, parent *types.Header, maintenanceDue bool) []expectedSystemTxEntry {
-	shape := make([]expectedSystemTxEntry, 0, 4)
+func (p *Parlia) expectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
+	shape := make([]expectedSystemTxEntry, 0, 3)
 
 	shape = append(shape, expectedSystemTxEntry{
 		method:   "deposit",
@@ -123,12 +122,6 @@ func (p *Parlia) expectedSystemTxShape(header, parent *types.Header, maintenance
 		})
 	}
 
-	if maintenanceDue {
-		shape = append(shape, expectedSystemTxEntry{
-			method:   "checkMaintenance",
-			selector: p.selectorFor("checkMaintenance"),
-		})
-	}
 	return shape
 }
 
@@ -175,7 +168,7 @@ func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) (int, *bi
 //
 //	Stage 1 — each trailing unsigned tx must be on the BEP-675 signable whitelist.
 //	Stage 2 — selectors & order must match expectedSystemTxShape for this header.
-func (p *Parlia) VerifyBidBlockSystemTxs(chain consensus.ChainHeaderReader, decoded *buildertypes.DecodedBidBlock, parent *types.Header, systemTxStart int) error {
+func (p *Parlia) VerifyBidBlockSystemTxs(decoded *buildertypes.DecodedBidBlock, parent *types.Header, systemTxStart int) error {
 	for i := systemTxStart; i < len(decoded.Txs); i++ {
 		if !p.isSignableSystemTx(decoded.Txs[i]) {
 			toAddr := "<nil>"
@@ -185,15 +178,7 @@ func (p *Parlia) VerifyBidBlockSystemTxs(chain consensus.ChainHeaderReader, deco
 			return fmt.Errorf("unsigned system tx at position %d (to=%s) is not on the signable whitelist", i, toAddr)
 		}
 	}
-	maintenanceDue := false
-	if p.chainConfig.IsJenner(decoded.Header.Number, decoded.Header.Time) {
-		epochLength, err := p.epochLength(chain, decoded.Header, nil)
-		if err != nil {
-			return err
-		}
-		maintenanceDue = decoded.Header.Number.Uint64()%epochLength == epochLength-1
-	}
-	shape := p.expectedSystemTxShape(decoded.Header, parent, maintenanceDue)
+	shape := p.expectedSystemTxShape(decoded.Header, parent)
 	return p.verifySystemTxShape(decoded.Txs[systemTxStart:], shape)
 }
 

@@ -37,7 +37,7 @@ func userTx() *types.Transaction {
 }
 
 func TestVerifyBidBlockSystemTxs(t *testing.T) {
-	p := &Parlia{chainConfig: params.ParliaTestChainConfig}
+	p := &Parlia{}
 	// Number 100 (not a multiple of finalityRewardInterval=200) + same-UTC-day
 	// timestamps (not a breathe block) => expected shape is exactly [deposit].
 	header := &types.Header{Number: big.NewInt(100), Time: 1003}
@@ -62,7 +62,7 @@ func TestVerifyBidBlockSystemTxs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			decoded := &buildertypes.DecodedBidBlock{Header: header, Txs: tc.txs}
-			err := p.VerifyBidBlockSystemTxs(nil, decoded, parent, tc.sysStart)
+			err := p.VerifyBidBlockSystemTxs(decoded, parent, tc.sysStart)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("VerifyBidBlockSystemTxs err=%v, wantErr=%v", err, tc.wantErr)
 			}
