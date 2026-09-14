@@ -55,7 +55,7 @@ func TestAllCodesHash(t *testing.T) {
 func TestJennerMaintenanceContractPair(t *testing.T) {
 	contractABI, err := abi.JSON(strings.NewReader(`[
 		{"type":"function","name":"init","inputs":[],"outputs":[]},
-		{"type":"function","name":"checkMaintenance","inputs":[],"outputs":[]},
+		{"type":"function","name":"tryEnterMaintenance","inputs":[{"type":"address"}],"outputs":[]},
 		{"type":"function","name":"updateParam","inputs":[{"type":"string"},{"type":"bytes"}],"outputs":[]},
 		{"type":"function","name":"updateValidatorSetV2","inputs":[{"type":"address[]"},{"type":"uint64[]"},{"type":"bytes[]"}],"outputs":[]},
 		{"type":"function","name":"slash","inputs":[{"type":"address"}],"outputs":[]},
@@ -113,16 +113,16 @@ func TestJennerMaintenanceContractPair(t *testing.T) {
 			call(producer, validator, "init")
 			param("maxNumOfMaintaining", 3)
 			param("maintainSlashScale", 3)
-			before := call(producer, validator, "getValidators")
-			call(producer, validator, "checkMaintenance")
-			require.Equal(t, before, call(producer, validator, "getValidators"))
+			// only the slash contract may ask for admission; this no-op call also populates validatorExtraSet
+			call(slash, validator, "tryEnterMaintenance", common.Address{})
 			call(producer, slash, "init")
 			members := []common.Address{common.HexToAddress("0x10000"), common.HexToAddress("0x10001")}
 			call(producer, validator, "updateValidatorSetV2", members, []uint64{1, 1}, [][]byte{{}, {}})
-			for range 40 {
+			for range 39 {
 				call(producer, slash, "slash", members[0])
 			}
-			call(producer, validator, "checkMaintenance")
+			require.Equal(t, members, call(producer, validator, "getValidators")[0])
+			call(producer, slash, "slash", members[0]) // the 40th miss admits the validator in the same transaction
 			require.Equal(t, []common.Address{members[1]}, call(producer, validator, "getValidators")[0])
 		})
 	}
