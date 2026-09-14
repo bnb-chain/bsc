@@ -770,7 +770,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlo
 		}
 	}
 
-	return parliaEngine.VerifyBidBlockSystemTxs(decoded, parent, decoded.SystemTxStart)
+	return parliaEngine.VerifyBidBlockSystemTxs(b.chain, decoded, parent, decoded.SystemTxStart)
 }
 
 // validateBidBlockBlobSidecars checks cheap sidecar invariants before bid selection.

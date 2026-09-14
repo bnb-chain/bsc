@@ -1391,6 +1391,14 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 }
 
 func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	if p.chainConfig.IsJenner(header.Number, header.Time) {
+		epochLength, err := p.epochLength(chain, header, nil)
+		if err != nil || header.Number.Uint64()%epochLength == epochLength-1 {
+			// BEP-714 scans the validator set and may admit several maintenance
+			// sessions. Reserve the existing hard limit on these epoch-end blocks.
+			return params.SystemTxsGasHardLimit
+		}
+	}
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent != nil {
 		// Mainnet and Chapel have both passed Feynman. Now, simplify the logic before and during the Feynman hard fork.
@@ -1525,6 +1533,10 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 
+	if err := p.checkMaintenance(chain, state, header, txs, receipts, systemTxs, usedGas, systemTxImporting, tracer); err != nil {
+		return err
+	}
+
 	if len(*systemTxs) > 0 {
 		return errors.New("the length of systemTxs do not match")
 	}
@@ -1621,6 +1633,10 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 				return nil, nil, err
 			}
 		}
+	}
+
+	if err := p.checkMaintenance(chain, state, header, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer); err != nil {
+		return nil, nil, err
 	}
 
 	// should not happen. Once happen, stop the node is better than broadcast the block
@@ -2363,6 +2379,10 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 			// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...].
 			delay = lorentzInitialBackOffTime
 		}
+		if p.chainConfig.IsJenner(parent.Number, parent.Time) {
+			delay = defaultInitialBackOffTime // BEP-714: restore the one-second backup delay.
+		}
+		initialBackOffTime := delay
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
@@ -2432,7 +2452,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 			if backOffSteps[idx] == 0 {
 				return 0
 			}
-			return lorentzInitialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
+			return initialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
 		}
 		delay += backOffSteps[idx] * wiggleTime
 		return delay
