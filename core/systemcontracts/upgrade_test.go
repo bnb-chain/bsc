@@ -81,6 +81,7 @@ func TestJennerMaintenanceContractPair(t *testing.T) {
 			producer, gov := common.HexToAddress("0xbeef"), common.HexToAddress(GovHubContract)
 			// No staking positions or rewards in this isolated contract-pair test.
 			db.SetCode(common.HexToAddress(StakeHubContract), common.FromHex("600060005260206000f3"), tracing.CodeChangeUnspecified)
+			var lastGas uint64
 			call := func(sender, target common.Address, method string, args ...interface{}) []interface{} {
 				t.Helper()
 				number++
@@ -98,8 +99,10 @@ func TestJennerMaintenanceContractPair(t *testing.T) {
 				db.Prepare(rules, sender, producer, &target, vm.ActivePrecompiles(rules), nil)
 				evm := vm.NewEVM(ctx, db, &cfg, vm.Config{})
 				evm.SetTxContext(vm.TxContext{Origin: sender, GasPrice: new(uint256.Int)})
-				output, _, err := evm.Call(sender, target, input, vm.NewGasBudget(ctx.GasLimit), new(uint256.Int))
+				budget := vm.NewGasBudget(ctx.GasLimit)
+				output, leftOver, err := evm.Call(sender, target, input, budget, new(uint256.Int))
 				require.NoError(t, err, "%s: %x", method, output)
+				lastGas = leftOver.Used(budget)
 				db.Finalise(true)
 				values, err := contractABI.Unpack(method, output)
 				require.NoError(t, err)
@@ -116,14 +119,24 @@ func TestJennerMaintenanceContractPair(t *testing.T) {
 			// only the slash contract may ask for admission; this no-op call also populates validatorExtraSet
 			call(slash, validator, "tryEnterMaintenance", common.Address{})
 			call(producer, slash, "init")
-			members := []common.Address{common.HexToAddress("0x10000"), common.HexToAddress("0x10001")}
-			call(producer, validator, "updateValidatorSetV2", members, []uint64{1, 1}, [][]byte{{}, {}})
+			// the mainnet-sized set: admission must stay well inside the shared system-transaction reserve
+			members := make([]common.Address, 45)
+			powers := make([]uint64, len(members))
+			votes := make([][]byte, len(members))
+			for i := range members {
+				members[i] = common.BigToAddress(big.NewInt(int64(0x10000 + i)))
+				powers[i] = 1
+				votes[i] = []byte{}
+			}
+			call(producer, validator, "updateValidatorSetV2", members, powers, votes)
 			for range 39 {
 				call(producer, slash, "slash", members[0])
 			}
+			ordinary := lastGas
 			require.Equal(t, members, call(producer, validator, "getValidators")[0])
 			call(producer, slash, "slash", members[0]) // the 40th miss admits the validator in the same transaction
-			require.Equal(t, []common.Address{members[1]}, call(producer, validator, "getValidators")[0])
+			require.Less(t, lastGas, uint64(250_000), "admission slash gas %d (ordinary %d)", lastGas, ordinary)
+			require.Equal(t, members[1:], call(producer, validator, "getValidators")[0])
 		})
 	}
 }
