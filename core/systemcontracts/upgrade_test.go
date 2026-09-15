@@ -7,14 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,97 +47,6 @@ func TestAllCodesHash(t *testing.T) {
 	require.Equal(t, allCodeHash[:], common.Hex2Bytes("833cc0fc87c46ad8a223e44ccfdc16a51a7e7383525136441bd0c730f06023df"))
 }
 
-// Execute both shipped contracts after the real upgrade, including bootstrap
-// with an initialized ValidatorSet and an uninitialized SlashIndicator.
-func TestJennerMaintenanceContractPair(t *testing.T) {
-	contractABI, err := abi.JSON(strings.NewReader(`[
-		{"type":"function","name":"init","inputs":[],"outputs":[]},
-		{"type":"function","name":"tryEnterMaintenance","inputs":[{"type":"address"}],"outputs":[]},
-		{"type":"function","name":"updateParam","inputs":[{"type":"string"},{"type":"bytes"}],"outputs":[]},
-		{"type":"function","name":"updateValidatorSetV2","inputs":[{"type":"address[]"},{"type":"uint64[]"},{"type":"bytes[]"}],"outputs":[]},
-		{"type":"function","name":"slash","inputs":[{"type":"address"}],"outputs":[]},
-		{"type":"function","name":"getValidators","inputs":[],"outputs":[{"type":"address[]"}]}
-	]`))
-	require.NoError(t, err)
-	oldGenesis := GenesisHash
-	t.Cleanup(func() { GenesisHash = oldGenesis })
-	for _, tc := range []struct {
-		network string
-		genesis common.Hash
-	}{{mainNet, params.BSCGenesisHash}, {chapelNet, params.ChapelGenesisHash}, {rialtoNet, params.RialtoGenesisHash}} {
-		t.Run(tc.network, func(t *testing.T) {
-			GenesisHash = tc.genesis
-			cfg := *params.BSCChainConfig
-			fork := uint64(1_800_000_000)
-			cfg.JennerTime = &fork
-			db, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-			require.NoError(t, err)
-			number := int64(60_000_000)
-			upgradeBuildInSystemContract(&cfg, big.NewInt(number), fork-1, fork, db)
-			validator, slash := common.HexToAddress(ValidatorContract), common.HexToAddress(SlashContract)
-			producer, gov := common.HexToAddress("0xbeef"), common.HexToAddress(GovHubContract)
-			// No staking positions or rewards in this isolated contract-pair test.
-			db.SetCode(common.HexToAddress(StakeHubContract), common.FromHex("600060005260206000f3"), tracing.CodeChangeUnspecified)
-			var lastGas uint64
-			call := func(sender, target common.Address, method string, args ...interface{}) []interface{} {
-				t.Helper()
-				number++
-				input, err := contractABI.Pack(method, args...)
-				require.NoError(t, err)
-				ctx := vm.BlockContext{
-					Coinbase: producer, BlockNumber: big.NewInt(number), Time: fork, GasLimit: 20_000_000,
-					Difficulty: new(big.Int), BaseFee: new(big.Int),
-					CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
-					Transfer: func(_ vm.StateDB, _, _ common.Address, amount *uint256.Int, _ *params.Rules) {
-						require.True(t, amount.IsZero())
-					},
-				}
-				rules := cfg.Rules(ctx.BlockNumber, false, fork)
-				db.Prepare(rules, sender, producer, &target, vm.ActivePrecompiles(rules), nil)
-				evm := vm.NewEVM(ctx, db, &cfg, vm.Config{})
-				evm.SetTxContext(vm.TxContext{Origin: sender, GasPrice: new(uint256.Int)})
-				budget := vm.NewGasBudget(ctx.GasLimit)
-				output, leftOver, err := evm.Call(sender, target, input, budget, new(uint256.Int))
-				require.NoError(t, err, "%s: %x", method, output)
-				lastGas = leftOver.Used(budget)
-				db.Finalise(true)
-				values, err := contractABI.Unpack(method, output)
-				require.NoError(t, err)
-				return values
-			}
-			param := func(key string, value byte) {
-				encoded := make([]byte, 32)
-				encoded[31] = value
-				call(gov, validator, "updateParam", key, encoded)
-			}
-			call(producer, validator, "init")
-			param("maxNumOfMaintaining", 3)
-			param("maintainSlashScale", 3)
-			// only the slash contract may ask for admission; this no-op call also populates validatorExtraSet
-			call(slash, validator, "tryEnterMaintenance", common.Address{})
-			call(producer, slash, "init")
-			// the mainnet-sized set: admission must stay well inside the shared system-transaction reserve
-			members := make([]common.Address, 45)
-			powers := make([]uint64, len(members))
-			votes := make([][]byte, len(members))
-			for i := range members {
-				members[i] = common.BigToAddress(big.NewInt(int64(0x10000 + i)))
-				powers[i] = 1
-				votes[i] = []byte{}
-			}
-			call(producer, validator, "updateValidatorSetV2", members, powers, votes)
-			for range 39 {
-				call(producer, slash, "slash", members[0])
-			}
-			ordinary := lastGas
-			require.Equal(t, members, call(producer, validator, "getValidators")[0])
-			call(producer, slash, "slash", members[0]) // the 40th miss admits the validator in the same transaction
-			require.Less(t, lastGas, uint64(250_000), "admission slash gas %d (ordinary %d)", lastGas, ordinary)
-			require.Equal(t, members[1:], call(producer, validator, "getValidators")[0])
-		})
-	}
-}
-
 // Pin the Jenner payment-lane address and bytecode on all three networks.
 func TestJennerPaymentLaneCode(t *testing.T) {
 	const wantCodeHash = "ebee6a014126a2c3c3549e1b9e8924eff695f3f9c99324ada3104616b164a213"
@@ -148,7 +54,7 @@ func TestJennerPaymentLaneCode(t *testing.T) {
 	for _, network := range []string{mainNet, chapelNet, rialtoNet} {
 		upgrade := jennerUpgrade[network]
 		require.NotNil(t, upgrade, network)
-		require.Len(t, upgrade.Configs, 3, network)
+		require.Len(t, upgrade.Configs, 1, network)
 
 		config := upgrade.Configs[0]
 		require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000002007"), config.ContractAddr, network)
@@ -264,47 +170,5 @@ func TestCAS20SentinelsPlantedAtFork(t *testing.T) {
 		if got := planted(statedb); got != tc.want {
 			t.Errorf("%s: sentinels planted = %v, want %v", tc.name, got, tc.want)
 		}
-	}
-}
-
-// Existing validator and slash storage must survive the code replacement.
-func TestJennerMaintenanceUpgradePreservesStorage(t *testing.T) {
-	oldGenesis := GenesisHash
-	t.Cleanup(func() { GenesisHash = oldGenesis })
-	for _, tc := range []struct {
-		network string
-		genesis common.Hash
-	}{{mainNet, params.BSCGenesisHash}, {chapelNet, params.ChapelGenesisHash}, {rialtoNet, params.RialtoGenesisHash}} {
-		t.Run(tc.network, func(t *testing.T) {
-			GenesisHash = tc.genesis
-			cfg := *params.BSCChainConfig
-			fork := uint64(1_800_000_000)
-			cfg.JennerTime = &fork
-			db, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-			require.NoError(t, err)
-			addresses := []common.Address{common.HexToAddress(ValidatorContract), common.HexToAddress(SlashContract)}
-			slot, value := common.HexToHash("0x11"), common.HexToHash("0x1234")
-			for _, addr := range addresses {
-				db.SetCode(addr, []byte{0}, tracing.CodeChangeUnspecified)
-				db.SetState(addr, slot, value)
-			}
-			number := big.NewInt(60_000_000)
-			upgradeBuildInSystemContract(&cfg, number, fork-2, fork-1, db)
-			for _, addr := range addresses {
-				require.Equal(t, []byte{0}, db.GetCode(addr))
-			}
-			upgradeBuildInSystemContract(&cfg, number, fork-1, fork, db)
-			for i, addr := range addresses {
-				entry := jennerUpgrade[tc.network].Configs[i+1]
-				require.Equal(t, addr, entry.ContractAddr)
-				require.Equal(t, common.FromHex(strings.TrimSpace(entry.Code)), db.GetCode(addr))
-				require.Equal(t, value, db.GetState(addr, slot))
-				db.SetCode(addr, []byte{0}, tracing.CodeChangeUnspecified)
-			}
-			upgradeBuildInSystemContract(&cfg, new(big.Int).Add(number, common.Big1), fork, fork+1, db)
-			for _, addr := range addresses {
-				require.Equal(t, []byte{0}, db.GetCode(addr))
-			}
-		})
 	}
 }
