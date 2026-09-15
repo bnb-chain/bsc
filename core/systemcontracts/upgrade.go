@@ -1120,12 +1120,12 @@ func init() {
 			},
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b787b1ccd6beff0ccd9bc78c23a87b8471d8a00d",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/f024d0216a266875e1596ea2e72486b13539ab62",
 				Code:         jenner.MainnetValidatorContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(SlashContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b787b1ccd6beff0ccd9bc78c23a87b8471d8a00d",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/f024d0216a266875e1596ea2e72486b13539ab62",
 				Code:         jenner.MainnetSlashContract,
 			},
 		},
@@ -1141,12 +1141,12 @@ func init() {
 			},
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b787b1ccd6beff0ccd9bc78c23a87b8471d8a00d",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/f024d0216a266875e1596ea2e72486b13539ab62",
 				Code:         jenner.ChapelValidatorContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(SlashContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b787b1ccd6beff0ccd9bc78c23a87b8471d8a00d",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/f024d0216a266875e1596ea2e72486b13539ab62",
 				Code:         jenner.ChapelSlashContract,
 			},
 		},
@@ -1162,12 +1162,12 @@ func init() {
 			},
 			{
 				ContractAddr: common.HexToAddress(ValidatorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b787b1ccd6beff0ccd9bc78c23a87b8471d8a00d",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/f024d0216a266875e1596ea2e72486b13539ab62",
 				Code:         jenner.RialtoValidatorContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(SlashContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/b787b1ccd6beff0ccd9bc78c23a87b8471d8a00d",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/f024d0216a266875e1596ea2e72486b13539ab62",
 				Code:         jenner.RialtoSlashContract,
 			},
 		},
