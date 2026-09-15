@@ -36,6 +36,18 @@ func TestCAS20GetTokenInfoPlumbing(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0] != nil || got[1] != nil {
 		t.Errorf("batch of non-tokens = %v, %v; want two nulls", got, err)
 	}
+	if got, err := api.GetCAS20TokenInfoBatch(ctx, nil, nil); err != nil || len(got) != 0 {
+		t.Errorf("empty batch = %v, %v; want empty result", got, err)
+	}
+	if got, err := api.GetCAS20TokenInfoBatch(ctx, make([]common.Address, cas20BatchLimit), nil); err != nil || len(got) != cas20BatchLimit {
+		t.Errorf("batch at limit = %v, %v; want %d nulls", got, err, cas20BatchLimit)
+	} else {
+		for i, info := range got {
+			if info != nil {
+				t.Errorf("batch at limit result %d = %v; want null", i, info)
+			}
+		}
+	}
 	if _, err := api.GetCAS20TokenInfoBatch(ctx, make([]common.Address, cas20BatchLimit+1), nil); err == nil {
 		t.Error("a batch past the limit was accepted")
 	}
@@ -55,6 +67,9 @@ func TestCAS20GetTokenInfoBeforeJenner(t *testing.T) {
 	api := NewBlockChainAPI(newTestBackend(t, 1, gspec, ethash.NewFaker(), func(i int, b *core.BlockGen) {}))
 	if _, err := api.GetCAS20TokenInfo(context.Background(), common.HexToAddress("0x5714a9e7"), nil); err == nil || errors.Is(err, vm.ErrNotCAS20Token) {
 		t.Errorf("before the fork: err = %v, want the not-active error", err)
+	}
+	if _, err := api.GetCAS20TokenInfoBatch(context.Background(), []common.Address{{}}, nil); err == nil {
+		t.Error("batch before the fork was accepted")
 	}
 }
 
