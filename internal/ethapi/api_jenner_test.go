@@ -315,11 +315,9 @@ func TestJennerBlockOverrides_SimulateV1(t *testing.T) {
 	}
 }
 
-// TestJennerBlockOverrides_NonBSCRegression pins down the behavior on a
-// non-Parlia (merged Ethereum) config: 0x70 stays an empty account there
-// (Jenner never activates outside BSC), the prevRandao override still
-// reaches PREVRANDAO, and — since this is the BSC client — the millisecond
-// bound on prevRandao (< 1000) applies uniformly on every config.
+// TestJennerBlockOverrides_NonBSCRegression keeps upstream block override
+// semantics on a non-Parlia config: 0x70 stays empty and arbitrary prevRandao
+// values still reach PREVRANDAO.
 func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 	t.Parallel()
 	acc := newTestAccount()
@@ -346,7 +344,7 @@ func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 		t.Fatalf("non-BSC: 0x70 must stay an empty account, probe word = %d", milli)
 	}
 
-	// eth_call, time + prevRandao (a valid millisecond remainder): the
+	// eth_call, time + prevRandao: the
 	// override reaches PREVRANDAO, and 0x70 stays empty regardless.
 	remainder := common.BigToHash(big.NewInt(999))
 	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{Time: &overrideTime, PrevRandao: &remainder})
@@ -357,25 +355,26 @@ func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 		t.Fatalf("non-BSC: 0x70 must stay an empty account, probe word = %d", milli)
 	}
 
-	// The millisecond bound applies client-wide: an arbitrary random value
-	// is rejected on the merged config too (deliberate BSC-client deviation
-	// from upstream, see BlockOverrides.PrevRandao).
+	// Arbitrary random values remain valid on non-BSC chains.
 	bad := common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
-	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	if _, err := api.Call(context.Background(), TransactionArgs{To: &jennerProbeAddr}, &latest, nil, &override.BlockOverrides{PrevRandao: &bad}); err == nil {
-		t.Fatalf("prevRandao >= 1000 must be rejected on every config on this client")
+	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{PrevRandao: &bad})
+	if randao != bad {
+		t.Fatalf("non-BSC arbitrary prevRandao: PREVRANDAO = %x, want %x", randao, bad)
+	}
+	if milli != 0 {
+		t.Fatalf("non-BSC arbitrary prevRandao: 0x70 must stay empty, probe word = %d", milli)
 	}
 
-	// eth_simulateV1 with time + a valid prevRandao remainder.
+	// eth_simulateV1 keeps arbitrary prevRandao values on non-BSC chains.
 	n1 := (*hexutil.Big)(new(big.Int).Add(head.Number, big.NewInt(1)))
 	t1 := hexutil.Uint64(head.Time + 100)
 	results := runJennerSimulation(t, backend, []simBlock{
-		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1, PrevRandao: &remainder},
+		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1, PrevRandao: &bad},
 			Calls: []TransactionArgs{{To: &jennerProbeAddr, Gas: newUint64(500_000)}}},
 	})
 	randao, milli = decodeJennerProbeResult(t, results[0], 0)
-	if randao != remainder {
-		t.Fatalf("non-BSC simulateV1: PREVRANDAO = %x, want %x", randao, remainder)
+	if randao != bad {
+		t.Fatalf("non-BSC simulateV1: PREVRANDAO = %x, want %x", randao, bad)
 	}
 	if milli != 0 {
 		t.Fatalf("non-BSC simulateV1: 0x70 must stay an empty account, probe word = %d", milli)

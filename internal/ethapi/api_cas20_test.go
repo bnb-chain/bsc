@@ -73,9 +73,9 @@ func TestCAS20GetTokenInfoBeforeJenner(t *testing.T) {
 	}
 }
 
-// eth_createAccessList applies the overrides before it builds its EVM, so a code
-// override on a CAS20 address has to reach that EVM's precompile set too.
-func TestCAS20CreateAccessListWithCodeOverride(t *testing.T) {
+// RPC execution paths must honor a code override on a CAS20 address instead of
+// routing the call to the native precompile.
+func TestCAS20CodeOverrideThroughRPC(t *testing.T) {
 	t.Parallel()
 	api := NewBlockChainAPI(newJennerBSCBackend(t))
 	token := common.HexToAddress("0xca52000000000000000000000000000000000001")
@@ -88,5 +88,8 @@ func TestCAS20CreateAccessListWithCodeOverride(t *testing.T) {
 	}
 	if res.Error != "" {
 		t.Errorf("the overridden code did not run: %s", res.Error)
+	}
+	if _, err := api.EstimateGas(context.Background(), TransactionArgs{To: &token}, nil, overrides, nil); err != nil {
+		t.Fatalf("eth_estimateGas with a CAS20 code override: %v", err)
 	}
 }
