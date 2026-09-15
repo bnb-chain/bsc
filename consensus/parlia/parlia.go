@@ -2360,9 +2360,15 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 		// So use `parent.Time` instead.
 		isParerntLorentz := p.chainConfig.IsLorentz(parent.Number, parent.Time)
 		if isParerntLorentz {
-			// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...].
+			// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...]
+			// from Lorentz and [1, 2, 3, ...] again from Jenner.
 			delay = lorentzInitialBackOffTime
 		}
+		if p.chainConfig.IsJenner(parent.Number, parent.Time) {
+			// BEP-714: Restore the one-second initial backoff
+			delay = defaultInitialBackOffTime
+		}
+		initialBackOffTime := delay
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
@@ -2428,11 +2434,12 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 		})
 
 		if delay == 0 && isParerntLorentz {
-			// If the in-turn validator has signed recently, the expected backoff times are [0, 2, 3, ...].
+			// If the in-turn validator has signed recently, the expected backoff times are [0, 2, 3, ...]
+			// from Lorentz and [0, 1, 2, ...] from Jenner.
 			if backOffSteps[idx] == 0 {
 				return 0
 			}
-			return lorentzInitialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
+			return initialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
 		}
 		delay += backOffSteps[idx] * wiggleTime
 		return delay
