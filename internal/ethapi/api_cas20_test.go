@@ -36,6 +36,18 @@ func TestCAS20GetTokenInfoPlumbing(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0] != nil || got[1] != nil {
 		t.Errorf("batch of non-tokens = %v, %v; want two nulls", got, err)
 	}
+	if got, err := api.GetCAS20TokenInfoBatch(ctx, nil, nil); err != nil || len(got) != 0 {
+		t.Errorf("empty batch = %v, %v; want empty result", got, err)
+	}
+	if got, err := api.GetCAS20TokenInfoBatch(ctx, make([]common.Address, cas20BatchLimit), nil); err != nil || len(got) != cas20BatchLimit {
+		t.Errorf("batch at limit = %v, %v; want %d nulls", got, err, cas20BatchLimit)
+	} else {
+		for i, info := range got {
+			if info != nil {
+				t.Errorf("batch at limit result %d = %v; want null", i, info)
+			}
+		}
+	}
 	if _, err := api.GetCAS20TokenInfoBatch(ctx, make([]common.Address, cas20BatchLimit+1), nil); err == nil {
 		t.Error("a batch past the limit was accepted")
 	}
@@ -56,11 +68,14 @@ func TestCAS20GetTokenInfoBeforeJenner(t *testing.T) {
 	if _, err := api.GetCAS20TokenInfo(context.Background(), common.HexToAddress("0x5714a9e7"), nil); err == nil || errors.Is(err, vm.ErrNotCAS20Token) {
 		t.Errorf("before the fork: err = %v, want the not-active error", err)
 	}
+	if _, err := api.GetCAS20TokenInfoBatch(context.Background(), []common.Address{{}}, nil); err == nil {
+		t.Error("batch before the fork was accepted")
+	}
 }
 
-// eth_createAccessList applies the overrides before it builds its EVM, so a code
-// override on a CAS20 address has to reach that EVM's precompile set too.
-func TestCAS20CreateAccessListWithCodeOverride(t *testing.T) {
+// RPC execution paths must honor a code override on a CAS20 address instead of
+// routing the call to the native precompile.
+func TestCAS20CodeOverrideThroughRPC(t *testing.T) {
 	t.Parallel()
 	api := NewBlockChainAPI(newJennerBSCBackend(t))
 	token := common.HexToAddress("0xca52000000000000000000000000000000000001")
@@ -73,5 +88,8 @@ func TestCAS20CreateAccessListWithCodeOverride(t *testing.T) {
 	}
 	if res.Error != "" {
 		t.Errorf("the overridden code did not run: %s", res.Error)
+	}
+	if _, err := api.EstimateGas(context.Background(), TransactionArgs{To: &token}, nil, overrides, nil); err != nil {
+		t.Fatalf("eth_estimateGas with a CAS20 code override: %v", err)
 	}
 }

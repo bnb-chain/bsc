@@ -1089,13 +1089,13 @@ func (context *ChainContext) GetHeaderByHash(hash common.Hash) *types.Header {
 func doCall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, overrides *override.StateOverride, blockOverrides *override.BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
 	if blockOverrides != nil {
-		if err := blockOverrides.Apply(&blockCtx); err != nil {
+		if err := blockOverrides.ApplyFor(b.ChainConfig(), &blockCtx); err != nil {
 			return nil, err
 		}
 		// Override the header so callers that compute gas price from 1559 fee
 		// fields see the overridden basefee. Otherwise GASPRICE/effectiveTip
 		// would be derived from the pre-override basefee.
-		header = blockOverrides.MakeHeader(header)
+		header = blockOverrides.MakeHeaderFor(b.ChainConfig(), header)
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
 	precompiles := vm.ActivePrecompiledContracts(rules)
@@ -1277,10 +1277,11 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	}
 	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
 	if blockOverrides != nil {
-		if err := blockOverrides.Apply(&blockCtx); err != nil {
+		if err := blockOverrides.ApplyFor(b.ChainConfig(), &blockCtx); err != nil {
 			return 0, err
 		}
-		header = blockOverrides.MakeHeader(header)
+		// gasestimator rebuilds the block context from the header.
+		header = blockOverrides.MakeHeaderFor(b.ChainConfig(), header)
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
 	precompiles := vm.ActivePrecompiledContracts(rules)
@@ -1297,6 +1298,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		Chain:       NewChainContext(ctx, b),
 		Header:      header,
 		State:       state,
+		Precompiles: precompiles,
 		BlobBaseFee: blobBaseFee,
 		ErrorRatio:  estimateGasErrorRatio,
 	}

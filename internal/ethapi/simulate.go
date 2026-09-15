@@ -498,6 +498,10 @@ func (sim *simulator) activePrecompiles(base *types.Header) vm.PrecompiledContra
 	return vm.ActivePrecompiledContracts(rules)
 }
 
+func (sim *simulator) isBSC() bool {
+	return sim.chainConfig != nil && sim.chainConfig.IsInBSC()
+}
+
 // sanitizeChain checks the chain integrity. Specifically it checks that
 // block numbers and timestamp are strictly increasing, setting default values
 // when necessary. Gaps in block numbers are filled with empty blocks.
@@ -517,11 +521,11 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			n := new(big.Int).Add(prevNumber, big.NewInt(1))
 			block.BlockOverrides.Number = (*hexutil.Big)(n)
 		}
-		// A prevRandao override lands in the header's MixDigest, which on BSC
-		// carries the millisecond remainder of the block timestamp (BEP-520):
-		// enforce the same bound consensus applies to real headers.
-		if block.BlockOverrides.PrevRandao != nil {
-			if _, err := override.BSCMilliRemainder(block.BlockOverrides.PrevRandao); err != nil {
+		var remainder uint64
+		if sim.isBSC() && block.BlockOverrides.PrevRandao != nil {
+			var err error
+			remainder, err = override.BSCMilliRemainder(block.BlockOverrides.PrevRandao)
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -540,6 +544,9 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			gap := new(big.Int).Sub(diff, big.NewInt(1))
 			// Assign block number to the empty blocks.
 			for i := uint64(0); i < gap.Uint64(); i++ {
+				if sim.isBSC() && prevTimestamp > math.MaxUint64-timestampIncrement {
+					return nil, &invalidBlockTimestampError{fmt.Sprintf("block timestamps overflow at %d", prevTimestamp)}
+				}
 				n := new(big.Int).Add(prevNumber, big.NewInt(int64(i+1)))
 				t := prevTimestamp + timestampIncrement
 				b := simBlock{
@@ -549,6 +556,11 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 						Withdrawals: &types.Withdrawals{},
 					},
 				}
+				if sim.isBSC() {
+					if _, err := override.BSCMilliTimestamp(t, 0); err != nil {
+						return nil, &invalidBlockTimestampError{err.Error()}
+					}
+				}
 				prevTimestamp = t
 				res = append(res, b)
 			}
@@ -557,6 +569,9 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 		prevNumber = block.BlockOverrides.Number.ToInt()
 		var t uint64
 		if block.BlockOverrides.Time == nil {
+			if sim.isBSC() && prevTimestamp > math.MaxUint64-timestampIncrement {
+				return nil, &invalidBlockTimestampError{fmt.Sprintf("block timestamps overflow at %d", prevTimestamp)}
+			}
 			t = prevTimestamp + timestampIncrement
 			block.BlockOverrides.Time = (*hexutil.Uint64)(&t)
 		} else {
@@ -566,6 +581,11 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			}
 		}
 		prevTimestamp = t
+		if sim.isBSC() {
+			if _, err := override.BSCMilliTimestamp(t, remainder); err != nil {
+				return nil, &invalidBlockTimestampError{err.Error()}
+			}
+		}
 		res = append(res, block)
 	}
 	return res, nil
