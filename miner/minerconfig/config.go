@@ -124,7 +124,7 @@ type MevConfig struct {
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
-	GRPCPort              int             `toml:",omitempty"` // BEP-675 BidBlockService port
+	GRPCPort              int             `toml:",omitempty"` // BEP-675 BidBlockService listen port; 0 uses the default (use GRPCDisabled to turn the service off)
 	GRPCDisabled          bool            `toml:",omitempty"` // Whether to disable the BEP-675 BidBlockService
 	GRPCConcurrency       uint32          `toml:",omitempty"` // Maximum in-flight gRPC SendBidBlock calls; 0 uses the default
 	GRPCRequestTimeout    time.Duration   `toml:",omitempty"` // Total gRPC request timeout, including body upload; 0 uses the default
@@ -198,5 +198,17 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	if cfg.Mev.MaxBidsPerBuilder == nil {
 		cfg.Mev.MaxBidsPerBuilder = &defaultMaxBidsPerBuilder
 		log.Info("ApplyDefaultMinerConfig", "Mev.MaxBidsPerBuilder", *cfg.Mev.MaxBidsPerBuilder)
+	}
+	if cfg.Mev.GRPCPort <= 0 {
+		cfg.Mev.GRPCPort = defaultGRPCPort
+		log.Info("ApplyDefaultMinerConfig", "Mev.GRPCPort", cfg.Mev.GRPCPort)
+	}
+	if cfg.Mev.GRPCConcurrency == 0 {
+		cfg.Mev.GRPCConcurrency = defaultGRPCConcurrency
+		log.Info("ApplyDefaultMinerConfig", "Mev.GRPCConcurrency", cfg.Mev.GRPCConcurrency)
+	}
+	if cfg.Mev.GRPCRequestTimeout <= 0 {
+		cfg.Mev.GRPCRequestTimeout = defaultGRPCRequestTimeout
+		log.Info("ApplyDefaultMinerConfig", "Mev.GRPCRequestTimeout", cfg.Mev.GRPCRequestTimeout)
 	}
 }
