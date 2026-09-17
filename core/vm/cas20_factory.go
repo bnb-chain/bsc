@@ -164,7 +164,7 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	ctx.StateDB.SetCode(addr, CAS20MarkerCode, tracing.CodeChangeContractCreation)
 
 	decimals := create.decimals
-	tokenCtx := ctx.spawnBootstrap(addr, creator)
+	tokenCtx := ctx.spawnBootstrap(addr, CAS20FactoryAddress)
 	tok := newCAS20TokenBootstrap(tokenCtx, decimals)
 
 	if !tok.s.setName(create.name) || !tok.s.setSymbol(create.symbol) {
@@ -176,11 +176,17 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	} else if !newStablecoinExt(tokenCtx).setCurrency(create.currency) {
 		return nil, ErrOutOfGas
 	}
+	if !ctx.AddLog(
+		[]common.Hash{cas20TopicCAS20Created, addrKey(addr), wU8(variant)},
+		encodeCAS20CreatedData(create),
+	) {
+		return nil, ErrOutOfGas
+	}
 	initialAdmin := create.initialAdmin
 	if initialAdmin != (common.Address{}) {
 		tok.s.setRole(roleDefaultAdmin, initialAdmin, true)
 		tok.s.setAdminCount(uint256.NewInt(1))
-		if !tokenCtx.AddLog([]common.Hash{cas20TopicRoleGranted, roleDefaultAdmin, addrKey(initialAdmin), addrKey(creator)}, nil) {
+		if !tokenCtx.AddLog([]common.Hash{cas20TopicRoleGranted, roleDefaultAdmin, addrKey(initialAdmin), addrKey(CAS20FactoryAddress)}, nil) {
 			return nil, ErrOutOfGas
 		}
 	}
@@ -207,12 +213,6 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		}
 	}
 	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
-	}
-	if !ctx.AddLog(
-		[]common.Hash{cas20TopicCAS20Created, addrKey(addr), wU8(variant)},
-		encodeCAS20CreatedData(create),
-	) {
 		return nil, ErrOutOfGas
 	}
 	return addrKey(addr).Bytes(), nil
