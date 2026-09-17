@@ -261,6 +261,9 @@ func TestCAS20CreatedEvent(t *testing.T) {
 	if len(logs) < 2 || logs[1].Topics[0] != cas20TopicRoleGranted {
 		t.Fatal("the initial admin's RoleGranted must follow CAS20Created")
 	}
+	if logs[1].Topics[3] != addrKey(CAS20FactoryAddress) {
+		t.Fatalf("RoleGranted sender = %x, want the factory", logs[1].Topics[3])
+	}
 	if created.Address != CAS20FactoryAddress {
 		t.Fatalf("emitted by %x, want the factory %x", created.Address, CAS20FactoryAddress)
 	}
