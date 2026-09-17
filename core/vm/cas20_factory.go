@@ -176,6 +176,12 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	} else if !newStablecoinExt(tokenCtx).setCurrency(create.currency) {
 		return nil, ErrOutOfGas
 	}
+	if !ctx.AddLog(
+		[]common.Hash{cas20TopicCAS20Created, addrKey(addr), wU8(variant)},
+		encodeCAS20CreatedData(create),
+	) {
+		return nil, ErrOutOfGas
+	}
 	initialAdmin := create.initialAdmin
 	if initialAdmin != (common.Address{}) {
 		tok.s.setRole(roleDefaultAdmin, initialAdmin, true)
@@ -207,12 +213,6 @@ func createCAS20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		}
 	}
 	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
-	}
-	if !ctx.AddLog(
-		[]common.Hash{cas20TopicCAS20Created, addrKey(addr), wU8(variant)},
-		encodeCAS20CreatedData(create),
-	) {
 		return nil, ErrOutOfGas
 	}
 	return addrKey(addr).Bytes(), nil
