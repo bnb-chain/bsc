@@ -643,6 +643,58 @@ var (
 	testAddr   = crypto.PubkeyToAddress(testKey.PublicKey)
 )
 
+func TestVerifyHeaderRejectsAmsterdamFieldsBeforeFork(t *testing.T) {
+	config := &params.ChainConfig{ChainID: big.NewInt(56), Parlia: &params.ParliaConfig{}}
+	parent := &types.Header{Number: big.NewInt(0), GasLimit: 30_000_000, Time: 1}
+	chain := &finalizedHeaderChain{
+		cfg:    config,
+		byHash: map[common.Hash]*types.Header{parent.Hash(): parent},
+	}
+	engine := New(config, nil, nil, parent.Hash())
+	engine.recentSnaps.Add(parent.Hash(), newSnapshot(config.Parlia, engine.signatures, 0, parent.Hash(), []common.Address{testAddr}, nil, nil))
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     big.NewInt(1),
+		Coinbase:   testAddr,
+		UncleHash:  types.EmptyUncleHash,
+		Difficulty: new(big.Int).Set(diffInTurn),
+		GasLimit:   parent.GasLimit,
+		Time:       4,
+		Extra:      make([]byte, extraVanity+extraSeal),
+	}
+	hash := types.SealHash(header, config.ChainID)
+	sig, err := crypto.Sign(hash[:], testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(header.Extra[len(header.Extra)-extraSeal:], sig)
+	if err := engine.VerifyHeader(chain, header); err != nil {
+		t.Fatalf("valid header rejected: %v", err)
+	}
+
+	zeroHash, nonzeroHash := common.Hash{}, common.HexToHash("0x01")
+	zeroSlot, nonzeroSlot := uint64(0), uint64(200)
+	for _, tc := range []struct {
+		name string
+		bal  *common.Hash
+		slot *uint64
+		want string
+	}{
+		{"BAL/zero", &zeroHash, nil, "invalid BlockAccessListHash"},
+		{"BAL/nonzero", &nonzeroHash, nil, "invalid BlockAccessListHash"},
+		{"slot/zero", nil, &zeroSlot, "invalid SlotNumber"},
+		{"slot/nonzero", nil, &nonzeroSlot, "invalid SlotNumber"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			invalid := types.CopyHeader(header)
+			invalid.BlockAccessListHash, invalid.SlotNumber = tc.bal, tc.slot
+			if err := engine.VerifyHeader(chain, invalid); err == nil || !strings.HasPrefix(err.Error(), tc.want) {
+				t.Fatalf("VerifyHeader returned %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestParlia_applyTransactionTracing(t *testing.T) {
 	frdir := t.TempDir()
 	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
