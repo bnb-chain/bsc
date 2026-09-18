@@ -643,6 +643,65 @@ var (
 	testAddr   = crypto.PubkeyToAddress(testKey.PublicKey)
 )
 
+func TestIsSystemTransaction(t *testing.T) {
+	chainID := big.NewInt(56)
+	engine := &Parlia{signer: types.NewPragueSigner(chainID)}
+	header := &types.Header{Coinbase: testAddr}
+	system := common.HexToAddress(systemcontracts.ValidatorContract)
+	other := common.HexToAddress("0x1234")
+	otherKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := types.SignSetCode(testKey, types.SetCodeAuthorization{ChainID: *uint256.MustFromBig(chainID), Address: other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dynamic := func(to *common.Address, tip int64) types.TxData {
+		return &types.DynamicFeeTx{
+			ChainID: chainID, To: to, Gas: 100000,
+			GasFeeCap: big.NewInt(10), GasTipCap: big.NewInt(tip),
+		}
+	}
+	setCode := &types.SetCodeTx{
+		ChainID: uint256.MustFromBig(chainID), To: system, Gas: 100000,
+		GasFeeCap: uint256.NewInt(10), AuthList: []types.SetCodeAuthorization{auth},
+	}
+	for _, tc := range []struct {
+		name    string
+		data    types.TxData
+		key     *ecdsa.PrivateKey
+		want    bool
+		wantErr bool
+	}{
+		{"legacy zero price", &types.LegacyTx{To: &system, Gas: 100000}, testKey, true, false},
+		{"legacy paid", &types.LegacyTx{To: &system, Gas: 100000, GasPrice: big.NewInt(1)}, testKey, false, false},
+		{"zero tip positive fee cap", dynamic(&system, 0), testKey, true, false},
+		{"positive tip", dynamic(&system, 1), testKey, false, false},
+		{"other sender", dynamic(&system, 0), otherKey, false, false},
+		{"other recipient", dynamic(&other, 0), testKey, false, false},
+		{"contract creation", dynamic(nil, 0), testKey, false, false},
+		{"invalid signature", dynamic(&system, 0), nil, false, true},
+		{"7702 coinbase sender", setCode, testKey, true, false},
+		{"7702 coinbase authority only", setCode, otherKey, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tx := types.NewTx(tc.data)
+			if tc.key != nil {
+				var err error
+				tx, err = types.SignTx(tx, engine.signer, tc.key)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := engine.IsSystemTransaction(tx, header)
+			if got != tc.want || (err != nil) != tc.wantErr {
+				t.Fatalf("IsSystemTransaction = (%v, %v), want (%v, error=%v)", got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestVerifyHeaderRejectsAmsterdamFieldsBeforeFork(t *testing.T) {
 	config := &params.ChainConfig{ChainID: big.NewInt(56), Parlia: &params.ParliaConfig{}}
 	parent := &types.Header{Number: big.NewInt(0), GasLimit: 30_000_000, Time: 1}
