@@ -1235,7 +1235,7 @@ func (p *BlobPool) SetGasTip(tip *big.Int) {
 func (p *BlobPool) ValidateTxBasics(tx *types.Transaction) error {
 	// Before the Osaka fork, reject the blob txs with cell proofs
 	if p.chain.Config().IsInBSC() {
-		if tx.BlobTxSidecar().Version != types.BlobSidecarVersion0 {
+		if sidecar := tx.BlobTxSidecar(); sidecar != nil && sidecar.Version != types.BlobSidecarVersion0 {
 			return errors.New("cell proof is not supported yet")
 		}
 	}
