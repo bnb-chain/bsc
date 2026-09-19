@@ -80,7 +80,13 @@ var CONTENT = {
       name: "BOSA Omni AI",
       category: "Intelligence artificielle",
       status: "building",
-      desc: "Un lieu de travail, pas un modèle de plus : étudiants, entrepreneurs, marketeurs, créateurs, développeurs. Chacun apporte ses propres clés, tout s'exécute sur sa machine. En construction."
+      // Le site est en ligne sur son domaine officiel depuis le 2026-09-20 ; la
+      // plateforme, elle, est encore en construction — d'où « building » malgré l'URL.
+      url: "https://bosa-omni.com",
+      // La description precedente disait l'inverse du produit : « chacun apporte ses
+      // propres cles, tout s'execute sur sa machine ». Le site BOSA Omni AI annonce
+      // des modeles qui tournent sur SES serveurs (SPEC.md § 0). On aligne.
+      desc: "Omni Studio : une seule demande, un résultat terminé. Conversation, code, création d'images et de vidéos, agents. Site en ligne ; la plateforme est en construction."
     },
     {
       name: "Neobanq",

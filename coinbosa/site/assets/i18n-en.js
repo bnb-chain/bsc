@@ -216,7 +216,7 @@ window.__I18N.en = {
  "app.lien.explorateur": "Explorer",
  "app.pied.edite-par": "Published by",
  "app.produit.bosa-omni-ai.cat": "Artificial intelligence",
- "app.produit.bosa-omni-ai.desc": "A workspace, not one more model: students, entrepreneurs, marketers, creators, developers. Everyone brings their own keys, everything runs on their own machine. In development.",
+ "app.produit.bosa-omni-ai.desc": "Omni Studio: one prompt, one finished result. Chat, code, image and video generation, agents. The site is live; the platform is still being built.",
  "app.produit.coinbosa-academy.cat": "Education",
  "app.produit.coinbosa-academy.desc": "A trading school and financial markets education. Available today.",
  "app.produit.coinbosa-card.cat": "Payments",

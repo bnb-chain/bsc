@@ -216,7 +216,7 @@ window.__I18N.ar = {
  "app.lien.explorateur": "المستكشف",
  "app.pied.edite-par": "يصدر عن",
  "app.produit.bosa-omni-ai.cat": "ذكاء اصطناعي",
- "app.produit.bosa-omni-ai.desc": "ورشة عمل، لا نموذج إضافي: الطلاب، ورواد الأعمال، والمسوّقون، والصنّاع، والمطوّرون. وكلٌّ يأتي بمفاتيحه الخاصة، والتنفيذ يجري على جهازه. قيد البناء.",
+ "app.produit.bosa-omni-ai.desc": "Omni Studio: طلب واحد ونتيجة مكتملة. محادثة، وبرمجة، وتوليد الصور والفيديو، ووكلاء. الموقع متاح، والمنصّة قيد الإنشاء.",
  "app.produit.coinbosa-academy.cat": "تعليم",
  "app.produit.coinbosa-academy.desc": "مدرسة للتدريب على التداول والتثقيف بالأسواق المالية. متاحة اليوم.",
  "app.produit.coinbosa-card.cat": "مدفوعات",

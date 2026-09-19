@@ -216,7 +216,7 @@ window.__I18N.zh = {
  "app.lien.explorateur": "区块浏览器",
  "app.pied.edite-par": "发行方为",
  "app.produit.bosa-omni-ai.cat": "人工智能",
- "app.produit.bosa-omni-ai.desc": "一个工作场所，而不是又一个模型：学生、创业者、营销人员、创作者、开发者。每个人自带密钥，一切都运行在自己的机器上。建设中。",
+ "app.produit.bosa-omni-ai.desc": "Omni Studio：一次提问，一个完成的结果。对话、代码、图像与视频生成、智能体。网站已上线，平台仍在建设中。",
  "app.produit.coinbosa-academy.cat": "教育",
  "app.produit.coinbosa-academy.desc": "面向交易与金融市场的培训学校。今天就能使用。",
  "app.produit.coinbosa-card.cat": "支付",

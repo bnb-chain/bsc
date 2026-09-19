@@ -216,7 +216,7 @@ window.__I18N.pt = {
  "app.lien.explorateur": "Explorador",
  "app.pied.edite-par": "Editado por",
  "app.produit.bosa-omni-ai.cat": "Inteligência artificial",
- "app.produit.bosa-omni-ai.desc": "Um espaço de trabalho, não mais um modelo: estudantes, empreendedores, profissionais de marketing, criadores, desenvolvedores. Cada um traz suas próprias chaves, tudo é executado na máquina dele. Em construção.",
+ "app.produit.bosa-omni-ai.desc": "Omni Studio: um pedido, um resultado terminado. Conversação, código, geração de imagens e vídeos, agentes. O site já está no ar; a plataforma está em construção.",
  "app.produit.coinbosa-academy.cat": "Educação",
  "app.produit.coinbosa-academy.desc": "Escola de trading e de educação sobre os mercados financeiros. Disponível hoje.",
  "app.produit.coinbosa-card.cat": "Pagamentos",
