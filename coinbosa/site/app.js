@@ -416,11 +416,11 @@ var CONTENT = {
     if (eco) {
       CONTENT.products.forEach(function (p) {
         if (p.status === 'external') return;
-        var li = el('li');
+        // Des liens simples, comme les autres colonnes du pied : un <li> hors de
+        // toute liste est invalide (audit d'accessibilite « listitem »).
         var a = el('a', null, esc(p.name));
         a.href = '/ecosysteme.html';
-        li.appendChild(a);
-        eco.appendChild(li);
+        eco.appendChild(a);
       });
     }
     // Copyright & entité éditrice : depuis CONTENT.entity.

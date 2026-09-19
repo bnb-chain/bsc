@@ -61,7 +61,7 @@ fi
 # ---------------------------------------------------------------------------
 COMMUN=(-avz --delete --rsync-path="$RSYNC_PATH"
         --exclude '.well-known/' --exclude 'og-image.jpg'
-        --exclude 'favicon-32.png' --exclude 'apple-touch-icon.png'
+        --exclude 'favicon-32.png' --exclude 'apple-touch-icon.png' --exclude 'favicon.ico'
         # Les outils de construction n'ont rien a faire en ligne : ils
         # revelent la structure du chantier sans rien apporter au visiteur.
         # i18n-fr.json est la reference de coque.py, pas une ressource du
@@ -89,10 +89,15 @@ rsync "${COMMUN[@]}" "$BASE/explorer/"   "$SERVER:/var/www/coinbosa/explorer/"
 rsync "${COMMUN[@]}" "$BASE/whitepaper/" "$SERVER:/var/www/coinbosa/whitepaper/"
 
 # Favicons — générés depuis le LOGO OFFICIEL (assets/coinbosa-logo.jpg), jamais un dessin.
-# Régénération si besoin :
+# Régénération si besoin (favicon.ico : 16, 32 et 48 px, par Pillow) :
+#   python3 -c "from PIL import Image; i=Image.open('assets/coinbosa-logo.jpg').convert('RGBA'); c=min(i.size); w,h=i.size; i.crop(((w-c)//2,(h-c)//2,(w-c)//2+c,(h-c)//2+c)).save('deploy/static/favicon.ico', sizes=[(16,16),(32,32),(48,48)])"
 #   sips -s format png -z 32 32   assets/coinbosa-logo.jpg --out deploy/static/favicon-32.png
 #   sips -s format png -z 180 180 assets/coinbosa-logo.jpg --out deploy/static/apple-touch-icon.png
 for d in site explorer whitepaper; do
+  # favicon.ico : les navigateurs et les robots le demandent a la racine sans
+  # qu'aucune page ne le declare. Absent, il rendait 404 (25 fois en six
+  # semaines dans les journaux, dont Googlebot). Genere depuis le logo officiel.
+  rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/favicon.ico"          "$SERVER:/var/www/coinbosa/$d/favicon.ico"
   rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/favicon-32.png"       "$SERVER:/var/www/coinbosa/$d/favicon-32.png"
   rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/apple-touch-icon.png" "$SERVER:/var/www/coinbosa/$d/apple-touch-icon.png"
 done
