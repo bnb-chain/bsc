@@ -70,6 +70,19 @@ cat > /etc/caddy/Caddyfile <<EOF
     }
 }
 
+# --- HTTP vers HTTPS en 301 ---
+# La redirection automatique de Caddy repond en 308. Google la traite comme une
+# 301, mais des outils d'audit et des robots plus anciens ne suivent pas le 308 :
+# ils s'arretent sur une reponse vide et annoncent « titre absent, description
+# absente ». Le 301 est compris partout. Les defis ACME HTTP-01 restent servis :
+# Caddy les traite avant les routes du site, et TLS-ALPN-01 passe par le 443.
+http://$SITE_DOMAIN, http://www.$SITE_DOMAIN {
+    redir https://$SITE_DOMAIN{uri} permanent
+}
+http://$EXPLORER_DOMAIN {
+    redir https://$EXPLORER_DOMAIN{uri} permanent
+}
+
 # --- www redirige vers l'apex ---
 # www et l'apex servaient tous deux le site en 200. Deux URL canoniques pour un
 # même contenu divisent le référencement et doublent ce qu'il faut invalider en
@@ -100,6 +113,35 @@ $SITE_DOMAIN {
     @page       path / *.html
     @volatil    path /version.json /sitemap.xml /robots.txt
 
+    # --- Une seule adresse par page, et les anciennes adresses ne meurent pas ---
+    # Chaque 404 ci-dessous a ete relevee dans les journaux (six semaines), dont
+    # /security arrive depuis un resultat Google. Un lien externe vers une page
+    # disparue perd sa valeur ; une 301 la transmet. On ne redirige QUE vers un
+    # contenu equivalent : /login ou /blog n'ont pas d'equivalent et restent en
+    # 404 — les envoyer a l'accueil serait une « fausse 404 » que Google penalise.
+    @index path_regexp index ^(.*/)index\.html$
+    redir @index {re.index.1} permanent
+    redir /whitepaper    /whitepaper/    permanent
+    redir /whitepaper/en /whitepaper/en/ permanent
+    @livreblanc path /white-paper /white-paper/ /livre-blanc /livre-blanc/
+    redir @livreblanc /whitepaper/ permanent
+    @securite path /security /security/ /security.txt /bug-bounty /bug-bounty/
+    redir @securite /.well-known/security.txt permanent
+    @apropos path /about /about/
+    redir @apropos /a-propos.html permanent
+    @contact path /contact /contact/
+    redir @contact /#rejoindre permanent
+    @fr path /fr /fr/
+    redir @fr / permanent
+    @sansext path_regexp sansext ^(/(?:en|es|pt|zh|ar))?/(ecosysteme|chaine|developpeurs|a-propos)/?$
+    redir @sansext {re.sansext.1}/{re.sansext.2}.html permanent
+
+    # Les dictionnaires de langue sont charges par i18n.js SANS empreinte : ils
+    # repartaient du serveur a chaque visite. Une heure de cache, puis une
+    # revalidation (ETag) : apres une publication, la nouvelle traduction arrive
+    # au plus tard une heure apres.
+    @dico path_regexp dico ^/assets/i18n-[a-z]{2}\.js$
+
     # Sonde de vivacité : savoir de l'extérieur que le serveur web répond, sans
     # dépendre du rendu d'une page ni d'un accès à la machine.
     handle /health {
@@ -121,6 +163,7 @@ $SITE_DOMAIN {
         header @image      Cache-Control "public, max-age=2592000"
         header @page       Cache-Control "public, max-age=0, must-revalidate"
         header @volatil    Cache-Control "no-cache"
+        header @dico       Cache-Control "public, max-age=3600"
         file_server
     }
 
