@@ -26,6 +26,9 @@ const (
 	upperLimitOfVoteBlockNumber = 11 // refer to fetcher.maxUncleDist
 
 	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
+	// maxPendingHeads bounds the head backlog while the main loop is stuck; a head this far
+	// behind the newest one is dead history for prune and transfer anyway.
+	maxPendingHeads = lowerLimitOfVoteBlockNumber
 
 	defaultMajorityThreshold = 14 // this is an inaccurate value, mainly used for metric acquisition, ref parlia.verifyVoteAttestation
 )
@@ -127,6 +130,11 @@ func (pool *VotePool) headLoop() {
 				continue
 			}
 			pool.headMu.Lock()
+			if len(pool.pendingHeads) >= maxPendingHeads {
+				log.Debug("Vote pool head backlog full, dropping oldest", "number", pool.pendingHeads[0].Number)
+				pool.pendingHeads[0] = nil
+				pool.pendingHeads = pool.pendingHeads[1:]
+			}
 			pool.pendingHeads = append(pool.pendingHeads, ev.Header)
 			pool.headMu.Unlock()
 			select {

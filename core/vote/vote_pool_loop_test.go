@@ -119,6 +119,28 @@ func TestVotePoolHeadEventsNeverBlockImport(t *testing.T) {
 	}
 }
 
+// With the main loop stuck, the head backlog must stay bounded and keep the newest heads.
+func TestVotePoolPendingHeadsBounded(t *testing.T) {
+	chain, pool := newTestChain(t, true)
+	const n = maxPendingHeads + 44
+
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	insertBlocksWithin(t, chain, n, testDeadline)
+
+	waitFor(t, "head backlog to fill", func() bool {
+		pool.headMu.Lock()
+		defer pool.headMu.Unlock()
+		heads := pool.pendingHeads
+		return len(heads) == maxPendingHeads && heads[len(heads)-1].Number.Uint64() == n
+	})
+	pool.headMu.Lock()
+	defer pool.headMu.Unlock()
+	if first := pool.pendingHeads[0].Number.Uint64(); first != n-maxPendingHeads+1 {
+		t.Fatalf("oldest queued head = %d, want %d", first, n-maxPendingHeads+1)
+	}
+}
+
 // A subscriber that never reads must not hold the pool lock while transferred
 // votes are announced: readers such as block import's FetchVotesByBlockHash
 // have to get through, and the vote must already be in cur.
