@@ -255,7 +255,7 @@ func (sim *simulator) execute(ctx context.Context, blocks []simBlock) ([]*simBlo
 	var (
 		results = make([]*simBlockResult, len(blocks))
 		parent  = sim.base
-		// Assume same total difficulty for all simulated blocks.
+		// Assume the same total difficulty for non-BSC chains.
 		td = sim.b.GetTd(ctx, sim.base.Hash())
 	)
 	for bi, block := range blocks {
@@ -264,6 +264,9 @@ func (sim *simulator) execute(ctx context.Context, blocks []simBlock) ([]*simBlo
 			return nil, err
 		}
 		headers[bi] = result.Header()
+		if sim.isBSC() && td != nil {
+			td = new(big.Int).Add(td, headers[bi].Difficulty)
+		}
 		results[bi] = &simBlockResult{
 			fullTx:      sim.fullTx,
 			chainConfig: sim.chainConfig,
@@ -308,6 +311,10 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	blockContext := core.NewEVMBlockContext(header, sim.newSimulatedChainContext(ctx, headers), nil)
 	if block.BlockOverrides.BlobBaseFee != nil {
 		blockContext.BlobBaseFee = block.BlockOverrides.BlobBaseFee.ToInt()
+	}
+	// Honor explicit prevRandao on BSC despite its non-zero difficulty, as eth_call does.
+	if sim.isBSC() && block.BlockOverrides.PrevRandao != nil {
+		blockContext.Random = block.BlockOverrides.PrevRandao
 	}
 	precompiles := sim.activePrecompiles(header)
 
@@ -623,8 +630,9 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 		}
 		// Set difficulty to zero if the given block is post-merge. Without this, all post-merge hardforks would remain inactive.
 		// For example, calling eth_simulateV1(..., blockParameter: 0x0) on hoodi network will cause all blocks to have a difficulty of 1 and be treated as pre-merge.
+		// BSC keeps non-zero difficulty and activates these forks independently of Merge.
 		difficulty := header.Difficulty
-		if sim.chainConfig.IsPostMerge(number.Uint64(), timestamp) {
+		if !sim.isBSC() && sim.chainConfig.IsPostMerge(number.Uint64(), timestamp) {
 			difficulty = big.NewInt(0)
 		}
 		header = overrides.MakeHeader(&types.Header{
