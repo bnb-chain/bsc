@@ -77,8 +77,13 @@ type VotePool struct {
 	highestVerifiedBlockCh  chan core.HighestVerifiedBlockEvent
 	highestVerifiedBlockSub event.Subscription
 
+	headMu       sync.Mutex
+	pendingHeads []*types.Header
+	headKick     chan struct{}
+
 	votesCh chan *types.VoteEnvelope
 	quit    chan struct{}
+	wg      sync.WaitGroup
 
 	engine consensus.PoSA
 }
@@ -94,35 +99,88 @@ func NewVotePool(chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 		curVotesPq:             &votesPriorityQueue{},
 		futureVotesPq:          &votesPriorityQueue{},
 		highestVerifiedBlockCh: make(chan core.HighestVerifiedBlockEvent, highestVerifiedBlockChanSize),
+		headKick:               make(chan struct{}, 1),
 		votesCh:                make(chan *types.VoteEnvelope, voteBufferForPut),
 		quit:                   make(chan struct{}),
 		engine:                 engine,
 	}
 
-	// Subscribe events from blockchain and start the main event loop.
+	// Subscribe events from blockchain and start the event loops.
 	votePool.highestVerifiedBlockSub = votePool.chain.SubscribeHighestVerifiedHeaderEvent(votePool.highestVerifiedBlockCh)
 
+	votePool.wg.Add(2)
+	go votePool.headLoop()
 	go votePool.loop()
 	return votePool
 }
 
+// headLoop only queues head events; the chain sends them synchronously from
+// writeBlockAndSetHead, so nothing slow may run between receiving and returning.
+func (pool *VotePool) headLoop() {
+	defer pool.wg.Done()
+	defer pool.highestVerifiedBlockSub.Unsubscribe()
+
+	for {
+		select {
+		case ev := <-pool.highestVerifiedBlockCh:
+			if ev.Header == nil {
+				continue
+			}
+			pool.headMu.Lock()
+			pool.pendingHeads = append(pool.pendingHeads, ev.Header)
+			pool.headMu.Unlock()
+			select {
+			case pool.headKick <- struct{}{}:
+			default:
+			}
+		case <-pool.highestVerifiedBlockSub.Err():
+			return
+		case <-pool.quit:
+			return
+		}
+	}
+}
+
+// nextPendingHead pops the oldest queued head and reports whether more are waiting.
+func (pool *VotePool) nextPendingHead() (*types.Header, bool) {
+	pool.headMu.Lock()
+	defer pool.headMu.Unlock()
+	if len(pool.pendingHeads) == 0 {
+		return nil, false
+	}
+	header := pool.pendingHeads[0]
+	pool.pendingHeads[0] = nil
+	pool.pendingHeads = pool.pendingHeads[1:]
+	if len(pool.pendingHeads) == 0 {
+		pool.pendingHeads = nil
+	}
+	return header, len(pool.pendingHeads) > 0
+}
+
 // loop is the vote pool's main even loop, waiting for and reacting to outside blockchain events and votes channel event.
 func (pool *VotePool) loop() {
-	defer pool.highestVerifiedBlockSub.Unsubscribe()
+	defer pool.wg.Done()
 
 	for {
 		select {
 		case <-pool.quit:
 			return
-		// Handle ChainHeadEvent.
-		case ev := <-pool.highestVerifiedBlockCh:
-			if ev.Header != nil {
-				latestBlockNumber := ev.Header.Number.Uint64()
-				pool.prune(latestBlockNumber)
-				pool.transferVotesFromFutureToCur(ev.Header)
-			}
 		case <-pool.highestVerifiedBlockSub.Err():
 			return
+		// Handle one ChainHeadEvent per wakeup, in arrival order, so quit and votes interleave as before.
+		case <-pool.headKick:
+			header, more := pool.nextPendingHead()
+			if header == nil {
+				continue
+			}
+			pool.prune(header.Number.Uint64())
+			pool.transferVotesFromFutureToCur(header)
+			if more {
+				select {
+				case pool.headKick <- struct{}{}:
+				default:
+				}
+			}
 
 		// Handle votes channel and put the vote into vote pool.
 		case vote := <-pool.votesCh:
@@ -135,7 +193,7 @@ func (pool *VotePool) PutVote(vote *types.VoteEnvelope) {
 	select {
 	case pool.votesCh <- vote:
 	default:
-		log.Warn("VotePool channel full, vote dropped", "hash", vote.Hash())
+		log.Debug("VotePool channel full, vote dropped", "hash", vote.Hash())
 	}
 }
 
@@ -241,16 +299,26 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 }
 
 func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Header) {
+	// Notify outside the pool lock: Feed.Send waits for every subscriber, and
+	// block import takes the read lock via FetchVotesByBlockHash.
+	for _, vote := range pool.transferLocked(latestBlockHeader) {
+		pool.votesFeed.Send(core.NewVoteEvent{Vote: vote})
+	}
+}
+
+// transferLocked moves matured future votes to cur and returns the ones that passed verification.
+func (pool *VotePool) transferLocked(latestBlockHeader *types.Header) []*types.VoteEnvelope {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
+	var transferred []*types.VoteEnvelope
 	futurePq := pool.futureVotesPq
 	latestBlockNumber := latestBlockHeader.Number.Uint64()
 
 	// For vote in the range [,latestBlockNumber-11), transfer to cur if valid.
 	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber+upperLimitOfVoteBlockNumber < latestBlockNumber {
 		blockHash := futurePq.Peek().TargetHash
-		pool.transfer(blockHash)
+		transferred = append(transferred, pool.transfer(blockHash)...)
 	}
 
 	// For vote in the range [latestBlockNumber-11,latestBlockNumber], only transfer the vote inside the local fork.
@@ -263,15 +331,16 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 			futurePqBuffer = append(futurePqBuffer, heap.Pop(futurePq).(*types.VoteData))
 			continue
 		}
-		pool.transfer(blockHash)
+		transferred = append(transferred, pool.transfer(blockHash)...)
 	}
 
 	for _, voteData := range futurePqBuffer {
 		heap.Push(futurePq, voteData)
 	}
+	return transferred
 }
 
-func (pool *VotePool) transfer(blockHash common.Hash) {
+func (pool *VotePool) transfer(blockHash common.Hash) []*types.VoteEnvelope {
 	curPq, futurePq := pool.curVotesPq, pool.futureVotesPq
 	curVotes, futureVotes := pool.curVotes, pool.futureVotes
 	voteData := heap.Pop(futurePq)
@@ -280,7 +349,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 
 	voteBox, ok := futureVotes[blockHash]
 	if !ok {
-		return
+		return nil
 	}
 
 	validVotes := make([]*types.VoteEnvelope, 0, len(voteBox.voteMessages))
@@ -290,10 +359,6 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 			pool.receivedVotes.Remove(vote.Hash())
 			continue
 		}
-
-		// In the process of transfer, send valid vote to votes channel for handler usage
-		voteEv := core.NewVoteEvent{Vote: vote}
-		pool.votesFeed.Send(voteEv)
 		validVotes = append(validVotes, vote)
 	}
 
@@ -317,6 +382,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 
 	// Use goroutine to avoid deadlock (see putVote for details).
 	go pool.engine.CheckFinalityAndNotify(pool.chain, blockHash, pool.chain.NotifyFinalized)
+	return validVotes
 }
 
 // Prune old data of duplicationSet, curVotePq and curVotesMap.
