@@ -107,15 +107,9 @@ var bsc2 = map[uint64]msgHandler{
 	BlocksByRangeMsg:    handleBlocksByRange,
 }
 
-// handleBscCap ignores the capability message for backward compatibility.
-// Old nodes send BscCapMsg as part of their handshake, we just ignore it
-// since P2P layer already negotiated the protocol version.
+// handleBscCap ignores the legacy capability message. We no longer send it, but
+// peers on the previous release still do; the body is dropped by msg.Discard().
 func handleBscCap(backend Backend, msg Decoder, peer *Peer) error {
-	// Decode the message to consume it, but ignore the content
-	var cap BscCapPacket
-	if err := msg.Decode(&cap); err != nil {
-		return nil // ignore decode errors for backward compatibility
-	}
 	return nil
 }
 
