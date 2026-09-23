@@ -34,7 +34,7 @@ const (
 	cas20OffTransferReceiver = 8
 	cas20OffTransferExecutor = 16
 	cas20OffMintReceiver     = 0
-	cas20OffSeizeHolder      = 0
+	cas20OffSeizeExempt      = 0
 	cas20OffSeizeReceiver    = 8
 )
 
@@ -268,9 +268,9 @@ func (s cas20Storage) transferPolicies() (sender, receiver, executor uint64) {
 		packedLane(w, cas20OffTransferExecutor)
 }
 
-func (s cas20Storage) seizePolicies() (holder, receiver uint64) {
+func (s cas20Storage) seizePolicies() (exempt, receiver uint64) {
 	w := s.getU256At(slotAt(cas20SlotSeizePolicies))
-	return packedLane(w, cas20OffSeizeHolder), packedLane(w, cas20OffSeizeReceiver)
+	return packedLane(w, cas20OffSeizeExempt), packedLane(w, cas20OffSeizeReceiver)
 }
 
 func packedLane(word *uint256.Int, byteOff uint) uint64 {
@@ -301,8 +301,8 @@ func (s cas20Storage) setTransferExecutorPolicy(id uint64) {
 func (s cas20Storage) setMintReceiverPolicy(id uint64) {
 	s.setPackedU64(cas20SlotMintPolicy, cas20OffMintReceiver, id)
 }
-func (s cas20Storage) setSeizeHolderPolicy(id uint64) {
-	s.setPackedU64(cas20SlotSeizePolicies, cas20OffSeizeHolder, id)
+func (s cas20Storage) setSeizeExemptPolicy(id uint64) {
+	s.setPackedU64(cas20SlotSeizePolicies, cas20OffSeizeExempt, id)
 }
 func (s cas20Storage) setSeizeReceiverPolicy(id uint64) {
 	s.setPackedU64(cas20SlotSeizePolicies, cas20OffSeizeReceiver, id)

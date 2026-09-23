@@ -235,6 +235,26 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 	token := common.BytesToAddress(ret)
 	view := newUnmeteredCAS20Storage(statedb, token)
 
+	// Exercise the renamed ABI with literal calldata, not just the Go identifiers.
+	ret, err = call(creator, token, common.FromHex("0xfeb346ec"))
+	if err != nil || !bytes.Equal(ret, scopeSeizeExempt.Bytes()) {
+		t.Fatalf("SEIZE_EXEMPT_POLICY() = %x, err %v", ret, err)
+	}
+	if ret, err = call(creator, token, common.FromHex("0xb279d311")); !errors.Is(err, ErrExecutionReverted) || len(ret) != 0 {
+		t.Fatalf("legacy scope getter = %x, err %v, want empty revert", ret, err)
+	}
+	legacyScope := common.HexToHash("0x1497ab2b67ebb0a75dd9cdd6aec9f0e64620e6b87e911af7a088ac12e58d9ef2")
+	for _, input := range [][]byte{
+		cas20Call(selPolicyId, legacyScope),
+		cas20Call(selUpdatePolicy, legacyScope, wU64(cas20PolicyAlwaysBlock)),
+	} {
+		ret, err = call(creator, token, input)
+		want := append(append([]byte{}, errSelUnsupportedScope[:]...), legacyScope.Bytes()...)
+		if !errors.Is(err, ErrExecutionReverted) || !bytes.Equal(ret, want) {
+			t.Fatalf("legacy scope: ret %x err %v, want UnsupportedPolicyType", ret, err)
+		}
+	}
+
 	memo := common.HexToHash("0x5e12e")
 
 	if _, err := call(creator, token, cas20Call(selSeizeWithMemo, addrKey(cas20Bob), addrKey(cas20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
@@ -246,8 +266,8 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 	if _, err := call(creator, CAS20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{cas20Bob})); err != nil {
 		t.Fatalf("updateBlocklist: %v", err)
 	}
-	if _, err := call(creator, token, cas20Call(selUpdatePolicy, scopeSeizeHolder, u256hash(blk))); err != nil {
-		t.Fatalf("updatePolicy(seizeHolder): %v", err)
+	if _, err := call(creator, token, cas20Call(selUpdatePolicy, scopeSeizeExempt, u256hash(blk))); err != nil {
+		t.Fatalf("updatePolicy(seizeExempt): %v", err)
 	}
 
 	if _, err := call(cas20Alice, token, cas20Call(selSeizeWithMemo, addrKey(cas20Bob), addrKey(cas20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {

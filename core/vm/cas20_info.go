@@ -52,7 +52,7 @@ type CAS20PolicyBindings struct {
 	TransferReceiver hexutil.Uint64 `json:"transferReceiver"`
 	TransferExecutor hexutil.Uint64 `json:"transferExecutor"`
 	MintReceiver     hexutil.Uint64 `json:"mintReceiver"`
-	SeizeHolder      hexutil.Uint64 `json:"seizeHolder"`
+	SeizeExempt      hexutil.Uint64 `json:"seizeExempt"`
 	SeizeReceiver    hexutil.Uint64 `json:"seizeReceiver"`
 }
 
@@ -105,13 +105,13 @@ func CAS20TokenInfoAt(state StateDB, chainID *big.Int, addr common.Address, bloc
 		}
 	}
 	sender, receiver, executor := s.transferPolicies()
-	holder, seizeTo := s.seizePolicies()
+	exempt, seizeTo := s.seizePolicies()
 	info.Policies = CAS20PolicyBindings{
 		TransferSender:   hexutil.Uint64(sender),
 		TransferReceiver: hexutil.Uint64(receiver),
 		TransferExecutor: hexutil.Uint64(executor),
 		MintReceiver:     hexutil.Uint64(s.mintReceiverPolicy()),
-		SeizeHolder:      hexutil.Uint64(holder),
+		SeizeExempt:      hexutil.Uint64(exempt),
 		SeizeReceiver:    hexutil.Uint64(seizeTo),
 	}
 	id, _ := uint256.FromBig(chainID)
