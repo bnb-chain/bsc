@@ -235,7 +235,7 @@ func decodeJennerProbeResult(t *testing.T, res *simBlockResult, call int) (commo
 // TestJennerBlockOverrides_SimulateV1 covers the eth_simulateV1 path (fresh
 // simulated headers whose MixDigest follows the BSC millisecond semantics):
 //   - time-only override across several chained blocks: 0x70 tracks each
-//     block's own overridden time without drift, remainder .000;
+//     block's own time with remainder .000, 0x44 keeps difficulty, and TD increases;
 //   - time + prevRandao: assembled (0x70 == time*1000 + remainder);
 //   - prevRandao without time (a real combination: sanitizeChain fills the
 //     default timestamp): 0x70 == sanitizedTime*1000 + remainder;
@@ -265,16 +265,20 @@ func TestJennerBlockOverrides_SimulateV1(t *testing.T) {
 		{BlockOverrides: &override.BlockOverrides{Number: n4, PrevRandao: &remainder4}, Calls: []TransactionArgs{probeCall}},
 	})
 
-	// Blocks 1-2: time-only, chained. 0x70 tracks each block's own time with
-	// a .000 remainder; the simulated headers are post-merge (difficulty 0),
-	// so 0x44 reads the (zero) MixDigest.
+	// Time-only overrides preserve difficulty and use a zero millisecond remainder.
+	wantDifficulty := common.BigToHash(base.Difficulty)
+	baseTd := backend.GetTd(context.Background(), base.Hash())
 	for i, wantTime := range []uint64{uint64(t1), uint64(t2)} {
 		randao, milli := decodeJennerProbeResult(t, results[i], 0)
 		if milli != wantTime*1000 {
 			t.Fatalf("block %d: 0x70 = %d, want %d", i+1, milli, wantTime*1000)
 		}
-		if randao != (common.Hash{}) {
-			t.Fatalf("block %d: 0x44 = %x, want zero (no prevRandao override)", i+1, randao)
+		if randao != wantDifficulty {
+			t.Fatalf("block %d: 0x44 = %x, want difficulty %x", i+1, randao, wantDifficulty)
+		}
+		want := new(big.Int).Add(baseTd, new(big.Int).Mul(base.Difficulty, big.NewInt(int64(i+1))))
+		if got := results[i].td; got.Cmp(want) != 0 {
+			t.Fatalf("block %d: totalDifficulty = %s, want %s", i+1, got, want)
 		}
 	}
 	// Block 3: time + prevRandao — assembled into one millisecond timestamp.
@@ -315,11 +319,8 @@ func TestJennerBlockOverrides_SimulateV1(t *testing.T) {
 	}
 }
 
-// TestJennerBlockOverrides_NonBSCRegression pins down the behavior on a
-// non-Parlia (merged Ethereum) config: 0x70 stays an empty account there
-// (Jenner never activates outside BSC), the prevRandao override still
-// reaches PREVRANDAO, and — since this is the BSC client — the millisecond
-// bound on prevRandao (< 1000) applies uniformly on every config.
+// TestJennerBlockOverrides_NonBSCRegression keeps upstream override semantics
+// on non-Parlia configs before and after Merge.
 func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 	t.Parallel()
 	acc := newTestAccount()
@@ -346,7 +347,7 @@ func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 		t.Fatalf("non-BSC: 0x70 must stay an empty account, probe word = %d", milli)
 	}
 
-	// eth_call, time + prevRandao (a valid millisecond remainder): the
+	// eth_call, time + prevRandao: the
 	// override reaches PREVRANDAO, and 0x70 stays empty regardless.
 	remainder := common.BigToHash(big.NewInt(999))
 	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{Time: &overrideTime, PrevRandao: &remainder})
@@ -357,27 +358,45 @@ func TestJennerBlockOverrides_NonBSCRegression(t *testing.T) {
 		t.Fatalf("non-BSC: 0x70 must stay an empty account, probe word = %d", milli)
 	}
 
-	// The millisecond bound applies client-wide: an arbitrary random value
-	// is rejected on the merged config too (deliberate BSC-client deviation
-	// from upstream, see BlockOverrides.PrevRandao).
+	// Arbitrary random values remain valid on non-BSC chains.
 	bad := common.HexToHash("0xdeadbeef00000000000000000000000000000000000000000000000000001234")
-	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
-	if _, err := api.Call(context.Background(), TransactionArgs{To: &jennerProbeAddr}, &latest, nil, &override.BlockOverrides{PrevRandao: &bad}); err == nil {
-		t.Fatalf("prevRandao >= 1000 must be rejected on every config on this client")
+	randao, milli = callJennerProbe(t, api, &override.BlockOverrides{PrevRandao: &bad})
+	if randao != bad {
+		t.Fatalf("non-BSC arbitrary prevRandao: PREVRANDAO = %x, want %x", randao, bad)
+	}
+	if milli != 0 {
+		t.Fatalf("non-BSC arbitrary prevRandao: 0x70 must stay empty, probe word = %d", milli)
 	}
 
-	// eth_simulateV1 with time + a valid prevRandao remainder.
+	// eth_simulateV1 keeps arbitrary prevRandao values on non-BSC chains.
 	n1 := (*hexutil.Big)(new(big.Int).Add(head.Number, big.NewInt(1)))
 	t1 := hexutil.Uint64(head.Time + 100)
 	results := runJennerSimulation(t, backend, []simBlock{
-		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1, PrevRandao: &remainder},
+		{BlockOverrides: &override.BlockOverrides{Number: n1, Time: &t1, PrevRandao: &bad},
 			Calls: []TransactionArgs{{To: &jennerProbeAddr, Gas: newUint64(500_000)}}},
 	})
 	randao, milli = decodeJennerProbeResult(t, results[0], 0)
-	if randao != remainder {
-		t.Fatalf("non-BSC simulateV1: PREVRANDAO = %x, want %x", randao, remainder)
+	if randao != bad {
+		t.Fatalf("non-BSC simulateV1: PREVRANDAO = %x, want %x", randao, bad)
 	}
 	if milli != 0 {
 		t.Fatalf("non-BSC simulateV1: 0x70 must stay an empty account, probe word = %d", milli)
+	}
+
+	// Pre-Merge simulation still reads difficulty and leaves TD unchanged.
+	backend = newTestBackend(t, 2, &core.Genesis{
+		Config: params.TestChainConfig,
+		Alloc:  types.GenesisAlloc{jennerProbeAddr: {Code: jennerProbeCode}},
+	}, ethash.NewFaker(), nil)
+	results = runJennerSimulation(t, backend, []simBlock{
+		{BlockOverrides: &override.BlockOverrides{PrevRandao: &bad},
+			Calls: []TransactionArgs{{To: &jennerProbeAddr, Gas: newUint64(500_000)}}},
+	})
+	randao, _ = decodeJennerProbeResult(t, results[0], 0)
+	if want := common.BigToHash(backend.CurrentHeader().Difficulty); randao != want {
+		t.Fatalf("pre-Merge simulateV1: 0x44 = %x, want difficulty %x", randao, want)
+	}
+	if want := backend.GetTd(context.Background(), backend.CurrentHeader().Hash()); results[0].td.Cmp(want) != 0 {
+		t.Fatalf("pre-Merge simulateV1: totalDifficulty = %s, want %s", results[0].td, want)
 	}
 }

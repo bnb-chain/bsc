@@ -343,15 +343,18 @@ func (payload *Payload) updateSpanForDelivery(bSpan trace.Span) {
 // by the parameters instead of using the locally available transactions.
 func (miner *Miner) BuildTestingPayload(args *BuildPayloadArgs, transactions []*types.Transaction, empty bool, extraData []byte) (*engine.ExecutionPayloadEnvelope, error) {
 	fullParams := &generateParams{
-		timestamp:   args.Timestamp,
-		forceTime:   true,
-		parentHash:  args.Parent,
-		coinbase:    args.FeeRecipient,
-		random:      args.Random,
-		withdrawals: args.Withdrawals,
-		beaconRoot:  args.BeaconRoot,
-		slotNum:     args.SlotNum,
-		noTxs:       empty,
+		timestamp:         args.Timestamp,
+		forceTime:         true,
+		parentHash:        args.Parent,
+		coinbase:          args.FeeRecipient,
+		random:            args.Random,
+		withdrawals:       args.Withdrawals,
+		beaconRoot:        args.BeaconRoot,
+		slotNum:           args.SlotNum,
+		noTxs:             empty,
+		forceOverrides:    true,
+		overrideExtraData: extraData,
+		overrideTxs:       transactions,
 	}
 	res := miner.worker.generateWork(fullParams, false)
 	if res.err != nil {

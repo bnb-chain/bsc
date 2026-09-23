@@ -17,7 +17,9 @@
 package miner
 
 import (
+	"bytes"
 	"context"
+	"math/big"
 	"reflect"
 	"testing"
 	"time"
@@ -80,6 +82,44 @@ func TestBuildPayload(t *testing.T) {
 	dataTwo := payload.Resolve()
 	if !reflect.DeepEqual(dataOne, dataTwo) {
 		t.Fatal("Unexpected payload data")
+	}
+}
+
+func TestBuildTestingPayloadUsesOverrides(t *testing.T) {
+	db := rawdb.NewMemoryDatabase()
+	w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, 0)
+	defer w.close()
+
+	to := testUserAddress
+	tx := types.MustSignNewTx(testBankKey, types.LatestSigner(params.TestChainConfig), &types.LegacyTx{
+		Nonce:    0,
+		To:       &to,
+		Value:    big.NewInt(2000),
+		Gas:      params.TxGas,
+		GasPrice: big.NewInt(params.InitialBaseFee * 2),
+	})
+	args := &BuildPayloadArgs{
+		Parent:       b.chain.CurrentBlock().Hash(),
+		Timestamp:    b.chain.CurrentBlock().Time + 1,
+		FeeRecipient: testBankAddress,
+	}
+	extraData := []byte{0x12, 0x34}
+	payload, err := (&Miner{worker: w}).BuildTestingPayload(args, []*types.Transaction{tx}, false, extraData)
+	if err != nil {
+		t.Fatalf("failed to build testing payload: %v", err)
+	}
+	if len(payload.ExecutionPayload.Transactions) != 1 {
+		t.Fatalf("expected one transaction, got %d", len(payload.ExecutionPayload.Transactions))
+	}
+	decoded, err := engine.DecodeTransactions(payload.ExecutionPayload.Transactions)
+	if err != nil {
+		t.Fatalf("failed to decode payload transaction: %v", err)
+	}
+	if decoded[0].Hash() != tx.Hash() {
+		t.Fatalf("unexpected transaction: got %s want %s", decoded[0].Hash(), tx.Hash())
+	}
+	if !bytes.Equal(payload.ExecutionPayload.ExtraData, extraData) {
+		t.Fatalf("unexpected extraData: got %x want %x", payload.ExecutionPayload.ExtraData, extraData)
 	}
 }
 

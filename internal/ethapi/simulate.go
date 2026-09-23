@@ -255,7 +255,7 @@ func (sim *simulator) execute(ctx context.Context, blocks []simBlock) ([]*simBlo
 	var (
 		results = make([]*simBlockResult, len(blocks))
 		parent  = sim.base
-		// Assume same total difficulty for all simulated blocks.
+		// Assume the same total difficulty for non-BSC chains.
 		td = sim.b.GetTd(ctx, sim.base.Hash())
 	)
 	for bi, block := range blocks {
@@ -264,6 +264,9 @@ func (sim *simulator) execute(ctx context.Context, blocks []simBlock) ([]*simBlo
 			return nil, err
 		}
 		headers[bi] = result.Header()
+		if sim.isBSC() && td != nil {
+			td = new(big.Int).Add(td, headers[bi].Difficulty)
+		}
 		results[bi] = &simBlockResult{
 			fullTx:      sim.fullTx,
 			chainConfig: sim.chainConfig,
@@ -308,6 +311,10 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	blockContext := core.NewEVMBlockContext(header, sim.newSimulatedChainContext(ctx, headers), nil)
 	if block.BlockOverrides.BlobBaseFee != nil {
 		blockContext.BlobBaseFee = block.BlockOverrides.BlobBaseFee.ToInt()
+	}
+	// Honor explicit prevRandao on BSC despite its non-zero difficulty, as eth_call does.
+	if sim.isBSC() && block.BlockOverrides.PrevRandao != nil {
+		blockContext.Random = block.BlockOverrides.PrevRandao
 	}
 	precompiles := sim.activePrecompiles(header)
 
@@ -498,6 +505,10 @@ func (sim *simulator) activePrecompiles(base *types.Header) vm.PrecompiledContra
 	return vm.ActivePrecompiledContracts(rules)
 }
 
+func (sim *simulator) isBSC() bool {
+	return sim.chainConfig != nil && sim.chainConfig.IsInBSC()
+}
+
 // sanitizeChain checks the chain integrity. Specifically it checks that
 // block numbers and timestamp are strictly increasing, setting default values
 // when necessary. Gaps in block numbers are filled with empty blocks.
@@ -517,11 +528,11 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			n := new(big.Int).Add(prevNumber, big.NewInt(1))
 			block.BlockOverrides.Number = (*hexutil.Big)(n)
 		}
-		// A prevRandao override lands in the header's MixDigest, which on BSC
-		// carries the millisecond remainder of the block timestamp (BEP-520):
-		// enforce the same bound consensus applies to real headers.
-		if block.BlockOverrides.PrevRandao != nil {
-			if _, err := override.BSCMilliRemainder(block.BlockOverrides.PrevRandao); err != nil {
+		var remainder uint64
+		if sim.isBSC() && block.BlockOverrides.PrevRandao != nil {
+			var err error
+			remainder, err = override.BSCMilliRemainder(block.BlockOverrides.PrevRandao)
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -540,6 +551,9 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			gap := new(big.Int).Sub(diff, big.NewInt(1))
 			// Assign block number to the empty blocks.
 			for i := uint64(0); i < gap.Uint64(); i++ {
+				if sim.isBSC() && prevTimestamp > math.MaxUint64-timestampIncrement {
+					return nil, &invalidBlockTimestampError{fmt.Sprintf("block timestamps overflow at %d", prevTimestamp)}
+				}
 				n := new(big.Int).Add(prevNumber, big.NewInt(int64(i+1)))
 				t := prevTimestamp + timestampIncrement
 				b := simBlock{
@@ -549,6 +563,11 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 						Withdrawals: &types.Withdrawals{},
 					},
 				}
+				if sim.isBSC() {
+					if _, err := override.BSCMilliTimestamp(t, 0); err != nil {
+						return nil, &invalidBlockTimestampError{err.Error()}
+					}
+				}
 				prevTimestamp = t
 				res = append(res, b)
 			}
@@ -557,6 +576,9 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 		prevNumber = block.BlockOverrides.Number.ToInt()
 		var t uint64
 		if block.BlockOverrides.Time == nil {
+			if sim.isBSC() && prevTimestamp > math.MaxUint64-timestampIncrement {
+				return nil, &invalidBlockTimestampError{fmt.Sprintf("block timestamps overflow at %d", prevTimestamp)}
+			}
 			t = prevTimestamp + timestampIncrement
 			block.BlockOverrides.Time = (*hexutil.Uint64)(&t)
 		} else {
@@ -566,6 +588,11 @@ func (sim *simulator) sanitizeChain(blocks []simBlock) ([]simBlock, error) {
 			}
 		}
 		prevTimestamp = t
+		if sim.isBSC() {
+			if _, err := override.BSCMilliTimestamp(t, remainder); err != nil {
+				return nil, &invalidBlockTimestampError{err.Error()}
+			}
+		}
 		res = append(res, block)
 	}
 	return res, nil
@@ -603,8 +630,9 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 		}
 		// Set difficulty to zero if the given block is post-merge. Without this, all post-merge hardforks would remain inactive.
 		// For example, calling eth_simulateV1(..., blockParameter: 0x0) on hoodi network will cause all blocks to have a difficulty of 1 and be treated as pre-merge.
+		// BSC keeps non-zero difficulty and activates these forks independently of Merge.
 		difficulty := header.Difficulty
-		if sim.chainConfig.IsPostMerge(number.Uint64(), timestamp) {
+		if !sim.isBSC() && sim.chainConfig.IsPostMerge(number.Uint64(), timestamp) {
 			difficulty = big.NewInt(0)
 		}
 		header = overrides.MakeHeader(&types.Header{
