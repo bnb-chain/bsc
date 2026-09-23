@@ -73,7 +73,7 @@ func TestCAS20RevertData(t *testing.T) {
 		want string
 	}{
 		{"SEIZE_ROLE", roleSeize, "0x3469b8b0d89e9604f8510ed143f74a8336d22955d4f83e23bf53d9414e27f432"},
-		{"SEIZE_HOLDER_POLICY", scopeSeizeHolder, "0x1497ab2b67ebb0a75dd9cdd6aec9f0e64620e6b87e911af7a088ac12e58d9ef2"},
+		{"SEIZE_EXEMPT_POLICY", scopeSeizeExempt, "0xedb5da348cfb67af08746d3afd1be81034b50d5c8576f31aff688f39dfd540ed"},
 		{"SEIZE_RECEIVER_POLICY", scopeSeizeReceiver, "0xbf15b19caf5c77422c038bc25f26b8b815c3a14f6d04c6616076b81bcfe07b3d"},
 	} {
 		if got := tc.got.Hex(); got != tc.want {

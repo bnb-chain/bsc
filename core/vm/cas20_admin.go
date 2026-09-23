@@ -38,14 +38,14 @@ var (
 	scopeTransferReceiver = crypto.Keccak256Hash([]byte("TRANSFER_RECEIVER_POLICY"))
 	scopeTransferExecutor = crypto.Keccak256Hash([]byte("TRANSFER_EXECUTOR_POLICY"))
 	scopeMintReceiver     = crypto.Keccak256Hash([]byte("MINT_RECEIVER_POLICY"))
-	scopeSeizeHolder      = crypto.Keccak256Hash([]byte("SEIZE_HOLDER_POLICY"))
+	scopeSeizeExempt      = crypto.Keccak256Hash([]byte("SEIZE_EXEMPT_POLICY"))
 	scopeSeizeReceiver    = crypto.Keccak256Hash([]byte("SEIZE_RECEIVER_POLICY"))
 
 	selTransferSenderScope   = selector("TRANSFER_SENDER_POLICY()")
 	selTransferReceiverScope = selector("TRANSFER_RECEIVER_POLICY()")
 	selTransferExecutorScope = selector("TRANSFER_EXECUTOR_POLICY()")
 	selMintReceiverScope     = selector("MINT_RECEIVER_POLICY()")
-	selSeizeHolderScope      = selector("SEIZE_HOLDER_POLICY()")
+	selSeizeExemptScope      = selector("SEIZE_EXEMPT_POLICY()")
 	selSeizeReceiverScope    = selector("SEIZE_RECEIVER_POLICY()")
 	selPolicyId              = selector("policyId(bytes32)")
 
@@ -212,8 +212,8 @@ func (t cas20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err err
 		return scopeTransferExecutor.Bytes(), nil, true
 	case selMintReceiverScope:
 		return scopeMintReceiver.Bytes(), nil, true
-	case selSeizeHolderScope:
-		return scopeSeizeHolder.Bytes(), nil, true
+	case selSeizeExemptScope:
+		return scopeSeizeExempt.Bytes(), nil, true
 	case selSeizeReceiverScope:
 		return scopeSeizeReceiver.Bytes(), nil, true
 	case selPolicyId:
@@ -239,7 +239,7 @@ var cas20PolicyLanes = map[common.Hash]struct {
 	scopeTransferReceiver: {cas20SlotTransferPolicies, cas20OffTransferReceiver},
 	scopeTransferExecutor: {cas20SlotTransferPolicies, cas20OffTransferExecutor},
 	scopeMintReceiver:     {cas20SlotMintPolicy, cas20OffMintReceiver},
-	scopeSeizeHolder:      {cas20SlotSeizePolicies, cas20OffSeizeHolder},
+	scopeSeizeExempt:      {cas20SlotSeizePolicies, cas20OffSeizeExempt},
 	scopeSeizeReceiver:    {cas20SlotSeizePolicies, cas20OffSeizeReceiver},
 }
 
@@ -503,7 +503,7 @@ func (t cas20Token) burn(from common.Address, amount *uint256.Int) error {
 	return nil
 }
 
-// SEIZE_HOLDER is inverted: only a disallowed holder is seizable.
+// Accounts authorized by SEIZE_EXEMPT are exempt from seizure.
 func (t cas20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, memo common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
@@ -522,8 +522,8 @@ func (t cas20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, 
 	if from == (common.Address{}) {
 		return revCAS20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
-	seizeHolder, seizeReceiver := t.s.seizePolicies()
-	if t.policyAllows(seizeHolder, from) {
+	seizeExempt, seizeReceiver := t.s.seizePolicies()
+	if t.policyAllows(seizeExempt, from) {
 		return revCAS20("AccountNotSeizable(address)", errSelAccountNotSeizable, addrKey(from))
 	}
 	if !t.policyAllows(seizeReceiver, to) {

@@ -245,7 +245,7 @@
       "where": "bsc.cas20 slot 14",
       "lanes": [
         {
-          "name": "seizeHolderPolicy",
+          "name": "seizeExemptPolicy",
           "bit_offset": 0,
           "width": 64
         },

@@ -85,7 +85,7 @@ func TestCAS20TokenInfoMatchesTheSelectors(t *testing.T) {
 		{scopeTransferReceiver, info.Policies.TransferReceiver},
 		{scopeTransferExecutor, info.Policies.TransferExecutor},
 		{scopeMintReceiver, info.Policies.MintReceiver},
-		{scopeSeizeHolder, info.Policies.SeizeHolder},
+		{scopeSeizeExempt, info.Policies.SeizeExempt},
 		{scopeSeizeReceiver, info.Policies.SeizeReceiver},
 	} {
 		if want := word(token, cas20Call(selPolicyId, tc.scope)); uint64(tc.got) != want {
@@ -136,7 +136,7 @@ func TestCAS20TokenInfoMatchesTheSelectors(t *testing.T) {
 	// The JSON shape: hex quantities, an empty list rather than null, and the
 	// other variant's fields absent.
 	assetJSON, _ := json.Marshal(info)
-	for _, want := range []string{`"decimals":"0x12"`, `"totalSupply":"0x3e8"`, `"pausedFeatures":["0x2"]`, `"pendingMultiplier":{"value":"0x1bc16d674ec80000","effectiveAt":"0x`} {
+	for _, want := range []string{`"decimals":"0x12"`, `"totalSupply":"0x3e8"`, `"pausedFeatures":["0x2"]`, `"seizeExempt":"0x0"`, `"pendingMultiplier":{"value":"0x1bc16d674ec80000","effectiveAt":"0x`} {
 		if !strings.Contains(string(assetJSON), want) {
 			t.Errorf("asset JSON lacks %s: %s", want, assetJSON)
 		}

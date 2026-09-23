@@ -74,15 +74,15 @@ func TestCAS20StringKeyedSlots(t *testing.T) {
 func TestCAS20ComplianceLanes(t *testing.T) {
 	s := newTestStorage(t)
 	const (
-		mintRecv  = uint64(0x11)
-		seizeHold = uint64(0x22)
-		seizeRecv = uint64(0x33)
+		mintRecv    = uint64(0x11)
+		seizeExempt = uint64(0x22)
+		seizeRecv   = uint64(0x33)
 	)
 	s.setMintReceiverPolicy(mintRecv)
-	s.setSeizeHolderPolicy(seizeHold)
+	s.setSeizeExemptPolicy(seizeExempt)
 	s.setSeizeReceiverPolicy(seizeRecv)
 
-	if mintRecv == seizeHold || seizeHold == seizeRecv || mintRecv == seizeRecv {
+	if mintRecv == seizeExempt || seizeExempt == seizeRecv || mintRecv == seizeRecv {
 		t.Fatal("the lane values must differ for a swap to be detectable")
 	}
 
@@ -101,7 +101,7 @@ func TestCAS20ComplianceLanes(t *testing.T) {
 		want uint64
 	}{
 		{"mintReceiver", cas20SlotMintPolicy, 0, mintRecv},
-		{"seizeHolder", cas20SlotSeizePolicies, 0, seizeHold},
+		{"seizeExempt", cas20SlotSeizePolicies, 0, seizeExempt},
 		{"seizeReceiver", cas20SlotSeizePolicies, 8, seizeRecv},
 	} {
 		if got := lane(tc.slot, tc.off); got != tc.want {
@@ -177,7 +177,7 @@ func TestCAS20SlotNumbers(t *testing.T) {
 		{"transferReceiver", cas20OffTransferReceiver, 8},
 		{"transferExecutor", cas20OffTransferExecutor, 16},
 		{"mintReceiver", cas20OffMintReceiver, 0},
-		{"seizeHolder", cas20OffSeizeHolder, 0},
+		{"seizeExempt", cas20OffSeizeExempt, 0},
 		{"seizeReceiver", cas20OffSeizeReceiver, 8},
 	} {
 		if tc.got != tc.want {
@@ -218,7 +218,7 @@ func TestCAS20PolicyLanePositions(t *testing.T) {
 		scopeTransferReceiver: 0x22,
 		scopeTransferExecutor: 0x33,
 		scopeMintReceiver:     0x44,
-		scopeSeizeHolder:      0x55,
+		scopeSeizeExempt:      0x55,
 		scopeSeizeReceiver:    0x66,
 	}
 	if len(ids) != len(cas20PolicyLanes) {
