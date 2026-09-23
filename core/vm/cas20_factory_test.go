@@ -253,14 +253,16 @@ func TestCAS20CreatedEvent(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	var created *types.Log
-	for _, l := range statedb.Logs() {
-		if len(l.Topics) > 0 && l.Topics[0] == cas20TopicCAS20Created {
-			created = l
-		}
+	logs := statedb.Logs()
+	if len(logs) == 0 || len(logs[0].Topics) == 0 || logs[0].Topics[0] != cas20TopicCAS20Created {
+		t.Fatal("CAS20Created must be the first log of the creation")
 	}
-	if created == nil {
-		t.Fatal("no CAS20Created log emitted")
+	created := logs[0]
+	if len(logs) < 2 || logs[1].Topics[0] != cas20TopicRoleGranted {
+		t.Fatal("the initial admin's RoleGranted must follow CAS20Created")
+	}
+	if logs[1].Topics[3] != addrKey(CAS20FactoryAddress) {
+		t.Fatalf("RoleGranted sender = %x, want the factory", logs[1].Topics[3])
 	}
 	if created.Address != CAS20FactoryAddress {
 		t.Fatalf("emitted by %x, want the factory %x", created.Address, CAS20FactoryAddress)
