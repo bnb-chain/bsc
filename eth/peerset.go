@@ -241,8 +241,11 @@ func (ps *peerSet) waitBscExtension(peer *eth.Peer) (*bsc.Peer, error) {
 		ps.lock.Unlock()
 		return bsc, nil
 	}
-	// Otherwise wait for `bsc` to connect concurrently
-	wait := make(chan *bsc.Peer)
+	// Otherwise wait for `bsc` to connect concurrently. Buffer the single delivery
+	// so registerBscExtension cannot block while holding ps.lock if this call
+	// exits the select on shutdown. The registration removes the wait entry
+	// under the same lock before sending, so at most one value is sent here.
+	wait := make(chan *bsc.Peer, 1)
 	ps.bscWait[id] = wait
 	ps.lock.Unlock()
 
