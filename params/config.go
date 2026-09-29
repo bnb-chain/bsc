@@ -1935,7 +1935,7 @@ func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
 		return c.BlobScheduleConfig.BPO2
 	case forks.BPO1:
 		return c.BlobScheduleConfig.BPO1
-	case forks.Osaka:
+	case forks.Jenner, forks.Pasteur, forks.Mendel, forks.Osaka:
 		return c.BlobScheduleConfig.Osaka
 	case forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague:
 		return c.BlobScheduleConfig.Prague
