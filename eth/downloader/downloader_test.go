@@ -17,6 +17,7 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -847,6 +848,20 @@ func TestHighTDStarvationAttack68Full(t *testing.T) {
 }
 func TestHighTDStarvationAttack68Snap(t *testing.T) {
 	testHighTDStarvationAttack(t, eth.ETH68, SnapSync)
+}
+
+func TestValidateParliaTDRange(t *testing.T) {
+	ancestorTD := big.NewInt(100)
+	for _, td := range []*big.Int{big.NewInt(103), big.NewInt(106)} {
+		if err := validateParliaTDRange(td, ancestorTD, 3); err != nil {
+			t.Errorf("valid TD %v rejected: %v", td, err)
+		}
+	}
+	for _, td := range []*big.Int{big.NewInt(102), big.NewInt(107)} {
+		if err := validateParliaTDRange(td, ancestorTD, 3); !errors.Is(err, errBadPeer) {
+			t.Errorf("invalid TD %v returned %v, want errBadPeer", td, err)
+		}
+	}
 }
 
 func testHighTDStarvationAttack(t *testing.T, protocol uint, mode SyncMode) {
