@@ -387,9 +387,10 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		otherRejectMeter.Mark(otherreject)
 
 		// If 'other reject' is >25% of the deliveries in any batch, sleep a bit.
-		if otherreject > int64((len(batch)+3)/4) {
-			log.Debug("Peer delivering stale or invalid transactions", "peer", peer, "rejected", otherreject)
+		// BSC's network is smaller and under heavier tx load, so this condition is relaxed compared to upstream geth.
+		if otherreject > addTxsBatchSize/4 {
 			time.Sleep(200 * time.Millisecond)
+			log.Debug("Peer delivering stale transactions", "peer", peer, "rejected", otherreject)
 		}
 		// If we encountered a protocol violation, disconnect this peer.
 		if violation != nil {
