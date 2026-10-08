@@ -592,6 +592,9 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	peer, _ := newTestPeer("peer", protocol, backend)
 	defer peer.close()
 
+	// Drop the stored receipts of the empty block 3, it should still be served
+	rawdb.DeleteReceipts(backend.db, backend.chain.GetCanonicalHash(3), 3)
+
 	// Collect the hashes to request, and the response to expect
 	var (
 		hashes   []common.Hash

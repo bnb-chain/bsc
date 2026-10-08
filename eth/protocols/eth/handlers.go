@@ -304,6 +304,7 @@ func ServiceGetReceiptsQuery68(chain *core.BlockChain, query GetReceiptsRequest)
 			if header := chain.GetHeaderByHash(hash); header == nil || header.ReceiptHash != types.EmptyRootHash {
 				break
 			}
+			results = rlp.EmptyList
 		} else {
 			body := chain.GetBodyRLP(hash)
 			if body == nil {
