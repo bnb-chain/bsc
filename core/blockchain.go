@@ -2835,13 +2835,11 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 		witness.ReportMetrics(block.NumberU64())
 	}
 	elapsed := time.Since(startTime) + 1 // prevent zero division
-	blockInsertTimer.Update(elapsed)
 	blockInsertTxSizeGauge.Update(int64(len(block.Transactions())))
 	blockInsertGasUsedGauge.Update(int64(block.GasUsed()))
 
 	stats.TotalTime = elapsed
 	stats.MgasPerSecond = float64(res.GasUsed) * 1000 / float64(elapsed)
-	chainMgaspsMeter.Update(time.Duration(stats.MgasPerSecond))
 
 	return &blockProcessingResult{
 		usedGas:  res.GasUsed,

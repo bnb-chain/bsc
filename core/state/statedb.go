@@ -941,7 +941,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// method will internally call a blocking trie fetch from the prefetcher,
 	// so there's no need to explicitly wait for the prefetchers to finish.
 	var (
-		start   time.Time
+		start   = time.Now()
 		workers errgroup.Group
 	)
 	if s.db.Type().Is(TypeUBT) {
