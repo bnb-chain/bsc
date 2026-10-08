@@ -17,7 +17,9 @@
 package eth
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"strconv"
 	"sync"
@@ -787,4 +789,89 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 		tryFunc(tryNum, "[2001:db8::11]:", "[2001:db8::22]:", true, doneCh5)
 	}
 	close(doneCh5)
+}
+
+// IP reservations must be released on every exit, even if a peer becomes
+// trusted after registration or registration itself fails.
+func TestMaxPeersPerIPCleanup(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		trust  bool
+		closed bool
+		update func(*handler, *eth.Peer)
+	}{
+		{name: "ordinary"},
+		{name: "trusted", trust: true},
+		{name: "proxy", update: func(h *handler, p *eth.Peer) {
+			h.peers.setProxyedPeers(map[enode.ID]struct{}{p.NodeID(): {}})
+		}},
+		{name: "evn", update: func(h *handler, p *eth.Peer) {
+			h.peers.enableEVNFeatures(nil, map[enode.ID]struct{}{p.NodeID(): {}})
+		}},
+		{name: "registration failure", closed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			backend := newTestHandler(ethconfig.FullSync)
+			defer backend.close()
+			h := backend.handler
+			if test.closed {
+				h.peers.close()
+			}
+			// Reconnect more times than the IP limit to detect leaked reservations.
+			for attempt := 0; attempt <= h.maxPeersPerIP; attempt++ {
+				func() {
+					srcRW, sinkRW := p2p.MsgPipe()
+					defer srcRW.Close()
+					defer sinkRW.Close()
+					srcPeer := p2p.NewPeerPipe(enode.ID{1}, "", nil, srcRW)
+					sinkPeer := p2p.NewPeerPipe(enode.ID{2}, "", nil, sinkRW)
+					srcPeer.UpdateTestRemoteAddr("192.0.2.1:30303")
+					sinkPeer.UpdateTestRemoteAddr("192.0.2.2:30303")
+					if test.trust {
+						sinkPeer.UpdateTrustFlagTest()
+					}
+					src := eth.NewPeer(eth.ETH68, srcPeer, srcRW, backend.txpool, backend.chain.Config())
+					sink := eth.NewPeer(eth.ETH68, sinkPeer, sinkRW, backend.txpool, backend.chain.Config())
+					defer src.Close()
+					defer sink.Close()
+
+					done := make(chan error, 1)
+					go func() {
+						done <- h.runEthPeer(sink, func(peer *eth.Peer) error {
+							if test.update != nil {
+								test.update(h, peer)
+							}
+							return io.EOF
+						})
+					}()
+					head := backend.chain.CurrentBlock()
+					td := backend.chain.GetTd(head.Hash(), head.Number.Uint64())
+					if err := src.Handshake(1, backend.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
+						t.Fatalf("handshake failed: %v", err)
+					}
+					wantErr := io.EOF
+					if test.closed {
+						wantErr = errPeerSetClosed
+					}
+					select {
+					case err := <-done:
+						if !errors.Is(err, wantErr) {
+							t.Fatalf("attempt %d: got %v, want %v", attempt, err, wantErr)
+						}
+					case <-time.After(5 * time.Second):
+						t.Fatal("peer handler did not exit")
+					}
+					h.peerPerIPLock.Lock()
+					count, exists := h.peersPerIP["192.0.2.2"]
+					h.peerPerIPLock.Unlock()
+					if exists {
+						t.Fatalf("attempt %d: IP reservation remains after disconnect: %d", attempt, count)
+					}
+					if count := h.peers.len(); count != 0 {
+						t.Fatalf("peers remain after disconnect: %d", count)
+					}
+				}()
+			}
+		})
+	}
 }
