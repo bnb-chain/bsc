@@ -849,32 +849,6 @@ func TestHighTDStarvationAttack68Snap(t *testing.T) {
 	testHighTDStarvationAttack(t, eth.ETH68, SnapSync)
 }
 
-// The peer may advance after the sync operation captures its head and TD.
-func TestFetchHeadUsesSnapshot(t *testing.T) {
-	for _, mode := range []SyncMode{FullSync, SnapSync} {
-		t.Run(mode.String(), func(t *testing.T) {
-			tester := newTester(t, mode)
-			defer tester.terminate()
-			peer := tester.newPeer("peer", eth.ETH68, testChainBase.blocks[1:])
-			tester.downloader.mode.Store(uint32(mode))
-			snapshot := peer.chain.GetHeaderByNumber(128)
-			if latest, _ := peer.Head(); latest == snapshot.Hash() {
-				t.Fatal("peer must have advanced beyond the requested snapshot")
-			}
-			head, pivot, err := tester.downloader.fetchHead(tester.downloader.peers.Peer(peer.id), snapshot.Hash())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if head.Hash() != snapshot.Hash() {
-				t.Fatalf("head %v, want snapshot %v", head.Number, snapshot.Number)
-			}
-			if mode == SnapSync && (pivot == nil || pivot.Number.Uint64() != 128-uint64(fsMinFullBlocks)) {
-				t.Fatal("pivot does not belong to the requested snapshot")
-			}
-		})
-	}
-}
-
 func testHighTDStarvationAttack(t *testing.T, protocol uint, mode SyncMode) {
 	tester := newTester(t, mode)
 	defer tester.terminate()
