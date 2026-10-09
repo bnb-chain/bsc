@@ -81,6 +81,10 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 	responses := make(chan *eth.Response)
 
 	// Track the currently active requests and their timeout order
+	// Only one request may be retried early while its original response is outstanding.
+	// Keep the old peer busy through the existing stale-request tracking.
+	var earlyRetry *eth.Request
+	var retryDeadline time.Time
 	pending := make(map[string]*eth.Request)
 	defer func() {
 		// Abort all requests on sync cycle cancellation. The requests may still
@@ -104,6 +108,18 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 		<-timeout.C
 	}
 	defer timeout.Stop()
+	resetTimeout := func() {
+		if !timeout.Stop() {
+			select {
+			case <-timeout.C:
+			default:
+			}
+		}
+		if timeouts.Size() > 0 {
+			_, exp := timeouts.Peek()
+			timeout.Reset(time.Until(time.Unix(0, -exp)))
+		}
+	}
 
 	// Track the timed-out but not-yet-answered requests separately. We want to
 	// keep tracking which peers are busy (potentially overloaded), so removing
@@ -204,12 +220,15 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				pending[peer.id] = req
 
 				ttl := d.peers.rates.TargetTimeout()
+				if earlyRetry == nil && d.peers.Len() > 1 && request.RetryAfter > 0 && request.RetryAfter < ttl {
+					retryDeadline = time.Now().Add(ttl)
+					ttl = request.RetryAfter
+					earlyRetry = req
+				}
 				ordering[req] = timeouts.Size()
 
 				timeouts.Push(req, -time.Now().Add(ttl).UnixNano())
-				if timeouts.Size() == 1 {
-					timeout.Reset(ttl)
-				}
+				resetTimeout()
 			}
 			// Make sure that we have peers available for fetching. If all peers have been tried
 			// and all failed throw an error
@@ -251,20 +270,20 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				if index, live := ordering[req]; live {
 					if index >= 0 && index < timeouts.Size() {
 						timeouts.Remove(index)
-						if index == 0 {
-							if !timeout.Stop() {
-								<-timeout.C
-							}
-							if timeouts.Size() > 0 {
-								_, exp := timeouts.Peek()
-								timeout.Reset(time.Until(time.Unix(0, -exp)))
-							}
-						}
+						resetTimeout()
 					}
 					delete(ordering, req)
 				}
 			}
+			if earlyRetry != nil && earlyRetry.Peer == peerid {
+				earlyRetry = nil
+			}
 			if req, ok := stales[peerid]; ok {
+				if index, live := ordering[req]; live {
+					timeouts.Remove(index)
+					delete(ordering, req)
+					resetTimeout()
+				}
 				delete(stales, peerid)
 				req.Close()
 			}
@@ -284,19 +303,28 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 			// cancel it, so it's not considered in-flight anymore, but keep
 			// the peer marked busy to prevent assigning a second request and
 			// overloading it further.
+			retrying := req == earlyRetry && pending[req.Peer] == req
 			delete(pending, req.Peer)
 			stales[req.Peer] = req
 
 			timeouts.Pop() // Popping an item will reorder indices in `ordering`, delete after, otherwise will resurrect!
-			if timeouts.Size() > 0 {
-				_, exp := timeouts.Peek()
-				timeout.Reset(time.Until(time.Unix(0, -exp)))
-			}
 			delete(ordering, req)
+			if retrying {
+				// Keep the normal deadline for the original request too.
+				timeouts.Push(req, -retryDeadline.UnixNano())
+			}
+			resetTimeout()
 
 			// New timeout potentially set if there are more requests pending,
 			// reschedule the failed one to a free peer
 			fails := queue.unreserve(req.Peer)
+			if retrying {
+				// This is a scheduling retry, not evidence that the peer failed.
+				continue
+			}
+			if req == earlyRetry {
+				earlyRetry = nil
+			}
 
 			// Finally, update the peer's retrieval capacity, or if it's already
 			// below the minimum allowance, drop the peer. If a lot of retrieval
@@ -341,21 +369,24 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 			if live {
 				if index >= 0 && index < timeouts.Size() {
 					timeouts.Remove(index)
-					if index == 0 {
-						if !timeout.Stop() {
-							<-timeout.C
-						}
-						if timeouts.Size() > 0 {
-							_, exp := timeouts.Peek()
-							timeout.Reset(time.Until(time.Unix(0, -exp)))
-						}
-					}
+					resetTimeout()
 				}
 				delete(ordering, res.Req)
 			}
 			// Delete the pending request (if it still exists) and mark the peer idle
+			_, retried := stales[res.Req.Peer]
 			delete(pending, res.Req.Peer)
 			delete(stales, res.Req.Peer)
+			if res.Req == earlyRetry {
+				earlyRetry = nil
+				if retried {
+					// Ownership moved to another request. Ignore the late response
+					// without decoding it or penalizing the original peer.
+					res.Done <- nil
+					res.Req.Close()
+					continue
+				}
+			}
 
 			// If the peer was previously banned and failed to deliver its pack
 			// in a reasonable time frame, ignore its message.

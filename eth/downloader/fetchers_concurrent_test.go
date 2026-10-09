@@ -1,0 +1,168 @@
+// Copyright 2026 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
+package downloader
+
+import (
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
+)
+
+type headRetryRequest struct {
+	req  *eth.Request
+	sink chan *eth.Response
+}
+
+type headRetryQueue struct {
+	*bodyQueue
+	requests chan headRetryRequest
+	updates  chan string
+}
+
+func (q *headRetryQueue) capacity(p *peerConnection, _ time.Duration) int {
+	return map[string]int{"master": 4, "tail": 3, "slow": 2, "backup": 1}[p.id]
+}
+
+func (q *headRetryQueue) reserve(p *peerConnection, count int) (*fetchRequest, bool, bool) {
+	req, progress, throttle := q.bodyQueue.reserve(p, count)
+	if req != nil && req.RetryAfter > 0 {
+		req.RetryAfter = 25 * time.Millisecond
+	}
+	return req, progress, throttle
+}
+
+func (q *headRetryQueue) request(p *peerConnection, _ *fetchRequest, sink chan *eth.Response) (*eth.Request, error) {
+	req := &eth.Request{Peer: p.id, Sent: time.Now()}
+	q.requests <- headRetryRequest{req, sink}
+	return req, nil
+}
+
+func (q *headRetryQueue) updateCapacity(p *peerConnection, _ int, _ time.Duration) {
+	q.updates <- p.id
+}
+
+// Exercise the actual fetch loop: a head retry must preempt an older tail timer,
+// keep the slow master connected, and ignore late responses without decoding.
+func TestConcurrentHeadRetry(t *testing.T) {
+	for _, lateResponse := range []bool{true, false} {
+		name := "normal-deadline"
+		if lateResponse {
+			name = "late-response"
+		}
+		t.Run(name, func(t *testing.T) { testConcurrentHeadRetry(t, lateResponse) })
+	}
+}
+
+func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
+	dropped := make(chan string, 4)
+	d := &Downloader{
+		queue: newQueue(8, 8), peers: newPeerSet(), cancelCh: make(chan struct{}),
+		cancelPeer: "slow", dropPeer: func(id string) { dropped <- id },
+	}
+	for _, id := range []string{"master", "tail", "slow", "backup"} {
+		if err := d.peers.Register(newPeerConnection(id, eth.ETH68, nil, log.New("peer", id))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.peers.rates.OverrideTTLLimit = time.Second
+	d.queue.Prepare(1, FullSync)
+	headers := make([]*types.Header, 3)
+	hashes := make([]common.Hash, 3)
+	for i := range headers {
+		headers[i] = &types.Header{Number: big.NewInt(int64(i + 1)), TxHash: common.Hash{1}, UncleHash: types.EmptyUncleHash}
+		if i > 0 {
+			headers[i].ParentHash = hashes[i-1]
+		}
+		hashes[i] = headers[i].Hash()
+	}
+	if n := d.queue.Schedule(headers, hashes, 1); n != len(headers) {
+		t.Fatalf("scheduled %d headers, want %d", n, len(headers))
+	}
+	q := &headRetryQueue{bodyQueue: (*bodyQueue)(d), requests: make(chan headRetryRequest, 8), updates: make(chan string, 8)}
+	done := make(chan error, 1)
+	go func() { done <- d.concurrentFetch(q, false) }()
+	t.Cleanup(func() {
+		d.cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("fetcher did not stop")
+		}
+	})
+	next := func(want string) headRetryRequest {
+		t.Helper()
+		select {
+		case id := <-dropped:
+			t.Fatalf("early retry dropped peer %s", id)
+		case request := <-q.requests:
+			if request.req.Peer != want {
+				t.Fatalf("request peer %s, want %s", request.req.Peer, want)
+			}
+			return request
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("no request to %s before the normal tail timeout", want)
+		}
+		return headRetryRequest{}
+	}
+	first := next("master")
+	next("tail")
+	// Removing the initial head leaves the long tail deadline armed. The new
+	// short head deadline must reset that timer even though its heap is nonempty.
+	empty := eth.BlockBodiesResponse{}
+	first.sink <- &eth.Response{Req: first.req, Res: &empty, Meta: eth.BlockBodyHashes{}, Done: make(chan error, 1)}
+	slow := next("slow")
+	next("backup")
+	select {
+	case id := <-dropped:
+		t.Fatalf("early retry dropped peer %s", id)
+	case req := <-q.requests:
+		t.Fatalf("unbounded early retry to %s", req.req.Peer)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if !lateResponse {
+		select {
+		case <-d.cancelCh:
+			// A truly unresponsive master still terminates the cycle at the
+			// original deadline, even though its body was already requeued.
+		case <-time.After(2 * time.Second):
+			t.Fatal("early retry lost the original request deadline")
+		}
+		return
+	}
+	// The old request no longer owns the body. A nil payload deliberately
+	// detects any attempt to decode a late response through bodyQueue.deliver.
+	ack := make(chan error, 1)
+	slow.sink <- &eth.Response{Req: slow.req, Done: ack}
+	select {
+	case err := <-ack:
+		if err != nil {
+			t.Fatalf("late response rejected: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("late response was not released")
+	}
+	for len(q.updates) > 0 {
+		if id := <-q.updates; id == "slow" {
+			t.Fatal("early retry penalized slow peer throughput")
+		}
+	}
+}

@@ -59,6 +59,8 @@ type fetchRequest struct {
 	From    uint64          // Requested chain element index (used for skeleton fills only)
 	Headers []*types.Header // Requested headers, sorted by request order
 	Time    time.Time       // Time when the request was made
+
+	RetryAfter time.Duration // Optional early retry delay, without penalizing the peer
 }
 
 // fetchResult is a struct collecting partial results from data fetchers until
@@ -480,8 +482,17 @@ func (q *queue) ReserveHeaders(p *peerConnection, count int) *fetchRequest {
 func (q *queue) ReserveBodies(p *peerConnection, count int) (*fetchRequest, bool, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	if !q.blockTaskQueue.Empty() {
+		if header, _ := q.blockTaskQueue.Peek(); q.resultCache.IsHead(header.Number.Uint64()) {
+			count = min(count, 1)
+		}
+	}
 
-	return q.reserveHeaders(p, count, q.blockTaskPool, q.blockTaskQueue, q.blockPendPool, bodyType)
+	request, progress, throttled := q.reserveHeaders(p, count, q.blockTaskPool, q.blockTaskQueue, q.blockPendPool, bodyType)
+	if request != nil && len(request.Headers) == 1 && q.resultCache.IsHead(request.Headers[0].Number.Uint64()) {
+		request.RetryAfter = 2 * time.Second
+	}
+	return request, progress, throttled
 }
 
 // ReserveReceipts reserves a set of receipt fetches for the given peer, skipping
