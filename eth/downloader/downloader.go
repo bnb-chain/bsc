@@ -184,6 +184,9 @@ type BlockChain interface {
 	// GetHeaderByHash retrieves a header from the local chain.
 	GetHeaderByHash(common.Hash) *types.Header
 
+	// GetHeaderByNumber retrieves a canonical header from the local chain.
+	GetHeaderByNumber(uint64) *types.Header
+
 	// CurrentHeader retrieves the head header from the local chain.
 	CurrentHeader() *types.Header
 
@@ -520,7 +523,7 @@ func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *bi
 	}(time.Now())
 
 	// Look up the sync boundaries: the common ancestor and the target block
-	remoteHeader, pivot, err := d.fetchHead(p)
+	remoteHeader, pivot, err := d.fetchHead(p, hash)
 	if err != nil {
 		return err
 	}
@@ -766,12 +769,11 @@ func (d *Downloader) Terminate() {
 
 // fetchHead retrieves the head header and prior pivot block (if available) from
 // a remote peer.
-func (d *Downloader) fetchHead(p *peerConnection) (head *types.Header, pivot *types.Header, err error) {
+func (d *Downloader) fetchHead(p *peerConnection, latest common.Hash) (head *types.Header, pivot *types.Header, err error) {
 	p.log.Debug("Retrieving remote chain head")
 	mode := d.getMode()
 
 	// Request the advertised remote head block and wait for the response
-	latest, _ := p.peer.Head()
 	fetch := 1
 	if mode == SnapSync {
 		fetch = 2 // head + pivot headers
@@ -1044,6 +1046,15 @@ func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, 
 	if int64(start) <= floor {
 		p.log.Warn("Ancestor below allowance", "number", start, "hash", hash, "allowance", floor)
 		return 0, common.Hash{}, errInvalidAncestor
+	}
+	// Binary search excludes its lower bound. When only genesis is shared,
+	// no successful probe has populated hash yet.
+	if start == 0 {
+		genesis := d.blockchain.GetHeaderByNumber(0)
+		if genesis == nil {
+			return 0, common.Hash{}, fmt.Errorf("%w: missing genesis header", errInvalidChain)
+		}
+		hash = genesis.Hash()
 	}
 	p.log.Debug("Found common ancestor", "number", start, "hash", hash)
 	return start, hash, nil

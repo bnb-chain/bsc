@@ -161,9 +161,10 @@ type queue struct {
 	receiptPendPool  map[string]*fetchRequest           // Currently pending receipt retrieval operations
 	receiptWakeCh    chan bool                          // Channel to notify when receipt fetcher of new tasks
 
-	resultCache  *resultStore       // Downloaded but not yet delivered fetch results
-	resultSize   common.StorageSize // Approximate size of a block (exponential moving average)
-	resultMemory common.StorageSize // Estimated memory retained by decoded block bodies
+	resultCache        *resultStore       // Downloaded but not yet delivered fetch results
+	resultSize         common.StorageSize // Approximate size of a block (exponential moving average)
+	resultMemory       common.StorageSize // Estimated memory retained by decoded block bodies
+	bodyCacheThrottled bool               // Pause non-head body requests until results leave the cache
 
 	lock   *sync.RWMutex
 	active *sync.Cond
@@ -210,6 +211,7 @@ func (q *queue) Reset(blockCacheLimit int, thresholdInitialSize int) {
 	q.resultCache = newResultStore(blockCacheLimit)
 	q.resultCache.SetThrottleThreshold(uint64(thresholdInitialSize))
 	q.resultMemory = 0
+	q.bodyCacheThrottled = false
 }
 
 // Close marks the end of the sync, unblocking Results.
@@ -387,8 +389,11 @@ func (q *queue) Results(block bool) []*fetchResult {
 		q.lock.Unlock()
 	}
 	// Regardless if closed or not, we can still deliver whatever we have
-	results := q.resultCache.GetCompleted(maxResultsProcess)
 	q.lock.Lock()
+	results := q.resultCache.GetCompleted(maxResultsProcess)
+	if len(results) > 0 {
+		q.bodyCacheThrottled = false
+	}
 	for _, result := range results {
 		if result.bodyMemory > q.resultMemory {
 			q.resultMemory = 0
@@ -461,10 +466,62 @@ func rawListMemory[T any](list *rlp.RawList[T]) uint64 {
 	return size + items*blockCacheItemOverhead
 }
 
+// transactionListMemory also charges for the dynamic lists inside typed
+// transactions. Counting only transactions misses access tuples, authorizations,
+// and blob hashes. Their encoded contents are charged twice for slice capacity
+// and nested storage-key arrays, in addition to per-element allocation overhead.
+// This scans RLP without allocating decoded transactions or their nested slices.
+func transactionListMemory(list *rlp.RawList[*types.Transaction]) uint64 {
+	total := rawListMemory(list)
+	if list == nil || total == ^uint64(0) {
+		return total
+	}
+	it := list.ContentIterator()
+	for it.Next() {
+		if it.Err() != nil {
+			return ^uint64(0)
+		}
+		kind, content, _, err := rlp.Split(it.Value())
+		if err != nil {
+			return ^uint64(0)
+		}
+		if kind == rlp.List { // Legacy transactions have no nested dynamic lists.
+			continue
+		}
+		if len(content) == 0 || content[0] < types.AccessListTxType || content[0] > types.SetCodeTxType {
+			continue // Items will reject unsupported transaction types.
+		}
+		fields, rest, err := rlp.SplitList(content[1:])
+		if err != nil || len(rest) != 0 {
+			return ^uint64(0)
+		}
+		for len(fields) > 0 {
+			kind, content, rest, err = rlp.Split(fields)
+			if err != nil {
+				return ^uint64(0)
+			}
+			fields = rest
+			if kind != rlp.List {
+				continue
+			}
+			items, err := rlp.CountValues(content)
+			if err != nil {
+				return ^uint64(0)
+			}
+			size := uint64(len(content)) * 2
+			if size > ^uint64(0)-total || uint64(items) > (^uint64(0)-total-size)/blockCacheItemOverhead {
+				return ^uint64(0)
+			}
+			total += size + uint64(items)*blockCacheItemOverhead
+		}
+	}
+	return total
+}
+
 func blockBodyMemory(body *eth.BlockBody) common.StorageSize {
 	var total uint64
 	for _, size := range []uint64{
-		rawListMemory(&body.Transactions),
+		transactionListMemory(&body.Transactions),
 		rawListMemory(&body.Uncles),
 		rawListMemory(body.Withdrawals),
 		rawListMemory(body.Sidecars),
@@ -603,6 +660,14 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 			taskQueue.PopItem()
 			progress = true
 			continue
+		}
+		// Keep the head and receipts fetchable so they can unblock Results.
+		// A rejected body can require more than the remaining budget, even
+		// when resultMemory has not reached the non-head limit yet.
+		if kind == bodyType && !q.resultCache.IsHead(header.Number.Uint64()) &&
+			(q.bodyCacheThrottled || q.resultMemory >= common.StorageSize(blockCacheMemory-blockCacheMemory/blockCacheHeadroomDivisor)) {
+			throttled = len(skip) == 0
+			break
 		}
 		// Remove it from the task queue
 		taskQueue.PopItem()
@@ -872,6 +937,7 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 			memoryLimit = common.StorageSize(blockCacheMemory)
 		}
 		if q.resultMemory+pendingMemory+memory > memoryLimit {
+			q.bodyCacheThrottled = true
 			return errBodyCacheFull
 		}
 

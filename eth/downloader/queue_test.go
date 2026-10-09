@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -265,6 +266,12 @@ func TestEmptyBlocks(t *testing.T) {
 }
 
 func TestBodyMemoryLimitWithHeadGap(t *testing.T) {
+	for _, mode := range []SyncMode{FullSync, SnapSync} {
+		t.Run(mode.String(), func(t *testing.T) { testBodyMemoryLimitWithHeadGap(t, mode) })
+	}
+}
+
+func testBodyMemoryLimitWithHeadGap(t *testing.T, mode SyncMode) {
 	txs := make([]*types.Transaction, 4)
 	for i := range txs {
 		txs[i] = types.NewTransaction(uint64(i), common.Address{}, big.NewInt(0), params.TxGas, big.NewInt(1), nil)
@@ -277,27 +284,34 @@ func TestBodyMemoryLimitWithHeadGap(t *testing.T) {
 	bodySize := blockBodyMemory(&body)
 
 	oldMemoryLimit := blockCacheMemory
-	blockCacheMemory = int(bodySize * 4)
+	blockCacheMemory = int(bodySize*4) + 1 // Rejection can precede an exactly full cache.
 	defer func() { blockCacheMemory = oldMemoryLimit }()
 
 	headers := make([]*types.Header, 5)
 	headerHashes := make([]common.Hash, len(headers))
 	parentHash := common.Hash{}
+	receipts := types.Receipts{&types.Receipt{Status: types.ReceiptStatusSuccessful, CumulativeGasUsed: params.TxGas}}
+	receiptRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+	receiptRLP, err := rlp.EncodeToBytes(receipts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	txRoot := types.DeriveSha(types.Transactions(txs), trie.NewStackTrie(nil))
 	for i := range headers {
 		headers[i] = &types.Header{
-			ParentHash: parentHash,
-			Difficulty: big.NewInt(1),
-			Number:     big.NewInt(int64(i + 1)),
-			TxHash:     txRoot,
-			UncleHash:  types.EmptyUncleHash,
+			ParentHash:  parentHash,
+			Difficulty:  big.NewInt(1),
+			Number:      big.NewInt(int64(i + 1)),
+			TxHash:      txRoot,
+			ReceiptHash: receiptRoot,
+			UncleHash:   types.EmptyUncleHash,
 		}
 		headerHashes[i] = headers[i].Hash()
 		parentHash = headerHashes[i]
 	}
 
 	q := newQueue(len(headers), len(headers))
-	q.Prepare(1, FullSync)
+	q.Prepare(1, mode)
 	if inserted := q.Schedule(headers, headerHashes, 1); inserted != len(headers) {
 		t.Fatalf("scheduled %d headers, want %d", inserted, len(headers))
 	}
@@ -328,6 +342,33 @@ func TestBodyMemoryLimitWithHeadGap(t *testing.T) {
 	}
 	if q.resultMemory != 3*bodySize {
 		t.Fatalf("cached body memory %v, want %v", q.resultMemory, 3*bodySize)
+	}
+
+	// Nothing can be freed before the head arrives. Repeated reservations must
+	// stop here, including when a little unused budget remains.
+	for i := 0; i < 2; i++ {
+		if req, _, throttle := q.ReserveBodies(tailPeer, 1); req != nil || !throttle {
+			t.Fatal("body cache pressure did not throttle reservations")
+		}
+	}
+	// A timed-out head must remain fetchable while the tail is throttled.
+	q.ExpireBodies(headPeer.id)
+	if req, _, _ := q.ReserveBodies(headPeer, 1); req == nil || req.Headers[0] != headers[0] {
+		t.Fatal("body cache pressure blocked the missing head")
+	}
+	if mode == SnapSync {
+		receiptPeer := dummyPeer("receipts")
+		if req, _, _ := q.ReserveReceipts(receiptPeer, len(headers)); req == nil || len(req.Headers) != len(headers) {
+			t.Fatal("body cache pressure blocked receipts")
+		}
+		list := make([]rlp.RawValue, len(headers))
+		roots := make([]common.Hash, len(headers))
+		for i := range list {
+			list[i], roots[i] = receiptRLP, receiptRoot
+		}
+		if accepted, err := q.DeliverReceipts(receiptPeer.id, list, roots); err != nil || accepted != len(headers) {
+			t.Fatalf("receipts accepted %d, error %v", accepted, err)
+		}
 	}
 
 	headHashes := eth.BlockBodyHashes{
@@ -395,6 +436,45 @@ func TestBodyMemoryLimitRejectsOversizedBody(t *testing.T) {
 	}
 	if accepted != 0 || q.resultMemory != 0 {
 		t.Fatalf("accepted %d bodies and cached %v, want no decoded body", accepted, q.resultMemory)
+	}
+}
+
+func TestBodyMemoryTypedTransactions(t *testing.T) {
+	for _, count := range []int{1, 4, 5, 64} {
+		accesses := make(types.AccessList, count)
+		for i := range accesses {
+			accesses[i].StorageKeys = make([]common.Hash, count)
+		}
+		for _, data := range []types.TxData{
+			&types.AccessListTx{AccessList: accesses},
+			&types.DynamicFeeTx{AccessList: accesses},
+			&types.BlobTx{AccessList: accesses, BlobHashes: make([]common.Hash, count)},
+			&types.SetCodeTx{AccessList: accesses, AuthList: make([]types.SetCodeAuthorization, count)},
+		} {
+			tx := types.NewTx(data)
+			t.Run(fmt.Sprintf("type%d/items%d", tx.Type(), count), func(t *testing.T) {
+				list, err := rlp.EncodeToRawList([]*types.Transaction{tx})
+				if err != nil {
+					t.Fatal(err)
+				}
+				decoded, err := list.Items()
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Measure retained nested backing arrays, including decoder growth
+				// capacity, instead of deriving the assertion from the estimator.
+				accesses := decoded[0].AccessList()
+				nested := uint64(cap(accesses)) * uint64(unsafe.Sizeof(types.AccessTuple{}))
+				for _, tuple := range accesses {
+					nested += uint64(cap(tuple.StorageKeys)) * uint64(unsafe.Sizeof(common.Hash{}))
+				}
+				nested += uint64(cap(decoded[0].BlobHashes())) * uint64(unsafe.Sizeof(common.Hash{}))
+				nested += uint64(cap(decoded[0].SetCodeAuthorizations())) * uint64(unsafe.Sizeof(types.SetCodeAuthorization{}))
+				if extra := transactionListMemory(&list) - rawListMemory(&list); extra < nested {
+					t.Fatalf("nested estimate %d below retained backing arrays %d", extra, nested)
+				}
+			})
+		}
 	}
 }
 

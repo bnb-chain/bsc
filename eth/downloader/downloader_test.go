@@ -850,6 +850,53 @@ func TestHighTDStarvationAttack68Snap(t *testing.T) {
 	testHighTDStarvationAttack(t, eth.ETH68, SnapSync)
 }
 
+// The peer may advance after the sync operation captures its head and TD.
+func TestFetchHeadUsesSnapshot(t *testing.T) {
+	for _, mode := range []SyncMode{FullSync, SnapSync} {
+		t.Run(mode.String(), func(t *testing.T) {
+			tester := newTester(t, mode)
+			defer tester.terminate()
+			peer := tester.newPeer("peer", eth.ETH68, testChainBase.blocks[1:])
+			tester.downloader.mode.Store(uint32(mode))
+			snapshot := peer.chain.GetHeaderByNumber(128)
+			if latest, _ := peer.Head(); latest == snapshot.Hash() {
+				t.Fatal("peer must have advanced beyond the requested snapshot")
+			}
+			head, pivot, err := tester.downloader.fetchHead(tester.downloader.peers.Peer(peer.id), snapshot.Hash())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if head.Hash() != snapshot.Hash() {
+				t.Fatalf("head %v, want snapshot %v", head.Number, snapshot.Number)
+			}
+			if mode == SnapSync && (pivot == nil || pivot.Number.Uint64() != 128-uint64(fsMinFullBlocks)) {
+				t.Fatal("pivot does not belong to the requested snapshot")
+			}
+		})
+	}
+}
+
+func TestFindAncestorGenesis(t *testing.T) {
+	for _, mode := range []SyncMode{FullSync, SnapSync} {
+		t.Run(mode.String(), func(t *testing.T) {
+			tester := newTester(t, mode)
+			defer tester.terminate()
+			peer := tester.newPeer("peer", eth.ETH68, testChainBase.blocks[1:])
+			tester.downloader.mode.Store(uint32(mode))
+			number, hash, err := tester.downloader.findAncestor(tester.downloader.peers.Peer(peer.id), 0, peer.chain.CurrentHeader())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if number != 0 || hash != tester.chain.GetHeaderByNumber(0).Hash() {
+				t.Fatalf("ancestor (%d, %v), want local genesis", number, hash)
+			}
+			if tester.chain.GetTd(hash, number) == nil {
+				t.Fatal("ancestor has no total difficulty")
+			}
+		})
+	}
+}
+
 func TestValidateParliaTDRange(t *testing.T) {
 	ancestorTD := big.NewInt(100)
 	for _, td := range []*big.Int{big.NewInt(103), big.NewInt(106)} {
