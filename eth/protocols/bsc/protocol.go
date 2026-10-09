@@ -30,13 +30,11 @@ var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4}
 const maxMessageSize = 10 * 1024 * 1024
 
 const (
-	BscCapMsg           = 0x00 // bsc capability msg used upon handshake
+	BscCapMsg           = 0x00 // deprecated handshake msg, no longer sent (kept reserved)
 	VotesMsg            = 0x01
 	GetBlocksByRangeMsg = 0x02 // it can request (StartBlockHeight-Count, StartBlockHeight] range blocks from remote peer
 	BlocksByRangeMsg    = 0x03 // the replied blocks from remote peer
 )
-
-var defaultExtra = []byte{0x00}
 
 var (
 	errMsgTooLarge    = errors.New("message too long")
@@ -50,19 +48,10 @@ type Packet interface {
 	Kind() byte   // Kind returns the message type.
 }
 
-// BscCapPacket is the network packet for bsc capability message.
-type BscCapPacket struct {
-	ProtocolVersion uint
-	Extra           rlp.RawValue // for extension
-}
-
 // VotesPacket is the network packet for votes record.
 type VotesPacket struct {
 	Votes []*types.VoteEnvelope
 }
-
-func (*BscCapPacket) Name() string { return "BscCap" }
-func (*BscCapPacket) Kind() byte   { return BscCapMsg }
 
 func (*VotesPacket) Name() string { return "Votes" }
 func (*VotesPacket) Kind() byte   { return VotesMsg }
