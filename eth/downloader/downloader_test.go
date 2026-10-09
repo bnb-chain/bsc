@@ -17,7 +17,6 @@
 package downloader
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -873,41 +872,6 @@ func TestFetchHeadUsesSnapshot(t *testing.T) {
 				t.Fatal("pivot does not belong to the requested snapshot")
 			}
 		})
-	}
-}
-
-func TestFindAncestorGenesis(t *testing.T) {
-	for _, mode := range []SyncMode{FullSync, SnapSync} {
-		t.Run(mode.String(), func(t *testing.T) {
-			tester := newTester(t, mode)
-			defer tester.terminate()
-			peer := tester.newPeer("peer", eth.ETH68, testChainBase.blocks[1:])
-			tester.downloader.mode.Store(uint32(mode))
-			number, hash, err := tester.downloader.findAncestor(tester.downloader.peers.Peer(peer.id), 0, peer.chain.CurrentHeader())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if number != 0 || hash != tester.chain.GetHeaderByNumber(0).Hash() {
-				t.Fatalf("ancestor (%d, %v), want local genesis", number, hash)
-			}
-			if tester.chain.GetTd(hash, number) == nil {
-				t.Fatal("ancestor has no total difficulty")
-			}
-		})
-	}
-}
-
-func TestValidateParliaTDRange(t *testing.T) {
-	ancestorTD := big.NewInt(100)
-	for _, td := range []*big.Int{big.NewInt(103), big.NewInt(106)} {
-		if err := validateParliaTDRange(td, ancestorTD, 3); err != nil {
-			t.Errorf("valid TD %v rejected: %v", td, err)
-		}
-	}
-	for _, td := range []*big.Int{big.NewInt(102), big.NewInt(107)} {
-		if err := validateParliaTDRange(td, ancestorTD, 3); !errors.Is(err, errBadPeer) {
-			t.Errorf("invalid TD %v returned %v, want errBadPeer", td, err)
-		}
 	}
 }
 

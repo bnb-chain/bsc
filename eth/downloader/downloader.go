@@ -184,14 +184,8 @@ type BlockChain interface {
 	// GetHeaderByHash retrieves a header from the local chain.
 	GetHeaderByHash(common.Hash) *types.Header
 
-	// GetHeaderByNumber retrieves a canonical header from the local chain.
-	GetHeaderByNumber(uint64) *types.Header
-
 	// CurrentHeader retrieves the head header from the local chain.
 	CurrentHeader() *types.Header
-
-	// Config retrieves the local chain configuration.
-	Config() *params.ChainConfig
 
 	// GetTd returns the total difficulty of a local block.
 	GetTd(common.Hash, uint64) *big.Int
@@ -501,15 +495,14 @@ func (d *Downloader) SubscribeSyncEvents(ch chan<- SyncEvent) event.Subscription
 // specified peer and head hash.
 func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *big.Int, beaconMode bool) (err error) {
 	mode := d.getMode()
-	started := false
+	d.feed.Send(SyncEvent{Type: SyncStarted, Mode: mode})
 	defer func() {
-		if started {
-			if err != nil {
-				d.feed.Send(SyncEvent{Type: SyncFailed, Mode: mode, Err: err})
-			} else {
-				latest := d.blockchain.CurrentHeader()
-				d.feed.Send(SyncEvent{Type: SyncCompleted, Mode: mode, Latest: latest})
-			}
+		// reset on error
+		if err != nil {
+			d.feed.Send(SyncEvent{Type: SyncFailed, Mode: mode, Err: err})
+		} else {
+			latest := d.blockchain.CurrentHeader()
+			d.feed.Send(SyncEvent{Type: SyncCompleted, Mode: mode, Latest: latest})
 		}
 	}()
 
@@ -547,19 +540,10 @@ func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *bi
 		localHeight = d.blockchain.CurrentHeader().Number.Uint64()
 	}
 
-	origin, ancestorHash, err := d.findAncestor(p, localHeight, remoteHeader)
+	origin, err := d.findAncestor(p, localHeight, remoteHeader)
 	if err != nil {
 		return err
 	}
-	config := d.blockchain.Config()
-	if !beaconMode && config != nil && config.Parlia != nil {
-		ancestorTD := d.blockchain.GetTd(ancestorHash, origin)
-		if err := validateParliaTDRange(td, ancestorTD, remoteHeight-origin); err != nil {
-			return err
-		}
-	}
-	d.feed.Send(SyncEvent{Type: SyncStarted, Mode: mode})
-	started = true
 
 	if localHeight >= remoteHeight {
 		// if remoteHeader does not exist in local chain, will move on to insert it as a side chain.
@@ -860,28 +844,12 @@ func calculateRequestSpan(remoteHeight, localHeight uint64) (int64, int, int, ui
 	return int64(from), count, span - 1, uint64(max)
 }
 
-// validateParliaTDRange checks the announcement against Parlia's per-block difficulty bounds.
-func validateParliaTDRange(td, ancestorTD *big.Int, blocks uint64) error {
-	if ancestorTD == nil {
-		return fmt.Errorf("%w: missing ancestor total difficulty", errInvalidChain)
-	}
-	if td == nil {
-		return fmt.Errorf("%w: missing announced total difficulty", errBadPeer)
-	}
-	minTD := new(big.Int).Add(new(big.Int).Set(ancestorTD), new(big.Int).SetUint64(blocks))
-	maxTD := new(big.Int).Add(new(big.Int).Set(ancestorTD), new(big.Int).Mul(new(big.Int).SetUint64(blocks), big.NewInt(2)))
-	if td.Cmp(minTD) < 0 || td.Cmp(maxTD) > 0 {
-		return fmt.Errorf("%w: announced total difficulty %v is impossible after %d blocks (expected %v..%v)", errBadPeer, td, blocks, minTD, maxTD)
-	}
-	return nil
-}
-
 // findAncestor tries to locate the common ancestor link of the local chain and
 // a remote peers blockchain. In the general case when our node was in sync and
 // on the correct chain, checking the top N links should already get us a match.
 // In the rare scenario when we ended up on a long reorganisation (i.e. none of
 // the head links match), we do a binary search to find the common ancestor.
-func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteHeader *types.Header) (uint64, common.Hash, error) {
+func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteHeader *types.Header) (uint64, error) {
 	// Figure out the valid ancestor range to prevent rewrite attacks
 	var (
 		floor        = int64(-1)
@@ -911,32 +879,32 @@ func (d *Downloader) findAncestor(p *peerConnection, localHeight uint64, remoteH
 		floor = int64(tail)
 	}
 
-	ancestor, hash, err := d.findAncestorSpanSearch(p, mode, remoteHeight, localHeight, floor)
+	ancestor, err := d.findAncestorSpanSearch(p, mode, remoteHeight, localHeight, floor)
 	if err == nil {
-		return ancestor, hash, nil
+		return ancestor, nil
 	}
 	// The returned error was not nil.
 	// If the error returned does not reflect that a common ancestor was not found, return it.
 	// If the error reflects that a common ancestor was not found, continue to binary search,
 	// where the error value will be reassigned.
 	if !errors.Is(err, errNoAncestorFound) {
-		return 0, common.Hash{}, err
+		return 0, err
 	}
 
-	ancestor, hash, err = d.findAncestorBinarySearch(p, mode, remoteHeight, floor)
+	ancestor, err = d.findAncestorBinarySearch(p, mode, remoteHeight, floor)
 	if err != nil {
-		return 0, common.Hash{}, err
+		return 0, err
 	}
-	return ancestor, hash, nil
+	return ancestor, nil
 }
 
-func (d *Downloader) findAncestorSpanSearch(p *peerConnection, mode SyncMode, remoteHeight, localHeight uint64, floor int64) (uint64, common.Hash, error) {
+func (d *Downloader) findAncestorSpanSearch(p *peerConnection, mode SyncMode, remoteHeight, localHeight uint64, floor int64) (uint64, error) {
 	from, count, skip, max := calculateRequestSpan(remoteHeight, localHeight)
 
 	p.log.Trace("Span searching for common ancestor", "count", count, "from", from, "skip", skip)
 	headers, hashes, err := d.fetchHeadersByNumber(p, uint64(from), count, skip, false)
 	if err != nil {
-		return 0, common.Hash{}, err
+		return 0, err
 	}
 	// Wait for the remote response to the head fetch
 	number, hash := uint64(0), common.Hash{}
@@ -944,14 +912,14 @@ func (d *Downloader) findAncestorSpanSearch(p *peerConnection, mode SyncMode, re
 	// Make sure the peer actually gave something valid
 	if len(headers) == 0 {
 		p.log.Warn("Empty head header set")
-		return 0, common.Hash{}, errEmptyHeaderSet
+		return 0, errEmptyHeaderSet
 	}
 	// Make sure the peer's reply conforms to the request
 	for i, header := range headers {
 		expectNumber := from + int64(i)*int64(skip+1)
 		if number := header.Number.Int64(); number != expectNumber {
 			p.log.Warn("Head headers broke chain ordering", "index", i, "requested", expectNumber, "received", number)
-			return 0, common.Hash{}, fmt.Errorf("%w: %v", errInvalidChain, errors.New("head headers broke chain ordering"))
+			return 0, fmt.Errorf("%w: %v", errInvalidChain, errors.New("head headers broke chain ordering"))
 		}
 	}
 	// Check if a common ancestor was found
@@ -982,15 +950,15 @@ func (d *Downloader) findAncestorSpanSearch(p *peerConnection, mode SyncMode, re
 	if hash != (common.Hash{}) {
 		if int64(number) <= floor {
 			p.log.Warn("Ancestor below allowance", "number", number, "hash", hash, "allowance", floor)
-			return 0, common.Hash{}, errInvalidAncestor
+			return 0, errInvalidAncestor
 		}
 		p.log.Debug("Found common ancestor", "number", number, "hash", hash)
-		return number, hash, nil
+		return number, nil
 	}
-	return 0, common.Hash{}, errNoAncestorFound
+	return 0, errNoAncestorFound
 }
 
-func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, remoteHeight uint64, floor int64) (uint64, common.Hash, error) {
+func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, remoteHeight uint64, floor int64) (uint64, error) {
 	hash := common.Hash{}
 
 	// Ancestor not found, we need to binary search over our chain
@@ -1006,12 +974,12 @@ func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, 
 
 		headers, hashes, err := d.fetchHeadersByNumber(p, check, 1, 0, false)
 		if err != nil {
-			return 0, common.Hash{}, err
+			return 0, err
 		}
 		// Make sure the peer actually gave something valid
 		if len(headers) != 1 {
 			p.log.Warn("Multiple headers for single request", "headers", len(headers))
-			return 0, common.Hash{}, fmt.Errorf("%w: multiple headers (%d) for single request", errBadPeer, len(headers))
+			return 0, fmt.Errorf("%w: multiple headers (%d) for single request", errBadPeer, len(headers))
 		}
 		// Modify the search interval based on the response
 		h := hashes[0]
@@ -1033,11 +1001,11 @@ func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, 
 		header := d.blockchain.GetHeaderByHash(h) // Independent of sync mode, header surely exists
 		if header == nil {
 			p.log.Error("header not found", "hash", h, "request", check)
-			return 0, common.Hash{}, fmt.Errorf("%w: header no found (%s)", errBadPeer, h)
+			return 0, fmt.Errorf("%w: header no found (%s)", errBadPeer, h)
 		}
 		if header.Number.Uint64() != check {
 			p.log.Warn("Received non requested header", "number", header.Number, "hash", header.Hash(), "request", check)
-			return 0, common.Hash{}, fmt.Errorf("%w: non-requested header (%d)", errBadPeer, header.Number)
+			return 0, fmt.Errorf("%w: non-requested header (%d)", errBadPeer, header.Number)
 		}
 		start = check
 		hash = h
@@ -1045,19 +1013,10 @@ func (d *Downloader) findAncestorBinarySearch(p *peerConnection, mode SyncMode, 
 	// Ensure valid ancestry and return
 	if int64(start) <= floor {
 		p.log.Warn("Ancestor below allowance", "number", start, "hash", hash, "allowance", floor)
-		return 0, common.Hash{}, errInvalidAncestor
-	}
-	// Binary search excludes its lower bound. When only genesis is shared,
-	// no successful probe has populated hash yet.
-	if start == 0 {
-		genesis := d.blockchain.GetHeaderByNumber(0)
-		if genesis == nil {
-			return 0, common.Hash{}, fmt.Errorf("%w: missing genesis header", errInvalidChain)
-		}
-		hash = genesis.Hash()
+		return 0, errInvalidAncestor
 	}
 	p.log.Debug("Found common ancestor", "number", start, "hash", hash)
-	return start, hash, nil
+	return start, nil
 }
 
 // fetchHeaders keeps retrieving headers concurrently from the number

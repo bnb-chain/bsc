@@ -37,10 +37,10 @@ import (
 )
 
 const (
-	bodyType                  = uint(0)
-	receiptType               = uint(1)
-	blockCacheItemOverhead    = 512 // Estimated decoded allocation per list item
-	blockCacheHeadroomDivisor = 4   // Limit one body to a quarter of the cache
+	bodyType                    = uint(0)
+	receiptType                 = uint(1)
+	blockCacheItemOverhead      = 512 // Estimated decoded allocation overhead per body item
+	blockCacheBodyMemoryDivisor = 4   // Keep room for the body at the head of the result queue
 )
 
 var (
@@ -453,7 +453,10 @@ func (q *queue) stats() []interface{} {
 	}
 }
 
-// rawListMemory estimates decoded memory from the encoded size and item count.
+// rawListMemory estimates the retained memory after decoding an RLP list. The
+// encoded size accounts for variable-length contents, while the per-item charge
+// covers pointers and the decoded Go objects. This estimate is intentionally
+// conservative because small transactions have the highest decode amplification.
 func rawListMemory[T any](list *rlp.RawList[T]) uint64 {
 	if list == nil {
 		return 0
@@ -665,7 +668,7 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 		// A rejected body can require more than the remaining budget, even
 		// when resultMemory has not reached the non-head limit yet.
 		if kind == bodyType && !q.resultCache.IsHead(header.Number.Uint64()) &&
-			(q.bodyCacheThrottled || q.resultMemory >= common.StorageSize(blockCacheMemory-blockCacheMemory/blockCacheHeadroomDivisor)) {
+			(q.bodyCacheThrottled || q.resultMemory >= common.StorageSize(blockCacheMemory-blockCacheMemory/blockCacheBodyMemoryDivisor)) {
 			throttled = len(skip) == 0
 			break
 		}
@@ -926,13 +929,18 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 				return errInvalidBody
 			}
 		}
-		// Bound each decoded body and reserve headroom for the first result.
+		// Reject a single body which cannot fit into the reserved headroom before
+		// decoding it. Otherwise a tiny RLP list containing many small items can
+		// expand into hundreds of megabytes of Go objects in Items.
 		memory := blockBodyMemory(&bodies[index])
-		bodyLimit := common.StorageSize(blockCacheMemory / blockCacheHeadroomDivisor)
+		bodyLimit := common.StorageSize(blockCacheMemory / blockCacheBodyMemoryDivisor)
 		if memory > bodyLimit {
 			return fmt.Errorf("%w: estimated memory %v exceeds limit %v", errInvalidBody, memory, bodyLimit)
 		}
 		memoryLimit := common.StorageSize(blockCacheMemory) - bodyLimit
+		// Out-of-order bodies may accumulate behind a missing first body. Reserve
+		// one body's worth of memory so that the missing head can still arrive and
+		// unlock result processing when the normal cache budget is exhausted.
 		if q.resultCache.IsHead(header.Number.Uint64()) {
 			memoryLimit = common.StorageSize(blockCacheMemory)
 		}
