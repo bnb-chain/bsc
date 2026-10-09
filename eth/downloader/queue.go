@@ -37,8 +37,10 @@ import (
 )
 
 const (
-	bodyType    = uint(0)
-	receiptType = uint(1)
+	bodyType                    = uint(0)
+	receiptType                 = uint(1)
+	blockCacheItemOverhead      = 512 // Estimated decoded allocation overhead per body item
+	blockCacheBodyMemoryDivisor = 4   // Keep room for the body at the head of the result queue
 )
 
 var (
@@ -51,6 +53,7 @@ var (
 var (
 	errNoFetchesPending = errors.New("no fetches pending")
 	errStaleDelivery    = errors.New("stale delivery")
+	errBodyCacheFull    = errors.New("block body cache memory limit reached")
 )
 
 // fetchRequest is a currently running data retrieval operation.
@@ -73,6 +76,7 @@ type fetchResult struct {
 	Receipts     rlp.RawValue
 	Withdrawals  types.Withdrawals
 	Sidecars     types.BlobSidecars
+	bodyMemory   common.StorageSize
 }
 
 func newFetchResult(header *types.Header, snapSync bool, pid string) *fetchResult {
@@ -157,8 +161,10 @@ type queue struct {
 	receiptPendPool  map[string]*fetchRequest           // Currently pending receipt retrieval operations
 	receiptWakeCh    chan bool                          // Channel to notify when receipt fetcher of new tasks
 
-	resultCache *resultStore       // Downloaded but not yet delivered fetch results
-	resultSize  common.StorageSize // Approximate size of a block (exponential moving average)
+	resultCache        *resultStore       // Downloaded but not yet delivered fetch results
+	resultSize         common.StorageSize // Approximate size of a block (exponential moving average)
+	resultMemory       common.StorageSize // Estimated memory retained by decoded block bodies
+	bodyCacheThrottled bool               // Pause non-head body requests until results leave the cache
 
 	lock   *sync.RWMutex
 	active *sync.Cond
@@ -204,6 +210,8 @@ func (q *queue) Reset(blockCacheLimit int, thresholdInitialSize int) {
 
 	q.resultCache = newResultStore(blockCacheLimit)
 	q.resultCache.SetThrottleThreshold(uint64(thresholdInitialSize))
+	q.resultMemory = 0
+	q.bodyCacheThrottled = false
 }
 
 // Close marks the end of the sync, unblocking Results.
@@ -381,8 +389,17 @@ func (q *queue) Results(block bool) []*fetchResult {
 		q.lock.Unlock()
 	}
 	// Regardless if closed or not, we can still deliver whatever we have
+	q.lock.Lock()
 	results := q.resultCache.GetCompleted(maxResultsProcess)
+	if len(results) > 0 {
+		q.bodyCacheThrottled = false
+	}
 	for _, result := range results {
+		if result.bodyMemory > q.resultMemory {
+			q.resultMemory = 0
+		} else {
+			q.resultMemory -= result.bodyMemory
+		}
 		// Recalculate the result item weights to prevent memory exhaustion
 		size := result.Header.Size()
 		for _, uncle := range result.Uncles {
@@ -400,6 +417,7 @@ func (q *queue) Results(block bool) []*fetchResult {
 	// on the result cache
 	throttleThreshold := uint64((common.StorageSize(blockCacheMemory) + q.resultSize - 1) / q.resultSize)
 	throttleThreshold = q.resultCache.SetThrottleThreshold(throttleThreshold)
+	q.lock.Unlock()
 
 	// With results removed from the cache, wake throttled fetchers
 	for _, ch := range []chan bool{q.blockWakeCh, q.receiptWakeCh} {
@@ -431,7 +449,92 @@ func (q *queue) stats() []interface{} {
 		"receiptTasks", q.receiptTaskQueue.Size(),
 		"blockTasks", q.blockTaskQueue.Size(),
 		"itemSize", q.resultSize,
+		"bodyMemory", q.resultMemory,
 	}
+}
+
+// rawListMemory estimates the retained memory after decoding an RLP list. The
+// encoded size accounts for variable-length contents, while the per-item charge
+// covers pointers and the decoded Go objects. This estimate is intentionally
+// conservative because small transactions have the highest decode amplification.
+func rawListMemory[T any](list *rlp.RawList[T]) uint64 {
+	if list == nil {
+		return 0
+	}
+	size := list.Size()
+	items := uint64(list.Len())
+	if items > (^uint64(0)-size)/blockCacheItemOverhead {
+		return ^uint64(0)
+	}
+	return size + items*blockCacheItemOverhead
+}
+
+// transactionListMemory also charges for the dynamic lists inside typed
+// transactions. Counting only transactions misses access tuples, authorizations,
+// and blob hashes. Their encoded contents are charged twice for slice capacity
+// and nested storage-key arrays, in addition to per-element allocation overhead.
+// This scans RLP without allocating decoded transactions or their nested slices.
+func transactionListMemory(list *rlp.RawList[*types.Transaction]) uint64 {
+	total := rawListMemory(list)
+	if list == nil || total == ^uint64(0) {
+		return total
+	}
+	it := list.ContentIterator()
+	for it.Next() {
+		if it.Err() != nil {
+			return ^uint64(0)
+		}
+		kind, content, _, err := rlp.Split(it.Value())
+		if err != nil {
+			return ^uint64(0)
+		}
+		if kind == rlp.List { // Legacy transactions have no nested dynamic lists.
+			continue
+		}
+		if len(content) == 0 || content[0] < types.AccessListTxType || content[0] > types.SetCodeTxType {
+			continue // Items will reject unsupported transaction types.
+		}
+		fields, rest, err := rlp.SplitList(content[1:])
+		if err != nil || len(rest) != 0 {
+			return ^uint64(0)
+		}
+		for len(fields) > 0 {
+			kind, content, rest, err = rlp.Split(fields)
+			if err != nil {
+				return ^uint64(0)
+			}
+			fields = rest
+			if kind != rlp.List {
+				continue
+			}
+			items, err := rlp.CountValues(content)
+			if err != nil {
+				return ^uint64(0)
+			}
+			size := uint64(len(content)) * 2
+			if size > ^uint64(0)-total || uint64(items) > (^uint64(0)-total-size)/blockCacheItemOverhead {
+				return ^uint64(0)
+			}
+			total += size + uint64(items)*blockCacheItemOverhead
+		}
+	}
+	return total
+}
+
+func blockBodyMemory(body *eth.BlockBody) common.StorageSize {
+	var total uint64
+	for _, size := range []uint64{
+		transactionListMemory(&body.Transactions),
+		rawListMemory(&body.Uncles),
+		rawListMemory(body.Withdrawals),
+		rawListMemory(body.Sidecars),
+	} {
+		if size > ^uint64(0)-total {
+			return common.StorageSize(^uint64(0))
+		}
+		total += size
+	}
+	return common.StorageSize(total)
 }
 
 // ReserveHeaders reserves a set of headers for the given peer, skipping any
@@ -560,6 +663,14 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 			taskQueue.PopItem()
 			progress = true
 			continue
+		}
+		// Keep the head and receipts fetchable so they can unblock Results.
+		// A rejected body can require more than the remaining budget, even
+		// when resultMemory has not reached the non-head limit yet.
+		if kind == bodyType && !q.resultCache.IsHead(header.Number.Uint64()) &&
+			(q.bodyCacheThrottled || q.resultMemory >= common.StorageSize(blockCacheMemory-blockCacheMemory/blockCacheBodyMemoryDivisor)) {
+			throttled = len(skip) == 0
+			break
 		}
 		// Remove it from the task queue
 		taskQueue.PopItem()
@@ -795,6 +906,8 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 	var uncleLists [][]*types.Header
 	var withdrawalLists [][]*types.Withdrawal
 	var sidecarLists []types.BlobSidecars
+	var bodyMemories []common.StorageSize
+	var pendingMemory common.StorageSize
 
 	validate := func(index int, header *types.Header) error {
 		if hashes.TransactionRoots[index] != header.TxHash {
@@ -815,6 +928,25 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 			if hashes.WithdrawalRoots[index] != *header.WithdrawalsHash {
 				return errInvalidBody
 			}
+		}
+		// Reject a single body which cannot fit into the reserved headroom before
+		// decoding it. Otherwise a tiny RLP list containing many small items can
+		// expand into hundreds of megabytes of Go objects in Items.
+		memory := blockBodyMemory(&bodies[index])
+		bodyLimit := common.StorageSize(blockCacheMemory / blockCacheBodyMemoryDivisor)
+		if memory > bodyLimit {
+			return fmt.Errorf("%w: estimated memory %v exceeds limit %v", errInvalidBody, memory, bodyLimit)
+		}
+		memoryLimit := common.StorageSize(blockCacheMemory) - bodyLimit
+		// Out-of-order bodies may accumulate behind a missing first body. Reserve
+		// one body's worth of memory so that the missing head can still arrive and
+		// unlock result processing when the normal cache budget is exhausted.
+		if q.resultCache.IsHead(header.Number.Uint64()) {
+			memoryLimit = common.StorageSize(blockCacheMemory)
+		}
+		if q.resultMemory+pendingMemory+memory > memoryLimit {
+			q.bodyCacheThrottled = true
+			return errBodyCacheFull
 		}
 
 		// decode
@@ -851,6 +983,8 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		} else {
 			sidecarLists = append(sidecarLists, nil)
 		}
+		bodyMemories = append(bodyMemories, memory)
+		pendingMemory += memory
 		return nil
 	}
 
@@ -859,6 +993,8 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		result.Uncles = uncleLists[index]
 		result.Withdrawals = withdrawalLists[index]
 		result.Sidecars = sidecarLists[index]
+		result.bodyMemory = bodyMemories[index]
+		q.resultMemory += bodyMemories[index]
 		result.SetBodyDone()
 	}
 	nresults := len(hashes.TransactionRoots)
