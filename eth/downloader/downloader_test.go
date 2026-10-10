@@ -17,6 +17,7 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -146,11 +147,14 @@ type downloadTesterPeer struct {
 
 	withholdHeaders map[common.Hash]struct{}
 	corruptBodies   bool // if set, the peer serves incorrect bodies
+	withholdBodies  bool
+	lagging         bool
 
 	dropped chan error // signaled when res.Done receives an error
 }
 
 func (dlp *downloadTesterPeer) MarkLagging() {
+	dlp.lagging = true
 }
 
 // Head constructs a function to retrieve a peer's current head hash
@@ -264,6 +268,9 @@ func (dlp *downloadTesterPeer) RequestHeadersByNumber(origin uint64, amount int,
 // peer in the download tester. The returned function can be used to retrieve
 // batches of block bodies from the particularly requested peer.
 func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+	if dlp.withholdBodies {
+		return &eth.Request{Peer: dlp.id}, nil
+	}
 	blobs := eth.ServiceGetBlockBodiesQuery(dlp.chain, hashes)
 
 	bodies := make([]*types.Body, len(blobs))
@@ -1303,5 +1310,54 @@ func TestInvalidBodyPeerDrop(t *testing.T) {
 	case <-peer.dropped:
 	case <-time.After(1 * time.Minute):
 		t.Fatal("peer was not dropped")
+	}
+}
+
+// A stalled history download must release the master and allow a new sync cycle.
+func TestHistorySyncStall(t *testing.T) {
+	for _, mode := range []SyncMode{FullSync, SnapSync} {
+		t.Run(mode.String(), func(t *testing.T) {
+			tester := newTester(t, mode)
+			defer tester.terminate()
+			chain := testChainBase.shorten(blockCacheMaxItems - 15)
+			master := tester.newPeer("stalled", eth.ETH70, chain.blocks[1:])
+			master.withholdBodies = true
+			tester.downloader.syncInitHook = func(uint64, uint64) {
+				if tester.downloader.queue.resultTimeout != 2*time.Minute {
+					t.Errorf("history result timeout was not configured")
+				}
+				tester.downloader.queue.resultTimeout = 100 * time.Millisecond
+			}
+			head, td := master.Head()
+			done := make(chan error, 1)
+			go func() { done <- tester.downloader.LegacySync(master.id, head, "", td, nil, mode) }()
+			select {
+			case err := <-done:
+				if !errors.Is(err, errStallingPeer) {
+					t.Fatalf("sync returned %v, want stalling error", err)
+				}
+			case <-time.After(5 * time.Second):
+				tester.downloader.Cancel()
+				<-done
+				t.Fatal("stalled history sync did not stop")
+			}
+			if !master.lagging {
+				t.Fatal("stalled master remains eligible for selection")
+			}
+			if tester.downloader.peers.Peer(master.id) != nil {
+				t.Fatal("stalled master was not dropped")
+			}
+			select {
+			case <-tester.downloader.cancelCh:
+			default:
+				t.Fatal("old download cycle is still active")
+			}
+			tester.downloader.syncInitHook = nil
+			tester.newPeer("healthy", eth.ETH70, chain.blocks[1:])
+			if err := tester.sync("healthy", nil, mode); err != nil {
+				t.Fatalf("replacement sync failed: %v", err)
+			}
+			assertOwnChain(t, tester, len(chain.blocks))
+		})
 	}
 }
