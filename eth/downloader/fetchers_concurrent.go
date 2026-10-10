@@ -85,6 +85,7 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 	// Keep the old peer busy through the existing stale-request tracking.
 	var earlyRetry *eth.Request
 	var retryDeadline time.Time
+	var retryItems int
 	pending := make(map[string]*eth.Request)
 	defer func() {
 		// Abort all requests on sync cycle cancellation. The requests may still
@@ -222,6 +223,7 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				ttl := d.peers.rates.TargetTimeout()
 				if earlyRetry == nil && d.peers.Len() > 1 && request.RetryAfter > 0 && request.RetryAfter < ttl {
 					retryDeadline = time.Now().Add(ttl)
+					retryItems = len(request.Headers)
 					ttl = request.RetryAfter
 					earlyRetry = req
 				}
@@ -323,6 +325,8 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				continue
 			}
 			if req == earlyRetry {
+				// The batch was already requeued at the early deadline.
+				fails = retryItems
 				earlyRetry = nil
 			}
 

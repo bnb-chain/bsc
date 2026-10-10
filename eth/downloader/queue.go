@@ -482,14 +482,9 @@ func (q *queue) ReserveHeaders(p *peerConnection, count int) *fetchRequest {
 func (q *queue) ReserveBodies(p *peerConnection, count int) (*fetchRequest, bool, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	if !q.blockTaskQueue.Empty() {
-		if header, _ := q.blockTaskQueue.Peek(); q.resultCache.IsHead(header.Number.Uint64()) {
-			count = min(count, 1)
-		}
-	}
 
 	request, progress, throttled := q.reserveHeaders(p, count, q.blockTaskPool, q.blockTaskQueue, q.blockPendPool, bodyType)
-	if request != nil && len(request.Headers) == 1 && q.resultCache.IsHead(request.Headers[0].Number.Uint64()) {
+	if request != nil {
 		request.RetryAfter = 2 * time.Second
 	}
 	return request, progress, throttled

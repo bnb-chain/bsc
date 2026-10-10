@@ -104,14 +104,6 @@ func (r *resultStore) GetDeliverySlot(headerNumber uint64) (*fetchResult, bool, 
 	return res, stale, err
 }
 
-// IsHead reports whether headerNumber is the first result needed by the caller.
-func (r *resultStore) IsHead(headerNumber uint64) bool {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-
-	return headerNumber == r.resultOffset
-}
-
 // getFetchResult returns the fetchResult corresponding to the given item, and
 // the index where the result is stored.
 func (r *resultStore) getFetchResult(headerNumber uint64) (item *fetchResult, index int, stale, throttle bool, err error) {

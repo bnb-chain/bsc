@@ -96,6 +96,7 @@ func dummyPeer(id string) *peerConnection {
 }
 
 func TestBasics(t *testing.T) {
+	numOfBlocks := len(emptyChain.blocks)
 	numOfReceipts := len(emptyChain.blocks) / 2
 
 	q := newQueue(10, 10)
@@ -114,7 +115,6 @@ func TestBasics(t *testing.T) {
 		hashes[i] = header.Hash()
 	}
 	q.Schedule(headers, hashes, 1)
-	initialBodyTasks := q.blockTaskQueue.Size()
 	if q.Idle() {
 		t.Errorf("queue should not be idle")
 	}
@@ -130,16 +130,20 @@ func TestBasics(t *testing.T) {
 	{
 		peer := dummyPeer("peer-1")
 		fetchReq, _, throttle := q.ReserveBodies(peer, 50)
-		if throttle {
-			t.Fatal("head-only request should not fill the result queue")
+		if !throttle {
+			// queue size is only 10, so throttling should occur
+			t.Fatal("should throttle")
 		}
 		// But we should still get the first things to fetch
-		if got, exp := len(fetchReq.Headers), 1; got != exp {
+		if got, exp := len(fetchReq.Headers), 5; got != exp {
 			t.Fatalf("expected %d requests, got %d", exp, got)
 		}
 		if got, exp := fetchReq.Headers[0].Number.Uint64(), uint64(1); got != exp {
 			t.Fatalf("expected header %d, got %d", exp, got)
 		}
+	}
+	if exp, got := q.blockTaskQueue.Size(), numOfBlocks-10; exp != got {
+		t.Errorf("expected block task queue to be %d, got %d", exp, got)
 	}
 	if exp, got := q.receiptTaskQueue.Size(), numOfReceipts; exp != got {
 		t.Errorf("expected receipt task queue to be %d, got %d", exp, got)
@@ -148,27 +152,17 @@ func TestBasics(t *testing.T) {
 		peer := dummyPeer("peer-2")
 		fetchReq, _, throttle := q.ReserveBodies(peer, 50)
 
-		// The second peer should receive the remaining slots before throttling.
+		// The second peer should hit throttling
 		if !throttle {
 			t.Fatalf("should throttle")
 		}
-		if got, exp := len(fetchReq.Headers), 4; got != exp {
-			t.Fatalf("expected %d requests, got %d", exp, got)
+		// And not get any fetches at all, since it was throttled to begin with
+		if fetchReq != nil {
+			t.Fatalf("should have no fetches, got %d", len(fetchReq.Headers))
 		}
 	}
-	bodyTasksAfterReservation := q.blockTaskQueue.Size()
-	if bodyTasksAfterReservation >= initialBodyTasks {
-		t.Fatal("body requests did not consume queued tasks")
-	}
-	{
-		peer := dummyPeer("peer-4")
-		fetchReq, _, throttle := q.ReserveBodies(peer, 50)
-		if !throttle || fetchReq != nil {
-			t.Fatalf("expected throttled peer with no fetches, got request %v and throttle %t", fetchReq, throttle)
-		}
-	}
-	if got := q.blockTaskQueue.Size(); got != bodyTasksAfterReservation {
-		t.Errorf("throttled request changed body queue size from %d to %d", bodyTasksAfterReservation, got)
+	if exp, got := q.blockTaskQueue.Size(), numOfBlocks-10; exp != got {
+		t.Errorf("expected block task queue to be %d, got %d", exp, got)
 	}
 	if exp, got := q.receiptTaskQueue.Size(), numOfReceipts; exp != got {
 		t.Errorf("expected receipt task queue to be %d, got %d", exp, got)
@@ -190,8 +184,8 @@ func TestBasics(t *testing.T) {
 			t.Fatalf("expected header %d, got %d", exp, got)
 		}
 	}
-	if got := q.blockTaskQueue.Size(); got != bodyTasksAfterReservation {
-		t.Errorf("receipt reservation changed body queue size from %d to %d", bodyTasksAfterReservation, got)
+	if exp, got := q.blockTaskQueue.Size(), numOfBlocks-10; exp != got {
+		t.Errorf("expected block task queue to be %d, got %d", exp, got)
 	}
 	if exp, got := q.receiptTaskQueue.Size(), numOfReceipts-5; exp != got {
 		t.Errorf("expected receipt task queue to be %d, got %d", exp, got)
@@ -487,30 +481,51 @@ func (n *network) headers(from int) []*types.Header {
 	return hdrs
 }
 
-func TestBodyHeadTimeoutRequeuesToAnotherPeer(t *testing.T) {
-	q := newQueue(2, 2)
+// A partial batch must leave its missing suffix available for another peer.
+func TestBodyBatchPartialResponseRetry(t *testing.T) {
+	q := newQueue(8, 8)
 	q.Prepare(1, FullSync)
-	headers := chain.headers()[:3]
+	txs := types.Transactions{types.NewTransaction(0, common.Address{}, big.NewInt(0), params.TxGas, big.NewInt(1), nil)}
+	txList, err := rlp.EncodeToRawList(txs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txRoot := types.DeriveSha(txs, trie.NewStackTrie(nil))
+	headers := make([]*types.Header, 3)
 	hashes := make([]common.Hash, len(headers))
-	for i, header := range headers {
-		hashes[i] = header.Hash()
+	for i := range headers {
+		headers[i] = &types.Header{Number: big.NewInt(int64(i + 1)), TxHash: txRoot, UncleHash: types.EmptyUncleHash}
+		if i > 0 {
+			headers[i].ParentHash = hashes[i-1]
+		}
+		hashes[i] = headers[i].Hash()
 	}
-	if inserted := q.Schedule(headers, hashes, 1); inserted != len(headers) {
-		t.Fatalf("scheduled %d headers, want %d", inserted, len(headers))
+	if n := q.Schedule(headers, hashes, 1); n != len(headers) {
+		t.Fatalf("scheduled %d headers, want %d", n, len(headers))
 	}
-	slowPeer := dummyPeer("slow")
-	head, _, _ := q.ReserveBodies(slowPeer, len(headers))
-	if head == nil || len(head.Headers) != 1 || head.Headers[0] != headers[0] {
-		t.Fatalf("head request should contain only the first body, got %v", head)
+	first := dummyPeer("first")
+	request, _, _ := q.ReserveBodies(first, 3)
+	if request == nil || len(request.Headers) != 3 {
+		t.Fatalf("head batch was split: %v", request)
 	}
-	if head.RetryAfter != 2*time.Second {
-		t.Fatalf("head retry delay %v, want 2s", head.RetryAfter)
+	if request.RetryAfter != 2*time.Second {
+		t.Fatalf("head batch retry delay %v, want 2s", request.RetryAfter)
 	}
-	if got := q.ExpireBodies(slowPeer.id); got != 1 {
-		t.Fatalf("expired %d head bodies, want 1", got)
+	// The peer returns only the first body. Blocks 2 and 3 remain missing.
+	bodyHashes := eth.BlockBodyHashes{
+		TransactionRoots: []common.Hash{txRoot},
+		UncleHashes:      []common.Hash{types.EmptyUncleHash},
 	}
-	retry, _, _ := q.ReserveBodies(dummyPeer("retry"), len(headers))
-	if retry == nil || len(retry.Headers) != 1 || retry.Headers[0] != headers[0] {
-		t.Fatalf("retry should receive the head body, got %v", retry)
+	if n, err := q.DeliverBodies(first.id, bodyHashes, []eth.BlockBody{{Transactions: txList}}); err != nil || n != 1 {
+		t.Fatalf("partial delivery accepted %d bodies: %v", n, err)
+	}
+	// Retry before Results advances the result offset: eligibility must not
+	// depend on the consumer having already moved the head.
+	retry, _, _ := q.ReserveBodies(dummyPeer("retry"), 3)
+	if retry == nil || len(retry.Headers) != 2 || retry.Headers[0] != headers[1] || retry.Headers[1] != headers[2] {
+		t.Fatalf("missing suffix was not retried as a batch: %v", retry)
+	}
+	if retry.RetryAfter != 2*time.Second {
+		t.Fatalf("remaining batch retry delay %v, want 2s", retry.RetryAfter)
 	}
 }

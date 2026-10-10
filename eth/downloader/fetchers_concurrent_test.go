@@ -27,52 +27,54 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-type headRetryRequest struct {
+type bodyRetryRequest struct {
 	req  *eth.Request
 	sink chan *eth.Response
 }
 
-type headRetryQueue struct {
+type bodyRetryQueue struct {
 	*bodyQueue
-	requests chan headRetryRequest
-	updates  chan string
+	requests  chan bodyRetryRequest
+	updates   chan string
+	batchSize int
 }
 
-func (q *headRetryQueue) capacity(p *peerConnection, _ time.Duration) int {
-	return map[string]int{"master": 4, "tail": 3, "slow": 2, "backup": 1}[p.id]
+func (q *bodyRetryQueue) capacity(p *peerConnection, _ time.Duration) int {
+	return map[string]int{"master": 40, "tail": 30, "slow": 20, "backup": 10}[p.id]
 }
 
-func (q *headRetryQueue) reserve(p *peerConnection, count int) (*fetchRequest, bool, bool) {
-	req, progress, throttle := q.bodyQueue.reserve(p, count)
+func (q *bodyRetryQueue) reserve(p *peerConnection, count int) (*fetchRequest, bool, bool) {
+	req, progress, throttle := q.bodyQueue.reserve(p, min(count, q.batchSize))
 	if req != nil && req.RetryAfter > 0 {
 		req.RetryAfter = 25 * time.Millisecond
 	}
 	return req, progress, throttle
 }
 
-func (q *headRetryQueue) request(p *peerConnection, _ *fetchRequest, sink chan *eth.Response) (*eth.Request, error) {
+func (q *bodyRetryQueue) request(p *peerConnection, _ *fetchRequest, sink chan *eth.Response) (*eth.Request, error) {
 	req := &eth.Request{Peer: p.id, Sent: time.Now()}
-	q.requests <- headRetryRequest{req, sink}
+	q.requests <- bodyRetryRequest{req, sink}
 	return req, nil
 }
 
-func (q *headRetryQueue) updateCapacity(p *peerConnection, _ int, _ time.Duration) {
+func (q *bodyRetryQueue) updateCapacity(p *peerConnection, _ int, _ time.Duration) {
 	q.updates <- p.id
 }
 
-// Exercise the actual fetch loop: a head retry must preempt an older tail timer,
+// Exercise the actual fetch loop: an early retry must preempt an older timer,
 // keep the slow master connected, and ignore late responses without decoding.
-func TestConcurrentHeadRetry(t *testing.T) {
+func TestConcurrentBodyRetry(t *testing.T) {
 	for _, lateResponse := range []bool{true, false} {
 		name := "normal-deadline"
 		if lateResponse {
 			name = "late-response"
 		}
-		t.Run(name, func(t *testing.T) { testConcurrentHeadRetry(t, lateResponse) })
+		t.Run(name, func(t *testing.T) { testConcurrentBodyRetry(t, lateResponse, 2) })
 	}
+	t.Run("large-batch-deadline", func(t *testing.T) { testConcurrentBodyRetry(t, false, 3) })
 }
 
-func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
+func testConcurrentBodyRetry(t *testing.T, lateResponse bool, batchSize int) {
 	dropped := make(chan string, 4)
 	d := &Downloader{
 		queue: newQueue(8, 8), peers: newPeerSet(), cancelCh: make(chan struct{}),
@@ -85,8 +87,8 @@ func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
 	}
 	d.peers.rates.OverrideTTLLimit = time.Second
 	d.queue.Prepare(1, FullSync)
-	headers := make([]*types.Header, 3)
-	hashes := make([]common.Hash, 3)
+	headers := make([]*types.Header, batchSize+1)
+	hashes := make([]common.Hash, len(headers))
 	for i := range headers {
 		headers[i] = &types.Header{Number: big.NewInt(int64(i + 1)), TxHash: common.Hash{1}, UncleHash: types.EmptyUncleHash}
 		if i > 0 {
@@ -97,7 +99,7 @@ func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
 	if n := d.queue.Schedule(headers, hashes, 1); n != len(headers) {
 		t.Fatalf("scheduled %d headers, want %d", n, len(headers))
 	}
-	q := &headRetryQueue{bodyQueue: (*bodyQueue)(d), requests: make(chan headRetryRequest, 8), updates: make(chan string, 8)}
+	q := &bodyRetryQueue{bodyQueue: (*bodyQueue)(d), requests: make(chan bodyRetryRequest, 8), updates: make(chan string, 8), batchSize: batchSize}
 	done := make(chan error, 1)
 	go func() { done <- d.concurrentFetch(q, false) }()
 	t.Cleanup(func() {
@@ -108,7 +110,7 @@ func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
 			t.Error("fetcher did not stop")
 		}
 	})
-	next := func(want string) headRetryRequest {
+	next := func(want string) bodyRetryRequest {
 		t.Helper()
 		select {
 		case id := <-dropped:
@@ -121,12 +123,12 @@ func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
 		case <-time.After(500 * time.Millisecond):
 			t.Fatalf("no request to %s before the normal tail timeout", want)
 		}
-		return headRetryRequest{}
+		return bodyRetryRequest{}
 	}
 	first := next("master")
 	next("tail")
-	// Removing the initial head leaves the long tail deadline armed. The new
-	// short head deadline must reset that timer even though its heap is nonempty.
+	// Completing the initial batch leaves the long tail deadline armed. The
+	// next early retry must reset that timer even though its heap is nonempty.
 	empty := eth.BlockBodiesResponse{}
 	first.sink <- &eth.Response{Req: first.req, Res: &empty, Meta: eth.BlockBodyHashes{}, Done: make(chan error, 1)}
 	slow := next("slow")
@@ -139,6 +141,28 @@ func testConcurrentHeadRetry(t *testing.T, lateResponse bool) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	if !lateResponse {
+		if batchSize > 2 {
+			deadline := time.After(2 * time.Second)
+			for {
+				select {
+				case id := <-q.updates:
+					if id == "slow" {
+						select {
+						case <-d.cancelCh:
+							t.Fatal("large batch timeout canceled sync instead of reducing throughput")
+						default:
+						}
+						return
+					}
+				case id := <-dropped:
+					if id == "slow" {
+						t.Fatal("large batch timeout lost its original item count")
+					}
+				case <-deadline:
+					t.Fatal("early retry lost the large batch deadline")
+				}
+			}
+		}
 		select {
 		case <-d.cancelCh:
 			// A truly unresponsive master still terminates the cycle at the
