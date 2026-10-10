@@ -17,9 +17,11 @@
 package eth
 
 import (
+	"math/big"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
@@ -30,6 +32,72 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNextSyncOpRandomPeer(t *testing.T) {
+	tester := newTestHandler(ethconfig.FullSync)
+	defer tester.close()
+	// Keep the selection test separate from the handler's running sync loop.
+	h := &handler{chain: tester.chain, database: tester.db, peers: newPeerSet(), maxPeers: 10}
+	cs := newChainSyncer(h)
+	cs.forced = true
+	_, localTD := cs.modeAndLocalHead()
+	addPeer := func(id byte, delta int64, lagging bool) *eth.Peer {
+		rw, remote := p2p.MsgPipe()
+		peer := eth.NewPeer(eth.ETH70, p2p.NewPeer(enode.ID{id}, "", nil), rw, nil, nil)
+		other := eth.NewPeer(eth.ETH70, p2p.NewPeer(enode.ID{0xff}, "", nil), remote, nil, nil)
+		t.Cleanup(func() {
+			peer.Close()
+			other.Close()
+			rw.Close()
+			remote.Close()
+		})
+		td := new(big.Int).Add(localTD, big.NewInt(delta))
+		blockRange := eth.BlockRangeUpdatePacket{LatestBlockHash: common.Hash{id}}
+		handshake := make(chan error, 1)
+		go func() { handshake <- other.Handshake(1, tester.chain, blockRange, td, nil) }()
+		require.NoError(t, peer.Handshake(1, tester.chain, blockRange, localTD, nil))
+		require.NoError(t, <-handshake)
+		if lagging {
+			peer.MarkLagging()
+		}
+		require.NoError(t, h.peers.registerPeer(peer, nil, nil))
+		return peer
+	}
+	require.Nil(t, cs.nextSyncOp())
+	require.False(t, h.acceptTxs.Load(), "no peers must not imply caught up")
+	addPeer(1, 1000000, true)
+	require.Nil(t, cs.nextSyncOp())
+	require.False(t, h.acceptTxs.Load(), "lagging peers must not imply caught up")
+	addPeer(2, -1, false)
+	addPeer(3, 0, false)
+	require.Nil(t, cs.nextSyncOp())
+	require.True(t, h.acceptTxs.Load(), "preserve the already-synced path")
+	h.acceptTxs.Store(false)
+	first := addPeer(4, 10, false)
+	for range 32 {
+		op := cs.nextSyncOp()
+		require.NotNil(t, op, "behind peers must not hide an eligible sync source")
+		require.Same(t, first, op.peer)
+	}
+	second := addPeer(5, 1000000000000, false)
+	counts := make(map[*eth.Peer]int)
+	for range 256 {
+		op := cs.nextSyncOp()
+		require.NotNil(t, op)
+		require.True(t, op.peer == first || op.peer == second, "selected an ineligible peer")
+		require.Equal(t, common.Hash{op.peer.NodeID()[0]}, op.head)
+		require.Positive(t, op.td.Cmp(localTD))
+		counts[op.peer]++
+	}
+	// A deliberately broad bound detects highest-TD selection or TD weighting.
+	for _, peer := range []*eth.Peer{first, second} {
+		require.GreaterOrEqual(t, counts[peer], 64)
+		require.LessOrEqual(t, counts[peer], 192)
+	}
+	require.False(t, h.acceptTxs.Load(), "choosing a source must not mark sync complete")
+	cs.doneCh = make(chan error)
+	require.Nil(t, cs.nextSyncOp(), "do not replace the master during an active sync")
+}
 
 // Tests that snap sync is disabled after a successful sync cycle.
 func TestSnapSyncDisabling68(t *testing.T) { testSnapSyncDisabling(t, eth.ETH68, snap.SNAP1) }

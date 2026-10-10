@@ -154,14 +154,15 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	if cs.handler.peers.len() < minPeers {
 		return nil
 	}
-	// We have enough peers, pick the one with the highest TD, but avoid going
-	// over the terminal total difficulty. Above that we expect the consensus
-	// clients to direct the chain head to sync to.
-	peer := cs.handler.peers.peerWithHighestTD()
+	mode, ourTD := cs.modeAndLocalHead()
+	peer := cs.handler.peers.peerForSync(ourTD)
+	if peer == nil {
+		// Preserve the already-synced checks when no peer is ahead.
+		peer = cs.handler.peers.peerWithHighestTD()
+	}
 	if peer == nil {
 		return nil
 	}
-	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
 	if op.td.Cmp(ourTD) <= 0 {
 		if !cs.handler.acceptTxs.Load() {
