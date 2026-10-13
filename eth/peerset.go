@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -481,6 +482,26 @@ func (ps *peerSet) snapLen() int {
 	defer ps.lock.RUnlock()
 
 	return ps.snapPeers
+}
+
+// peerForSync selects uniformly among non-lagging peers ahead of the local TD.
+func (ps *peerSet) peerForSync(localTD *big.Int) *eth.Peer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	peers := make([]*eth.Peer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		if p.Lagging() {
+			continue
+		}
+		if _, td := p.Head(); td.Cmp(localTD) > 0 {
+			peers = append(peers, p.Peer)
+		}
+	}
+	if len(peers) == 0 {
+		return nil
+	}
+	return peers[rand.Intn(len(peers))]
 }
 
 // peerWithHighestTD retrieves the known peer with the currently highest total
