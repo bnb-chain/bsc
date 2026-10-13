@@ -115,10 +115,10 @@ func (cm *dropper) dropRandomPeer() bool {
 	numDialed := len(peers) - numInbound
 
 	selectDoNotDrop := func(p *p2p.Peer) bool {
-		// Avoid dropping trusted and static peers, or recent peers.
+		// Avoid dropping trusted, static, EVN, proxied, or recent peers.
 		// Only drop peers if their respective category (dialed/inbound)
 		// is close to limit capacity.
-		return p.Trusted() || p.StaticDialed() ||
+		return isProtectedPeer(p) ||
 			p.Lifetime() < mclock.AbsTime(doNotDropBefore) ||
 			(p.DynDialed() && cm.maxDialPeers-numDialed > peerDropThreshold) ||
 			(p.Inbound() && cm.maxInboundPeers-numInbound > peerDropThreshold)
@@ -138,6 +138,10 @@ func (cm *dropper) dropRandomPeer() bool {
 		return true
 	}
 	return false
+}
+
+func isProtectedPeer(p *p2p.Peer) bool {
+	return p.Trusted() || p.StaticDialed() || p.EVNPeerFlag.Load() || p.ProxyedPeerFlag.Load()
 }
 
 // randomDuration generates a random duration between min and max.
