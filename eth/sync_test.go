@@ -35,19 +35,17 @@ import (
 func TestShouldRandomizeSyncPeer(t *testing.T) {
 	localTD := big.NewInt(1000)
 	tests := []struct {
-		name    string
-		peerTD  *big.Int
-		trusted bool
-		want    bool
+		name   string
+		peerTD *big.Int
+		want   bool
 	}{
 		{name: "within threshold", peerTD: big.NewInt(1200), want: false},
 		{name: "over threshold", peerTD: big.NewInt(1201), want: true},
-		{name: "trusted peer", peerTD: big.NewInt(1000000), trusted: true, want: false},
 		{name: "behind local", peerTD: big.NewInt(999), want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, shouldRandomizeSyncPeer(tt.peerTD, localTD, tt.trusted))
+			require.Equal(t, tt.want, shouldRandomizeSyncPeer(tt.peerTD, localTD))
 		})
 	}
 }

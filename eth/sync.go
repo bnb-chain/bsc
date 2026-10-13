@@ -155,16 +155,9 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	if cs.handler.peers.len() < minPeers {
 		return nil
 	}
-	peer := cs.handler.peers.peerWithHighestTD()
+	peer, mode, ourTD := cs.pickPeerForSync()
 	if peer == nil {
 		return nil
-	}
-	mode, ourTD := cs.modeAndLocalHead()
-	_, peerTD := peer.Head()
-	if shouldRandomizeSyncPeer(peerTD, ourTD, peer.Trusted()) {
-		if randomPeer := cs.handler.peers.peerForSync(ourTD); randomPeer != nil {
-			peer = randomPeer
-		}
 	}
 	op := peerToSyncOp(mode, peer)
 	if op.td.Cmp(ourTD) <= 0 {
@@ -205,10 +198,22 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	return op
 }
 
-func shouldRandomizeSyncPeer(peerTD, localTD *big.Int, trusted bool) bool {
-	if trusted {
-		return false
+func (cs *chainSyncer) pickPeerForSync() (*eth.Peer, downloader.SyncMode, *big.Int) {
+	peer := cs.handler.peers.peerWithHighestTD()
+	if peer == nil {
+		return nil, downloader.FullSync, nil
 	}
+	mode, ourTD := cs.modeAndLocalHead()
+	_, peerTD := peer.Head()
+	if !peer.Trusted() && shouldRandomizeSyncPeer(peerTD, ourTD) {
+		if randomPeer := cs.handler.peers.peerForSync(ourTD); randomPeer != nil {
+			peer = randomPeer
+		}
+	}
+	return peer, mode, ourTD
+}
+
+func shouldRandomizeSyncPeer(peerTD, localTD *big.Int) bool {
 	threshold := new(big.Int).Add(localTD, big.NewInt(randomSyncTDLead))
 	return peerTD.Cmp(threshold) > 0
 }
