@@ -1,5 +1,71 @@
 # Changelog
 
+## v1.8.1
+
+v1.8.1 is for BSC Chapel testnet [Jenner hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-718.md), scheduled for 2026-10-29 02:30:00 AM UTC.
+
+### FEATURE
+
+- [core/vm, params: implement CAS20 Compliant Asset Standard (BEP-702)](https://github.com/bnb-chain/bsc/pull/3813)
+- [core/paymentlane: implement BEP-703 payment lane](https://github.com/bnb-chain/bsc/pull/3793)
+- [core, params: implement BEP-706 millisecond timestamp precompile](https://github.com/bnb-chain/bsc/pull/3792)
+
+### BEP-675 Enhancements
+
+- [internal/ethapi: support gRPC SendBidBlock API (BEP-675)](https://github.com/bnb-chain/bsc/pull/3774)
+- [miner: persist BidBlock revocations across restarts](https://github.com/bnb-chain/bsc/pull/3796)
+- [miner: reject BidBlock with zero state root](https://github.com/bnb-chain/bsc/pull/3798)
+- [core: report and count bad BidBlocks](https://github.com/bnb-chain/bsc/pull/3804)
+- [miner: revoke builders on cross-validator bad-block evidence](https://github.com/bnb-chain/bsc/pull/3806)
+- [miner: record revocation counts and add gRPC disable flag](https://github.com/bnb-chain/bsc/pull/3810)
+
+### BUGFIX
+
+- [core/vm: charge the double-sign-evidence precompile (`0x68`) per input byte at Jenner](https://github.com/bnb-chain/bsc/pull/3772)
+- [eth: fix peerSet lock deadlock in waitSnapExtension](https://github.com/bnb-chain/bsc/pull/3776)
+- [eth: cap NewBlockHashesPacket length](https://github.com/bnb-chain/bsc/pull/3777)
+- [internal/ethapi: fix getDiffAccounts missing state changes](https://github.com/bnb-chain/bsc/pull/3802)
+- [consensus/parlia: reject BlockAccessListHash and SlotNumber before Amsterdam](https://github.com/bnb-chain/bsc/pull/3808)
+- [core, internal, miner: fix RPC timestamp overrides, gas estimation and mining edge cases](https://github.com/bnb-chain/bsc/pull/3821)
+- [miner/minerconfig: fix the default MEV gRPC port](https://github.com/bnb-chain/bsc/pull/3824)
+- [eth/protocols/eth, eth/downloader: fix partial receipt delivery deadlock](https://github.com/bnb-chain/bsc/pull/3825)
+- [core/vm: fix CAS20 creation log order and bootstrap caller context](https://github.com/bnb-chain/bsc/pull/3826)
+- [params: fix eth_config blob schedule inheritance](https://github.com/bnb-chain/bsc/pull/3833)
+- [eth: avoid blocking BSC extension delivery during shutdown](https://github.com/bnb-chain/bsc/pull/3834)
+- [eth/protocols/eth: fix an eth/68 receipt response edge case](https://github.com/bnb-chain/bsc/pull/3835)
+- [core, core/state: fix storage and block import metrics](https://github.com/bnb-chain/bsc/pull/3838)
+- [eth: fix per-IP peer accounting](https://github.com/bnb-chain/bsc/pull/3839)
+
+### IMPROVEMENT
+
+- [consensus/parlia: add metrics for vote attestation assembly outcomes](https://github.com/bnb-chain/bsc/pull/3782)
+- [eth/protocols/bsc: rate-limit GetBlocksByRange serving per peer](https://github.com/bnb-chain/bsc/pull/3794)
+- [miner, core/types: expose DelayLeftOver in MevParams](https://github.com/bnb-chain/bsc/pull/3807)
+- [core/types/builder: document gRPC BidBlock integration](https://github.com/bnb-chain/bsc/pull/3820)
+- [core/vm: rename CAS20 seizure exemption policy](https://github.com/bnb-chain/bsc/pull/3829)
+- [eth/fetcher: relax transaction-fetch stall threshold for BSC](https://github.com/bnb-chain/bsc/pull/3837)
+- [core/vote: lower dropped-vote logging to debug](https://github.com/bnb-chain/bsc/pull/3844)
+
+## MetaInfo
+
+Mandatory Update Required: Yes
+
+Target Audience: all BSC Chapel testnet node operators, MEV builders and sentry operators
+
+Key Changes:
+
+- [BEP-702: Compliant Asset Standard](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-702.md): introduces CAS20, a native token standard for stablecoins and tokenized assets, implemented as stateful precompiles. Compliance controls include shared allow/blocklists, transfer policies, pausing, and separate mint, burn and seizure roles. Token creation requires separate activation by a governance-appointed administrator.
+- [BEP-703: Payment Lane](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-703.md): reserves 5% of block gas by default for eligible BNB transfers and transactions to listed payment contracts, keeping capacity available for payments during congestion. The ratio and contract list can be changed through governance.
+- [BEP-706: Millisecond Timestamp](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-706.md): exposes millisecond block time to smart contracts through precompile `0x70`, supporting applications that need sub-second timing. `block.timestamp` remains in seconds.
+- [BEP-675 Enhancements](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-675.md) (no hard fork required): **faster BidBlock encoding/decoding over gRPC**. RLP-encoded binary payloads avoid JSON parsing and hex conversion, reducing serialization overhead and payload size for large blocks and blob sidecars. **Validation and builder revocation improvements** include rejecting BidBlocks with a zero state root, revoking local `SendBidBlock` access on cross-validator bad-block evidence, persisting revocations across restarts, and adding bad BidBlock and revocation metrics.
+
+Procedure: when upgrading from v1.8.0, check the gRPC and RPC changes below, then replace the binary and restart before the hard fork.
+
+- **MEV gRPC:** enabled by default when MEV and BidBlock submission are enabled. It uses the HTTP bind address and defaults to port `8552`. Ensure the port is available; if using gRPC, confirm sentry connectivity. Set `[Eth.Miner.Mev] GRPCPort` to change the port, or `--mev.grpc.disable` to disable the service. JSON-RPC remains supported. See the [gRPC integration guide](core/types/builder/bep-675-builder-grpc-integration.md).
+- **BEP-706 RPC change:** in `eth_call`, `eth_estimateGas`, `debug_traceCall` and `eth_simulateV1`, `blockOverrides.prevRandao`, when supplied, must encode a millisecond remainder (`0–999`) as a 32-byte hex value. This check applies immediately after upgrading, even before Jenner activates. `time` remains in seconds; overriding only `time` resets the millisecond remainder to zero.
+
+Schedule(Timeline): BSC Chapel testnet — 2026-10-29 02:30:00 AM UTC (`1793241000`). Mainnet activation is not scheduled in this release.
+
 ## v1.8.0-alpha
 v1.8.0-alpha is a preview release for upstream code sync, it catches up with [go-ethereum release [v1.17.3]](https://github.com/ethereum/go-ethereum/releases/tag/v1.17.3) and also removes several BSC features and fixes bugs.
 
