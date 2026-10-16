@@ -17,6 +17,7 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -25,6 +26,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -260,6 +262,219 @@ func TestEmptyBlocks(t *testing.T) {
 	}
 	if got, exp := q.resultCache.countCompleted(), 10; got != exp {
 		t.Errorf("wrong processable count, got %d, exp %d", got, exp)
+	}
+}
+
+func TestBodyMemoryLimitWithHeadGap(t *testing.T) {
+	for _, mode := range []SyncMode{FullSync, SnapSync} {
+		t.Run(mode.String(), func(t *testing.T) { testBodyMemoryLimitWithHeadGap(t, mode) })
+	}
+}
+
+func testBodyMemoryLimitWithHeadGap(t *testing.T, mode SyncMode) {
+	txs := make([]*types.Transaction, 4)
+	for i := range txs {
+		txs[i] = types.NewTransaction(uint64(i), common.Address{}, big.NewInt(0), params.TxGas, big.NewInt(1), nil)
+	}
+	txList, err := rlp.EncodeToRawList(txs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := eth.BlockBody{Transactions: txList}
+	bodySize := blockBodyMemory(&body)
+
+	oldMemoryLimit := blockCacheMemory
+	blockCacheMemory = int(bodySize*4) + 1 // Rejection can precede an exactly full cache.
+	defer func() { blockCacheMemory = oldMemoryLimit }()
+
+	headers := make([]*types.Header, 5)
+	headerHashes := make([]common.Hash, len(headers))
+	parentHash := common.Hash{}
+	receipts := types.Receipts{&types.Receipt{Status: types.ReceiptStatusSuccessful, CumulativeGasUsed: params.TxGas}}
+	receiptRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+	receiptRLP, err := rlp.EncodeToBytes(receipts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txRoot := types.DeriveSha(types.Transactions(txs), trie.NewStackTrie(nil))
+	for i := range headers {
+		headers[i] = &types.Header{
+			ParentHash:  parentHash,
+			Difficulty:  big.NewInt(1),
+			Number:      big.NewInt(int64(i + 1)),
+			TxHash:      txRoot,
+			ReceiptHash: receiptRoot,
+			UncleHash:   types.EmptyUncleHash,
+		}
+		headerHashes[i] = headers[i].Hash()
+		parentHash = headerHashes[i]
+	}
+
+	q := newQueue(len(headers), len(headers))
+	q.Prepare(1, mode)
+	if inserted := q.Schedule(headers, headerHashes, 1); inserted != len(headers) {
+		t.Fatalf("scheduled %d headers, want %d", inserted, len(headers))
+	}
+
+	headPeer := dummyPeer("head")
+	if request, _, _ := q.ReserveBodies(headPeer, 1); request == nil || len(request.Headers) != 1 || request.Headers[0] != headers[0] {
+		t.Fatal("failed to reserve the head body")
+	}
+	tailPeer := dummyPeer("tail")
+	request, _, _ := q.ReserveBodies(tailPeer, 4)
+	if request == nil || len(request.Headers) != 4 {
+		if request == nil {
+			t.Fatal("failed to reserve tail bodies")
+		}
+		t.Fatalf("reserved %d tail bodies, want 4", len(request.Headers))
+	}
+	hashes := eth.BlockBodyHashes{
+		TransactionRoots: []common.Hash{txRoot, txRoot, txRoot, txRoot},
+		UncleHashes:      []common.Hash{types.EmptyUncleHash, types.EmptyUncleHash, types.EmptyUncleHash, types.EmptyUncleHash},
+		WithdrawalRoots:  make([]common.Hash, 4),
+	}
+	accepted, err := q.DeliverBodies(tailPeer.id, hashes, []eth.BlockBody{body, body, body, body})
+	if !errors.Is(err, errBodyCacheFull) {
+		t.Fatalf("delivery error %v, want %v", err, errBodyCacheFull)
+	}
+	if accepted != 3 {
+		t.Fatalf("accepted %d tail bodies, want 3", accepted)
+	}
+	if q.resultMemory != 3*bodySize {
+		t.Fatalf("cached body memory %v, want %v", q.resultMemory, 3*bodySize)
+	}
+
+	// Nothing can be freed before the head arrives. Repeated reservations must
+	// stop here, including when a little unused budget remains.
+	for i := 0; i < 2; i++ {
+		if req, _, throttle := q.ReserveBodies(tailPeer, 1); req != nil || !throttle {
+			t.Fatal("body cache pressure did not throttle reservations")
+		}
+	}
+	// A timed-out head must remain fetchable while the tail is throttled.
+	q.ExpireBodies(headPeer.id)
+	if req, _, _ := q.ReserveBodies(headPeer, 1); req == nil || req.Headers[0] != headers[0] {
+		t.Fatal("body cache pressure blocked the missing head")
+	}
+	if mode == SnapSync {
+		receiptPeer := dummyPeer("receipts")
+		if req, _, _ := q.ReserveReceipts(receiptPeer, len(headers)); req == nil || len(req.Headers) != len(headers) {
+			t.Fatal("body cache pressure blocked receipts")
+		}
+		list := make([]rlp.RawValue, len(headers))
+		roots := make([]common.Hash, len(headers))
+		for i := range list {
+			list[i], roots[i] = receiptRLP, receiptRoot
+		}
+		if accepted, err := q.DeliverReceipts(receiptPeer.id, list, roots); err != nil || accepted != len(headers) {
+			t.Fatalf("receipts accepted %d, error %v", accepted, err)
+		}
+	}
+
+	headHashes := eth.BlockBodyHashes{
+		TransactionRoots: []common.Hash{txRoot},
+		UncleHashes:      []common.Hash{types.EmptyUncleHash},
+		WithdrawalRoots:  make([]common.Hash, 1),
+	}
+	if accepted, err := q.DeliverBodies(headPeer.id, headHashes, []eth.BlockBody{body}); err != nil || accepted != 1 {
+		t.Fatalf("head delivery accepted %d, error %v", accepted, err)
+	}
+	if results := q.Results(false); len(results) != 4 {
+		t.Fatalf("returned %d results after filling head gap, want 4", len(results))
+	}
+	if q.resultMemory != 0 {
+		t.Fatalf("cached body memory after release %v, want 0", q.resultMemory)
+	}
+
+	retryPeer := dummyPeer("retry")
+	request, _, _ = q.ReserveBodies(retryPeer, 1)
+	if request == nil || len(request.Headers) != 1 || request.Headers[0] != headers[4] {
+		t.Fatal("failed to reserve body rejected by the memory limit")
+	}
+	if accepted, err := q.DeliverBodies(retryPeer.id, headHashes, []eth.BlockBody{body}); err != nil || accepted != 1 {
+		t.Fatalf("retry delivery accepted %d, error %v", accepted, err)
+	}
+}
+
+func TestBodyMemoryLimitRejectsOversizedBody(t *testing.T) {
+	txs := make([]*types.Transaction, 4)
+	for i := range txs {
+		txs[i] = types.NewTransaction(uint64(i), common.Address{}, big.NewInt(0), params.TxGas, big.NewInt(1), nil)
+	}
+	txList, err := rlp.EncodeToRawList(txs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := eth.BlockBody{Transactions: txList}
+
+	oldMemoryLimit := blockCacheMemory
+	blockCacheMemory = int(blockBodyMemory(&body) * 2)
+	defer func() { blockCacheMemory = oldMemoryLimit }()
+
+	txRoot := types.DeriveSha(types.Transactions(txs), trie.NewStackTrie(nil))
+	header := &types.Header{
+		Difficulty: big.NewInt(1),
+		Number:     big.NewInt(1),
+		TxHash:     txRoot,
+		UncleHash:  types.EmptyUncleHash,
+	}
+	q := newQueue(1, 1)
+	q.Prepare(1, FullSync)
+	q.Schedule([]*types.Header{header}, []common.Hash{header.Hash()}, 1)
+	peer := dummyPeer("peer")
+	if request, _, _ := q.ReserveBodies(peer, 1); request == nil {
+		t.Fatal("failed to reserve body")
+	}
+	hashes := eth.BlockBodyHashes{
+		TransactionRoots: []common.Hash{txRoot},
+		UncleHashes:      []common.Hash{types.EmptyUncleHash},
+		WithdrawalRoots:  make([]common.Hash, 1),
+	}
+	accepted, err := q.DeliverBodies(peer.id, hashes, []eth.BlockBody{body})
+	if !errors.Is(err, errInvalidBody) {
+		t.Fatalf("delivery error %v, want %v", err, errInvalidBody)
+	}
+	if accepted != 0 || q.resultMemory != 0 {
+		t.Fatalf("accepted %d bodies and cached %v, want no decoded body", accepted, q.resultMemory)
+	}
+}
+
+func TestBodyMemoryTypedTransactions(t *testing.T) {
+	for _, count := range []int{1, 4, 5, 64} {
+		accesses := make(types.AccessList, count)
+		for i := range accesses {
+			accesses[i].StorageKeys = make([]common.Hash, count)
+		}
+		for _, data := range []types.TxData{
+			&types.AccessListTx{AccessList: accesses},
+			&types.DynamicFeeTx{AccessList: accesses},
+			&types.BlobTx{AccessList: accesses, BlobHashes: make([]common.Hash, count)},
+			&types.SetCodeTx{AccessList: accesses, AuthList: make([]types.SetCodeAuthorization, count)},
+		} {
+			tx := types.NewTx(data)
+			t.Run(fmt.Sprintf("type%d/items%d", tx.Type(), count), func(t *testing.T) {
+				list, err := rlp.EncodeToRawList([]*types.Transaction{tx})
+				if err != nil {
+					t.Fatal(err)
+				}
+				decoded, err := list.Items()
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Measure retained nested backing arrays, including decoder growth
+				// capacity, instead of deriving the assertion from the estimator.
+				accesses := decoded[0].AccessList()
+				nested := uint64(cap(accesses)) * uint64(unsafe.Sizeof(types.AccessTuple{}))
+				for _, tuple := range accesses {
+					nested += uint64(cap(tuple.StorageKeys)) * uint64(unsafe.Sizeof(common.Hash{}))
+				}
+				nested += uint64(cap(decoded[0].BlobHashes())) * uint64(unsafe.Sizeof(common.Hash{}))
+				nested += uint64(cap(decoded[0].SetCodeAuthorizations())) * uint64(unsafe.Sizeof(types.SetCodeAuthorization{}))
+				if extra := transactionListMemory(&list) - rawListMemory(&list); extra < nested {
+					t.Fatalf("nested estimate %d below retained backing arrays %d", extra, nested)
+				}
+			})
+		}
 	}
 }
 
