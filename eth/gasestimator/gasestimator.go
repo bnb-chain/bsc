@@ -42,6 +42,8 @@ type Options struct {
 	Header *types.Header       // Header defining the block context to execute in
 	State  *state.StateDB      // Pre-state on top of which to estimate the gas
 
+	Precompiles vm.PrecompiledContracts // Optional precompile overrides for this call.
+
 	BlobBaseFee *big.Int // BlobBaseFee optionally overrides the blob base fee in the execution context.
 
 	ErrorRatio float64 // Allowed overestimation ratio for faster estimation termination
@@ -244,6 +246,9 @@ func run(ctx context.Context, call *core.Message, opts *Options) (*core.Executio
 		evmContext.BlobBaseFee = new(big.Int)
 	}
 	evm := vm.NewEVM(evmContext, dirtyState, opts.Config, vm.Config{NoBaseFee: true})
+	if opts.Precompiles != nil {
+		evm.SetPrecompiles(opts.Precompiles)
+	}
 	defer evm.Release()
 
 	// Monitor the outer context and interrupt the EVM upon cancellation. To avoid

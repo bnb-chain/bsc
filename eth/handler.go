@@ -496,12 +496,22 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		h.peerPerIPLock.Lock()
 		if num, ok := h.peersPerIP[remoteIP]; ok && num >= h.maxPeersPerIP {
 			h.peerPerIPLock.Unlock()
-			peer.Log().Info("The IP has too many peers", "ip", remoteIP, "maxPeersPerIP", h.maxPeersPerIP,
+			peer.Log().Info("The IP has too many peers", "ip", remoteIP, "peersPerIP", num, "maxPeersPerIP", h.maxPeersPerIP,
 				"name", peerInfo.Name, "Enode", peerInfo.Enode)
 			return p2p.DiscTooManyPeers
 		}
 		h.peersPerIP[remoteIP] = h.peersPerIP[remoteIP] + 1
 		h.peerPerIPLock.Unlock()
+		// Release this connection's reservation even if registration fails or
+		// the peer becomes trusted while connected (e.g. through EVN discovery).
+		defer func() {
+			h.peerPerIPLock.Lock()
+			defer h.peerPerIPLock.Unlock()
+			h.peersPerIP[remoteIP]--
+			if h.peersPerIP[remoteIP] == 0 {
+				delete(h.peersPerIP, remoteIP)
+			}
+		}()
 	}
 
 	// Register the peer locally
@@ -673,27 +683,6 @@ func (h *handler) unregisterPeer(id string) {
 
 	if err := h.peers.unregisterPeer(id); err != nil {
 		logger.Error("Ethereum peer removal failed", "err", err)
-	}
-
-	peerInfo := peer.Peer.Info()
-	remoteAddr := peerInfo.Network.RemoteAddress
-	indexIP := strings.LastIndex(remoteAddr, ":")
-	if indexIP == -1 {
-		// there could be no IP address, such as a pipe
-		peer.Log().Debug("unregisterPeer", "name", peerInfo.Name, "no ip address, remoteAddress", remoteAddr)
-	} else if !peerInfo.Network.Trusted {
-		remoteIP := remoteAddr[:indexIP]
-		h.peerPerIPLock.Lock()
-		if h.peersPerIP[remoteIP] <= 0 {
-			peer.Log().Error("unregisterPeer without record", "name", peerInfo.Name, "remoteAddress", remoteAddr)
-		} else {
-			h.peersPerIP[remoteIP] = h.peersPerIP[remoteIP] - 1
-			logger.Debug("unregisterPeer", "name", peerInfo.Name, "connectNum", h.peersPerIP[remoteIP])
-			if h.peersPerIP[remoteIP] == 0 {
-				delete(h.peersPerIP, remoteIP)
-			}
-		}
-		h.peerPerIPLock.Unlock()
 	}
 }
 

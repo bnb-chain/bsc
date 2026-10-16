@@ -115,7 +115,8 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 	}
 
 	// Security: validators must self-produce hard-fork activation blocks.
-	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) {
+	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
+		miner.worker.chainConfig.IsOnJenner(bb.Header.Number, parent.Time, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
 			"BidBlock disabled on hard-fork activation block %d, fallback to SendBid", blockNumber))
 	}
@@ -259,16 +260,20 @@ func (miner *Miner) MevParams() *buildertypes.MevParams {
 		log.Error("failed to parse builder fee ceil", "BuilderFeeCeil", *miner.worker.config.Mev.BuilderFeeCeil)
 		return nil
 	}
+	grpcEnabled := !miner.worker.config.Mev.GRPCDisabled &&
+		*miner.worker.config.Mev.Enabled && *miner.worker.config.Mev.BidBlockEnabled
 
 	return &buildertypes.MevParams{
 		ValidatorCommission:   *miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: *miner.worker.config.Mev.BidSimulationLeftOver,
 		NoInterruptLeftOver:   *miner.worker.config.Mev.NoInterruptLeftOver,
+		DelayLeftOver:         *miner.worker.config.DelayLeftOver,
 		MaxBidsPerBuilder:     *miner.worker.config.Mev.MaxBidsPerBuilder,
 		GasCeil:               miner.worker.config.GasCeil,
 		GasPrice:              miner.worker.config.GasPrice,
 		BuilderFeeCeil:        builderFeeCeil,
 		BidBlockEnabled:       miner.bidBlockEnabled(),
+		GRPCEnabled:           grpcEnabled,
 		Version:               version.Semantic,
 	}
 }

@@ -1085,7 +1085,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 			h.ParentHash = h.Hash()
 			h.Number.Add(h.Number, big.NewInt(1))
 		}
-		if err := config.BlockOverrides.Apply(&blockContext); err != nil {
+		if err := config.BlockOverrides.ApplyFor(api.backend.ChainConfig(), &blockContext); err != nil {
 			return nil, err
 		}
 		rules := api.backend.ChainConfig().Rules(blockContext.BlockNumber, blockContext.Random != nil, blockContext.Time)
@@ -1291,6 +1291,10 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 	}
 	if timestamp := override.PasteurTime; timestamp != nil {
 		copy.PasteurTime = timestamp
+		canon = false
+	}
+	if timestamp := override.JennerTime; timestamp != nil {
+		copy.JennerTime = timestamp
 		canon = false
 	}
 	if timestamp := override.BPO1Time; timestamp != nil {

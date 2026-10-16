@@ -256,6 +256,9 @@ type Config struct {
 	// OverridePasteur (TODO: remove after the fork)
 	OverridePasteur *uint64 `toml:",omitempty"`
 
+	// OverrideJenner (TODO: remove after the fork)
+	OverrideJenner *uint64 `toml:",omitempty"`
+
 	// OverrideBPO1 (TODO: remove after the fork)
 	OverrideBPO1 *uint64 `toml:",omitempty"`
 

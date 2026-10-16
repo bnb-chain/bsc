@@ -84,6 +84,8 @@ func NewMuxTracer(names []string, objects []*tracers.Tracer) (*tracers.Tracer, e
 			OnNonceChangeV2:           t.OnNonceChangeV2,
 			OnCodeChangeV2:            t.OnCodeChangeV2,
 			OnStorageChange:           t.OnStorageChange,
+			OnStorageRead:             t.OnStorageRead,
+			OnAccountRead:             t.OnAccountRead,
 			OnLog:                     t.OnLog,
 			OnSystemTxFixIntrinsicGas: t.OnSystemTxFixIntrinsicGas,
 			OnSystemCallStartV2:       t.OnSystemCallStart,
@@ -182,6 +184,22 @@ func (t *muxTracer) OnStorageChange(a common.Address, k, prev, new common.Hash) 
 	for _, t := range t.tracers {
 		if t.OnStorageChange != nil {
 			t.OnStorageChange(a, k, prev, new)
+		}
+	}
+}
+
+func (t *muxTracer) OnStorageRead(a common.Address, k common.Hash) {
+	for _, t := range t.tracers {
+		if t.OnStorageRead != nil {
+			t.OnStorageRead(a, k)
+		}
+	}
+}
+
+func (t *muxTracer) OnAccountRead(a common.Address) {
+	for _, t := range t.tracers {
+		if t.OnAccountRead != nil {
+			t.OnAccountRead(a)
 		}
 	}
 }

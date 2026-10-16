@@ -135,7 +135,7 @@ func (pool *VotePool) PutVote(vote *types.VoteEnvelope) {
 	select {
 	case pool.votesCh <- vote:
 	default:
-		log.Warn("VotePool channel full, vote dropped", "hash", vote.Hash())
+		log.Debug("VotePool channel full, vote dropped", "hash", vote.Hash())
 	}
 }
 

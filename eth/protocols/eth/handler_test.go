@@ -592,6 +592,9 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	peer, _ := newTestPeer("peer", protocol, backend)
 	defer peer.close()
 
+	// Drop the stored receipts of the empty block 3, it should still be served
+	rawdb.DeleteReceipts(backend.db, backend.chain.GetCanonicalHash(3), 3)
+
 	// Collect the hashes to request, and the response to expect
 	var (
 		hashes   []common.Hash
@@ -907,6 +910,48 @@ func TestHandleNewBlock(t *testing.T) {
 			err := handleNewBlock(backend, tc.msg, localEth)
 			if err != tc.err {
 				t.Errorf("expected error %v, got %v", tc.err, err)
+			}
+		})
+	}
+}
+
+func TestHandleNewBlockhashes(t *testing.T) {
+	t.Parallel()
+
+	backend := newTestBackendWithGenerator(1, false, false, nil)
+	defer backend.close()
+
+	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "peer", nil), nil, nil, backend.chain.Config())
+
+	newPacket := func(n int) NewBlockHashesPacket {
+		ann := make(NewBlockHashesPacket, n)
+		for i := range ann {
+			ann[i].Hash = common.Hash{byte(i), byte(i >> 8)}
+			ann[i].Number = uint64(i)
+		}
+		return ann
+	}
+	msgFor := func(ann NewBlockHashesPacket) p2p.Msg {
+		size, r, _ := rlp.EncodeToReader(ann)
+		return p2p.Msg{Code: NewBlockHashesMsg, Size: uint32(size), Payload: r}
+	}
+
+	testCases := []struct {
+		name    string
+		count   int
+		wantErr bool
+	}{
+		{"at limit", maxNewBlockHashes, false},
+		{"over limit", maxNewBlockHashes + 1, true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := handleNewBlockhashes(backend, msgFor(newPacket(tc.count)), localEth)
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for %d announcements, got nil", tc.count)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for %d announcements: %v", tc.count, err)
 			}
 		})
 	}

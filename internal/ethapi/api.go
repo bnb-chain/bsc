@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -867,95 +868,6 @@ func (api *BlockChainAPI) GetBlobSidecarByTxHash(ctx context.Context, hash commo
 	return nil, nil
 }
 
-// OverrideAccount indicates the overriding fields of account during the execution
-// of a message call.
-// Note, state and stateDiff can't be specified at the same time. If state is
-// set, message execution will only use the data in the given state. Otherwise
-// if stateDiff is set, all diff will be applied first and then execute the call
-// message.
-type OverrideAccount struct {
-	Nonce            *hexutil.Uint64             `json:"nonce"`
-	Code             *hexutil.Bytes              `json:"code"`
-	Balance          *hexutil.Big                `json:"balance"`
-	State            map[common.Hash]common.Hash `json:"state"`
-	StateDiff        map[common.Hash]common.Hash `json:"stateDiff"`
-	MovePrecompileTo *common.Address             `json:"movePrecompileToAddress"`
-}
-
-// StateOverride is the collection of overridden accounts.
-type StateOverride map[common.Address]OverrideAccount
-
-func (diff *StateOverride) has(address common.Address) bool {
-	_, ok := (*diff)[address]
-	return ok
-}
-
-// Apply overrides the fields of specified accounts into the given state.
-func (diff *StateOverride) Apply(statedb *state.StateDB, precompiles vm.PrecompiledContracts) error {
-	if diff == nil {
-		return nil
-	}
-	// Tracks destinations of precompiles that were moved.
-	dirtyAddrs := make(map[common.Address]struct{})
-	for addr, account := range *diff {
-		// If a precompile was moved to this address already, it can't be overridden.
-		if _, ok := dirtyAddrs[addr]; ok {
-			return fmt.Errorf("account %s has already been overridden by a precompile", addr.Hex())
-		}
-		p, isPrecompile := precompiles[addr]
-		// The MoveTo feature makes it possible to move a precompile
-		// code to another address. If the target address is another precompile
-		// the code for the latter is lost for this session.
-		// Note the destination account is not cleared upon move.
-		if account.MovePrecompileTo != nil {
-			if !isPrecompile {
-				return fmt.Errorf("account %s is not a precompile", addr.Hex())
-			}
-			// Refuse to move a precompile to an address that has been
-			// or will be overridden.
-			if diff.has(*account.MovePrecompileTo) {
-				return fmt.Errorf("account %s is already overridden", account.MovePrecompileTo.Hex())
-			}
-			precompiles[*account.MovePrecompileTo] = p
-			dirtyAddrs[*account.MovePrecompileTo] = struct{}{}
-		}
-		if isPrecompile {
-			delete(precompiles, addr)
-		}
-		// Override account nonce.
-		if account.Nonce != nil {
-			statedb.SetNonce(addr, uint64(*account.Nonce), tracing.NonceChangeUnspecified)
-		}
-		// Override account(contract) code.
-		if account.Code != nil {
-			statedb.SetCode(addr, *account.Code, tracing.CodeChangeUnspecified)
-		}
-		// Override account balance.
-		if account.Balance != nil {
-			u256Balance, _ := uint256.FromBig((*big.Int)(account.Balance))
-			statedb.SetBalance(addr, u256Balance, tracing.BalanceChangeUnspecified)
-		}
-		if account.State != nil && account.StateDiff != nil {
-			return fmt.Errorf("account %s has both 'state' and 'stateDiff'", addr.Hex())
-		}
-		// Replace entire state if caller requires.
-		if account.State != nil {
-			statedb.SetStorage(addr, account.State)
-		}
-		// Apply state diff into specified accounts.
-		if account.StateDiff != nil {
-			for key, value := range account.StateDiff {
-				statedb.SetState(addr, key, value)
-			}
-		}
-	}
-	// Now finalize the changes. Finalize is normally performed between transactions.
-	// By using finalize, the overrides are semantically behaving as
-	// if they were created in a transaction just before the tracing occur.
-	statedb.Finalise(false)
-	return nil
-}
-
 // BlockOverrides is a set of header fields to override.
 type BlockOverrides struct {
 	Number        *hexutil.Big
@@ -1088,13 +1000,13 @@ func (context *ChainContext) GetHeaderByHash(hash common.Hash) *types.Header {
 func doCall(ctx context.Context, b Backend, args TransactionArgs, state *state.StateDB, header *types.Header, overrides *override.StateOverride, blockOverrides *override.BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
 	if blockOverrides != nil {
-		if err := blockOverrides.Apply(&blockCtx); err != nil {
+		if err := blockOverrides.ApplyFor(b.ChainConfig(), &blockCtx); err != nil {
 			return nil, err
 		}
 		// Override the header so callers that compute gas price from 1559 fee
 		// fields see the overridden basefee. Otherwise GASPRICE/effectiveTip
 		// would be derived from the pre-override basefee.
-		header = blockOverrides.MakeHeader(header)
+		header = blockOverrides.MakeHeaderFor(b.ChainConfig(), header)
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
 	precompiles := vm.ActivePrecompiledContracts(rules)
@@ -1276,10 +1188,11 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	}
 	blockCtx := core.NewEVMBlockContext(header, NewChainContext(ctx, b), nil)
 	if blockOverrides != nil {
-		if err := blockOverrides.Apply(&blockCtx); err != nil {
+		if err := blockOverrides.ApplyFor(b.ChainConfig(), &blockCtx); err != nil {
 			return 0, err
 		}
-		header = blockOverrides.MakeHeader(header)
+		// gasestimator rebuilds the block context from the header.
+		header = blockOverrides.MakeHeaderFor(b.ChainConfig(), header)
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
 	precompiles := vm.ActivePrecompiledContracts(rules)
@@ -1296,6 +1209,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		Chain:       NewChainContext(ctx, b),
 		Header:      header,
 		State:       state,
+		Precompiles: precompiles,
 		BlobBaseFee: blobBaseFee,
 		ErrorRatio:  estimateGasErrorRatio,
 	}
@@ -1451,8 +1365,22 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 		accountSet[account] = struct{}{}
 	}
 
+	// Block level pre-execution, in the same order as core.StateProcessor.Process. Without it the
+	// system contracts touched here keep their parent values and transactions reading them diverge.
+	config := api.b.ChainConfig()
+	systemcontracts.TryUpdateBuildInSystemContract(config, block.Number(), parent.Time(), block.Time(), statedb, true)
+	evm := vm.NewEVM(core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil), statedb, config, vm.Config{})
+	defer evm.Release()
+	if beaconRoot := block.BeaconRoot(); beaconRoot != nil {
+		core.ProcessBeaconBlockRoot(*beaconRoot, evm) // EIP-4788, a no-op for BSC's zero beacon root
+	}
+	if config.IsPrague(block.Number(), block.Time()) || config.IsUBT(block.Number(), block.Time()) {
+		core.ProcessParentBlockHash(block.ParentHash(), evm) // EIP-2935
+	}
+
 	// Recompute transactions.
-	signer := types.MakeSigner(api.b.ChainConfig(), block.Number(), block.Time())
+	signer := types.MakeSigner(config, block.Number(), block.Time())
+	beforeSystemTx := true
 	for _, tx := range block.Transactions() {
 		// Skip data empty tx and to is one of the interested accounts tx.
 		skip := false
@@ -1477,9 +1405,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 		}
 
 		// Apply transaction
-		msg, _ := core.TransactionToMessage(tx, signer, parent.Header().BaseFee)
-		context := core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil)
-		evm := vm.NewEVM(context, statedb, api.b.ChainConfig(), vm.Config{})
+		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 
 		if posa, ok := api.b.Engine().(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
@@ -1488,6 +1414,11 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 				if balance.Cmp(common.U2560) > 0 {
 					statedb.SetBalance(consensus.SystemAddress, uint256.NewInt(0), tracing.BalanceChangeUnspecified)
 					statedb.AddBalance(block.Header().Coinbase, balance, tracing.BalanceChangeUnspecified)
+				}
+				// upgrade built-in system contract before system txs if Feynman is enabled
+				if beforeSystemTx {
+					systemcontracts.TryUpdateBuildInSystemContract(config, block.Number(), parent.Time(), block.Time(), statedb, false)
+					beforeSystemTx = false
 				}
 			}
 		}
@@ -1925,8 +1856,11 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	// Apply state overrides immediately after StateAndHeaderByNumberOrHash.
 	// If not applied here, there could be cases where user-specified overrides (e.g., nonce)
 	// may conflict with default values from the database, leading to inconsistencies.
+	// The overrides may disable a CAS20 address's native routing, which the
+	// simulated EVM has to see, so the precompile set is built here and handed on.
+	precompileContracts := vm.ActivePrecompiledContracts(b.ChainConfig().Rules(header.Number, header.Difficulty.Sign() == 0, header.Time))
 	if stateOverrides != nil {
-		if err := stateOverrides.Apply(db, nil); err != nil {
+		if err := stateOverrides.Apply(db, precompileContracts); err != nil {
 			return nil, 0, nil, err
 		}
 	}
@@ -2000,6 +1934,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		tracer := logger.NewAccessListTracer(accessList, addressesToExclude)
 		config := vm.Config{Tracer: tracer.Hooks(), NoBaseFee: true}
 		evm := b.GetEVM(ctx, statedb, header, &config, nil)
+		evm.SetPrecompiles(precompileContracts)
 
 		// Lower the basefee to 0 to avoid breaking EVM
 		// invariants (basefee < feecap).

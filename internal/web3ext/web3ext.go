@@ -530,6 +530,18 @@ web3._extend({
 			params: 1
 		}),
 		new web3._extend.Method({
+			name: 'getCAS20TokenInfo',
+			call: 'eth_getCAS20TokenInfo',
+			params: 2,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
+			name: 'getCAS20TokenInfoBatch',
+			call: 'eth_getCAS20TokenInfoBatch',
+			params: 2,
+			inputFormatter: [null, web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
 			name: 'getBlockByNumber',
 			call: 'eth_getBlockByNumber',
 			params: 2,

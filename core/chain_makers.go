@@ -53,6 +53,8 @@ type BlockGen struct {
 
 	engine consensus.Engine
 
+	lane *LaneState
+
 	// extra data of block
 	sidecars types.BlobSidecars
 }
@@ -121,11 +123,14 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
+	laneType := b.lane.Classify(tx)
+	usedBefore := b.gasPool.Used()
 	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx, NewReceiptBloomGenerator())
 	if err != nil {
 		panic(err)
 	}
 	b.header.GasUsed = b.gasPool.Used()
+	b.lane.RecordUsedFrom(laneType, b.gasPool, usedBefore)
 
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.
@@ -416,6 +421,12 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
+		lane, err := ResolveLaneState(config, engine, parent.Header(), b.header, statedb)
+		if err != nil {
+			panic(err)
+		}
+		b.lane = lane
+
 		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
 		if config.IsPrague(b.header.Number, b.header.Time) || config.IsUBT(b.header.Number, b.header.Time) {
 			// EIP-2935
@@ -454,6 +465,11 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts)
 		if err != nil {
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
+		}
+
+		// The same self-check the miner runs.
+		if err := b.lane.Verify(block.GasUsed()); err != nil {
+			panic(fmt.Sprintf("payment lane check failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {
 			for _, s := range b.sidecars {

@@ -2,18 +2,25 @@ package parlia
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var signableSystemTxSelectors = map[string][4]byte{
@@ -194,6 +201,87 @@ func (p *Parlia) selectorFor(methodName string) [4]byte {
 		panic(fmt.Sprintf("missing fixed system tx selector %s", methodName))
 	}
 	return selector
+}
+
+// ValidatorRole classifies an address within the working validator set.
+type ValidatorRole uint8
+
+const (
+	// ValidatorRoleNone means the address is not in the validator set.
+	ValidatorRoleNone ValidatorRole = iota
+	ValidatorRoleCabinet
+	ValidatorRoleCandidate
+)
+
+func (r ValidatorRole) String() string {
+	switch r {
+	case ValidatorRoleCabinet:
+		return "cabinet"
+	case ValidatorRoleCandidate:
+		return "candidate"
+	default:
+		return "none"
+	}
+}
+
+// initNumOfCabinets mirrors BSCValidatorSet.INIT_NUM_OF_CABINETS, its fallback
+// while numOfCabinets is unset.
+const initNumOfCabinets = 21
+
+// SealerRole classifies addr against the validator set at blockHash and returns
+// the cabinet and full validator-set sizes used for majority thresholds.
+func (p *Parlia) SealerRole(blockHash common.Hash, addr common.Address) (ValidatorRole, int, int, error) {
+	var validators []common.Address
+	if err := p.callValidatorSet(blockHash, "getValidators", &validators); err != nil {
+		return ValidatorRoleNone, 0, 0, fmt.Errorf("getValidators: %w", err)
+	}
+	idx := slices.Index(validators, addr)
+	if idx < 0 {
+		return ValidatorRoleNone, 0, 0, nil
+	}
+
+	var numOfCabinets *big.Int
+	if err := p.callValidatorSet(blockHash, "numOfCabinets", &numOfCabinets); err != nil {
+		return ValidatorRoleNone, 0, 0, fmt.Errorf("numOfCabinets: %w", err)
+	}
+	cabinets := initNumOfCabinets
+	if numOfCabinets != nil && numOfCabinets.IsInt64() && numOfCabinets.Sign() > 0 {
+		cabinets = int(numOfCabinets.Int64())
+	}
+	cabinets = min(cabinets, len(validators))
+	if idx < cabinets {
+		return ValidatorRoleCabinet, cabinets, len(validators), nil
+	}
+	return ValidatorRoleCandidate, cabinets, len(validators), nil
+}
+
+// callValidatorSet performs a no-argument view call on the validator contract.
+func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out interface{}) error {
+	data, err := p.validatorSetABI.Pack(method)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
+	msgData := (hexutil.Bytes)(data)
+	toAddress := common.HexToAddress(systemcontracts.ValidatorContract)
+	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
+	result, err := p.ethAPI.Call(ctx, ethapi.TransactionArgs{
+		Gas:  &gas,
+		To:   &toAddress,
+		Data: &msgData,
+	}, &blockNr, nil, nil)
+	if err != nil {
+		return err
+	}
+	return unpackValidatorSet(p.validatorSetABI, method, result, out)
+}
+
+// unpackValidatorSet decodes a single-output validator-contract return value.
+func unpackValidatorSet(contractABI abi.ABI, method string, result []byte, out interface{}) error {
+	return contractABI.UnpackIntoInterface(out, method, result)
 }
 
 func (p *Parlia) BlockTimeUpperCheck(chain consensus.ChainHeaderReader, header *types.Header) error {

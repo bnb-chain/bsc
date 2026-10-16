@@ -52,6 +52,12 @@ const maxMessageSize = 10 * 1024 * 1024
 // This is the maximum number of transactions in a Transactions message.
 const maxTransactionAnnouncements = 5000
 
+// This is the maximum number of block hash announcements in a NewBlockHashes
+// message. Honest peers announce freshly mined blocks one (rarely a handful)
+// at a time, so this is only there to cap the amount of work a malicious peer
+// can trigger downstream (e.g. per-hash lookups) with a single message.
+const maxNewBlockHashes = 1024
+
 const (
 	StatusMsg                     = 0x00
 	NewBlockHashesMsg             = 0x01

@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -236,12 +237,98 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 	}
 }
 
+// badBidBlockLoop revokes builders that have already burned enough other
+// validators, so this node need not be burned in turn.
+func (w *worker) badBidBlockLoop() {
+	defer w.wg.Done()
+	defer w.badBidBlockSub.Unsubscribe()
+
+	for {
+		select {
+		case ev := <-w.badBidBlockCh:
+			w.handleBadBidBlockEvidence(ev)
+		case <-w.badBidBlockSub.Err():
+			return
+		case <-w.exitCh:
+			return
+		}
+	}
+}
+
+// handleBadBidBlockEvidence records one validator's failing BidBlock and revokes
+// the builder once the evidence covers enough distinct validators.
+func (w *worker) handleBadBidBlockEvidence(ev core.BadBidBlockEvent) {
+	// Nil-checked: chain events reach nodes that never ran ApplyDefaultMinerConfig.
+	if !isTrue(w.config.Mev.Enabled) || !isTrue(w.config.Mev.BidBlockEnabled) {
+		return
+	}
+	if !w.permMgr.IsAllowed(ev.Builder) {
+		return
+	}
+	p, ok := w.engine.(*parlia.Parlia)
+	if !ok {
+		return
+	}
+	// At the parent, the state that decided this sealer's role. Not head: delivery
+	// is async, and head may already have crossed a breathe block.
+	role, cabinetCount, totalCount, err := p.SealerRole(ev.ParentHash, ev.Sealer)
+	if err != nil {
+		log.Warn("[BID BLOCK EVIDENCE] validator lookup failed",
+			"sealer", ev.Sealer, "builder", ev.Builder, "err", err)
+		return
+	}
+	if role == parlia.ValidatorRoleNone {
+		// The seal was already verified, so this means a stale view, not a forgery.
+		log.Debug("[BID BLOCK EVIDENCE] sealer not in validator set",
+			"sealer", ev.Sealer, "builder", ev.Builder, "number", ev.Number)
+		return
+	}
+
+	cabinetVotes, totalVotes := w.badBidBlocks.add(ev.Builder, ev.Sealer, role == parlia.ValidatorRoleCabinet)
+	// Thresholds follow this event's parent state. Valid sightings remain in the
+	// rolling window across validator-set changes, including jailing.
+	cabinetThreshold := majorityThreshold(cabinetCount)
+	totalThreshold := majorityThreshold(totalCount)
+	if cabinetVotes < cabinetThreshold && totalVotes < totalThreshold {
+		log.Info("[BID BLOCK EVIDENCE]",
+			"builder", ev.Builder,
+			"sealer", ev.Sealer,
+			"role", role,
+			"number", ev.Number,
+			"hash", ev.Hash,
+			"cabinetVotes", cabinetVotes,
+			"cabinetThreshold", cabinetThreshold,
+			"totalVotes", totalVotes,
+			"totalThreshold", totalThreshold)
+		return
+	}
+
+	reason := fmt.Sprintf("bad BidBlocks from %d/%d cabinet and %d/%d total validators",
+		cabinetVotes, cabinetThreshold, totalVotes, totalThreshold)
+	log.Error("[BID BLOCK EVIDENCE REVOKE]",
+		"builder", ev.Builder,
+		"cabinetVotes", cabinetVotes,
+		"cabinetThreshold", cabinetThreshold,
+		"totalVotes", totalVotes,
+		"totalThreshold", totalThreshold,
+		"lastSealer", ev.Sealer,
+		"number", ev.Number,
+		"hash", ev.Hash)
+	w.revokeBidBlockBuilder(ev.Builder, reason, ev.Hash, ev.Number)
+	bidBlockEvidenceRevokeCounter.Inc(1)
+	w.badBidBlocks.clear(ev.Builder)
+}
+
 func (w *worker) revokeBidBlockBuilder(builder common.Address, reason string, hash common.Hash, blockNum uint64) {
 	w.revokeBidBlockBuilderFor(builder, reason, hash, blockNum, bidBlockRevokeDuration)
 }
 
 func (w *worker) revokeBidBlockBuilderFor(builder common.Address, reason string, hash common.Hash, blockNum uint64, duration time.Duration) {
 	w.permMgr.RevokeFor(builder, reason, hash, blockNum, duration)
+	w.afterBidBlockRevoke()
+}
+
+func (w *worker) afterBidBlockRevoke() {
 	bidBlockRevokeGauge.Inc(1)
 	bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
 }
@@ -274,10 +361,19 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
 	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
 	//   - Blob sidecar checks (KZG proofs, blob hashes)
+	//   - BEP-703's payment lane rule
 	verifyStart := time.Now()
 	_, insertErr := w.chain.InsertChain(types.Blocks{block})
 	bidBlockVerifyTimer.UpdateSince(verifyStart)
 	if insertErr != nil {
+		bidBlockVerifyFailedGauge.Inc(1)
+		// A failed local state read left the block unjudged, so it says nothing about the builder.
+		var violationCount int
+		if !errors.Is(insertErr, paymentlane.ErrStateUnavailable) {
+			reason := fmt.Sprintf("InsertChain err: %v", insertErr)
+			violationCount = w.permMgr.RevokeForViolation(task.bidBlockInfo.builder, reason, hash, block.NumberU64())
+			w.afterBidBlockRevoke()
+		}
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
@@ -288,9 +384,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"stateRoot", block.Root(),
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
+			"violationCount", violationCount,
+			"revokeDuration", bidBlockRevokeDuration,
 			"err", insertErr)
-		bidBlockVerifyFailedGauge.Inc(1)
-		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.

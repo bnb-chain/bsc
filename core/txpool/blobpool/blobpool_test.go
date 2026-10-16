@@ -291,6 +291,49 @@ func makeUnsignedTxWithTestBlob(nonce uint64, gasTipCap uint64, gasFeeCap uint64
 	}
 }
 
+func TestValidateTxBasicsRejectsMissingSidecar(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	if err != nil {
+		t.Fatal(err)
+	}
+	statedb.AddBalance(crypto.PubkeyToAddress(key.PublicKey), uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
+	if _, err := statedb.Commit(0, true, false); err != nil {
+		t.Fatal(err)
+	}
+
+	config := *params.MainnetChainConfig
+	config.Parlia = &params.ParliaConfig{}
+	chain := &testBlockChain{
+		config:  &config,
+		basefee: uint256.NewInt(1050),
+		blobfee: uint256.NewInt(105),
+		statedb: statedb,
+	}
+	pool := New(Config{Datadir: t.TempDir()}, chain, nil)
+	if err := pool.Init(1, chain.CurrentBlock(), newReserver()); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	tx := makeMultiBlobTx(0, 1, 1000, 100, 1, 0, key, types.BlobSidecarVersion0).WithoutBlobTxSidecar()
+	var validationErr error
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				t.Fatalf("ValidateTxBasics panicked: %v", recovered)
+			}
+		}()
+		validationErr = pool.ValidateTxBasics(tx)
+	}()
+	if validationErr == nil || validationErr.Error() != "missing sidecar in blob transaction" {
+		t.Fatalf("unexpected validation error: %v", validationErr)
+	}
+}
+
 // verifyPoolInternals iterates over all the transactions in the pool and checks
 // that sort orders, calculated fields, cumulated fields are correct.
 func verifyPoolInternals(t *testing.T, pool *BlobPool) {

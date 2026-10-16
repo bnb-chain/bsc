@@ -16,6 +16,7 @@ import (
 	feynmanFix "github.com/ethereum/go-ethereum/core/systemcontracts/feynman_fix"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
 	haberFix "github.com/ethereum/go-ethereum/core/systemcontracts/haber_fix"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/lorentz"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/luban"
@@ -98,6 +99,8 @@ var (
 	fermiUpgrade = make(map[string]*Upgrade)
 
 	pasteurUpgrade = make(map[string]*Upgrade)
+
+	jennerUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -1106,6 +1109,39 @@ func init() {
 			},
 		},
 	}
+
+	jennerUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "jenner",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(PaymentLaneContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/2620fb411b0c950dd0abfc4e75fe13393a82c632",
+				Code:         jenner.MainnetPaymentLaneContract,
+			},
+		},
+	}
+
+	jennerUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "jenner",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(PaymentLaneContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/2620fb411b0c950dd0abfc4e75fe13393a82c632",
+				Code:         jenner.ChapelPaymentLaneContract,
+			},
+		},
+	}
+
+	jennerUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "jenner",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(PaymentLaneContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/2620fb411b0c950dd0abfc4e75fe13393a82c632",
+				Code:         jenner.RialtoPaymentLaneContract,
+			},
+		},
+	}
 }
 
 func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
@@ -1118,6 +1154,12 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 			statedb.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode, tracing.CodeChangeSystemContractUpgrade)
 			statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeNewContract)
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
+		}
+		// The CAS20 registries are precompiles, not upgradeable contracts, so their
+		// sentinels are planted here rather than through an Upgrade config.
+		if config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
+			vm.SeedCAS20Activation(statedb)
+			log.Info("Planted CAS20 registry sentinels", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
 	} else {
 		if config.IsFeynman(blockNumber, lastBlockTime) {
@@ -1227,6 +1269,10 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(pasteurUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnJenner(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(jennerUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

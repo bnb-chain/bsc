@@ -319,6 +319,11 @@ var (
 		Usage:    "Manually specify the Pasteur fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideJenner = &cli.Uint64Flag{
+		Name:     "override.jenner",
+		Usage:    "Manually specify the Jenner fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideBPO1 = &cli.Uint64Flag{
 		Name:     "override.bpo1",
 		Usage:    "Manually specify the bpo1 fork timestamp, overriding the bundled setting",
@@ -854,6 +859,11 @@ var (
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
 		Usage:    "Disable the IPC-RPC server",
+		Category: flags.APICategory,
+	}
+	MevGRPCDisabledFlag = &cli.BoolFlag{
+		Name:     "mev.grpc.disable",
+		Usage:    "Disable the MEV gRPC server",
 		Category: flags.APICategory,
 	}
 	IPCPathFlag = &flags.DirectoryFlag{
@@ -2038,6 +2048,9 @@ func setBlobPool(ctx *cli.Context, cfg *blobpool.Config) {
 }
 
 func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
+	if ctx.Bool(MevGRPCDisabledFlag.Name) {
+		cfg.Mev.GRPCDisabled = true
+	}
 	if ctx.IsSet(MinerExtraDataFlag.Name) {
 		cfg.ExtraData = []byte(ctx.String(MinerExtraDataFlag.Name))
 	}

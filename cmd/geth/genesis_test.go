@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 )
 
 var customGenesisTests = []struct {
@@ -94,6 +96,37 @@ func TestCustomGenesis(t *testing.T) {
 			"--exec", tt.query, "console")
 		geth.ExpectRegexp(tt.result)
 		geth.ExpectExit()
+	}
+}
+
+func TestLoadConfigJennerOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		toml string
+		set  bool
+		want uint64
+	}{
+		{name: "unset", toml: "[Eth]\n"},
+		{name: "zero", toml: "[Eth]\nOverrideJenner = 0\n", set: true},
+		{name: "timestamp", toml: "[Eth]\nOverrideJenner = 1800000000\n", set: true, want: 1800000000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(tc.toml), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg := gethConfig{Eth: ethconfig.Defaults}
+			if err := loadConfig(path, &cfg); err != nil {
+				t.Fatal(err)
+			}
+			got := cfg.Eth.OverrideJenner
+			if (got != nil) != tc.set {
+				t.Fatalf("OverrideJenner set = %t, want %t", got != nil, tc.set)
+			}
+			if got != nil && *got != tc.want {
+				t.Fatalf("OverrideJenner = %d, want %d", *got, tc.want)
+			}
+		})
 	}
 }
 

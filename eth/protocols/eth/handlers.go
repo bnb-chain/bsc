@@ -304,6 +304,7 @@ func ServiceGetReceiptsQuery68(chain *core.BlockChain, query GetReceiptsRequest)
 			if header := chain.GetHeaderByHash(hash); header == nil || header.ReceiptHash != types.EmptyRootHash {
 				break
 			}
+			results = rlp.EmptyList
 		} else {
 			body := chain.GetBodyRLP(hash)
 			if body == nil {
@@ -373,6 +374,9 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	ann := new(NewBlockHashesPacket)
 	if err := msg.Decode(ann); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+	if len(*ann) > maxNewBlockHashes {
+		return fmt.Errorf("too many block announcements: %d > %d", len(*ann), maxNewBlockHashes)
 	}
 	// Mark the hashes as present at the remote node
 	for _, block := range *ann {
@@ -613,7 +617,7 @@ func handleReceipts70(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("Receipts: %w", err)
 	}
 
-	err = peer.bufferReceipts(res.RequestId, receiptLists, res.LastBlockIncomplete, backend)
+	err = peer.bufferReceipts(res.RequestId, receiptLists, res.LastBlockIncomplete)
 	if err != nil {
 		return err
 	}
