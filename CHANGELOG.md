@@ -9,7 +9,15 @@ v1.8.1 is for BSC Chapel testnet [Jenner hardfork](https://github.com/bnb-chain/
 - [core/vm, params: implement CAS20 Compliant Asset Standard (BEP-702)](https://github.com/bnb-chain/bsc/pull/3813)
 - [core/paymentlane: implement BEP-703 payment lane](https://github.com/bnb-chain/bsc/pull/3793)
 - [core, params: implement BEP-706 millisecond timestamp precompile](https://github.com/bnb-chain/bsc/pull/3792)
-- BEP-675 Enhancements: [#3774](https://github.com/bnb-chain/bsc/pull/3774), [#3796](https://github.com/bnb-chain/bsc/pull/3796), [#3798](https://github.com/bnb-chain/bsc/pull/3798), [#3804](https://github.com/bnb-chain/bsc/pull/3804), [#3806](https://github.com/bnb-chain/bsc/pull/3806), [#3810](https://github.com/bnb-chain/bsc/pull/3810)
+
+### BEP-675 Enhancements
+
+- [internal/ethapi: support gRPC SendBidBlock API (BEP-675)](https://github.com/bnb-chain/bsc/pull/3774)
+- [miner: persist BidBlock revocations across restarts](https://github.com/bnb-chain/bsc/pull/3796)
+- [miner: reject BidBlock with zero state root](https://github.com/bnb-chain/bsc/pull/3798)
+- [core: report and count bad BidBlocks](https://github.com/bnb-chain/bsc/pull/3804)
+- [miner: revoke builders on cross-validator bad-block evidence](https://github.com/bnb-chain/bsc/pull/3806)
+- [miner: record revocation counts and add gRPC disable flag](https://github.com/bnb-chain/bsc/pull/3810)
 
 ### BUGFIX
 
