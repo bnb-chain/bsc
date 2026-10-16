@@ -361,6 +361,12 @@ func (d *Downloader) UnregisterPeer(id string) error {
 // adding various sanity checks and wrapping it with various log entries.
 func (d *Downloader) LegacySync(id string, head common.Hash, name string, td *big.Int, ttd *big.Int, mode SyncMode) error {
 	err := d.synchronise(id, head, td, ttd, mode, false, nil)
+	if errors.Is(err, errStallingPeer) {
+		if peer := d.peers.Peer(id); peer != nil {
+			// Exclude this master before asynchronous disconnection completes.
+			peer.peer.MarkLagging()
+		}
+	}
 
 	switch err {
 	case nil, errBusy, errCanceled:
@@ -644,6 +650,9 @@ func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *bi
 	}
 	// Initiate the sync using a concurrent header and content retrieval algorithm
 	d.queue.Prepare(chainOffset, mode)
+	if !beaconMode {
+		d.queue.resultTimeout = 2 * time.Minute
+	}
 	if d.syncInitHook != nil {
 		d.syncInitHook(origin, remoteHeight)
 	}
@@ -1433,7 +1442,10 @@ func (d *Downloader) checkStalling(td *big.Int, beaconMode bool) error {
 // processFullSyncContent takes fetch results from the queue and imports them into the chain.
 func (d *Downloader) processFullSyncContent(ttd *big.Int, beaconMode bool) error {
 	for {
-		results := d.queue.Results(true)
+		results, err := d.queue.Results(true)
+		if err != nil {
+			return err
+		}
 		if len(results) == 0 {
 			return nil
 		}
@@ -1539,7 +1551,10 @@ func (d *Downloader) processSnapSyncContent() error {
 		// yet processed it, check for results async, so we might notice pivot
 		// moves while state syncing. If the pivot was passed fully, block again
 		// as there's no more reason to check for pivot moves at all.
-		results := d.queue.Results(oldPivot == nil)
+		results, err := d.queue.Results(oldPivot == nil)
+		if err != nil {
+			return err
+		}
 		if len(results) == 0 {
 			// If pivot sync is done, stop
 			if d.committed.Load() {

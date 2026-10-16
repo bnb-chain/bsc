@@ -17,6 +17,7 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -104,7 +105,7 @@ func TestBasics(t *testing.T) {
 		t.Errorf("new queue should be idle")
 	}
 	q.Prepare(1, SnapSync)
-	if res := q.Results(false); len(res) != 0 {
+	if res, err := q.Results(false); len(res) != 0 || err != nil {
 		t.Fatal("new queue should have 0 results")
 	}
 
@@ -305,7 +306,10 @@ func XTestDelivery(t *testing.T) {
 		defer wg.Done()
 		tot := 0
 		for {
-			res := q.Results(true)
+			res, err := q.Results(true)
+			if err != nil {
+				return
+			}
 			tot += len(res)
 			fmt.Printf("got %d results, %d tot\n", len(res), tot)
 			// Now we can forget about these
@@ -479,4 +483,116 @@ func (n *network) headers(from int) []*types.Header {
 		}
 	}
 	return hdrs
+}
+
+func TestResultsStallTimeout(t *testing.T) {
+	q := newQueue(128, 128)
+	q.Prepare(1, FullSync)
+	q.resultTimeout = 100 * time.Millisecond
+	defer q.Close()
+	txs := types.Transactions{types.NewTransaction(0, common.Address{}, big.NewInt(0), params.TxGas, big.NewInt(1), nil)}
+	txList, err := rlp.EncodeToRawList(txs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txRoot := types.DeriveSha(txs, trie.NewStackTrie(nil))
+	headers := make([]*types.Header, 128)
+	hashes := make([]common.Hash, len(headers))
+	for i := range headers {
+		headers[i] = &types.Header{Number: big.NewInt(int64(i + 1)), TxHash: txRoot, UncleHash: types.EmptyUncleHash}
+		if i > 0 {
+			headers[i].ParentHash = hashes[i-1]
+		}
+		hashes[i] = headers[i].Hash()
+	}
+	q.Schedule(headers, hashes, 1)
+	q.ReserveBodies(dummyPeer("withholding"), 1)
+	done := make(chan error, 1)
+	go func() { _, err := q.Results(true); done <- err }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	delivered := 0
+	for {
+		select {
+		case err := <-done:
+			if !errors.Is(err, errStallingPeer) {
+				t.Fatalf("got %v, want stalling error", err)
+			}
+			if delivered == 0 {
+				t.Fatal("no later bodies delivered during the wait")
+			}
+			return
+		case <-ticker.C:
+			peer := dummyPeer("tail")
+			req, _, _ := q.ReserveBodies(peer, 1)
+			if req == nil {
+				t.Fatal("no tail body available")
+			}
+			hashes := eth.BlockBodyHashes{TransactionRoots: []common.Hash{txRoot}, UncleHashes: []common.Hash{types.EmptyUncleHash}}
+			if n, err := q.DeliverBodies(peer.id, hashes, []eth.BlockBody{{Transactions: txList}}); n != 1 || err != nil {
+				t.Fatalf("tail delivery: %d, %v", n, err)
+			}
+			delivered++
+		case <-deadline.C:
+			t.Fatal("later deliveries kept the stalled result wait alive")
+		}
+	}
+}
+
+func TestResultsWaitLifecycle(t *testing.T) {
+	for _, action := range []string{"progress", "close", "disabled", "nonblocking"} {
+		t.Run(action, func(t *testing.T) {
+			q := newQueue(8, 8)
+			q.Prepare(1, FullSync)
+			q.resultTimeout = 100 * time.Millisecond
+			defer q.Close()
+			if action == "nonblocking" {
+				results, err := q.Results(false)
+				if len(results) != 0 || err != nil {
+					t.Fatalf("nonblocking wait: %v, %v", results, err)
+				}
+				return
+			}
+			if action == "disabled" {
+				q.resultTimeout = 0
+			}
+			done := make(chan error, 1)
+			go func() {
+				results, err := q.Results(true)
+				if action == "progress" && len(results) != 1 {
+					err = fmt.Errorf("got %d results, want 1", len(results))
+				}
+				done <- err
+			}()
+			if action == "disabled" {
+				select {
+				case err := <-done:
+					t.Fatalf("disabled timeout returned early: %v", err)
+				case <-time.After(150 * time.Millisecond):
+				}
+			}
+			if action == "progress" {
+				header := emptyChain.headers()[0]
+				q.lock.Lock()
+				_, _, _, err := q.resultCache.AddFetch(header, false, "peer")
+				q.active.Signal()
+				q.lock.Unlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				q.Close()
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("result wait did not finish")
+			}
+		})
+	}
 }
