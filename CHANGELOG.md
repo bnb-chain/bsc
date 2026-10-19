@@ -61,7 +61,7 @@ Key Changes:
 
 Procedure: when upgrading from v1.8.0, check the gRPC and RPC changes below, then replace the binary and restart before the hard fork.
 
-- **MEV gRPC:** enabled by default when MEV and BidBlock submission are enabled. It uses the HTTP bind address and defaults to port `8552`. Ensure the port is available; if using gRPC, confirm sentry connectivity. Set `[Eth.Miner.Mev] GRPCPort` to change the port, or `--mev.grpc.disable` to disable the service. JSON-RPC remains supported. See the [gRPC integration guide](core/types/builder/bep-675-builder-grpc-integration.md).
+- **MEV gRPC:** enabled by default when MEV and BidBlock submission are enabled. It uses the HTTP bind address and defaults to port `8552`. Ensure the port is available; if using gRPC, confirm sentry connectivity. Set `[Eth.Miner.Mev] GRPCPort` to change the port, or `--mev.grpc.disable` to disable the service. JSON-RPC remains supported. See the [gRPC integration guide](https://github.com/bnb-chain/bsc/blob/master/core/types/builder/bep-675-builder-grpc-integration.md).
 - **BEP-706 RPC change:** in `eth_call`, `eth_estimateGas`, `debug_traceCall` and `eth_simulateV1`, `blockOverrides.prevRandao`, when supplied, must encode a millisecond remainder (`0–999`) as a 32-byte hex value. This check applies immediately after upgrading, even before Jenner activates. `time` remains in seconds; overriding only `time` resets the millisecond remainder to zero.
 
 Schedule(Timeline): BSC Chapel testnet — 2026-10-29 02:30:00 AM UTC (`1793241000`). Mainnet activation is not scheduled in this release.
