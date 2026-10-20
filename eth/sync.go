@@ -32,6 +32,7 @@ import (
 const (
 	forceSyncCycle      = 10 * time.Second // Time interval to force syncs, even if few peers are available
 	defaultMinSyncPeers = 5                // Amount of peers desired to start syncing
+	randomSyncTDLead    = 200
 )
 
 // syncTransactions starts sending all currently pending transactions to the given peer.
@@ -154,14 +155,10 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	if cs.handler.peers.len() < minPeers {
 		return nil
 	}
-	// We have enough peers, pick the one with the highest TD, but avoid going
-	// over the terminal total difficulty. Above that we expect the consensus
-	// clients to direct the chain head to sync to.
-	peer := cs.handler.peers.peerWithHighestTD()
+	peer, mode, ourTD := cs.pickPeerForSync()
 	if peer == nil {
 		return nil
 	}
-	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
 	if op.td.Cmp(ourTD) <= 0 {
 		if !cs.handler.acceptTxs.Load() {
@@ -199,6 +196,26 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	}
 
 	return op
+}
+
+func (cs *chainSyncer) pickPeerForSync() (*eth.Peer, downloader.SyncMode, *big.Int) {
+	peer := cs.handler.peers.peerWithHighestTD()
+	if peer == nil {
+		return nil, downloader.FullSync, nil
+	}
+	mode, ourTD := cs.modeAndLocalHead()
+	_, peerTD := peer.Head()
+	if !peer.Trusted() && shouldRandomizeSyncPeer(peerTD, ourTD) {
+		if randomPeer := cs.handler.peers.peerForSync(ourTD); randomPeer != nil {
+			peer = randomPeer
+		}
+	}
+	return peer, mode, ourTD
+}
+
+func shouldRandomizeSyncPeer(peerTD, localTD *big.Int) bool {
+	threshold := new(big.Int).Add(localTD, big.NewInt(randomSyncTDLead))
+	return peerTD.Cmp(threshold) > 0
 }
 
 func peerToSyncOp(mode downloader.SyncMode, p *eth.Peer) *chainSyncOp {
