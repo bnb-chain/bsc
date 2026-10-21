@@ -42,15 +42,13 @@ type AsyncReceiptBloomGenerator struct {
 }
 
 func (p *AsyncReceiptBloomGenerator) startWorker() {
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		for receipt := range p.receipts {
 			if receipt != nil && bytes.Equal(receipt.Bloom[:], types.EmptyBloom[:]) {
 				receipt.Bloom = types.CreateBloom(receipt)
 			}
 		}
-	}()
+	})
 }
 
 func (p *AsyncReceiptBloomGenerator) Apply(receipt *types.Receipt) {
