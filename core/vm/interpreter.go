@@ -93,7 +93,8 @@ func (ctx *ScopeContext) ContractCode() []byte {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
-	if evm.chainConfig.IsInBSC() && evm.Context.Coinbase.Cmp(contract.address) == 0 {
+	// Gated on Pasteur so that pre-Pasteur blocks replay with their original semantics.
+	if evm.chainRules.IsPasteur && evm.chainConfig.IsInBSC() && evm.Context.Coinbase.Cmp(contract.address) == 0 {
 		return nil, ErrCoinbaseAsContract
 	}
 
