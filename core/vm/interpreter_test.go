@@ -77,6 +77,38 @@ func TestLoopInterrupt(t *testing.T) {
 	}
 }
 
+// Calls into the coinbase are only rejected from Pasteur. Chapel block 34234781
+// STATICCALLs a coinbase with no code and must replay as before.
+func TestCoinbaseAsContractPasteurGate(t *testing.T) {
+	var (
+		config   = params.ChapelChainConfig
+		coinbase = common.HexToAddress("0x1284214b9b9c85549aB3D2b972df0dEEf66aC2c9")
+		pasteur  = *config.PasteurTime
+	)
+	for _, tt := range []struct {
+		name    string
+		time    uint64
+		wantErr error
+	}{
+		{"pre-pasteur", pasteur - 1, nil},
+		{"pasteur", pasteur, ErrCoinbaseAsContract},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+			vmctx := BlockContext{
+				Coinbase:    coinbase,
+				BlockNumber: big.NewInt(40_000_000),
+				Time:        tt.time,
+			}
+			evm := NewEVM(vmctx, statedb, config, Config{})
+			_, _, err := evm.StaticCall(common.Address{1}, coinbase, nil, NewGasBudget(100_000))
+			if err != tt.wantErr {
+				t.Fatalf("StaticCall to coinbase: got err %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func BenchmarkInterpreter(b *testing.B) {
 	var (
 		statedb, _        = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
