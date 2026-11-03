@@ -337,6 +337,38 @@ func TestFreezerConcurrentReadonly(t *testing.T) {
 	}
 }
 
+func TestFreezerPruneEmptyTable(t *testing.T) {
+	previous := additionTables
+	additionTables = []string{"a1"}
+	t.Cleanup(func() { additionTables = previous })
+
+	f, dir := newFreezerForTesting(t, o1o2a1TableDef)
+	defer f.Close()
+	appendItem := func(n uint64) {
+		_, err := f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+			return appendSameItem(op, []string{"o1", "o2"}, n, []byte{1})
+		})
+		require.NoError(t, err)
+	}
+	appendItem(0)
+	appendItem(1)
+
+	_, err := f.TruncateTableTail("a1", 1)
+	require.NoError(t, err)
+	appendItem(2)
+	require.NoError(t, f.Close())
+
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
+	require.NoError(t, err)
+	defer f.Close()
+	count, err := f.Ancients()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), count)
+	item, err := f.Ancient("o1", 2)
+	require.NoError(t, err)
+	require.Equal(t, []byte{1}, item)
+}
+
 func TestFreezer_AdditionTables(t *testing.T) {
 	dir := t.TempDir()
 	// Open non-readonly freezer and fill individual tables
