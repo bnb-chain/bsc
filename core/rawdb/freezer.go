@@ -534,6 +534,11 @@ func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	}
 
 	old := t.itemHidden.Load()
+	// Keep uninitialized addition tables empty until their first freeze.
+	// Advancing their head here breaks batch alignment and startup repair.
+	if EmptyTable(t) {
+		return old, nil
+	}
 	if err := t.truncateTail(tail); err != nil {
 		return 0, err
 	}
