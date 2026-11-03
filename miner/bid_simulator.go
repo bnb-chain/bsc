@@ -228,9 +228,9 @@ func newBidSimulator(
 	}
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
-	if config.Registry.Enabled {
+	if config.BuilderRegistry.Enabled {
 		caller, _ := engine.(registryCaller)
-		b.registry = newBuilderRegistry(config.Registry, config.Builders, b.chain, caller)
+		b.registry = newBuilderRegistry(config.BuilderRegistry, config.Builders, b.chain, caller)
 		ctx, cancel := context.WithCancel(context.Background())
 		b.registryCancel = cancel
 		b.registryDone = make(chan struct{})
@@ -251,7 +251,7 @@ func newBidSimulator(
 		b.bidReceiving.Store(true)
 		b.dialSentryAndBuilders()
 
-		if len(b.builders) == 0 && !config.Registry.Enabled && config.SentryURL == "" {
+		if len(b.builders) == 0 && !config.BuilderRegistry.Enabled && config.SentryURL == "" {
 			log.Warn("BidSimulator: no valid builders")
 		}
 	}
@@ -276,7 +276,7 @@ func (b *bidSimulator) dialSentryAndBuilders() {
 		}
 	}
 	b.sentryMu.Unlock()
-	if b.config.Registry.Enabled {
+	if b.config.BuilderRegistry.Enabled {
 		return // Registry membership never depends on successfully dialing a URL.
 	}
 
@@ -320,8 +320,8 @@ func (b *bidSimulator) stopReceivingBid() {
 }
 
 func (b *bidSimulator) AddBuilder(builder common.Address, url string) error {
-	if b.config != nil && b.config.Registry.Enabled {
-		return errors.New("builder allowlist is managed by Mev.Registry")
+	if b.config != nil && b.config.BuilderRegistry.Enabled {
+		return errors.New("builder allowlist is managed by Mev.BuilderRegistry")
 	}
 	b.buildersMu.Lock()
 	defer b.buildersMu.Unlock()
@@ -351,8 +351,8 @@ func (b *bidSimulator) AddBuilder(builder common.Address, url string) error {
 }
 
 func (b *bidSimulator) RemoveBuilder(builder common.Address) error {
-	if b.config != nil && b.config.Registry.Enabled {
-		return errors.New("builder allowlist is managed by Mev.Registry")
+	if b.config != nil && b.config.BuilderRegistry.Enabled {
+		return errors.New("builder allowlist is managed by Mev.BuilderRegistry")
 	}
 	b.buildersMu.Lock()
 	defer b.buildersMu.Unlock()
@@ -372,10 +372,11 @@ func (b *bidSimulator) ExistBuilder(builder common.Address) bool {
 }
 
 // builderAllowed is shared by both bid entry points and mev_hasBuilder. A
-// configured sentry delegates admission only when local registry sync is off.
+// configured sentry delegates admission only when local registry sync is off;
+// without either, the manually maintained static builder list remains active.
 func (b *bidSimulator) builderAllowed(builder common.Address) bool {
 	if b.config != nil {
-		if b.config.Registry.Enabled {
+		if b.config.BuilderRegistry.Enabled {
 			return b.registry != nil && b.registry.allowed(builder)
 		}
 		if b.config.SentryURL != "" {
