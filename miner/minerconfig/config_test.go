@@ -34,7 +34,7 @@ func TestApplyDefaultMinerConfigBackfillsGRPC(t *testing.T) {
 
 func TestBuilderRegistryConfig(t *testing.T) {
 	var cfg Config
-	if err := toml.NewDecoder(strings.NewReader(`[Mev.Registry]
+	if err := toml.NewDecoder(strings.NewReader(`[Mev.BuilderRegistry]
 Enabled = true
 ContractAddress = "0x0000000000000000000000000000000000000001"
 PollInterval = "30s"
@@ -42,24 +42,24 @@ PollInterval = "30s"
 		t.Fatal(err)
 	}
 	ApplyDefaultMinerConfig(&cfg)
-	if err := cfg.Mev.Registry.Validate(); err != nil {
+	if err := cfg.Mev.BuilderRegistry.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if time.Duration(cfg.Mev.Registry.PollInterval) != 30*time.Second {
-		t.Fatalf("explicit interval overwritten: %v", cfg.Mev.Registry.PollInterval)
+	if time.Duration(cfg.Mev.BuilderRegistry.PollInterval) != 30*time.Second {
+		t.Fatalf("explicit interval overwritten: %v", cfg.Mev.BuilderRegistry.PollInterval)
 	}
-	encoded, err := toml.Marshal(cfg.Mev.Registry)
+	encoded, err := toml.Marshal(cfg.Mev.BuilderRegistry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var roundtrip BuilderRegistryConfig
-	if err := toml.Unmarshal(encoded, &roundtrip); err != nil || roundtrip != cfg.Mev.Registry {
+	if err := toml.Unmarshal(encoded, &roundtrip); err != nil || roundtrip != cfg.Mev.BuilderRegistry {
 		t.Fatalf("registry config round trip failed: %v", err)
 	}
 	var defaults Config
 	ApplyDefaultMinerConfig(&defaults)
-	if defaults.Mev.Registry.Enabled || time.Duration(defaults.Mev.Registry.PollInterval) != 10*time.Minute {
-		t.Fatalf("unexpected registry defaults: %+v", defaults.Mev.Registry)
+	if defaults.Mev.BuilderRegistry.Enabled || time.Duration(defaults.Mev.BuilderRegistry.PollInterval) != 10*time.Minute {
+		t.Fatalf("unexpected registry defaults: %+v", defaults.Mev.BuilderRegistry)
 	}
 	for _, cfg := range []BuilderRegistryConfig{
 		{Enabled: true},
