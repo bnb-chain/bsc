@@ -253,9 +253,9 @@ var (
 		OsakaTime:           newUint64(1777343400), // 2026-04-28 02:30:00 AM UTC
 		MendelTime:          newUint64(1777343400), // 2026-04-28 02:30:00 AM UTC
 		PasteurTime:         newUint64(1787625000), // 2026-08-25 02:30:00 AM UTC
-		JennerTime:          nil,
-		BPO1Time:            nil, // will be skipped in BSC
-		BPO2Time:            nil, // will be skipped in BSC
+		JennerTime:          newUint64(1796697000), // 2026-12-08 02:30:00 AM UTC
+		BPO1Time:            nil,                   // will be skipped in BSC
+		BPO2Time:            nil,                   // will be skipped in BSC
 		AmsterdamTime:       nil,
 
 		Parlia: &ParliaConfig{},
