@@ -154,12 +154,9 @@ jobs:
           path: ./arm64
       
       - name: Download Config File
-        run: |
-          . ./.github/release.env
-          echo "mainnet.zip url: $MAINNET_FILE_URL"
-          echo "testnet.zip url: $TESTNET_FILE_URL"
-          curl -L $MAINNET_FILE_URL -o ./mainnet.zip
-          curl -L $TESTNET_FILE_URL -o ./testnet.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ./.github/download_config.sh
       # ==============================
       #       Create release
       # ==============================
