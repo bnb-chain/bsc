@@ -48,22 +48,51 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 	config := minerconfig.BuilderRegistryConfig{Enabled: true, ContractAddress: common.HexToAddress("0x1234")}
 	var output []byte
 	var callErr error
+	capOutput := common.LeftPadBytes([]byte{4}, 32)
+	var capErr error
 	caller := registryTestCaller(func(ctx context.Context, block rpc.BlockNumberOrHash, contract common.Address, input []byte, gas uint64) ([]byte, error) {
 		if block.BlockHash == nil || *block.BlockHash != chain.header.Hash() || !block.RequireCanonical || block.BlockNumber != nil {
 			t.Fatalf("call is not pinned to canonical finalized hash: %+v", block)
 		}
-		if contract != config.ContractAddress || !bytes.Equal(input, crypto.Keccak256([]byte("getBuilders()"))[:4]) || gas == 0 || gas > 10_000_000 {
+		if contract != config.ContractAddress || gas == 0 || gas > 10_000_000 {
 			t.Fatal("incorrect contract call")
 		}
 		if _, ok := ctx.Deadline(); !ok {
 			t.Fatal("registry call has no timeout")
 		}
-		return output, callErr
+		switch {
+		case bytes.Equal(input, crypto.Keccak256([]byte("getBuilders()"))[:4]):
+			return output, callErr
+		case bytes.Equal(input, crypto.Keccak256([]byte("defaultMaxKeys()"))[:4]):
+			return capOutput, capErr
+		default:
+			t.Fatal("unexpected registry method")
+			return nil, nil
+		}
 	})
 	r := newBuilderRegistry(config, []minerconfig.BuilderConfig{{Address: oldKey, URL: "http://old"}}, chain, caller)
 	if !r.allowed(oldKey) || r.allowed(newKey) {
 		t.Fatal("initial policy must use static builders")
 	}
+	checkInitialization := func() {
+		t.Helper()
+		previous := r.snapshot.Load()
+		output = encodeRegistryBuilders(t)
+		for _, invalid := range []struct {
+			output []byte
+			err    error
+		}{
+			{nil, errors.New("state pruned")},
+			{nil, nil}, {[]byte{1}, nil}, {make([]byte, 32), nil}, {make([]byte, 64), nil},
+		} {
+			capOutput, capErr = invalid.output, invalid.err
+			if result := r.sync(context.Background()); result != "error" || r.snapshot.Load() != previous || r.allowed(unknown) {
+				t.Fatal("failed initialization check changed policy or allowed an unknown builder")
+			}
+		}
+		capOutput, capErr = common.LeftPadBytes([]byte{4}, 32), nil
+	}
+	checkInitialization()
 	// Invalid contract output must not be confused with an empty allow-all list.
 	for _, invalid := range [][]byte{
 		nil, {0}, make([]byte, 64),
@@ -103,6 +132,7 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 		}
 	}
 	chain.header = &types.Header{Number: big.NewInt(101), Time: now}
+	checkInitialization()
 	output = encodeRegistryBuilders(t)
 	if result := r.sync(context.Background()); result != "empty" || !r.allowed(unknown) || r.reportURL(newKey) != "http://new" {
 		t.Fatal("empty registry must allow all and retain last reporting URLs")
