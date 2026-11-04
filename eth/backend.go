@@ -162,6 +162,9 @@ type Ethereum struct {
 // whose lifecycle will be managed by the provided node.
 func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Ensure configuration values are compatible and sane
+	if err := config.Miner.Mev.BuilderRegistry.Validate(); err != nil {
+		return nil, err
+	}
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
 	}
@@ -893,6 +896,7 @@ func (s *Ethereum) Start() error {
 	if err := s.setupDiscovery(); err != nil {
 		return err
 	}
+	s.miner.StartBuilderRegistry()
 
 	// Regularly update shutdown marker
 	s.shutdownTracker.Start()

@@ -27,6 +27,11 @@ func newClient(c *rpc.Client) *Client {
 	return &Client{c}
 }
 
+// Close releases the underlying RPC client.
+func (ec *Client) Close() {
+	ec.c.Close()
+}
+
 // ReportIssue reports an issue
 func (ec *Client) ReportIssue(ctx context.Context, args *buildertypes.BidIssue) error {
 	return ec.c.CallContext(ctx, nil, "mev_reportIssue", args)
