@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/big"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,7 +22,8 @@ import (
 
 // Matches BuilderKeyRegistry.Builder (addr, url, name), including the name field
 // even though admission and issue reporting only need the first two fields.
-const builderRegistryABI = `[{"type":"function","name":"getBuilders","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"tuple[]","components":[{"name":"addr","type":"address"},{"name":"url","type":"string"},{"name":"name","type":"string"}]}]}]`
+const builderRegistryABI = `[{"type":"function","name":"getBuilders","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"tuple[]","components":[{"name":"addr","type":"address"},{"name":"url","type":"string"},{"name":"name","type":"string"}]}]},
+{"type":"function","name":"defaultMaxKeys","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"uint256"}]}]`
 
 const (
 	builderRegistryTimeout     = 10 * time.Second
@@ -189,6 +191,30 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 	canonical, err := registryABI.Methods["getBuilders"].Outputs.Pack(builders)
 	if err != nil || !bytes.Equal(canonical, output) {
 		return "", errors.New("noncanonical getBuilders return data")
+	}
+	// The implementation and an uninitialized proxy also return an empty list.
+	// An initialized registry always has a positive defaultMaxKeys. Check it at
+	// the same finalized hash before publishing either an empty or non-empty set.
+	probe, err := registryABI.Pack("defaultMaxKeys")
+	if err != nil {
+		return "", err
+	}
+	capOutput, err := r.caller.CallContract(ctx, rpc.BlockNumberOrHashWithHash(hash, true), r.config.ContractAddress, probe, 10_000_000)
+	if err != nil {
+		return "", fmt.Errorf("defaultMaxKeys: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if len(capOutput) != 32 {
+		return "", errors.New("invalid defaultMaxKeys return data; check registry contract address")
+	}
+	values, err := registryABI.Unpack("defaultMaxKeys", capOutput)
+	if err != nil {
+		return "", fmt.Errorf("decode defaultMaxKeys: %w", err)
+	}
+	if values[0].(*big.Int).Sign() == 0 {
+		return "", errors.New("registry is not initialized; use an initialized BuilderKeyRegistry proxy")
 	}
 	snap := &builderRegistrySnapshot{blockNumber: number, blockHash: hash, builders: make(map[common.Address]string, len(builders))}
 	for _, builder := range builders {
