@@ -70,7 +70,7 @@ func (ctx *PrecompileContext) chargeCodeWrite(addr common.Address, code []byte) 
 // EIP-2200's reentrancy guard, which is what makes transfer()/send() safe: a CAS20
 // token writes state without SSTORE, so it applies the check itself.
 func (ctx *PrecompileContext) sstoreSentry() bool {
-	return ctx.gas.RegularGas > params.SstoreSentryGasEIP2200
+	return ctx.gas.ExecutionGas > params.SstoreSentryGasEIP2200
 }
 
 // Mirrors makeGasSStoreFunc, arms in the same order with the same clause numbers.

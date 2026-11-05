@@ -116,7 +116,6 @@ type txPool interface {
 	FilterType(kind byte) bool
 }
 
-<<<<<<< HEAD
 // votePool defines the methods needed from a votes pool implementation to
 // support all the operations needed by the Ethereum chain protocols.
 type votePool interface {
@@ -128,8 +127,6 @@ type votePool interface {
 	SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription
 }
 
-||||||| 117e067f0f
-=======
 // blobPool defines the methods needed from a blob pool implementation to
 // support cell-based blob data availability.
 type blobPool interface {
@@ -141,20 +138,21 @@ type blobPool interface {
 	ValidateTxBasics(pooledTx *types.Transaction) error
 }
 
->>>>>>> geth-v1.17.9
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-<<<<<<< HEAD
-	NodeID         enode.ID         // P2P node ID used for tx propagation topology
-	Database       ethdb.Database   // Database for direct sync insertions
-	Chain          *core.BlockChain // Blockchain to serve data from
-	TxPool         txPool           // Transaction pool to propagate from
-	VotePool       votePool
-	Network        uint64                 // Network identifier to adfvertise
-	Sync           ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
-	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	NodeID           enode.ID         // P2P node ID used for tx propagation topology
+	Database         ethdb.Database   // Database for direct sync insertions
+	Chain            *core.BlockChain // Blockchain to serve data from
+	TxPool           txPool
+	BlobPool         blobPool // Blob pool for cell-based blob data availability
+	VotePool         votePool
+	Network          uint64                 // Network identifier to adfvertise
+	Sync             ethconfig.SyncMode     // Whether to snap or full sync
+	BloomCache       uint64                 // Megabytes to alloc for snap sync bloom
+	RequiredBlocks   map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	SnapV2           bool                   // Whether to advertise and sync via the snap/2 protocol
+	FetchProbability uint64
 
 	DirectBroadcast           bool
 	DisablePeerTxBroadcast    bool
@@ -164,28 +162,6 @@ type handlerConfig struct {
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
 	ProxyedNodeIds            []enode.ID
-||||||| 117e067f0f
-	NodeID         enode.ID               // P2P node ID used for tx propagation topology
-	Database       ethdb.Database         // Database for direct sync insertions
-	Chain          *core.BlockChain       // Blockchain to serve data from
-	TxPool         txPool                 // Transaction pool to propagate from
-	Network        uint64                 // Network identifier to advertise
-	Sync           ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
-	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
-=======
-	NodeID           enode.ID               // P2P node ID used for tx propagation topology
-	Database         ethdb.Database         // Database for direct sync insertions
-	Chain            *core.BlockChain       // Blockchain to serve data from
-	TxPool           txPool                 // Transaction pool to propagate from
-	BlobPool         blobPool               // Blob pool for cell-based blob data availability
-	Network          uint64                 // Network identifier to advertise
-	Sync             ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache       uint64                 // Megabytes to alloc for snap sync bloom
-	RequiredBlocks   map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
-	SnapV2           bool                   // Whether to advertise and sync via the snap/2 protocol
-	FetchProbability uint64                 // Full blob fetch probability for sparse blobpool (blobFetcher)
->>>>>>> geth-v1.17.9
 }
 
 type handler struct {
@@ -249,7 +225,6 @@ type handler struct {
 
 // newHandler returns a handler for all Ethereum chain management protocol.
 func newHandler(config *handlerConfig) (*handler, error) {
-<<<<<<< HEAD
 	if config.PeerSet == nil {
 		config.PeerSet = newPeerSet() // Nicety initialization for tests
 	}
@@ -259,6 +234,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		disablePeerTxBroadcast:     config.DisablePeerTxBroadcast,
 		database:                   config.Database,
 		txpool:                     config.TxPool,
+		blobpool:                   config.BlobPool,
 		votepool:                   config.VotePool,
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
@@ -284,46 +260,11 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, nodeID := range config.ProxyedNodeIds {
 		h.proxyedNodeIdsMap[nodeID] = struct{}{}
-||||||| 117e067f0f
-	h := &handler{
-		nodeID:         config.NodeID,
-		networkID:      config.Network,
-		database:       config.Database,
-		txpool:         config.TxPool,
-		chain:          config.Chain,
-		peers:          newPeerSet(),
-		txBroadcastKey: newBroadcastChoiceKey(),
-		requiredBlocks: config.RequiredBlocks,
-		quitSync:       make(chan struct{}),
-		handlerDoneCh:  make(chan struct{}),
-		handlerStartCh: make(chan struct{}),
-=======
-	h := &handler{
-		nodeID:         config.NodeID,
-		networkID:      config.Network,
-		database:       config.Database,
-		txpool:         config.TxPool,
-		blobpool:       config.BlobPool,
-		chain:          config.Chain,
-		peers:          newPeerSet(),
-		txBroadcastKey: newBroadcastChoiceKey(),
-		requiredBlocks: config.RequiredBlocks,
-		quitSync:       make(chan struct{}),
-		handlerDoneCh:  make(chan struct{}),
-		handlerStartCh: make(chan struct{}),
->>>>>>> geth-v1.17.9
 	}
-<<<<<<< HEAD
-||||||| 117e067f0f
-	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, h.enableSyncedFeatures)
-=======
-	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, h.enableSyncedFeatures, config.SnapV2)
->>>>>>> geth-v1.17.9
 
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, nil)
+	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, nil, config.SnapV2)
+
 	// If snap sync is requested but snapshots are disabled, fail loudly
 	if h.downloader.ConfigSyncMode() == ethconfig.SnapSync && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().Scheme() == rawdb.HashScheme) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
@@ -437,7 +378,25 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return p.RequestTxs(hashes)
 	}
-<<<<<<< HEAD
+
+	// Construct the blob buffer for assembling blob txs from separate tx and cell deliveries.
+	// Construct the blob buffer for assembling blob txs from separate tx and cell deliveries.
+	blobBuffer := blobpool.NewBlobBuffer(blobpool.BlobBufferFunctions{
+		ValidateTx: func(tx *types.Transaction) error {
+			if h.blobpool == nil {
+				return errors.New("blob pool unavailable")
+			}
+			return h.blobpool.ValidateTxBasics(tx)
+		},
+		AddToPool: func(tx *blobpool.BlobTxForPool) error {
+			if h.blobpool == nil {
+				return errors.New("blob pool unavailable")
+			}
+			return h.blobpool.AddPooledTx(tx)
+		},
+		DropPeer: h.removePeer,
+	})
+
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false)
 		for _, err := range errors {
@@ -453,21 +412,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			}
 		}
 		return errors
-||||||| 117e067f0f
-	addTxs := func(txs []*types.Transaction) []error {
-		return h.txpool.Add(txs, false)
-=======
-
-	// Construct the blob buffer for assembling blob txs from separate tx and cell deliveries.
-	blobBuffer := blobpool.NewBlobBuffer(blobpool.BlobBufferFunctions{
-		ValidateTx: h.blobpool.ValidateTxBasics,
-		AddToPool:  h.blobpool.AddPooledTx,
-		DropPeer:   h.removePeer,
-	})
-
-	addTxs := func(txs []*types.Transaction) []error {
-		return h.txpool.Add(txs, false)
->>>>>>> geth-v1.17.9
 	}
 	validateMeta := func(tx common.Hash, kind byte) error {
 		if h.txpool.Has(tx) || blobBuffer.HasTx(tx) {
@@ -478,12 +422,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return nil
 	}
-<<<<<<< HEAD
-	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer)
-	h.chainSync = newChainSyncer(h)
-||||||| 117e067f0f
-	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer)
-=======
 	h.txTracker = txtracker.New()
 	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer, h.txTracker.NotifyAccepted, blobBuffer)
 
@@ -497,7 +435,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			return p.RequestPayload(hashes, cells)
 		},
 		HasPayload: func(hash common.Hash) bool {
-			return h.blobpool.Has(hash) || blobBuffer.HasCells(hash)
+			return (h.blobpool != nil && h.blobpool.Has(hash)) || blobBuffer.HasCells(hash)
 		},
 		AddCells: func(hash common.Hash, deliveries map[string]*fetcher.PeerCellDelivery, custody types.CustodyBitmap) {
 			converted := make(map[string]*blobpool.PeerDelivery, len(deliveries))
@@ -509,7 +447,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		DropPeer: h.removePeer,
 	}
 	h.blobFetcher = fetcher.NewBlobFetcher(blobCallbacks, types.CustodyBitmapAll, nil, config.FetchProbability)
->>>>>>> geth-v1.17.9
+	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
 
@@ -854,18 +792,12 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	go h.blockRangeLoop(h.blockRange)
 
 	// start sync handlers
-<<<<<<< HEAD
 	h.wg.Add(1)
 	go h.chainSync.loop()
-||||||| 117e067f0f
-	h.txFetcher.Start()
-=======
-	h.txFetcher.Start()
 	h.blobFetcher.Start()
 
 	// Start the transaction tracker (records tx deliveries, credits peer inclusions).
 	h.txTracker.Start(h.chain)
->>>>>>> geth-v1.17.9
 
 	// start peer handler tracker
 	h.wg.Add(1)
@@ -892,7 +824,6 @@ func (h *handler) startMaliciousVoteMonitor() {
 func (h *handler) Stop() {
 	h.txsSub.Unsubscribe() // quits txBroadcastLoop
 	h.blockRange.stop()
-<<<<<<< HEAD
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	if h.votepool != nil {
 		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
@@ -901,16 +832,8 @@ func (h *handler) Stop() {
 		}
 	}
 	close(h.stopCh)
-||||||| 117e067f0f
-	h.txFetcher.Stop()
-	h.downloader.Terminate()
-
-=======
-	h.txFetcher.Stop()
 	h.blobFetcher.Stop()
-	h.downloader.Terminate()
-
->>>>>>> geth-v1.17.9
+	h.txTracker.Stop()
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.
 	close(h.quitSync)

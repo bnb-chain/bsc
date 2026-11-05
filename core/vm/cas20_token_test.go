@@ -41,7 +41,7 @@ func TestCAS20TokenDispatch(t *testing.T) {
 	view.setBalance(cas20Alice, uint256.NewInt(1000))
 
 	run := func(caller common.Address, ro bool, input []byte) ([]byte, error) {
-		gas := NewGasBudget(1_000_000)
+		gas := NewGasBudget(1_000_000, 0)
 		ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: caller, DirectCall: true, ReadOnly: ro, gas: &gas}
 		return newCAS20Token(ctx, 18).dispatch(input)
 	}
@@ -105,7 +105,7 @@ func TestCAS20TokenPauseBlocksTransfer(t *testing.T) {
 	view.setBalance(cas20Alice, uint256.NewInt(100))
 	view.setPaused(uint256.NewInt(1 << cas20PauseTransfer))
 
-	gas := NewGasBudget(1_000_000)
+	gas := NewGasBudget(1_000_000, 0)
 	ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: cas20Alice, DirectCall: true, gas: &gas}
 	if _, err := newCAS20Token(ctx, 18).dispatch(cas20Call(selTransfer, addrKey(cas20Bob), u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("paused transfer err = %v, want revert", err)
@@ -124,7 +124,7 @@ func TestCAS20EndToEndTransfer(t *testing.T) {
 	cfg := *cas20TestChainConfig()
 
 	txHash := common.HexToHash("0x1234")
-	statedb.SetTxContext(txHash, 0)
+	statedb.SetTxContext(txHash, 0, uint32(0+1))
 
 	bc := cas20BlockContext(1)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
@@ -133,7 +133,7 @@ func TestCAS20EndToEndTransfer(t *testing.T) {
 	}
 
 	input := cas20Call(selTransfer, addrKey(cas20Bob), u256hash(250))
-	ret, _, err := evm.Call(cas20Alice, token, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+	ret, _, err := evm.Call(cas20Alice, token, input, NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("evm.Call transfer err: %v", err)
 	}
@@ -170,13 +170,13 @@ func TestCAS20CalldataStrictnessProfile(t *testing.T) {
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x57"), creator, [][]byte{
 			cas20Call(selGrantRole, roleMint, addrKey(creator)),
 			cas20Call(selMint, addrKey(cas20Alice), u256hash(1000)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
 	token := common.BytesToAddress(ret)
 	call := func(caller common.Address, input []byte) ([]byte, error) {
-		r, _, e := evm.Call(caller, token, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		r, _, e := evm.Call(caller, token, input, NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 		return r, e
 	}
 
@@ -210,7 +210,7 @@ func TestCAS20TransferFromSelfSpendsAllowance(t *testing.T) {
 	// A deny-all executor policy, so the self shortcut is observable.
 	ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyAllowlist)),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createPolicy: %v", err)
 	}
@@ -221,14 +221,14 @@ func TestCAS20TransferFromSelfSpendsAllowance(t *testing.T) {
 			cas20Call(selGrantRole, roleMint, addrKey(admin)),
 			cas20Call(selMint, addrKey(cas20Alice), u256hash(1000)),
 			cas20Call(selUpdatePolicy, scopeTransferExecutor, wU64(empty)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
 	token := common.BytesToAddress(ret)
 	view := newUnmeteredCAS20Storage(statedb, token)
 	send := func(caller common.Address, input []byte) ([]byte, error) {
-		r, _, e := evm.Call(caller, token, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		r, _, e := evm.Call(caller, token, input, NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 		return r, e
 	}
 

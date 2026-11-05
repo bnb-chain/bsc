@@ -194,15 +194,6 @@ func TestGenesisHashes(t *testing.T) {
 		want    common.Hash
 	}{
 		{DefaultGenesisBlock(), params.MainnetGenesisHash},
-<<<<<<< HEAD
-||||||| 117e067f0f
-		{DefaultSepoliaGenesisBlock(), params.SepoliaGenesisHash},
-		{DefaultHoleskyGenesisBlock(), params.HoleskyGenesisHash},
-		{DefaultHoodiGenesisBlock(), params.HoodiGenesisHash},
-=======
-		{DefaultSepoliaGenesisBlock(), params.SepoliaGenesisHash},
-		{DefaultHoodiGenesisBlock(), params.HoodiGenesisHash},
->>>>>>> geth-v1.17.9
 	} {
 		// Test via MustCommit
 		db := rawdb.NewMemoryDatabase()

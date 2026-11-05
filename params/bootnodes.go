@@ -21,7 +21,6 @@ import "github.com/ethereum/go-ethereum/common"
 // MainnetBootnodes are the enode URLs of the P2P bootstrap nodes running on
 // the main BSC network.
 var MainnetBootnodes = []string{
-<<<<<<< HEAD
 	// BNB chain Go Bootnodes
 	"enode://433c8bfdf53a3e2268ccb1b829e47f629793291cbddf0c76ae626da802f90532251fc558e2e0d10d6725e759088439bf1cd4714716b03a259a35d4b2e4acfa7f@52.69.102.73:30311",
 	"enode://571bee8fb902a625942f10a770ccf727ae2ba1bab2a2b64e121594a99c9437317f6166a395670a00b7d93647eacafe598b6bbcef15b40b6d1a10243865a3e80f@35.73.84.120:30311",
@@ -29,85 +28,6 @@ var MainnetBootnodes = []string{
 	"enode://3063d1c9e1b824cfbb7c7b6abafa34faec6bb4e7e06941d218d760acdd7963b274278c5c3e63914bd6d1b58504c59ec5522c56f883baceb8538674b92da48a96@34.250.32.100:30311",
 	"enode://ad78c64a4ade83692488aa42e4c94084516e555d3f340d9802c2bf106a3df8868bc46eae083d2de4018f40e8d9a9952c32a0943cd68855a9bc9fd07aac982a6d@34.204.214.24:30311",
 	"enode://5db798deb67df75d073f8e2953dad283148133acb520625ea804c9c4ad09a35f13592a762d8f89056248f3889f6dcc33490c145774ea4ff2966982294909b37a@107.20.191.97:30311",
-||||||| 117e067f0f
-	// Ethereum Foundation Go Bootnodes
-	"enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303", // bootnode-aws-ap-southeast-1-001
-	"enode://22a8232c3abc76a16ae9d6c3b164f98775fe226f0917b0ca871128a74a8e9630b458460865bab457221f1d448dd9791d24c4e5d88786180ac185df813a68d4de@3.209.45.79:30303",   // bootnode-aws-us-east-1-001
-	"enode://2b252ab6a1d0f971d9722cb839a42cb81db019ba44c08754628ab4a823487071b5695317c8ccd085219c3a03af063495b2f1da8d18218da2d6a82981b45e6ffc@65.108.70.101:30303", // bootnode-hetzner-hel
-	"enode://4aeb4ab6c14b23e2c4cfdce879c04b0748a20d8e9b59e25ded2a08143e265c6c25936e74cbc8e641e3312ca288673d91f2f93f8e277de3cfa444ecdaaf982052@157.90.35.166:30303", // bootnode-hetzner-fsn
-}
-
-// HoodiBootnodes are the enode URLs of the P2P bootstrap nodes running on the
-// Hoodi test network.
-var HoodiBootnodes = []string{
-	// EF DevOps
-	"enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303",
-	"enode://60203fcb3524e07c5df60a14ae1c9c5b24023ea5d47463dfae051d2c9f3219f309657537576090ca0ae641f73d419f53d8e8000d7a464319d4784acd7d2abc41@209.38.124.160:30303",
-	"enode://8ae4a48101b2299597341263da0deb47cc38aa4d3ef4b7430b897d49bfa10eb1ccfe1655679b1ed46928ef177fbf21b86837bd724400196c508427a6f41602cd@134.199.184.23:30303",
-}
-
-// HoleskyBootnodes are the enode URLs of the P2P bootstrap nodes running on the
-// Holesky test network.
-var HoleskyBootnodes = []string{
-	// EF DevOps
-	"enode://ac906289e4b7f12df423d654c5a962b6ebe5b3a74cc9e06292a85221f9a64a6f1cfdd6b714ed6dacef51578f92b34c60ee91e9ede9c7f8fadc4d347326d95e2b@146.190.13.128:30303",
-	"enode://a3435a0155a3e837c02f5e7f5662a2f1fbc25b48e4dc232016e1c51b544cb5b4510ef633ea3278c0e970fa8ad8141e2d4d0f9f95456c537ff05fdf9b31c15072@178.128.136.233:30303",
-}
-
-// SepoliaBootnodes are the enode URLs of the P2P bootstrap nodes running on the
-// Sepolia test network.
-var SepoliaBootnodes = []string{
-	// EF DevOps
-	"enode://4e5e92199ee224a01932a377160aa432f31d0b351f84ab413a8e0a42f4f36476f8fb1cbe914af0d9aef0d51665c214cf653c651c4bbd9d5550a934f241f1682b@138.197.51.181:30303", // sepolia-bootnode-1-nyc3
-	"enode://143e11fb766781d22d92a2e33f8f104cddae4411a122295ed1fdb6638de96a6ce65f5b7c964ba3763bba27961738fef7d3ecc739268f3e5e771fb4c87b6234ba@146.190.1.103:30303",  // sepolia-bootnode-1-sfo3
-	"enode://8b61dc2d06c3f96fddcbebb0efb29d60d3598650275dc469c22229d3e5620369b0d3dedafd929835fe7f489618f19f456fe7c0df572bf2d914a9f4e006f783a9@170.64.250.88:30303",  // sepolia-bootnode-1-syd1
-	"enode://10d62eff032205fcef19497f35ca8477bea0eadfff6d769a147e895d8b2b8f8ae6341630c645c30f5df6e67547c03494ced3d9c5764e8622a26587b083b028e8@139.59.49.206:30303",  // sepolia-bootnode-1-blr1
-	"enode://9e9492e2e8836114cc75f5b929784f4f46c324ad01daf87d956f98b3b6c5fcba95524d6e5cf9861dc96a2c8a171ea7105bb554a197455058de185fa870970c7c@138.68.123.152:30303", // sepolia-bootnode-1-ams3
-=======
-	// EF NodeOps bootnodes
-	"enr:-KG4QCF1Mj32xpKHjinNb6ocCtMZG6IR_tyF5dkio5Hkek7zVbT6MM5eJwhjJFdiksQl51T33IRgryE0XLXiy1QOqsUBgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQLKlnQYuhZRBTA8-7cz37kr_KuA1lAJ1eXxWMjp5fLJB4N1ZHCCTreEdWRwNoJOtw", // nodeops-bootnode-dcl1-01
-	"enr:-KG4QMHihBfLI_tpXLWmfTi28HItJa4wDADDAaVjkfSELAb0BajqVWXM2GEMds5J63SCkpDRlqct5E8ftfQi4U93pigBgmlkgnY0gmlwhIHUpj2DaXA2kCYEqIAABAHQAAAAA2GdUACJc2VjcDI1NmsxoQLeQmW8OMuoUIoUImNW-r9IC4jaiAwZ2knfV4BqWyQvKoN1ZHCCdl-EdWRwNoJ2Xw", // nodeops-bootnode-sfo3-01
-	"enr:-KG4QKsHcKQvIX8UPbJgw2cIEP_9EislF1srNGdYom4dcSsobt-92iEDNkHTt9dcdKXHaDMVbCM8QQ4V1RP8HcExLDsBgmlkgnY0gmlwhJB-_BiDaXA2kCQAYYABAADQAAAAAYEgYAGJc2VjcDI1NmsxoQILdc6UClD5s_N8-hYhIGQtFqRYR3Qxf9qgLQ7sj4qvEYN1ZHCCdl-EdWRwNoJ2Xw", // nodeops-bootnode-blr1-01
-	"enr:-KG4QFplptv1jVEhFeNNxRN7qe5p9rAGGlMeNnmGvUJV23W4Kr8hmiSzdWjZZHFqwi7nOuQrM32VO6uHBORXOdLG98gBgmlkgnY0gmlwhLKc14yDaXA2kCoBBP8A9DxKAAAAAAAAAAGJc2VjcDI1NmsxoQMBRycp4yiHbGzOqZPPMmuKGslp1NpOrFf_predLYM4-oN1ZHCCdl-EdWRwNoJ2Xw", // nodeops-bootnode-ash-01
-	"enr:-KG4QGY74qTrst5NbQDAMIF8B7jEC8CMBSo6C5Ljea5I4PxYV1VSYdsGUqqIBlOYRBfwhl6YpEyvvvZOqNCa4dvmSXgBgmlkgnY0gmlwhAXfXlGDaXA2kCoBBP8C8BytAAAAAAAAAAGJc2VjcDI1NmsxoQIMlJp7yNcblauYicEeSBpHQzFAk9Wg3lhx3ie9gpTohIN1ZHCCdl-EdWRwNoJ2Xw", // nodeops-bootnode-sin-01
-	// Legacy EF bootnodes, being phased out in favour of the ones above.
-	"enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303", // bootnode-aws-ap-southeast-1-001
-	"enode://22a8232c3abc76a16ae9d6c3b164f98775fe226f0917b0ca871128a74a8e9630b458460865bab457221f1d448dd9791d24c4e5d88786180ac185df813a68d4de@3.209.45.79:30303",   // bootnode-aws-us-east-1-001
-	"enode://2b252ab6a1d0f971d9722cb839a42cb81db019ba44c08754628ab4a823487071b5695317c8ccd085219c3a03af063495b2f1da8d18218da2d6a82981b45e6ffc@65.108.70.101:30303", // bootnode-hetzner-hel
-	"enode://4aeb4ab6c14b23e2c4cfdce879c04b0748a20d8e9b59e25ded2a08143e265c6c25936e74cbc8e641e3312ca288673d91f2f93f8e277de3cfa444ecdaaf982052@157.90.35.166:30303", // bootnode-hetzner-fsn
-}
-
-// HoodiBootnodes are the enode URLs of the P2P bootstrap nodes running on the
-// Hoodi test network.
-var HoodiBootnodes = []string{
-	// EF NodeOps bootnodes
-	"enr:-KG4QHqPRT-PQyT1l2-DzAJ4WiSGWDbLvzqV8umrSRmBVvzfaYAIjswgIY3S4iZFBtOGGdFeUXh5uaFXI4FdN4ib-S0BgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQNwurkRdfm7zrv78VVkT0bAPtRO9JJ9gW42Abpf0y96JIN1ZHCCTrmEdWRwNoJOuQ", // nodeops-bootnode-dcl1-01
-	"enr:-KG4QO3rOpovULG1tqfd5prt30FBF_0_dbh6z13W1CS94yZvObO3BDatF6v_5p0Fol4ayvf32rtLy9IoeIrllRNO6mEBgmlkgnY0gmlwhIHUpj2DaXA2kCYEqIAABAHQAAAAA2GdUACJc2VjcDI1NmsxoQKv1QQH20VixQSfOvSJdDoktzLLpq8hleYiBb5ZrmRaoIN1ZHCCdyeEdWRwNoJ3Jw", // nodeops-bootnode-sfo3-01
-	"enr:-KG4QK3lmOaDQ5f-OLtwBQDwZZwORygbjDKbSWR79YFuQBQMbdStUfUKBucPPB8BW2mIZPcAHmsKan6HK9_CLv1ntfsBgmlkgnY0gmlwhJB-_BiDaXA2kCQAYYABAADQAAAAAYEgYAGJc2VjcDI1NmsxoQL3h68BwVT7D-gnmNXHLKgePyp4l5ikdqbJPaesuz9YAIN1ZHCCdyeEdWRwNoJ3Jw", // nodeops-bootnode-blr1-01
-	"enr:-KG4QC1VbcxVmJVOBrQFyaTshr7kGgI8_IgGhkXMlPGQN6ijWpc72mLFR9qx6islo-bcG5gcfJDBA85Pjjk3zXdhsckBgmlkgnY0gmlwhLKc14yDaXA2kCoBBP8A9DxKAAAAAAAAAAGJc2VjcDI1NmsxoQJxxADpm6ox6R2Op72lhQ7xQ7nalLB0E9vUwchMS1_EdIN1ZHCCdyeEdWRwNoJ3Jw", // nodeops-bootnode-ash-01
-	"enr:-KG4QACXfYMzVZrG5YGEM6JoAyALZrmSG_0rtTtRQK3Z7q3TUYgb1gqEbyXfA07HpqJq9i4ZaG1EmRwgZbwNFIa9M8gBgmlkgnY0gmlwhAXfXlGDaXA2kCoBBP8C8BytAAAAAAAAAAGJc2VjcDI1NmsxoQOBqr1yI_NF5xO381XMdmgLqOw6ewmPEAZVpGfkBJETWIN1ZHCCdyeEdWRwNoJ3Jw", // nodeops-bootnode-sin-01
-	// Legacy EF bootnodes, being phased out in favour of the ones above.
-	"enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303",
-	"enode://60203fcb3524e07c5df60a14ae1c9c5b24023ea5d47463dfae051d2c9f3219f309657537576090ca0ae641f73d419f53d8e8000d7a464319d4784acd7d2abc41@209.38.124.160:30303",
-	"enode://8ae4a48101b2299597341263da0deb47cc38aa4d3ef4b7430b897d49bfa10eb1ccfe1655679b1ed46928ef177fbf21b86837bd724400196c508427a6f41602cd@134.199.184.23:30303",
-}
-
-// SepoliaBootnodes are the enode URLs of the P2P bootstrap nodes running on the
-// Sepolia test network.
-var SepoliaBootnodes = []string{
-	// EF NodeOps bootnodes
-	"enr:-KG4QHn1Os72NN5Z44Ehf9CHPmN490GBphTFirfk33pFuWnkY9UNrQMfHkuCw6a-ykeRhGKrPL5ppMXiZQchgPrCDJQBgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQJK_ye9jx9mela-ME_Kt5e017Ywv3hYH_5rwNhIUrtzNoN1ZHCCTriEdWRwNoJOuA", // nodeops-bootnode-dcl1-01
-	"enr:-KG4QCpiRltiyX7LgozCkQ8XBrcDzejBXbE7YRUQFmIEgv46SC8B4CJLcOO3O2bH-_u-B242GTzO_hQPhv3rpyvAHXMBgmlkgnY0gmlwhIHUpj2DaXA2kCYEqIAABAHQAAAAA2GdUACJc2VjcDI1NmsxoQNmVWXve5c0uvsn_agjTKQ8pR6gl9DynZyTQNruBDfJ4YN1ZHCCdsOEdWRwNoJ2ww", // nodeops-bootnode-sfo3-01
-	"enr:-KG4QJUWvc8qvCUr7x-qCFWee6HPLgmRUfVn-M_yqXD-sjSoAalKCV3NgUhmlqozjTJIj_nPr7J_uT8WJwbWiIx3Cv4BgmlkgnY0gmlwhJB-_BiDaXA2kCQAYYABAADQAAAAAYEgYAGJc2VjcDI1NmsxoQKOQetrA-97TELUzuGegVD1_cHKKNnjOmJ9CYdeSTor7YN1ZHCCdsOEdWRwNoJ2ww", // nodeops-bootnode-blr1-01
-	"enr:-KG4QIBsIiST0JBBvgSNxvHQOeH5PkRgWeufahVXYQQWj7GLYPFDsviuQ6qU-3Xx4qnARaZiI-qqVRyw_2qqmOKRY1UBgmlkgnY0gmlwhLKc14yDaXA2kCoBBP8A9DxKAAAAAAAAAAGJc2VjcDI1NmsxoQKx4n3wy0KtwnuZCHmlxMmc4b0VvfC4Ka_f3sUPvjUq1oN1ZHCCdsOEdWRwNoJ2ww", // nodeops-bootnode-ash-01
-	"enr:-KG4QPM5C6wuTxu5yk4jkI9Mm64iSUKMPNt8y8kmoFzOlYrnYV4SBeZK7UiS4YWrkX4y2FD9_eH7xiPGvLQ-nXoXIcYBgmlkgnY0gmlwhAXfXlGDaXA2kCoBBP8C8BytAAAAAAAAAAGJc2VjcDI1NmsxoQIC3FMD8Si9DIBVofsSbJkpvXTUAfyi8q66XXQgjRhUsIN1ZHCCdsOEdWRwNoJ2ww", // nodeops-bootnode-sin-01
-	// Legacy EF bootnodes, being phased out in favour of the ones above.
-	"enode://4e5e92199ee224a01932a377160aa432f31d0b351f84ab413a8e0a42f4f36476f8fb1cbe914af0d9aef0d51665c214cf653c651c4bbd9d5550a934f241f1682b@138.197.51.181:30303", // sepolia-bootnode-1-nyc3
-	"enode://143e11fb766781d22d92a2e33f8f104cddae4411a122295ed1fdb6638de96a6ce65f5b7c964ba3763bba27961738fef7d3ecc739268f3e5e771fb4c87b6234ba@146.190.1.103:30303",  // sepolia-bootnode-1-sfo3
-	"enode://8b61dc2d06c3f96fddcbebb0efb29d60d3598650275dc469c22229d3e5620369b0d3dedafd929835fe7f489618f19f456fe7c0df572bf2d914a9f4e006f783a9@170.64.250.88:30303",  // sepolia-bootnode-1-syd1
-	"enode://10d62eff032205fcef19497f35ca8477bea0eadfff6d769a147e895d8b2b8f8ae6341630c645c30f5df6e67547c03494ced3d9c5764e8622a26587b083b028e8@139.59.49.206:30303",  // sepolia-bootnode-1-blr1
-	"enode://9e9492e2e8836114cc75f5b929784f4f46c324ad01daf87d956f98b3b6c5fcba95524d6e5cf9861dc96a2c8a171ea7105bb554a197455058de185fa870970c7c@138.68.123.152:30303", // sepolia-bootnode-1-ams3
->>>>>>> geth-v1.17.9
 }
 
 var V5Bootnodes = []string{
@@ -149,20 +69,6 @@ func KnownDNSNetwork(genesis common.Hash, protocol string) string {
 	switch genesis {
 	case MainnetGenesisHash:
 		net = "mainnet"
-<<<<<<< HEAD
-||||||| 117e067f0f
-	case SepoliaGenesisHash:
-		net = "sepolia"
-	case HoleskyGenesisHash:
-		net = "holesky"
-	case HoodiGenesisHash:
-		net = "hoodi"
-=======
-	case SepoliaGenesisHash:
-		net = "sepolia"
-	case HoodiGenesisHash:
-		net = "hoodi"
->>>>>>> geth-v1.17.9
 	default:
 		return ""
 	}

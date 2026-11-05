@@ -442,19 +442,9 @@ type SyncPeer interface {
 //   - The peer remains connected, but does not deliver a response in time
 //   - The peer delivers a stale response after a previous timeout
 //   - The peer delivers a refusal to serve the requested state
-<<<<<<< HEAD
-type Syncer struct {
+type syncer struct {
 	db     ethdb.Database // Database to store the trie nodes into (and dedup)
 	scheme string         // Node scheme used in node database
-||||||| 117e067f0f
-type Syncer struct {
-	db     ethdb.KeyValueStore // Database to store the trie nodes into (and dedup)
-	scheme string              // Node scheme used in node database
-=======
-type syncer struct {
-	db     ethdb.KeyValueStore // Database to store the trie nodes into (and dedup)
-	scheme string              // Node scheme used in node database
->>>>>>> geth-v1.17.9
 
 	root    common.Hash    // Current state trie root being synced
 	tasks   []*accountTask // Current account task set being synced
@@ -526,22 +516,10 @@ type syncer struct {
 	lock sync.RWMutex   // Protects fields that can change outside of sync (peers, reqs, root)
 }
 
-<<<<<<< HEAD
-// NewSyncer creates a new snapshot syncer to download the Ethereum state over the
+// newSyncer creates a new snapshot syncer to download the Ethereum state over the
 // snap protocol.
-func NewSyncer(db ethdb.Database, scheme string) *Syncer {
-	return &Syncer{
-||||||| 117e067f0f
-// NewSyncer creates a new snapshot syncer to download the Ethereum state over the
-// snap protocol.
-func NewSyncer(db ethdb.KeyValueStore, scheme string) *Syncer {
-	return &Syncer{
-=======
-// newSyncer creates the snap/1 state syncer. It is unexported; callers outside
-// the package obtain a Syncer through NewV1Syncer.
-func newSyncer(db ethdb.KeyValueStore, scheme string) *syncer {
+func newSyncer(db ethdb.Database, scheme string) *syncer {
 	s := &syncer{
->>>>>>> geth-v1.17.9
 		db:     db,
 		scheme: scheme,
 
@@ -2145,24 +2123,6 @@ func (s *syncer) processStorageResponse(res *storageResponse) {
 	if res.subTask != nil {
 		res.subTask.req = nil
 	}
-<<<<<<< HEAD
-
-	batch := ethdb.HookedBatch{
-		Batch: s.db.NewBatch(),
-		OnPut: func(key []byte, value []byte) {
-			s.storageBytes += common.StorageSize(len(key) + len(value))
-		},
-	}
-
-||||||| 117e067f0f
-	batch := ethdb.HookedBatch{
-		Batch: s.db.NewBatch(),
-		OnPut: func(key []byte, value []byte) {
-			s.storageBytes += common.StorageSize(len(key) + len(value))
-		},
-	}
-=======
->>>>>>> geth-v1.17.9
 	var (
 		slots    int
 		smallJob *storageJob
@@ -2328,50 +2288,9 @@ func (s *syncer) processStorageResponse(res *storageResponse) {
 				subSlots:   res.slots[i],
 				finish:     res.subTask.done,
 			}
-<<<<<<< HEAD
-			if s.scheme == rawdb.PathScheme {
-				// Keep the left boundary as it's complete
-				tr = newPathTrie(account, false, s.db, batch)
-			}
-			for j := 0; j < len(res.hashes[i]); j++ {
-				tr.update(res.hashes[i][j][:], res.slots[i][j])
-			}
-			tr.commit(true)
-		}
-		// Persist the received storage segments. These flat state maybe
-		// outdated during the sync, but it can be fixed later during the
-		// snapshot generation.
-		for j := 0; j < len(res.hashes[i]); j++ {
-			rawdb.WriteStorageSnapshot(batch, account, res.hashes[i][j], res.slots[i][j])
-			// If we're storing large contracts, generate the trie nodes
-			// on the fly to not trash the gluing points
-			if i == len(res.hashes)-1 && res.subTask != nil {
-				res.subTask.genTrie.update(res.hashes[i][j][:], res.slots[i][j])
-||||||| 117e067f0f
-			if s.scheme == rawdb.PathScheme {
-				// Keep the left boundary as it's complete
-				tr = newPathTrie(account, false, s.db, batch)
-			}
-			for j := 0; j < len(res.hashes[i]); j++ {
-				tr.update(res.hashes[i][j][:], res.slots[i][j])
-			}
-			tr.commit(true)
-		}
-		// Persist the received storage segments. These flat state maybe
-		// outdated during the sync, but it can be fixed later during the
-		// snapshot generation.
-		for j := 0; j < len(res.hashes[i]); j++ {
-			rawdb.WriteStorageSnapshot(batch, account, res.hashes[i][j], res.slots[i][j])
-
-			// If we're storing large contracts, generate the trie nodes
-			// on the fly to not trash the gluing points
-			if i == len(res.hashes)-1 && res.subTask != nil {
-				res.subTask.genTrie.update(res.hashes[i][j][:], res.slots[i][j])
-=======
 		} else {
 			if smallJob == nil {
 				smallJob = new(storageJob)
->>>>>>> geth-v1.17.9
 			}
 			smallJob.accounts = append(smallJob.accounts, account)
 			smallJob.hashes = append(smallJob.hashes, res.hashes[i])
@@ -2558,19 +2477,16 @@ func (s *syncer) forwardAccountTask(task *accountTask) {
 	}
 	for _, hash := range res.hashes[:last] {
 		task.Next = incHash(hash)
-
-		// Remove the completion flag once the account range is pushed
-		// forward. The leftover accounts will be skipped in the next
-		// cycle.
-		delete(task.stateCompleted, hash)
 	}
 	if last == len(res.hashes) {
 		// All accounts marked as complete, track if the entire task is done
 		task.done = !res.cont
-
-		// Error out if there is any leftover completion flag.
-		if task.done && len(task.stateCompleted) != 0 {
-			panic(fmt.Errorf("storage completion flags should be emptied, %d left", len(task.stateCompleted)))
+	}
+	// A resumed range may no longer contain accounts whose storage was completed
+	// at the previous root. Drop their flags too as the proven range advances.
+	for hash := range task.stateCompleted {
+		if task.done || bytes.Compare(hash[:], task.Next[:]) < 0 {
+			delete(task.stateCompleted, hash)
 		}
 	}
 	s.accountSynced += uint64(len(res.accounts))

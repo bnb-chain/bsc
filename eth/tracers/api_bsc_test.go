@@ -31,10 +31,11 @@ func TestTraceCallBSCBlockOverride(t *testing.T) {
 	defer backend.teardown()
 
 	bad := common.BigToHash(big.NewInt(1000))
+	blockNumber := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	_, err := NewAPI(backend).TraceCall(context.Background(), ethapi.TransactionArgs{
 		From: &account.addr,
 		To:   &account.addr,
-	}, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber), &TraceCallConfig{
+	}, &blockNumber, &TraceCallConfig{
 		BlockOverrides: &override.BlockOverrides{PrevRandao: &bad},
 	})
 	if err == nil {

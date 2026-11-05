@@ -102,7 +102,7 @@ func TestCAS20VariantOf(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	call := func(to common.Address) ([]byte, error) {
 		ret, _, err := evm.Call(cas20Alice, CAS20FactoryAddress,
-			cas20Call(selVariantOf, addrKey(to)), NewGasBudget(1_000_000), uint256.NewInt(0))
+			cas20Call(selVariantOf, addrKey(to)), NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -182,7 +182,7 @@ func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 	caller := common.HexToAddress("0xca11e5")
 	empty := cas20Addr(cas20VariantAsset, 0x77)
 
-	ret, _, err := evm.Call(caller, empty, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
+	ret, _, err := evm.Call(caller, empty, cas20Call(selTotalSupply), NewGasBudget(100_000, 0), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("call to uninitialized token err = %v, want ErrExecutionReverted", err)
 	}
@@ -190,7 +190,7 @@ func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 		t.Fatalf("revert data = %x, want empty", ret)
 	}
 
-	ret, _, err = evm.Call(caller, empty, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(5))
+	ret, _, err = evm.Call(caller, empty, cas20Call(selTotalSupply), NewGasBudget(100_000, 0), uint256.NewInt(5))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("value-bearing call err = %v, want ErrExecutionReverted", err)
 	}
@@ -200,7 +200,7 @@ func TestCAS20UninitializedAddressBehavior(t *testing.T) {
 
 	// An unrecognized variant is not routed, so the ordinary account path applies.
 	future := cas20Addr(0x02, 0x77)
-	ret, _, err = evm.Call(caller, future, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
+	ret, _, err = evm.Call(caller, future, cas20Call(selTotalSupply), NewGasBudget(100_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("call to a future-variant address err = %v, want success", err)
 	}
@@ -262,7 +262,7 @@ func TestCAS20GateIsBSCOnly(t *testing.T) {
 func TestCAS20UninitializedExitReportsOutOfGas(t *testing.T) {
 	call := func(budget uint64) (*PrecompileContext, error) {
 		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-		gas := NewGasBudget(budget)
+		gas := NewGasBudget(budget, 0)
 		ctx := &PrecompileContext{
 			StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 9),
 			Caller: cas20Alice, DirectCall: true, gas: &gas,

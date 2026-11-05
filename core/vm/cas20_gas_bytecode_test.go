@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -110,7 +111,7 @@ func TestCAS20StorageGasAgainstBytecode(t *testing.T) {
 				initial.SetState(addr, slot, common.Hash{31: tc.original})
 				// Finalise makes original the transaction's committed value. Dirty
 				// slots and their refunds are then produced by the operation sequence.
-				initial.Finalise(true)
+				initial.Finalise(params.Rules{IsEIP158: true})
 				initial.AddAddressToAccessList(addr)
 				if warm {
 					initial.AddSlotToAccessList(addr, slot)
@@ -128,16 +129,16 @@ func TestCAS20StorageGasAgainstBytecode(t *testing.T) {
 					if native {
 						evm.SetPrecompiles(PrecompiledContracts{addr: program})
 					}
-					_, left, err := evm.Call(cas20Alice, addr, nil, NewGasBudget(budget), new(uint256.Int))
+					_, left, err := evm.Call(cas20Alice, addr, nil, NewGasBudget(budget, 0), new(uint256.Int))
 					refund := sdb.GetRefund() // IntermediateRoot finalises and clears refunds.
-					return result{left, refund, sdb.IntermediateRoot(true), err}
+					return result{left, refund, sdb.IntermediateRoot(params.Rules{IsEIP158: true}), err}
 				}
 				const ample = uint64(1_000_000)
 				oracle := run(false, ample)
 				if oracle.err != nil {
 					t.Fatalf("reference execution failed: %v", oracle.err)
 				}
-				used := ample - oracle.gas.RegularGas
+				used := ample - oracle.gas.ExecutionGas
 				// The last three budgets leave 2299, 2300 and 2301 gas after
 				// the two PUSH1s preceding a first SSTORE. Exact/short budgets
 				// also exercise failures after earlier writes and refund changes.

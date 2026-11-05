@@ -102,6 +102,12 @@ type typedQueue interface {
 // peers, reserving a chunk of fetch requests for each and waiting for delivery
 // or timeouts.
 func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
+	// Legacy sync aborts when mandatory data cannot be fetched. Access lists
+	// are best effort and must not abort the sync when no peer can serve them.
+	_, bestEffort := queue.(*balQueue)
+	_, headers := queue.(*headerQueue)
+	legacyRequired := !beaconMode && !bestEffort
+
 	// Create a delivery channel to accept responses from all peers
 	responses := make(chan *eth.Response)
 
@@ -181,7 +187,7 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 	finished := false
 	for {
 		// Short circuit if we lost all our peers
-		if d.peers.Len() == 0 && !beaconMode {
+		if d.peers.Len() == 0 && legacyRequired {
 			return errNoPeers
 		}
 		// If there's nothing more to fetch, wait or terminate
@@ -207,7 +213,8 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 					// receipts for. Requests are handed out from the queue
 					// head, so a peer whose range excludes it has nothing to
 					// contribute until the head catches up with its range.
-					if queued && !peer.serves(next) {
+					// The advertised range limits bodies and receipts, not headers.
+					if queued && !headers && !peer.serves(next) {
 						ranged++
 						continue
 					}
@@ -228,53 +235,32 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 			}
 			sort.Sort(&peerCapacitySort{idles, caps})
 
-<<<<<<< HEAD
 			var (
+				stats      = queue.metrics()
+				targetRTT  = d.peers.rates.TargetRoundTrip()
+				assigned   int
 				progressed bool
 				throttled  bool
-				queued     = queue.pending()
-			)
-||||||| 117e067f0f
-			var throttled bool
-=======
-			var (
-				stats     = queue.metrics()
-				targetRTT = d.peers.rates.TargetRoundTrip()
-				assigned  int
-				throttled bool
 			)
 			rttTargetGauge.Update(targetRTT.Milliseconds())
 
->>>>>>> geth-v1.17.9
 			for _, peer := range idles {
 				// Short circuit if throttling activated or there are no more
 				// queued tasks to be retrieved
 				if throttled {
 					break
 				}
-<<<<<<< HEAD
-				if queued = queue.pending(); queued == 0 {
-||||||| 117e067f0f
-				if queued := queue.pending(); queued == 0 {
-=======
 				if queued := queue.pending(); queued == 0 {
 					stats.starved.Mark(1)
->>>>>>> geth-v1.17.9
 					break
 				}
 				// Reserve a chunk of fetches for a peer. A nil can mean either that
 				// no more headers are available, or that the peer is known not to
 				// have them.
-<<<<<<< HEAD
-				request, progress, throttle := queue.reserve(peer, queue.capacity(peer, d.peers.rates.TargetRoundTrip()))
+				request, progress, throttle := queue.reserve(peer, queue.capacity(peer, targetRTT))
 				if progress {
 					progressed = true
 				}
-||||||| 117e067f0f
-				request, _, throttle := queue.reserve(peer, queue.capacity(peer, d.peers.rates.TargetRoundTrip()))
-=======
-				request, _, throttle := queue.reserve(peer, queue.capacity(peer, targetRTT))
->>>>>>> geth-v1.17.9
 				if throttle {
 					throttled = true
 					stats.throttled.Mark(1)
@@ -308,20 +294,18 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 					timeout.Reset(ttl)
 				}
 			}
-<<<<<<< HEAD
-			// Make sure that we have peers available for fetching. If all peers have been tried
-			// and all failed throw an error
-			if !progressed && !throttled && len(pending) == 0 && len(idles) == d.peers.Len() && queued > 0 && !beaconMode {
-				return errPeersUnavailable
-			}
-||||||| 117e067f0f
-=======
 			stats.idlePeers.Update(int64(len(idles) - assigned))
 			stats.busyPeers.Update(int64(len(pending)))
 			stats.stalePeers.Update(int64(len(stales)))
 			stats.rangedPeers.Update(int64(ranged))
 			stats.capacity.Update(int64(capacity))
->>>>>>> geth-v1.17.9
+			// Abort legacy sync if mandatory data cannot be fetched from any
+			// current peer and no outstanding request can still make progress.
+			if legacyRequired && !progressed && !throttled &&
+				len(pending) == 0 && len(stales) == 0 &&
+				len(idles)+ranged == d.peers.Len() && queue.pending() > 0 {
+				return errPeersUnavailable
+			}
 		}
 		// Wait for something to happen
 		select {
@@ -353,41 +337,7 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				queue.requeue(peerid)
 				delete(pending, peerid)
 				req.Close()
-<<<<<<< HEAD
-
-				if index, live := ordering[req]; live {
-					if index >= 0 && index < timeouts.Size() {
-						timeouts.Remove(index)
-						if index == 0 {
-							if !timeout.Stop() {
-								<-timeout.C
-							}
-							if timeouts.Size() > 0 {
-								_, exp := timeouts.Peek()
-								timeout.Reset(time.Until(time.Unix(0, -exp)))
-							}
-						}
-					}
-					delete(ordering, req)
-				}
-||||||| 117e067f0f
-
-				if index, live := ordering[req]; live {
-					timeouts.Remove(index)
-					if index == 0 {
-						if !timeout.Stop() {
-							<-timeout.C
-						}
-						if timeouts.Size() > 0 {
-							_, exp := timeouts.Peek()
-							timeout.Reset(time.Until(time.Unix(0, -exp)))
-						}
-					}
-					delete(ordering, req)
-				}
-=======
 				untrack(req)
->>>>>>> geth-v1.17.9
 			}
 			if req, ok := stales[peerid]; ok {
 				delete(stales, peerid)
@@ -439,27 +389,6 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 			if id == "" {
 				continue
 			}
-<<<<<<< HEAD
-			if fails > 2 {
-				queue.updateCapacity(peer, 0, 0)
-			} else {
-				d.dropPeer(peer.id)
-
-				// If this peer was the master peer, abort sync immediately
-				d.cancelLock.RLock()
-				master := peer.id == d.cancelPeer
-				d.cancelLock.RUnlock()
-
-				if master {
-					d.cancel()
-					return errTimeout
-				}
-||||||| 117e067f0f
-			if fails > 2 {
-				queue.updateCapacity(peer, 0, 0)
-			} else {
-				d.dropPeer(peer.id)
-=======
 			req, ok := pending[id]
 			if !ok {
 				continue
@@ -473,49 +402,14 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 
 			if peer := d.peers.Peer(id); peer != nil {
 				peer.log.Debug("Requeued request blocking the result cache head", "waited", common.PrettyDuration(time.Since(req.Sent)))
->>>>>>> geth-v1.17.9
 			}
 
 		case res := <-responses:
 			// Response arrived, it may be for an existing or an already timed
 			// out request. If the former, update the timeout heap and perhaps
 			// reschedule the timeout timer.
-<<<<<<< HEAD
-			index, live := ordering[res.Req]
-			if live {
-				if index >= 0 && index < timeouts.Size() {
-					timeouts.Remove(index)
-					if index == 0 {
-						if !timeout.Stop() {
-							<-timeout.C
-						}
-						if timeouts.Size() > 0 {
-							_, exp := timeouts.Peek()
-							timeout.Reset(time.Until(time.Unix(0, -exp)))
-						}
-					}
-				}
-				delete(ordering, res.Req)
-			}
-||||||| 117e067f0f
-			index, live := ordering[res.Req]
-			if live {
-				timeouts.Remove(index)
-				if index == 0 {
-					if !timeout.Stop() {
-						<-timeout.C
-					}
-					if timeouts.Size() > 0 {
-						_, exp := timeouts.Peek()
-						timeout.Reset(time.Until(time.Unix(0, -exp)))
-					}
-				}
-				delete(ordering, res.Req)
-			}
-=======
 			untrack(res.Req)
 
->>>>>>> geth-v1.17.9
 			// Delete the pending request (if it still exists) and mark the peer idle
 			delete(pending, res.Req.Peer)
 			delete(stales, res.Req.Peer)
@@ -529,28 +423,6 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				continue
 			}
 			// Deliver the received chunk of data and check chain validity
-<<<<<<< HEAD
-			accepted, err := queue.deliver(peer, res)
-			// Unless a peer delivered something completely else than requested (usually
-			// caused by a timed out request which came through in the end), set it to
-			// idle. If the delivery's stale, the peer should have already been idled.
-			if !errors.Is(err, errStaleDelivery) {
-				items, elapsed := accepted, res.Time
-				if res.Roundtrips > 1 && items > 0 {
-					// Partial receipt response can be assembled over multiple round trips.
-					// Scale both values down to a single round trip.
-					items = max(1, items/res.Roundtrips)
-					elapsed = res.Time * time.Duration(items) / time.Duration(accepted)
-				}
-				queue.updateCapacity(peer, items, elapsed)
-||||||| 117e067f0f
-			accepted, err := queue.deliver(peer, res)
-			// Unless a peer delivered something completely else than requested (usually
-			// caused by a timed out request which came through in the end), set it to
-			// idle. If the delivery's stale, the peer should have already been idled.
-			if !errors.Is(err, errStaleDelivery) {
-				queue.updateCapacity(peer, accepted, res.Time)
-=======
 			delivered, err := queue.deliver(peer, res)
 
 			// Measure the peer on what it served, whether or not the items were
@@ -564,7 +436,6 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 				// Scale both values down to a single round trip.
 				items = max(1, items/res.Roundtrips)
 				elapsed = res.Time * time.Duration(items) / time.Duration(delivered)
->>>>>>> geth-v1.17.9
 			}
 			queue.updateCapacity(peer, items, elapsed)
 

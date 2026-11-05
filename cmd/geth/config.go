@@ -102,7 +102,6 @@ var deprecatedConfigFields = map[string]bool{
 	"ethconfig.Config.LightPeers":              true,
 	"ethconfig.Config.LightNoPrune":            true,
 	"ethconfig.Config.LightNoSyncServe":        true,
-<<<<<<< HEAD
 	"legacypool.Config.OverflowPoolSlots":      true,
 
 	// Deprecated May 2026, the incremental snapshot feature was removed.
@@ -113,10 +112,6 @@ var deprecatedConfigFields = map[string]bool{
 	"ethconfig.Config.IncrSnapshotKeptBlocks":    true,
 	"ethconfig.Config.UseRemoteIncrSnapshot":     true,
 	"ethconfig.Config.RemoteIncrSnapshotURL":     true,
-||||||| 117e067f0f
-=======
-	"ethconfig.Config.EnableStateSizeTracking": true,
->>>>>>> geth-v1.17.9
 }
 
 type ethstatsConfig struct {
@@ -288,7 +283,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideOsaka.Name)
 		cfg.Eth.OverrideOsaka = &v
 	}
-<<<<<<< HEAD
 	if ctx.IsSet(utils.OverrideMendel.Name) {
 		v := ctx.Uint64(utils.OverrideMendel.Name)
 		cfg.Eth.OverrideMendel = &v
@@ -301,13 +295,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideJenner.Name)
 		cfg.Eth.OverrideJenner = &v
 	}
-||||||| 117e067f0f
-=======
 	if ctx.IsSet(utils.OverrideAmsterdam.Name) {
 		v := ctx.Uint64(utils.OverrideAmsterdam.Name)
 		cfg.Eth.OverrideAmsterdam = &v
 	}
->>>>>>> geth-v1.17.9
 	if ctx.IsSet(utils.OverrideBPO1.Name) {
 		v := ctx.Uint64(utils.OverrideBPO1.Name)
 		cfg.Eth.OverrideBPO1 = &v

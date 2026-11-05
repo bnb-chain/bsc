@@ -204,7 +204,7 @@ func newCompleteFixture(t *testing.T, scheme string) *completeFixture {
 			header.BlockAccessListHash = &balHash
 			f.bals[header.Hash()] = buf.Bytes()
 		}
-		rawdb.WriteSkeletonHeader(f.db, header)
+		rawdb.WriteHeader(f.db, header)
 		return header
 	}
 	f.hdrA = mkHeader(numA, common.Hash{}, rootA, nil)
@@ -519,7 +519,7 @@ func testCompletePhaseRootMismatch(t *testing.T, scheme string) {
 	bad := *f.hdrC
 	bad.Root = common.HexToHash("0xbad")
 	f.bals[bad.Hash()] = f.bals[f.hdrC.Hash()]
-	rawdb.WriteSkeletonHeader(f.db, &bad)
+	rawdb.WriteHeader(f.db, &bad)
 
 	err, reqs := f.move(t, &bad)
 	if err == nil {

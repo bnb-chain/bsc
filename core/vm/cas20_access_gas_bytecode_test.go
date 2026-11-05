@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -114,7 +115,7 @@ func TestCAS20AccessGasAgainstBytecode(t *testing.T) {
 					initial.SetCode(target.address, program.bytecode(), tracing.CodeChangeContractCreation)
 					initial.SetState(self, slot, common.Hash{31: 0x11})
 					initial.SetState(target.address, slot, common.Hash{31: 0x22})
-					root := initial.IntermediateRoot(true)
+					root := initial.IntermediateRoot(params.Rules{IsEIP158: true})
 					initial.AddAddressToAccessList(self)
 					if warm.account {
 						initial.AddAddressToAccessList(target.address)
@@ -156,18 +157,18 @@ func TestCAS20AccessGasAgainstBytecode(t *testing.T) {
 							// only SLOAD's own storage charge is being compared.
 							evm.SetPrecompiles(PrecompiledContracts{callee: DisabledPrecompile})
 						}
-						out, left, err := evm.Call(cas20Alice, callee, nil, NewGasBudget(budget), new(uint256.Int))
+						out, left, err := evm.Call(cas20Alice, callee, nil, NewGasBudget(budget, 0), new(uint256.Int))
 						selfAddr, selfSlot := sdb.SlotInAccessList(self, slot)
 						targetAddr, targetSlot := sdb.SlotInAccessList(target.address, slot)
 						refund := sdb.GetRefund()
-						return result{left, [4]bool{selfAddr, selfSlot, targetAddr, targetSlot}, sdb.IntermediateRoot(true), refund, out, err}
+						return result{left, [4]bool{selfAddr, selfSlot, targetAddr, targetSlot}, sdb.IntermediateRoot(params.Rules{IsEIP158: true}), refund, out, err}
 					}
 					const ample = uint64(100_000)
 					oracle := run(false, ample)
 					if oracle.err != nil {
 						t.Fatal(oracle.err)
 					}
-					used := ample - oracle.gas.RegularGas
+					used := ample - oracle.gas.ExecutionGas
 					// Exact gas succeeds. One less fails at POP; three less fails
 					// during the last access; three gas fails at the first access.
 					for _, budget := range []uint64{ample, used, used - 1, used - 3, 3} {

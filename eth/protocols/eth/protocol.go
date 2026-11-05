@@ -43,23 +43,11 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary).
-<<<<<<< HEAD
 var ProtocolVersions = []uint{ETH70, ETH68}
-||||||| 117e067f0f
-var ProtocolVersions = []uint{ETH70, ETH69}
-=======
-var ProtocolVersions = []uint{ETH72, ETH71, ETH70, ETH69}
->>>>>>> geth-v1.17.9
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-<<<<<<< HEAD
-var protocolLengths = map[uint]uint64{ETH68: 17, ETH70: 18}
-||||||| 117e067f0f
-var protocolLengths = map[uint]uint64{ETH69: 18, ETH70: 18}
-=======
-var protocolLengths = map[uint]uint64{ETH69: 18, ETH70: 18, ETH71: 20, ETH72: 22}
->>>>>>> geth-v1.17.9
+var protocolLengths = map[uint]uint64{ETH68: 17, ETH70: 18, ETH71: 20, ETH72: 22}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -432,12 +420,9 @@ type BlockRangeUpdatePacket struct {
 	LatestBlockHash common.Hash
 }
 
-<<<<<<< HEAD
 func (*StatusPacket68) Name() string { return "Status" }
 func (*StatusPacket68) Kind() byte   { return StatusMsg }
 
-||||||| 117e067f0f
-=======
 // GetCellsRequest represents a request for cells of blob transactions.
 type GetCellsRequest struct {
 	Hashes []common.Hash
@@ -483,7 +468,6 @@ type BlockAccessListPacket struct {
 	List      rlp.RawList[rlp.RawValue]
 }
 
->>>>>>> geth-v1.17.9
 func (*StatusPacket) Name() string { return "Status" }
 func (*StatusPacket) Kind() byte   { return StatusMsg }
 
@@ -508,22 +492,14 @@ func (*GetBlockBodiesRequest) Kind() byte   { return GetBlockBodiesMsg }
 func (*BlockBodiesResponse) Name() string { return "BlockBodies" }
 func (*BlockBodiesResponse) Kind() byte   { return BlockBodiesMsg }
 
-<<<<<<< HEAD
 func (*NewBlockPacket) Name() string { return "NewBlock" }
 func (*NewBlockPacket) Kind() byte   { return NewBlockMsg }
 
-func (*NewPooledTransactionHashesPacket) Name() string { return "NewPooledTransactionHashes" }
-func (*NewPooledTransactionHashesPacket) Kind() byte   { return NewPooledTransactionHashesMsg }
-||||||| 117e067f0f
-func (*NewPooledTransactionHashesPacket) Name() string { return "NewPooledTransactionHashes" }
-func (*NewPooledTransactionHashesPacket) Kind() byte   { return NewPooledTransactionHashesMsg }
-=======
 func (*NewPooledTransactionHashesPacket71) Name() string { return "NewPooledTransactionHashes" }
 func (*NewPooledTransactionHashesPacket71) Kind() byte   { return NewPooledTransactionHashesMsg }
 
 func (*NewPooledTransactionHashesPacket72) Name() string { return "NewPooledTransactionHashes" }
 func (*NewPooledTransactionHashesPacket72) Kind() byte   { return NewPooledTransactionHashesMsg }
->>>>>>> geth-v1.17.9
 
 func (*GetPooledTransactionsRequest) Name() string { return "GetPooledTransactions" }
 func (*GetPooledTransactionsRequest) Kind() byte   { return GetPooledTransactionsMsg }

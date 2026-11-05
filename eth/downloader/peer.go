@@ -21,12 +21,8 @@ package downloader
 
 import (
 	"errors"
-<<<<<<< HEAD
-	"math/big"
-||||||| 117e067f0f
-=======
 	"math"
->>>>>>> geth-v1.17.9
+	"math/big"
 	"sync"
 	"time"
 

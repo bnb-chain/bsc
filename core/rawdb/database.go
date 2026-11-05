@@ -216,7 +216,7 @@ func (db *emptyfreezedb) Ancients() (uint64, error) {
 }
 
 // Tail returns nil for pruned db that we don't have a backing chain freezer.
-func (db *emptyfreezedb) Tail() (uint64, error) {
+func (db *emptyfreezedb) Tail(group string) (uint64, error) {
 	return 0, nil
 }
 
@@ -236,7 +236,7 @@ func (db *emptyfreezedb) TruncateHead(items uint64) (uint64, error) {
 }
 
 // TruncateTail returns nil for pruned db that we don't have a backing chain freezer.
-func (db *emptyfreezedb) TruncateTail(items uint64) (uint64, error) {
+func (db *emptyfreezedb) TruncateTail(group string, items uint64) (uint64, error) {
 	return 0, nil
 }
 
@@ -383,7 +383,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 	// it to the freezer content.
 	// Only to check the following when offset/ancientTail equal to 0, otherwise the block number
 	// in ancientdb did not start with 0, no genesis block in ancientdb as well.
-	ancientTail, err := frdb.Tail()
+	ancientTail, err := frdb.Tail(ChainFreezerBlockDataGroup)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve Tail from ancient %v", err)
 	}
@@ -548,7 +548,7 @@ func (s *stat) countString() string {
 }
 
 func AncientInspect(db ethdb.Database) error {
-	ancientTail, err := db.Tail()
+	ancientTail, err := db.Tail(ChainFreezerBlockDataGroup)
 	if err != nil {
 		return err
 	}

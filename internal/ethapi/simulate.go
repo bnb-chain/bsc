@@ -541,21 +541,16 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	blockAccessList.Merge(bal)
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
 
-	// Apply the consensus-specific post-transaction changes
-	sim.b.Engine().Finalize(chainHeadReader, header, sim.state, blockBody)
-
 	// Assemble the block
-<<<<<<< HEAD
-	b, err := sim.FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
+	var b *types.Block
+	if sim.isBSC() {
+		b, err = sim.FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
+	} else {
+		b, _, err = core.AssembleBlock(sim.b.Engine(), chainHeadReader, header, sim.state, blockBody, receipts, blockAccessList)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
-||||||| 117e067f0f
-	b := core.AssembleBlock(sim.b.Engine(), chainHeadReader, header, sim.state, blockBody, receipts)
-=======
-	b := core.AssembleBlock(chainHeadReader, header, sim.state, blockBody, receipts, blockAccessList)
->>>>>>> geth-v1.17.9
-
 	repairLogs(callResults, b.Hash())
 	return b, callResults, senders, nil
 }
@@ -770,7 +765,7 @@ func (sim *simulator) newSimulatedChainContext(ctx context.Context, headers []*t
 }
 
 func (sim *simulator) FinalizeAndAssemble(chain *simChainHeadReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, error) {
-	header.Root = sim.state.IntermediateRoot(true)
+	header.Root = sim.state.IntermediateRoot(sim.chainConfig.Rules(header.Number, header.Difficulty.Sign() == 0, header.Time))
 	if sim.chainConfig.IsShanghai(header.Number, header.Time) {
 		if body.Withdrawals == nil {
 			body.Withdrawals = make([]*types.Withdrawal, 0)

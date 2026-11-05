@@ -190,12 +190,8 @@ func setupGeth(stack *node.Node, dir string) error {
 		TrieDirtyCache: 16,
 		TrieTimeout:    60 * time.Minute,
 		SnapshotCache:  10,
-<<<<<<< HEAD
 		TriesInMemory:  128,
-||||||| 117e067f0f
-=======
 		SnapV2:         true, // advertise snap/2 (alongside snap/1) so the snap/2 suite can negotiate it
->>>>>>> geth-v1.17.9
 	})
 	if err != nil {
 		return err

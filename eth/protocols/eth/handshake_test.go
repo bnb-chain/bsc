@@ -144,9 +144,9 @@ func TestHandshakeSuccess(t *testing.T) {
 			defer app.Close()
 			defer net.Close()
 
-			peerA := NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "peer-a", nil), app, nil, backend.chain.Config())
+			peerA := NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "peer-a", nil), app, nil, nil, backend.chain.Config())
 			defer peerA.Close()
-			peerB := NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "peer-b", nil), net, nil, backend.chain.Config())
+			peerB := NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "peer-b", nil), net, nil, nil, backend.chain.Config())
 			defer peerB.Close()
 
 			extension := &UpgradeStatusExtension{DisablePeerTxBroadcast: true}

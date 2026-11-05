@@ -60,14 +60,14 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 		{
 			name: "CALL",
 			invoke: func(evm *EVM, _ *probePrecompile) {
-				evm.Call(caller, probeAddr, nil, NewGasBudget(100_000), uint256.NewInt(value))
+				evm.Call(caller, probeAddr, nil, NewGasBudget(100_000, 0), uint256.NewInt(value))
 			},
 			wantCaller: caller, wantValue: value, wantDirect: true,
 		},
 		{
 			name: "STATICCALL",
 			invoke: func(evm *EVM, _ *probePrecompile) {
-				evm.StaticCall(caller, probeAddr, nil, NewGasBudget(100_000))
+				evm.StaticCall(caller, probeAddr, nil, NewGasBudget(100_000, 0))
 			},
 			wantCaller: caller, wantValue: 0, wantDirect: true, wantRead: true,
 		},
@@ -75,7 +75,7 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 			// CALLCODE transfers value to the caller itself.
 			name: "CALLCODE",
 			invoke: func(evm *EVM, _ *probePrecompile) {
-				evm.CallCode(caller, probeAddr, nil, NewGasBudget(100_000), uint256.NewInt(value))
+				evm.CallCode(caller, probeAddr, nil, NewGasBudget(100_000, 0), uint256.NewInt(value))
 			},
 			wantCaller: caller, wantValue: value, wantDirect: false,
 		},
@@ -83,7 +83,7 @@ func TestStatefulPrecompileCallContext(t *testing.T) {
 			// DELEGATECALL preserves the parent's msg.sender and msg.value.
 			name: "DELEGATECALL",
 			invoke: func(evm *EVM, _ *probePrecompile) {
-				evm.DelegateCall(origin, caller, probeAddr, nil, NewGasBudget(100_000), uint256.NewInt(value))
+				evm.DelegateCall(origin, caller, probeAddr, nil, NewGasBudget(100_000, 0), uint256.NewInt(value))
 			},
 			wantCaller: origin, wantValue: value, wantDirect: false,
 		},

@@ -46,7 +46,7 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		logged = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
 		hash   common.Hash
 	)
-	offset, _ := db.Tail()
+	offset, _ := db.Tail(ChainFreezerBlockDataGroup)
 	for i := uint64(0) + offset; i < frozen+offset; i++ {
 		// We read 100K hashes at a time, for a total of 3.2M
 		count := uint64(100_000)
@@ -102,7 +102,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		number uint64
 		rlp    rlp.RawValue
 	}
-	if offset, _ := db.Tail(); offset > from {
+	if offset, _ := db.Tail(ChainFreezerBlockDataGroup); offset > from {
 		from = offset
 	}
 	if to <= from {
@@ -194,7 +194,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 // signal received.
 func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool, report bool) {
 	// short circuit for invalid range
-	if offset, _ := db.Tail(); offset > from {
+	if offset, _ := db.Tail(ChainFreezerBlockDataGroup); offset > from {
 		from = offset
 	}
 	if from >= to {
@@ -297,7 +297,7 @@ func indexTransactionsForTesting(db ethdb.Database, from uint64, to uint64, inte
 // signal received.
 func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool, report bool) {
 	// short circuit for invalid range
-	if offset, _ := db.Tail(); offset > from {
+	if offset, _ := db.Tail(ChainFreezerBlockDataGroup); offset > from {
 		from = offset
 	}
 	if from >= to {

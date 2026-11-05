@@ -58,15 +58,8 @@ var (
 		utils.MinFreeDiskSpaceFlag,
 		utils.KeyStoreDirFlag,
 		utils.ExternalSignerFlag,
-<<<<<<< HEAD
-		utils.NoUSBFlag, // deprecated
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
-		utils.RangeLimitFlag, // deprecated
-||||||| 117e067f0f
-		utils.NoUSBFlag, // deprecated
-=======
->>>>>>> geth-v1.17.9
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
@@ -75,29 +68,19 @@ var (
 		utils.OverrideMaxwell,
 		utils.OverrideFermi,
 		utils.OverrideOsaka,
-<<<<<<< HEAD
+		utils.OverrideAmsterdam,
 		utils.OverrideMendel,
 		utils.OverridePasteur,
 		utils.OverrideJenner,
-||||||| 117e067f0f
-=======
-		utils.OverrideAmsterdam,
->>>>>>> geth-v1.17.9
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
 		utils.OverrideUBT,
 		utils.OverrideGenesisFlag,
-<<<<<<< HEAD
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
 		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.OverrideBreatheBlockInterval,
 		utils.OverrideFixedTurnLength,
-		utils.EnablePersonal, // deprecated
-||||||| 117e067f0f
-		utils.EnablePersonal, // deprecated
-=======
->>>>>>> geth-v1.17.9
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
 		utils.TxPoolJournalFlag,
@@ -108,10 +91,7 @@ var (
 		utils.TxPoolGlobalSlotsFlag,
 		utils.TxPoolAccountQueueFlag,
 		utils.TxPoolGlobalQueueFlag,
-		utils.TxPoolOverflowPoolSlotsFlag, // deprecated
 		utils.TxPoolLifetimeFlag,
-		utils.MinerTxGasLimitFlag,
-		utils.EnableBALFlag,
 		utils.BlobPoolDataDirFlag,
 		utils.BlobPoolDataCapFlag,
 		utils.BlobPoolPriceBumpFlag,
@@ -128,37 +108,21 @@ var (
 		// utils.ChainHistoryFlag, // disabled in bsc
 		utils.LogHistoryFlag,
 		utils.LogNoHistoryFlag,
-		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
-		utils.PathDBSyncFlag,
-		utils.JournalFileFlag, // deprecated
 		utils.TrienodeHistoryFlag,
 		utils.TrienodeHistoryFullValueCheckpointFlag,
 		utils.BinTrieGroupDepthFlag,
 		utils.LightKDFFlag,
 		utils.EthRequiredBlocksFlag,
-<<<<<<< HEAD
-		utils.LegacyWhitelistFlag, // deprecated
 		utils.TriesInMemoryFlag,
-||||||| 117e067f0f
-		utils.LegacyWhitelistFlag, // deprecated
-=======
->>>>>>> geth-v1.17.9
 		utils.CacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,
 		utils.CacheGCFlag,
 		utils.CacheSnapshotFlag,
-<<<<<<< HEAD
 		// utils.CacheNoPrefetchFlag,
-||||||| 117e067f0f
-		utils.CacheNoPrefetchFlag,
-=======
-		utils.CacheNoPrefetchFlag,
 		utils.CacheNoPrecompileFlag,
->>>>>>> geth-v1.17.9
 		utils.CachePreimagesFlag,
-		utils.PruneAncientDataFlag, // deprecated
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,
 		utils.MemoryLimitFlag,
@@ -169,45 +133,21 @@ var (
 		utils.MaxPeersFlag,
 		utils.MaxPeersPerIPFlag,
 		utils.MaxPendingPeersFlag,
-<<<<<<< HEAD
 		utils.MiningEnabledFlag,
-||||||| 117e067f0f
-		utils.MiningEnabledFlag, // deprecated
-=======
->>>>>>> geth-v1.17.9
 		utils.MinerGasLimitFlag,
 		utils.MinerGasPriceFlag,
-<<<<<<< HEAD
 		utils.MinerEtherbaseFlag,
-||||||| 117e067f0f
-		utils.MinerEtherbaseFlag, // deprecated
-=======
->>>>>>> geth-v1.17.9
 		utils.MinerExtraDataFlag,
 		utils.MinerMaxBlobsFlag,
 		utils.MinerRecommitIntervalFlag,
-<<<<<<< HEAD
-		utils.MinerNewPayloadTimeoutFlag, // deprecated
 		utils.MinerDelayLeftoverFlag,
 		// utils.MinerNewPayloadTimeout,
-||||||| 117e067f0f
-		utils.MinerPendingFeeRecipientFlag,
-		utils.MinerNewPayloadTimeoutFlag, // deprecated
-=======
-		utils.MinerPendingFeeRecipientFlag,
->>>>>>> geth-v1.17.9
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.PeerFilterPatternsFlag,
 		utils.DiscoveryV4Flag,
 		utils.DiscoveryV5Flag,
-<<<<<<< HEAD
 		utils.InstanceFlag,
-		utils.LegacyDiscoveryV5Flag, // deprecated
-||||||| 117e067f0f
-		utils.LegacyDiscoveryV5Flag, // deprecated
-=======
->>>>>>> geth-v1.17.9
 		utils.NetrestrictFlag,
 		utils.NodeKeyFileFlag,
 		utils.NodeKeyHexFlag,
@@ -227,7 +167,6 @@ var (
 		utils.GpoMaxGasPriceFlag,
 		utils.GpoIgnoreGasPriceFlag,
 		configFileFlag,
-<<<<<<< HEAD
 		utils.CheckSnapshotWithMPT,
 		utils.EnableDoubleSignMonitorFlag,
 		utils.VotingEnabledFlag,
@@ -236,10 +175,7 @@ var (
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
-		utils.LogDebugFlag,
-		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
-		utils.VMOpcodeOptimizeFlag, // deprecated
 		// utils.BeaconApiFlag,
 		// utils.BeaconApiHeaderFlag,
 		// utils.BeaconThresholdFlag,
@@ -249,29 +185,6 @@ var (
 		// utils.BeaconGenesisTimeFlag,
 		// utils.BeaconCheckpointFlag,
 		// utils.BeaconCheckpointFileFlag,
-||||||| 117e067f0f
-		utils.LogDebugFlag,
-		utils.LogBacktraceAtFlag,
-		utils.BeaconApiFlag,
-		utils.BeaconApiHeaderFlag,
-		utils.BeaconThresholdFlag,
-		utils.BeaconNoFilterFlag,
-		utils.BeaconConfigFlag,
-		utils.BeaconGenesisRootFlag,
-		utils.BeaconGenesisTimeFlag,
-		utils.BeaconCheckpointFlag,
-		utils.BeaconCheckpointFileFlag,
-=======
-		utils.BeaconApiFlag,
-		utils.BeaconApiHeaderFlag,
-		utils.BeaconThresholdFlag,
-		utils.BeaconNoFilterFlag,
-		utils.BeaconConfigFlag,
-		utils.BeaconGenesisRootFlag,
-		utils.BeaconGenesisTimeFlag,
-		utils.BeaconCheckpointFlag,
-		utils.BeaconCheckpointFileFlag,
->>>>>>> geth-v1.17.9
 		utils.LogSlowBlockFlag,
 		utils.StateSizeTrackingFlag, // deprecated
 	}, utils.NetworkFlags, utils.DatabaseFlags)
@@ -406,31 +319,8 @@ func main() {
 func prepare(ctx *cli.Context) {
 	// If we're running a known preset, log it for convenience.
 	switch {
-<<<<<<< HEAD
 	case ctx.IsSet(utils.ChapelFlag.Name):
 		log.Info("Starting BSC on Chapel testnet...")
-||||||| 117e067f0f
-	case ctx.IsSet(utils.SepoliaFlag.Name):
-		log.Info("Starting Geth on Sepolia testnet...")
-
-	case ctx.IsSet(utils.HoleskyFlag.Name):
-		log.Info("Starting Geth on Holesky testnet...")
-
-	case ctx.IsSet(utils.HoodiFlag.Name):
-		log.Info("Starting Geth on Hoodi testnet...")
-
-	case !ctx.IsSet(utils.NetworkIdFlag.Name):
-		log.Info("Starting Geth on Ethereum mainnet...")
-=======
-	case ctx.Bool(utils.SepoliaFlag.Name):
-		log.Info("Starting Geth on Sepolia testnet...")
-
-	case ctx.Bool(utils.HoodiFlag.Name):
-		log.Info("Starting Geth on Hoodi testnet...")
-
-	case !ctx.IsSet(utils.NetworkIdFlag.Name):
-		log.Info("Starting Geth on Ethereum mainnet...")
->>>>>>> geth-v1.17.9
 	}
 }
 
@@ -458,17 +348,9 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 	// Start up the node itself
 	utils.StartNode(ctx, stack, isConsole)
 
-<<<<<<< HEAD
 	// Unlock any account specifically requested
 	unlockAccounts(ctx, stack)
 
-||||||| 117e067f0f
-	if ctx.IsSet(utils.UnlockedAccountFlag.Name) {
-		log.Warn(`The "unlock" flag has been deprecated and has no effect`)
-	}
-
-=======
->>>>>>> geth-v1.17.9
 	// Register wallet event handlers to open and auto-derive wallets
 	events := make(chan accounts.WalletEvent, 16)
 	stack.AccountManager().Subscribe(events)

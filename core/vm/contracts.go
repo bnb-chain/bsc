@@ -570,87 +570,51 @@ func activePrecompiledContracts(rules params.Rules) *PrecompiledContracts {
 	// below), and Jenner keeps that pre-existing precedence instead of
 	// silently swapping an active UBT set for a Pasteur-derived one.
 	case rules.IsUBT:
-<<<<<<< HEAD
-		return PrecompiledContractsVerkle
-	case rules.IsJenner:
-		return PrecompiledContractsJenner
-	case rules.IsPasteur:
-		return PrecompiledContractsPasteur
-||||||| 117e067f0f
-		return PrecompiledContractsVerkle
-=======
 		return &PrecompiledContractsVerkle
 	case rules.IsBogota:
 		return &PrecompiledContractsOsaka
->>>>>>> geth-v1.17.9
+	case rules.IsJenner:
+		return &PrecompiledContractsJenner
+	case rules.IsPasteur:
+		return &PrecompiledContractsPasteur
 	case rules.IsOsaka:
-<<<<<<< HEAD
 		if rules.IsInBSC {
-			return PrecompiledContractsOsakaForBSC
+			return &PrecompiledContractsOsakaForBSC
 		}
-		return PrecompiledContractsOsaka
-||||||| 117e067f0f
-		return PrecompiledContractsOsaka
-=======
 		return &PrecompiledContractsOsaka
->>>>>>> geth-v1.17.9
 	case rules.IsPrague:
-<<<<<<< HEAD
 		if rules.IsInBSC {
-			return PrecompiledContractsPragueForBSC
+			return &PrecompiledContractsPragueForBSC
 		}
-		return PrecompiledContractsPrague
-	case rules.IsHaber:
-		return PrecompiledContractsHaber
-||||||| 117e067f0f
-		return PrecompiledContractsPrague
-=======
 		return &PrecompiledContractsPrague
->>>>>>> geth-v1.17.9
+	case rules.IsHaber:
+		return &PrecompiledContractsHaber
 	case rules.IsCancun:
-<<<<<<< HEAD
 		if rules.IsInBSC {
-			return PrecompiledContractsCancunForBSC
+			return &PrecompiledContractsCancunForBSC
 		}
-		return PrecompiledContractsCancun
-	case rules.IsFeynman:
-		return PrecompiledContractsFeynman
-	case rules.IsHertz:
-		return PrecompiledContractsHertz
-||||||| 117e067f0f
-		return PrecompiledContractsCancun
-=======
 		return &PrecompiledContractsCancun
->>>>>>> geth-v1.17.9
+	case rules.IsFeynman:
+		return &PrecompiledContractsFeynman
+	case rules.IsHertz:
+		return &PrecompiledContractsHertz
 	case rules.IsBerlin:
-<<<<<<< HEAD
-		return PrecompiledContractsBerlin
-	case rules.IsPlato:
-		return PrecompiledContractsPlato
-	case rules.IsLuban:
-		return PrecompiledContractsLuban
-	case rules.IsPlanck:
-		return PrecompiledContractsPlanck
-	case rules.IsMoran:
-		return PrecompiledContractsMoran
-	case rules.IsNano:
-		return PrecompiledContractsNano
-||||||| 117e067f0f
-		return PrecompiledContractsBerlin
-=======
 		return &PrecompiledContractsBerlin
->>>>>>> geth-v1.17.9
+	case rules.IsPlato:
+		return &PrecompiledContractsPlato
+	case rules.IsLuban:
+		return &PrecompiledContractsLuban
+	case rules.IsPlanck:
+		return &PrecompiledContractsPlanck
+	case rules.IsMoran:
+		return &PrecompiledContractsMoran
+	case rules.IsNano:
+		return &PrecompiledContractsNano
 	case rules.IsIstanbul:
-<<<<<<< HEAD
 		if rules.IsInBSC {
-			return PrecompiledContractsIstanbulForBSC
+			return &PrecompiledContractsIstanbulForBSC
 		}
-		return PrecompiledContractsIstanbul
-||||||| 117e067f0f
-		return PrecompiledContractsIstanbul
-=======
 		return &PrecompiledContractsIstanbul
->>>>>>> geth-v1.17.9
 	case rules.IsByzantium:
 		return &PrecompiledContractsByzantium
 	default:
@@ -666,16 +630,12 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
-<<<<<<< HEAD
+	case rules.IsBogota:
+		return PrecompiledAddressesOsaka
 	case rules.IsJenner:
 		return PrecompiledAddressesJenner
 	case rules.IsPasteur:
 		return PrecompiledAddressesPasteur
-||||||| 117e067f0f
-=======
-	case rules.IsBogota:
-		return PrecompiledAddressesOsaka
->>>>>>> geth-v1.17.9
 	case rules.IsOsaka:
 		if rules.IsInBSC {
 			return PrecompiledAddressesOsakaForBSC
@@ -726,13 +686,7 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 // - the returned bytes,
 // - the remaining gas budget,
 // - any error that occurred
-<<<<<<< HEAD
-func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules, blockCtx BlockContext) (ret []byte, remaining GasBudget, err error) {
-||||||| 117e067f0f
-func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules) (ret []byte, remaining GasBudget, err error) {
-=======
-func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules, cache *PrecompileCache) (ret []byte, remaining GasBudget, err error) {
->>>>>>> geth-v1.17.9
+func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address common.Address, input []byte, gas GasBudget, logger *tracing.Hooks, rules params.Rules, cache *PrecompileCache, blockCtx BlockContext) (ret []byte, remaining GasBudget, err error) {
 	gasCost := p.RequiredGas(input)
 	prior, ok := gas.ChargeExecution(gasCost)
 	if !ok {
@@ -746,7 +700,6 @@ func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address comm
 	if rules.IsAmsterdam {
 		stateDB.Touch(address)
 	}
-<<<<<<< HEAD
 	// Precompiles that need the block context implement the optional
 	// BlockContextPrecompiledContract interface and are dispatched here;
 	// every other precompile keeps the plain Run(input) path.
@@ -754,8 +707,6 @@ func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address comm
 		output, err := bp.RunWithBlockContext(blockCtx, input)
 		return output, gas, err
 	}
-||||||| 117e067f0f
-=======
 	// Serve pure precompiles from the shared result cache if one is attached.
 	// Gas accounting and state touching above are identical on hit and miss,
 	// only the recomputation is skipped.
@@ -772,7 +723,6 @@ func RunPrecompiledContract(stateDB StateDB, p PrecompiledContract, address comm
 			return output, gas, err
 		}
 	}
->>>>>>> geth-v1.17.9
 	output, err := p.Run(input)
 	return output, gas, err
 }
@@ -2007,7 +1957,13 @@ func (c *bls12381MapG2) Name() string {
 	return "BLS12_MAP_FP2_TO_G2"
 }
 
-<<<<<<< HEAD
+func (c *bls12381MapG2) Cacheable() bool { return true }
+
+// NormalizeInput skips inputs Run rejects on length.
+func (c *bls12381MapG2) NormalizeInput(input []byte) ([]byte, bool) {
+	return input, len(input) == 128
+}
+
 // blsSignatureVerify implements bls signature verification precompile.
 type blsSignatureVerify struct{}
 
@@ -2085,16 +2041,6 @@ func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
 }
 
-||||||| 117e067f0f
-=======
-func (c *bls12381MapG2) Cacheable() bool { return true }
-
-// NormalizeInput skips inputs Run rejects on length.
-func (c *bls12381MapG2) NormalizeInput(input []byte) ([]byte, bool) {
-	return input, len(input) == 128
-}
-
->>>>>>> geth-v1.17.9
 // kzgPointEvaluation implements the EIP-4844 point evaluation precompile.
 type kzgPointEvaluation struct{}
 
@@ -2210,7 +2156,13 @@ func (c *p256Verify) Run(input []byte) ([]byte, error) {
 func (c *p256Verify) Name() string {
 	return "P256VERIFY"
 }
-<<<<<<< HEAD
+
+func (c *p256Verify) Cacheable() bool { return true }
+
+// NormalizeInput skips inputs Run rejects on length.
+func (c *p256Verify) NormalizeInput(input []byte) ([]byte, bool) {
+	return input, len(input) == p256VerifyInputLength
+}
 
 // verifyDoubleSignEvidence implements bsc header verification precompile.
 type verifyDoubleSignEvidence struct{}
@@ -2318,13 +2270,3 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 func (c *verifyDoubleSignEvidence) Name() string {
 	return "VERIFY_DOUBLE_SIGN_EVIDENCE"
 }
-||||||| 117e067f0f
-=======
-
-func (c *p256Verify) Cacheable() bool { return true }
-
-// NormalizeInput skips inputs Run rejects on length.
-func (c *p256Verify) NormalizeInput(input []byte) ([]byte, bool) {
-	return input, len(input) == p256VerifyInputLength
-}
->>>>>>> geth-v1.17.9

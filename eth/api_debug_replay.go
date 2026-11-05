@@ -193,7 +193,9 @@ func (api *DebugAPI) replayBuild(ctx context.Context, block *types.Block, stated
 		Transactions: committed,
 		Withdrawals:  block.Withdrawals(),
 	}
-	bc.Engine().Finalize(bc, header, statedb, &body)
+	if err := bc.Engine().Finalize(bc, header, statedb, &body, nil, nil, nil, nil); err != nil {
+		return nil, nil, 0, common.Hash{}, err
+	}
 	root := statedb.IntermediateRoot(evm.GetRules())
 
 	return blockAL.ToEncodingObj(), receipts, gp.Used(), root, nil

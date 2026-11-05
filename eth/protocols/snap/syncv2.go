@@ -56,15 +56,6 @@ const (
 	// the assumption that the gas limit is 60M.
 	maxAccessListRequestCount = 28
 
-	// maxCatchUpBlocks is the maximum gap (in blocks) that BAL catch-up is
-	// allowed to span. BALs are only retained by peers for a limited window
-	// (roughly two weeks, ~100k blocks at 12s block time). If the pivot has
-	// moved further than this conservative bound, the BALs needed to roll the
-	// flat state forward are likely no longer available, so we discard the
-	// stale progress and restart the sync from scratch rather than attempting
-	// a catch-up that is bound to fail partway through.
-	maxCatchUpBlocks = params.FullImmutabilityThreshold
-
 	// catchUpWindow is the number of blocks BAL catch-up fetches and applies at
 	// a time. The whole gap can span up to maxCatchUpBlocks, so fetching it in
 	// one shot would buffer every block's BAL (~100 KiB each) in memory before
@@ -85,6 +76,16 @@ const (
 // connected peer has been marked stateless for BAL requests and there
 // are still hashes left to fetch.
 var errAccessListPeersExhausted = errors.New("all peers exhausted for BAL requests")
+
+// maxCatchUpBlocks is the maximum gap (in blocks) that BAL catch-up is
+// allowed to span. BALs are only retained by peers for a limited window
+// (roughly two weeks, ~100k blocks at 12s block time). If the pivot has
+// moved further than this conservative bound, the BALs needed to roll the
+// flat state forward are likely no longer available, so we discard the
+// stale progress and restart the sync from scratch rather than attempting
+// a catch-up that is bound to fail partway through.
+// BSC exposes the retention threshold as a variable.
+var maxCatchUpBlocks = params.FullImmutabilityThreshold
 
 // errAccessListUnavailable is returned from the BAL catch-up when some gap
 // block's access list cannot be retrieved against the current peerset.
@@ -835,7 +836,7 @@ func (s *syncerV2) isPivotReorged(prev, curr *types.Header) bool {
 // so the caller should wipe and resync from scratch instead.
 func catchUpExceedsRetention(prev, curr *types.Header) bool {
 	gap := new(big.Int).Sub(curr.Number, prev.Number)
-	return gap.Cmp(big.NewInt(maxCatchUpBlocks)) > 0
+	return gap.Cmp(new(big.Int).SetUint64(maxCatchUpBlocks)) > 0
 }
 
 // catchUp runs the BAL catch-up. When the pivot has moved, it fetches BALs
@@ -984,15 +985,9 @@ func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, erro
 }
 
 // gapHeader reads the header of a gap block with the given number and
-// expected hash. Two data sources are checked: skeleton or the canonical
-// header, as the headers will be kept in skeleton until the full block
-// is fully downloaded and inserted.
+// expected hash from the header database. Headers are persisted before their
+// bodies are imported by the legacy downloader.
 func (s *syncerV2) gapHeader(num uint64, hash common.Hash) *types.Header {
-	if header := rawdb.ReadSkeletonHeader(s.db, num); header != nil && header.Hash() == hash {
-		return header
-	}
-	// If the header is outside the skeleton scope, read it from
-	// canonical source.
 	return rawdb.ReadHeader(s.db, hash, num)
 }
 

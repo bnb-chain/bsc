@@ -77,19 +77,9 @@ type Freezer struct {
 // NewFreezer creates a freezer instance for maintaining immutable ordered
 // data according to the given parameters.
 //
-<<<<<<< HEAD
-// The 'tables' argument defines the data tables. If the value of a map
-// entry is true, snappy compression is disabled for the table.
-// additionTables indicates the new add tables for freezerDB, it has some special rules.
-||||||| 117e067f0f
-// The 'tables' argument defines the freezer tables and their configuration.
-// Each value is a freezerTableConfig specifying whether snappy compression is
-// disabled (noSnappy) and whether the table is prunable (prunable).
-=======
 // The 'tables' argument defines the freezer tables and their configuration.
 // Each value is a freezerTableConfig describing whether Snappy compression
 // is disabled (noSnappy) and which tail group the table belongs to.
->>>>>>> geth-v1.17.9
 func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]freezerTableConfig) (*Freezer, error) {
 	// Create the initial freezer object
 	var (
@@ -173,7 +163,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 	// Create the write batch.
 	freezer.writeBatch = newFreezerBatch(freezer)
 
-	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "tail", freezer.tail.Load(), "frozen", freezer.head.Load())
+	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "tail", freezer.lowestTail(), "frozen", freezer.head.Load())
 	return freezer, nil
 }
 
@@ -250,21 +240,12 @@ func (f *Freezer) Ancients() (uint64, error) {
 	return f.head.Load(), nil
 }
 
-<<<<<<< HEAD
 func (f *Freezer) TableAncients(kind string) (uint64, error) {
 	f.writeLock.RLock()
 	defer f.writeLock.RUnlock()
 	return f.tables[kind].items.Load(), nil
 }
 
-// Tail returns the number of first stored item in the freezer.
-func (f *Freezer) Tail() (uint64, error) {
-	return f.tail.Load(), nil
-||||||| 117e067f0f
-// Tail returns the number of first stored item in the freezer.
-func (f *Freezer) Tail() (uint64, error) {
-	return f.tail.Load(), nil
-=======
 // Tail returns the lowest accessible item index for the given tail group.
 // All tables sharing this group agree on the tail; an empty group name
 // refers to non-prunable tables and always returns 0. Unknown groups return
@@ -278,7 +259,6 @@ func (f *Freezer) Tail(group string) (uint64, error) {
 		return 0, fmt.Errorf("unknown tail group: %q", group)
 	}
 	return tail.Load(), nil
->>>>>>> geth-v1.17.9
 }
 
 // AncientSize returns the ancient size of the specified category.
@@ -350,28 +330,6 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 	if oitems <= items {
 		return oitems, nil
 	}
-<<<<<<< HEAD
-	for kind, table := range f.tables {
-		err := table.truncateHead(items)
-		if err == errTruncationBelowTail {
-			// This often happens in chain rewinds, but the blob table is special.
-			// It has the same head, but a different tail from other tables (like bodies, receipts).
-			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
-			if kind != ChainFreezerBlobSidecarTable {
-				return 0, err
-			}
-			nt, err := table.resetItems(items)
-			if err != nil {
-				return 0, err
-			}
-			f.tables[kind] = nt
-			continue
-		}
-		if err != nil {
-||||||| 117e067f0f
-	for _, table := range f.tables {
-		if err := table.truncateHead(items); err != nil {
-=======
 	// Tail groups are pruned independently, so their tails can differ. Cutting
 	// the head below the tail of one group is fine: that group simply retains
 	// nothing, while the groups with a lower tail keep their data. Cutting below
@@ -382,7 +340,6 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 	}
 	for _, table := range f.tables {
 		if err := table.truncateHead(items); err != nil {
->>>>>>> geth-v1.17.9
 			return 0, err
 		}
 	}
@@ -404,7 +361,12 @@ func (f *Freezer) lowestTail() uint64 {
 		lowest uint64
 		first  = true
 	)
-	for _, tail := range f.tails {
+	for group, tail := range f.tails {
+		if group == ChainFreezerBlobGroup {
+			if table := f.tables[ChainFreezerBlobSidecarTable]; table != nil && EmptyTable(table) {
+				continue // An unpopulated BSC blob table cannot retain block history.
+			}
+		}
 		if v := tail.Load(); first || v < lowest {
 			lowest, first = v, false
 		}
@@ -416,6 +378,8 @@ func (f *Freezer) lowestTail() uint64 {
 // table that belongs to the named tail group. Tables that are already past
 // the threshold are left untouched. The previous tail of the group is
 // returned. An empty group name or an unknown group name returns an error.
+// BSC block history pruning also advances initialized blob sidecar tables,
+// while block access lists retain their independent tail.
 func (f *Freezer) TruncateTail(group string, tail uint64) (uint64, error) {
 	if f.readonly {
 		return 0, errReadOnly
@@ -434,29 +398,18 @@ func (f *Freezer) TruncateTail(group string, tail uint64) (uint64, error) {
 	if prev >= tail {
 		return prev, nil
 	}
-<<<<<<< HEAD
 	for kind, table := range f.tables {
-		if slices.Contains(additionTables, kind) && EmptyTable(table) {
-			continue
-		}
-		if table.config.prunable {
-			if err := table.truncateTail(tail); err != nil {
-				return 0, err
-			}
-||||||| 117e067f0f
-	for _, table := range f.tables {
-		if table.config.prunable {
-			if err := table.truncateTail(tail); err != nil {
-				return 0, err
-			}
-=======
-	for _, table := range f.tables {
-		if table.config.tailGroup != group {
+		pruneBlob := group == ChainFreezerBlockDataGroup && kind == ChainFreezerBlobSidecarTable && !EmptyTable(table)
+		if table.config.tailGroup != group && !pruneBlob {
 			continue
 		}
 		if err := table.truncateTail(tail); err != nil {
 			return 0, err
->>>>>>> geth-v1.17.9
+		}
+		if pruneBlob {
+			if blobTail := f.tails[table.config.tailGroup]; blobTail != nil {
+				blobTail.Store(table.itemHidden.Load())
+			}
 		}
 	}
 	cached.Store(tail)
@@ -496,50 +449,7 @@ func (f *Freezer) validate() error {
 		headSet bool
 		tails   = make(map[string]uint64)
 	)
-<<<<<<< HEAD
-	// Hack to get boundary of any table
 	for kind, table := range f.tables {
-		// addition tables is special cases
-		if slices.Contains(additionTables, kind) {
-			continue
-		}
-		head = table.items.Load()
-		break
-	}
-||||||| 117e067f0f
-	// get any head value
-	for _, table := range f.tables {
-		head = table.items.Load()
-		break
-	}
-=======
->>>>>>> geth-v1.17.9
-	for kind, table := range f.tables {
-<<<<<<< HEAD
-		// check addition tables, try to align with exist tables
-		if slices.Contains(additionTables, kind) {
-			// if the table is empty, just skip
-			if EmptyTable(table) {
-				continue
-			}
-			// all tables have to have the same head
-			if head != table.items.Load() {
-				return fmt.Errorf("freezer table %s has a differing head: %d != %d", kind, table.items.Load(), head)
-			}
-			// TODO(Jacksen): This error might be unexpected.
-			if prunedTail != nil && *prunedTail > table.itemHidden.Load() {
-				return fmt.Errorf("freezer table %s has differing tail: %d != %d", kind, table.itemHidden.Load(), *prunedTail)
-			}
-			continue
-		}
-		// all tables have to have the same head
-		if head != table.items.Load() {
-			return fmt.Errorf("freezer table %s has a differing head: %d != %d", kind, table.items.Load(), head)
-||||||| 117e067f0f
-		// all tables have to have the same head
-		if head != table.items.Load() {
-			return fmt.Errorf("freezer table %s has a differing head: %d != %d", kind, table.items.Load(), head)
-=======
 		// A freshly added table is empty and has not yet been aligned to the
 		// common head, skip the error here.
 		//
@@ -550,7 +460,6 @@ func (f *Freezer) validate() error {
 		items := table.items.Load()
 		if items == 0 {
 			continue
->>>>>>> geth-v1.17.9
 		}
 		// Validate the table head
 		if !headSet {
@@ -597,24 +506,6 @@ func (f *Freezer) repair() error {
 		hasNonEmpty bool
 		head        uint64 = math.MaxUint64
 	)
-<<<<<<< HEAD
-	for kind, table := range f.tables {
-		// addition tables only align head
-		if slices.Contains(additionTables, kind) {
-			if EmptyTable(table) {
-				continue
-			}
-			head = min(head, table.items.Load())
-			continue
-		}
-		head = min(head, table.items.Load())
-		prunedTail = max(prunedTail, table.itemHidden.Load())
-||||||| 117e067f0f
-	// get the minimal head and the maximum tail
-	for _, table := range f.tables {
-		head = min(head, table.items.Load())
-		prunedTail = max(prunedTail, table.itemHidden.Load())
-=======
 	for _, table := range f.tables {
 		if table.items.Load() == 0 {
 			continue
@@ -623,37 +514,7 @@ func (f *Freezer) repair() error {
 			head = items
 		}
 		hasNonEmpty = true
->>>>>>> geth-v1.17.9
 	}
-<<<<<<< HEAD
-	for kind, table := range f.tables {
-		//  try to align with exist tables, skip empty table
-		if slices.Contains(additionTables, kind) && EmptyTable(table) {
-			continue
-		}
-
-		err := table.truncateHead(head)
-		if err == errTruncationBelowTail {
-			// This often happens in chain rewinds, but the blob table is special.
-			// It has the same head, but a different tail from other tables (like bodies, receipts).
-			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
-			if kind != ChainFreezerBlobSidecarTable {
-				return err
-			}
-			nt, err := table.resetItems(head)
-			if err != nil {
-				return err
-			}
-			f.tables[kind] = nt
-			continue
-		}
-		if err != nil {
-||||||| 117e067f0f
-	// apply the pruning
-	for kind, table := range f.tables {
-		// all tables need to have the same head
-		if err := table.truncateHead(head); err != nil {
-=======
 	if !hasNonEmpty {
 		head = 0
 	}
@@ -661,7 +522,10 @@ func (f *Freezer) repair() error {
 	// internally calls resetTo when the requested tail exceeds the current
 	// head, which is exactly what we need here.
 	if head > 0 {
-		for _, table := range f.tables {
+		for kind, table := range f.tables {
+			if slices.Contains(additionTables, kind) {
+				continue
+			}
 			if table.items.Load() == 0 {
 				if err := table.truncateTail(head); err != nil {
 					return err
@@ -672,7 +536,6 @@ func (f *Freezer) repair() error {
 	// Truncate every table to the common head.
 	for _, table := range f.tables {
 		if err := table.truncateHead(head); err != nil {
->>>>>>> geth-v1.17.9
 			return err
 		}
 	}
@@ -730,6 +593,9 @@ func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	if err := t.truncateTail(tail); err != nil {
 		return 0, err
 	}
+	if cached := f.tails[t.config.tailGroup]; cached != nil {
+		cached.Store(t.itemHidden.Load())
+	}
 	return old, nil
 }
 
@@ -753,8 +619,12 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 		return nil
 	}
 
-	if err := f.SyncAncient(); err != nil {
-		return err
+	// The write lock is already held, so do not call SyncAncient, which
+	// acquires the same lock for reading.
+	for _, table := range f.tables {
+		if err := table.Sync(); err != nil {
+			return err
+		}
 	}
 	nt, err := t.resetItems(startAt)
 	if err != nil {
@@ -782,11 +652,11 @@ func (f *Freezer) resetTailMeta(legacyOffset uint64) error {
 	}
 
 	// if the tail is already reset, just skip
-	if f.tail.Load() == legacyOffset {
+	if f.lowestTail() == legacyOffset {
 		return nil
 	}
 
-	if f.tail.Load() > 0 {
+	if f.lowestTail() > 0 {
 		return errors.New("the freezer's tail > 0, cannot reset again")
 	}
 	f.writeLock.Lock()
@@ -800,5 +670,5 @@ func (f *Freezer) resetTailMeta(legacyOffset uint64) error {
 }
 
 func EmptyTable(t *freezerTable) bool {
-	return t.items.Load() == 0
+	return t.items.Load() == t.itemOffset.Load()
 }

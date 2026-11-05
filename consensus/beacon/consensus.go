@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
@@ -372,53 +373,17 @@ func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.H
 	return nil
 }
 
-<<<<<<< HEAD
 func (beacon *Beacon) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Duration) *time.Duration {
 	return nil
 }
 
 // Finalize implements consensus.Engine, setting the final state on the header
-func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, txs *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal, _ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64, tracer *tracing.Hooks) error {
+func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	// Finalize is different with Prepare, it can be used in both block verification.
-||||||| 117e067f0f
-// Finalize implements consensus.Engine and processes withdrawals on top.
-func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
-=======
-// Finalize implements consensus.Engine.
-func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body) {
->>>>>>> geth-v1.17.9
 	if !beacon.IsPoSHeader(header) {
-<<<<<<< HEAD
-		beacon.ethone.Finalize(chain, header, state, txs, uncles, nil, nil, nil, nil, tracer)
-		return nil
-||||||| 117e067f0f
-		beacon.ethone.Finalize(chain, header, state, body)
-		return
-=======
-		beacon.ethone.Finalize(chain, header, state, body)
->>>>>>> geth-v1.17.9
+		return beacon.ethone.Finalize(chain, header, state, body, receipts, systemTxs, usedGas, tracer)
 	}
-<<<<<<< HEAD
-	// Withdrawals processing.
-	for _, w := range withdrawals {
-		// Convert amount from gwei to wei.
-		amount := new(uint256.Int).SetUint64(w.Amount)
-		amount = amount.Mul(amount, uint256.NewInt(params.GWei))
-		state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
-	}
-	// No block reward which is issued by consensus layer instead.
 	return nil
-||||||| 117e067f0f
-	// Withdrawals processing.
-	for _, w := range body.Withdrawals {
-		// Convert amount from gwei to wei.
-		amount := new(uint256.Int).SetUint64(w.Amount)
-		amount = amount.Mul(amount, uint256.NewInt(params.GWei))
-		state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
-	}
-	// No block reward which is issued by consensus layer instead.
-=======
->>>>>>> geth-v1.17.9
 }
 
 // Seal generates a new sealing request for the given input block and pushes

@@ -206,15 +206,9 @@ var storageChangePool = sync.Pool{
 // newJournal creates a new initialized journal.
 func newJournal() *journal {
 	return &journal{
-<<<<<<< HEAD
-		dirties:        make(map[common.Address]int, defaultNumOfSlots),
+		mutations:      make(map[common.Address]*journalMutationState),
 		entries:        make([]journalEntry, 0, defaultNumOfSlots),
 		storageEntries: make([]*storageChange, 0, defaultNumOfSlots),
-||||||| 117e067f0f
-		dirties: make(map[common.Address]int),
-=======
-		mutations: make(map[common.Address]*journalMutationState),
->>>>>>> geth-v1.17.9
 	}
 }
 
@@ -323,15 +317,10 @@ func (j *journal) copy() *journal {
 	for i := 0; i < j.length(); i++ {
 		entries = append(entries, j.entries[i].copy())
 	}
-<<<<<<< HEAD
-
-||||||| 117e067f0f
-=======
 	mutations := make(map[common.Address]*journalMutationState, len(j.mutations))
 	for addr, state := range j.mutations {
 		mutations[addr] = state.copy()
 	}
->>>>>>> geth-v1.17.9
 	return &journal{
 		entries:        entries,
 		mutations:      mutations,

@@ -204,6 +204,12 @@ func (c *PrecompileCache) metersFor(addr common.Address) *precompileCacheMeters 
 // CacheablePrecompile is implemented by precompiles that opt in to result
 // caching. Anything that does not implement it is never cached, so a new
 // precompile is not enrolled until someone decides it should be.
+//
+// TODO(BSC): Evaluate opting BSC-specific pure precompiles into this cache,
+// starting with BLS signature verification and secp256k1 signature recovery.
+// Audit light-client/proof validators and their fork variants before opting in,
+// and test cached versus uncached results and gas usage. Keep stateful CAS20 and
+// block-context-dependent precompiles (e.g. milliTimestamp) out of this cache.
 type CacheablePrecompile interface {
 	Cacheable() bool
 }

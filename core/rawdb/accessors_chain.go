@@ -880,7 +880,6 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	if err := op.Append(ChainFreezerReceiptTable, num, receipts); err != nil {
 		return fmt.Errorf("can't append block %d receipts: %v", num, err)
 	}
-<<<<<<< HEAD
 	if err := op.Append(ChainFreezerDifficultyTable, num, td); err != nil {
 		return fmt.Errorf("can't append block %d total difficulty: %v", num, err)
 	}
@@ -889,8 +888,6 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 			return fmt.Errorf("can't append block %d blobs: %v", num, err)
 		}
 	}
-||||||| 117e067f0f
-=======
 	// Block access lists are only retrieved (best effort) for blocks close to
 	// the head of the network chain; a nil entry is stored as the absence
 	// placeholder for anything the network no longer serves.
@@ -903,7 +900,6 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 			return fmt.Errorf("can't append block %d bals: %v", num, err)
 		}
 	}
->>>>>>> geth-v1.17.9
 	return nil
 }
 
@@ -980,7 +976,6 @@ func WriteAncientHeaderChain(db ethdb.AncientWriter, headers []*types.Header, pt
 			if err := op.AppendRaw(ChainFreezerReceiptTable, num, nil); err != nil {
 				return fmt.Errorf("can't append block %d receipts: %v", num, err)
 			}
-<<<<<<< HEAD
 			if err := op.Append(ChainFreezerDifficultyTable, num, tdSum); err != nil {
 				return fmt.Errorf("can't append block %d td: %v", num, err)
 			}
@@ -988,8 +983,7 @@ func WriteAncientHeaderChain(db ethdb.AncientWriter, headers []*types.Header, pt
 			// if err := op.Append(ChainFreezerBlobSidecarTable, num, nil); err != nil {
 			// 	return fmt.Errorf("can't append block %d receipts: %v", num, err)
 			// }
-||||||| 117e067f0f
-=======
+
 			// The assumption is held that BAL of ancient block is no longer available
 			// (it may still reachable, but it's not worthwhile to even retrieve it
 			// from the network). A nil entry is stored in the BAL table as the absence
@@ -997,7 +991,6 @@ func WriteAncientHeaderChain(db ethdb.AncientWriter, headers []*types.Header, pt
 			if err := op.AppendRaw(ChainFreezerBALTable, num, nil); err != nil {
 				return fmt.Errorf("can't append block %d bals: %v", num, err)
 			}
->>>>>>> geth-v1.17.9
 		}
 		return nil
 	})
@@ -1008,13 +1001,9 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteReceipts(db, hash, number)
 	DeleteHeader(db, hash, number)
 	DeleteBody(db, hash, number)
-<<<<<<< HEAD
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number) // it is safe to delete non-exist blob
-||||||| 117e067f0f
-=======
 	DeleteAccessList(db, hash, number)
->>>>>>> geth-v1.17.9
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -1023,13 +1012,9 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	DeleteReceipts(db, hash, number)
 	deleteHeaderWithoutNumber(db, hash, number)
 	DeleteBody(db, hash, number)
-<<<<<<< HEAD
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number)
-||||||| 117e067f0f
-=======
 	DeleteAccessList(db, hash, number)
->>>>>>> geth-v1.17.9
 }
 
 const badBlockToKeep = 10

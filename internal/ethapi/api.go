@@ -504,32 +504,8 @@ func decodeStorageKey(s string) (h common.Hash, inputLength int, err error) {
 // Per the specification, the result is null for the pending tag and for a
 // safe or finalized tag that cannot be resolved to a block.
 func (api *BlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.BlockNumber) (map[string]interface{}, error) {
-<<<<<<< HEAD
-	header, err := api.b.HeaderByNumber(ctx, number)
-	if header != nil && err == nil {
-		response := api.rpcMarshalHeader(ctx, header)
-		if number == rpc.PendingBlockNumber {
-			// Pending header need to nil out a few fields
-			for _, field := range []string{"hash", "nonce", "miner"} {
-				response[field] = nil
-			}
-		}
-		return response, err
-||||||| 117e067f0f
-	header, err := api.b.HeaderByNumber(ctx, number)
-	if header != nil && err == nil {
-		response := RPCMarshalHeader(header)
-		if number == rpc.PendingBlockNumber {
-			// Pending header need to nil out a few fields
-			for _, field := range []string{"hash", "nonce", "miner"} {
-				response[field] = nil
-			}
-		}
-		return response, err
-=======
 	if number == rpc.PendingBlockNumber {
 		return nil, nil
->>>>>>> geth-v1.17.9
 	}
 	header, err := api.b.HeaderByNumber(ctx, number)
 	if err != nil {
@@ -541,7 +517,7 @@ func (api *BlockChainAPI) GetHeaderByNumber(ctx context.Context, number rpc.Bloc
 	if header == nil {
 		return nil, nil
 	}
-	return RPCMarshalHeader(header), nil
+	return api.rpcMarshalHeader(ctx, header), nil
 }
 
 // GetHeaderByHash returns the requested header by hash.
@@ -1369,11 +1345,11 @@ func (api *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, 
 	if err != nil || parent == nil {
 		return false, fmt.Errorf("block not found for block number %d", block.NumberU64()-1)
 	}
-	parentState, err := api.b.Chain().StateAt(parent.Header())
+	parentState, err := api.b.Chain().StateAt(parent.Root(), parent.Number(), parent.Time())
 	if err != nil {
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
-	currentState, err := api.b.Chain().StateAt(block.Header())
+	currentState, err := api.b.Chain().StateAt(block.Root(), block.Number(), block.Time())
 	if err != nil {
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64(), err)
 	}
@@ -1413,7 +1389,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 	if err != nil || parent == nil {
 		return nil, nil, fmt.Errorf("block not found for block number %d", block.NumberU64()-1)
 	}
-	statedb, err := api.b.Chain().StateAt(parent.Header())
+	statedb, err := api.b.Chain().StateAt(parent.Root(), parent.Number(), parent.Time())
 	if err != nil {
 		return nil, nil, fmt.Errorf("state not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
@@ -1429,12 +1405,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 	systemcontracts.TryUpdateBuildInSystemContract(config, block.Number(), parent.Time(), block.Time(), statedb, true)
 	evm := vm.NewEVM(core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil), statedb, config, vm.Config{})
 	defer evm.Release()
-	if beaconRoot := block.BeaconRoot(); beaconRoot != nil {
-		core.ProcessBeaconBlockRoot(*beaconRoot, evm) // EIP-4788, a no-op for BSC's zero beacon root
-	}
-	if config.IsPrague(block.Number(), block.Time()) || config.IsUBT(block.Number(), block.Time()) {
-		core.ProcessParentBlockHash(block.ParentHash(), evm) // EIP-2935
-	}
+	core.PreExecution(ctx, block.BeaconRoot(), parent.Header(), config, evm, block.Number(), block.Time())
 
 	// Recompute transactions.
 	signer := types.MakeSigner(config, block.Number(), block.Time())
@@ -1467,7 +1438,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 
 		if posa, ok := api.b.Engine().(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-				msg.SkipTransactionChecks = true
+				msg.SkipNonceCheck().SkipEOACheck()
 				balance := statedb.GetBalance(consensus.SystemAddress)
 				if balance.Cmp(common.U2560) > 0 {
 					statedb.SetBalance(consensus.SystemAddress, uint256.NewInt(0), tracing.BalanceChangeUnspecified)
@@ -1484,7 +1455,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 		if _, err := core.ApplyMessage(evm, msg, core.NewGasPool(tx.Gas())); err != nil {
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
-		statedb.Finalise(evm.ChainConfig().IsEIP158(block.Number()))
+		statedb.Finalise(evm.GetRules())
 
 		if !skip {
 			// Compute account balance diff.

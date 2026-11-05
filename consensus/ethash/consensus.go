@@ -519,10 +519,10 @@ func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Du
 
 // Finalize implements consensus.Engine, accumulating the block and uncle rewards,
 // setting the final state on the header
-func (ethash *Ethash) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+func (ethash *Ethash) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body,
 	_ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64, tracer *tracing.Hooks) (err error) {
 	// Accumulate any block and uncle rewards and commit the final state root
-	accumulateRewards(chain.Config(), state, header, uncles)
+	accumulateRewards(chain.Config(), state, header, body.Uncles)
 	return
 }
 

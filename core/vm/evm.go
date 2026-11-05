@@ -76,7 +76,7 @@ func (evm *EVM) runPrecompile(p PrecompiledContract, caller, self common.Address
 	if sp, ok := p.(StatefulPrecompiledContract); ok {
 		return runStatefulPrecompiledContract(evm, sp, caller, self, input, gas, readOnly, directCall, value)
 	}
-	return RunPrecompiledContract(evm.StateDB, p, self, input, gas, evm.Config.Tracer, evm.chainRules, evm.Context)
+	return RunPrecompiledContract(evm.StateDB, p, self, input, gas, evm.Config.Tracer, evm.chainRules, evm.precompileCache, evm.Context)
 }
 
 // BlockContext provides the EVM with auxiliary information. Once provided
@@ -100,17 +100,14 @@ type BlockContext struct {
 	BlobBaseFee *big.Int       // Provides information for BLOBBASEFEE (0 if vm runs with NoBaseFee flag and 0 blob gas price)
 	Random      *common.Hash   // Provides information for PREVRANDAO
 	SlotNum     uint64         // Provides information for SLOTNUM
-<<<<<<< HEAD
+
+	CostPerStateByte uint64 // CostPerByte for new state after EIP-8037
+
 	// MilliTimestamp is the block timestamp in milliseconds (BEP-520), i.e.
 	// Header.MilliTimestamp(). It is consumed by the BEP-706 milliTimestamp
 	// precompile (Jenner fork). Constructors that bypass NewEVMBlockContext
 	// may leave it zero; consumers fall back to Time*1000 in that case.
 	MilliTimestamp uint64
-||||||| 117e067f0f
-=======
-
-	CostPerStateByte uint64 // CostPerByte for new state after EIP-8037
->>>>>>> geth-v1.17.9
 }
 
 // TxContext provides the EVM with information about a transaction.
@@ -175,19 +172,13 @@ type EVM struct {
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
 
-<<<<<<< HEAD
-	arena       *stackArena
-	releaseOnce sync.Once // guards returning the arena to the pool exactly once
-||||||| 117e067f0f
-	arena *stackArena
-=======
 	arena *stackArena
 
 	// forceTableLoop is a test-only switch. The differential test sets it so
 	// that Run uses the table loop (execTraced) for the whole call tree, which
 	// lets the test compare it against the generated dispatch.
 	forceTableLoop bool
->>>>>>> geth-v1.17.9
+	releaseOnce    sync.Once // guards returning the arena to the pool exactly once
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
@@ -391,13 +382,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 	}
 
 	if isPrecompile {
-<<<<<<< HEAD
 		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, true, value)
-||||||| 117e067f0f
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
-=======
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.precompileCache)
->>>>>>> geth-v1.17.9
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		code := evm.resolveCode(addr)
@@ -420,29 +405,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 	exitGas := gas.Exit(err)
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
-<<<<<<< HEAD
-		if err != ErrExecutionReverted {
-			if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
-				evm.Config.Tracer.OnGasChange(gas.RegularGas, 0, tracing.GasChangeCallFailedExecution)
-			}
-			gas.Exhaust()
-		}
-		// TODO: consider clearing up unused snapshots:
-		// } else {
-		//	evm.StateDB.DiscardSnapshot(snapshot)
-||||||| 117e067f0f
-		if err != ErrExecutionReverted {
-			if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
-				evm.Config.Tracer.OnGasChange(gas.RegularGas, 0, tracing.GasChangeCallFailedExecution)
-			}
-			gas.Exhaust()
-		}
-		// TODO: consider clearing up unused snapshots:
-		//} else {
-		//	evm.StateDB.DiscardSnapshot(snapshot)
-=======
 		evm.traceFrameExit(gas, exitGas, err)
->>>>>>> geth-v1.17.9
 	}
 	return ret, exitGas, err
 }
@@ -474,13 +437,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-<<<<<<< HEAD
 		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, false, value)
-||||||| 117e067f0f
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
-=======
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.precompileCache)
->>>>>>> geth-v1.17.9
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -523,27 +480,12 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-<<<<<<< HEAD
 		ret, gas, err = evm.runPrecompile(p, originCaller, addr, input, gas, evm.readOnly, false, value)
-||||||| 117e067f0f
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
-=======
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.precompileCache)
->>>>>>> geth-v1.17.9
 	} else {
-<<<<<<< HEAD
 		// Initialise a new contract and make initialise the delegate values
 		contract := GetContract(originCaller, caller, value, gas, evm.jumpDests)
 		defer ReturnContract(contract)
 
-||||||| 117e067f0f
-		// Initialise a new contract and make initialise the delegate values
-		//
-		// Note: The value refers to the original value from the parent call.
-		contract := NewContract(originCaller, caller, value, gas, evm.jumpDests)
-=======
-		contract := NewContract(originCaller, caller, value, gas, evm.jumpDests)
->>>>>>> geth-v1.17.9
 		contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))
 		ret, err = evm.Run(contract, input, false)
 		gas = contract.Gas
@@ -588,15 +530,8 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 	evm.StateDB.AddBalance(addr, new(uint256.Int), tracing.BalanceChangeTouchAccount)
 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-<<<<<<< HEAD
 		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, true, true, nil)
-||||||| 117e067f0f
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
-=======
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules, evm.precompileCache)
->>>>>>> geth-v1.17.9
 	} else {
-<<<<<<< HEAD
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		contract := GetContract(caller, addr, new(uint256.Int), gas, evm.jumpDests)
@@ -606,19 +541,6 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 		// When an error was returned by the EVM or when setting the creation code
 		// above we revert to the snapshot and consume any gas remaining. Additionally
 		// when we're in Homestead this also counts for code storage gas errors.
-||||||| 117e067f0f
-		// Initialise a new contract and set the code that is to be used by the EVM.
-		// The contract is a scoped environment for this execution context only.
-		contract := NewContract(caller, addr, new(uint256.Int), gas, evm.jumpDests)
-		contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))
-
-		// When an error was returned by the EVM or when setting the creation code
-		// above we revert to the snapshot and consume any gas remaining. Additionally
-		// when we're in Homestead this also counts for code storage gas errors.
-=======
-		contract := NewContract(caller, addr, new(uint256.Int), gas, evm.jumpDests)
-		contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))
->>>>>>> geth-v1.17.9
 		ret, err = evm.Run(contract, input, true)
 		gas = contract.Gas
 	}
@@ -792,16 +714,9 @@ func (evm *EVM) create(caller common.Address, code []byte, gas GasBudget, value 
 		evm.traceFrameExit(contract.Gas, exit, err)
 		return ret, address, exit, err
 	}
-<<<<<<< HEAD
-	leftOverGas = contract.Gas
-	return ret, address, leftOverGas, err
-||||||| 117e067f0f
-	return ret, address, contract.Gas, err
-=======
 	// Either success, or pre-Homestead ErrCodeStoreOutOfGas (gas preserved).
 	// Both packaged as a success-form GasBudget.
 	return ret, address, contract.Gas.ExitSuccess(), err
->>>>>>> geth-v1.17.9
 }
 
 // initNewContract runs a new contract's creation code, performs checks on the

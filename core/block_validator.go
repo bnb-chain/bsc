@@ -117,6 +117,30 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			return nil
 		},
 		func() error {
+			// Block access list hash must be present in header after the
+			// Amsterdam hard fork.
+			if v.config.IsAmsterdam(block.Number(), block.Time()) {
+				if block.Header().BlockAccessListHash == nil {
+					return errors.New("block access list hash not set in header")
+				}
+				// If the block does not include an access list, compute it locally during
+				// execution and validate it against the access list hash in the header.
+				//
+				// If the block includes an attached access list, validate it directly here.
+				if block.AccessList() != nil {
+					computed := block.AccessList().Hash()
+					if *block.Header().BlockAccessListHash != computed {
+						return fmt.Errorf("access list hash mismatch, computed: %x, remote: %x", computed, *block.Header().BlockAccessListHash)
+					} else if err := block.AccessList().Validate(block.GasLimit(), len(block.Transactions())); err != nil {
+						return fmt.Errorf("invalid block access list: %v", err)
+					}
+				}
+			} else if block.Header().BlockAccessListHash != nil || block.AccessList() != nil {
+				return errors.New("block had access list before Amsterdam")
+			}
+			return nil
+		},
+		func() error {
 			if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
 				if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
 					return consensus.ErrUnknownAncestor
@@ -138,76 +162,6 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		if r != nil {
 			return r
 		}
-<<<<<<< HEAD
-||||||| 117e067f0f
-
-		// The individual checks for blob validity (version-check + not empty)
-		// happens in state transition.
-	}
-
-	// Check blob gas usage.
-	if header.BlobGasUsed != nil {
-		if want := *header.BlobGasUsed / params.BlobTxBlobGasPerBlob; uint64(blobs) != want { // div because the header is surely good vs the body might be bloated
-			return fmt.Errorf("blob gas used mismatch (header %v, calculated %v)", *header.BlobGasUsed, blobs*params.BlobTxBlobGasPerBlob)
-		}
-	} else {
-		if blobs > 0 {
-			return errors.New("data blobs present in block body")
-		}
-	}
-
-	// Ancestor block must be known.
-	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
-		if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
-			return consensus.ErrUnknownAncestor
-		}
-		return consensus.ErrPrunedAncestor
-=======
-
-		// The individual checks for blob validity (version-check + not empty)
-		// happens in state transition.
-	}
-
-	// Check blob gas usage.
-	if header.BlobGasUsed != nil {
-		if want := *header.BlobGasUsed / params.BlobTxBlobGasPerBlob; uint64(blobs) != want { // div because the header is surely good vs the body might be bloated
-			return fmt.Errorf("blob gas used mismatch (header %v, calculated %v)", *header.BlobGasUsed, blobs*params.BlobTxBlobGasPerBlob)
-		}
-	} else {
-		if blobs > 0 {
-			return errors.New("data blobs present in block body")
-		}
-	}
-
-	// Block access list hash must be present in header after the
-	// Amsterdam hard fork.
-	if v.config.IsAmsterdam(block.Number(), block.Time()) {
-		if block.Header().BlockAccessListHash == nil {
-			return errors.New("block access list hash not set in header")
-		}
-		// If the block does not include an access list, compute it locally during
-		// execution and validate it against the access list hash in the header.
-		//
-		// If the block includes an attached access list, validate it directly here.
-		if block.AccessList() != nil {
-			computed := block.AccessList().Hash()
-			if *block.Header().BlockAccessListHash != computed {
-				return fmt.Errorf("access list hash mismatch, computed: %x, remote: %x", computed, *block.Header().BlockAccessListHash)
-			} else if err := block.AccessList().Validate(block.GasLimit(), len(block.Transactions())); err != nil {
-				return fmt.Errorf("invalid block access list: %v", err)
-			}
-		}
-	} else if block.Header().BlockAccessListHash != nil || block.AccessList() != nil {
-		return errors.New("block had access list before Amsterdam")
-	}
-
-	// Ancestor block must be known.
-	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
-		if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
-			return consensus.ErrUnknownAncestor
-		}
-		return consensus.ErrPrunedAncestor
->>>>>>> geth-v1.17.9
 	}
 	return nil
 }
@@ -224,89 +178,25 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	}
 	// Validate the received block's bloom with the one derived from the generated receipts.
 	// For valid blocks this should always validate to true.
-<<<<<<< HEAD
-	validateFuns := []func() error{
-		func() error {
-			rbloom := types.MergeBloom(res.Receipts)
-			if rbloom != header.Bloom {
-				return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
-			}
-			return nil
-		},
-||||||| 117e067f0f
-	//
-	// Receipts must go through MakeReceipt to calculate the receipt's bloom
-	// already. Merge the receipt's bloom together instead of recalculating
-	// everything.
-	rbloom := types.MergeBloom(res.Receipts)
-	if rbloom != header.Bloom {
-		return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
-=======
 	rbloom := res.blockBloom()
 	if rbloom != header.Bloom {
 		return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
->>>>>>> geth-v1.17.9
 	}
 	// In stateless mode, return early because the receipt and state root are not
 	// provided through the witness, rather the cross validator needs to return it.
-	if !stateless {
-		validateFuns = append(validateFuns, func() error {
-			// The receipt Trie's root (R = (Tr [[H1, R1], ... [Hn, Rn]]))
-			receiptSha := types.DeriveSha(res.Receipts, trie.NewStackTrie(nil))
-			if receiptSha != header.ReceiptHash {
-				return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
-			}
-
-			// Validate the parsed requests match the expected header value.
-			return v.bc.engine.VerifyRequests(block.Header(), res.Requests)
-		})
-		validateFuns = append(validateFuns, func() error {
-			// Validate the state root against the received state root and throw
-			// an error if they don't match.
-			if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-				return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
-			}
-			return nil
-		})
+	if stateless {
+		return nil
 	}
-<<<<<<< HEAD
-
-	validateRes := make(chan error, len(validateFuns))
-	for _, f := range validateFuns {
-		tmpFunc := f
-		go func() {
-			validateRes <- tmpFunc()
-		}()
-||||||| 117e067f0f
-	// The receipt Trie's root (R = (Tr [[H1, R1], ... [Hn, Rn]]))
-	receiptSha := types.DeriveSha(res.Receipts, trie.NewStackTrie(nil))
-	if receiptSha != header.ReceiptHash {
-		return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
-=======
 	// The receipt Trie's root (R = (Tr [[H1, R1], ... [Hn, Rn]]))
 	receiptSha := res.receiptRoot()
 	if receiptSha != header.ReceiptHash {
 		return fmt.Errorf("invalid receipt root hash (remote: %x local: %x)", header.ReceiptHash, receiptSha)
->>>>>>> geth-v1.17.9
 	}
-
-	var err error
-	for i := 0; i < len(validateFuns); i++ {
-		r := <-validateRes
-		if r != nil && err == nil {
-			err = r
-		}
+	// Preserve the consensus engine's request validation (Parlia and Ethereum
+	// have different request semantics).
+	if err := v.bc.engine.VerifyRequests(header, res.Requests); err != nil {
+		return err
 	}
-<<<<<<< HEAD
-	return err
-||||||| 117e067f0f
-	// Validate the state root against the received state root and throw
-	// an error if they don't match.
-	if root := statedb.IntermediateRoot(v.config.IsEIP158(header.Number)); header.Root != root {
-		return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
-	}
-	return nil
-=======
 	// Verify Block-level accessList once Amsterdam is enabled
 	if v.config.IsAmsterdam(block.Number(), block.Time()) {
 		enc, local := res.encodedAccessList()
@@ -323,6 +213,11 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 			return fmt.Errorf("invalid block access list: %v", err)
 		}
 	}
+	// TODO(BSC): When enabling Amsterdam, benchmark BAL validation in parallel
+	// with state-root computation using end-to-end block import timings. Before
+	// parallelizing, ensure the BAL is complete and no longer shares mutable data
+	// with StateDB, and wait for all validation tasks even on error because
+	// IntermediateRoot mutates StateDB.
 	// Validate the state root against the received state root and throw
 	// an error if they don't match.
 	rules := v.config.Rules(header.Number, header.Difficulty.Sign() == 0, header.Time)
@@ -330,7 +225,6 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		return fmt.Errorf("invalid merkle root (remote: %x local: %x) dberr: %w", header.Root, root, statedb.Error())
 	}
 	return nil
->>>>>>> geth-v1.17.9
 }
 
 // CalcGasLimit computes the gas limit of the next block after parent. It aims

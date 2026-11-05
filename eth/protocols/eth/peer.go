@@ -119,7 +119,6 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, blo
 	cap := p2p.Cap{Name: ProtocolName, Version: version}
 	id := p.ID().String()
 	peer := &Peer{
-<<<<<<< HEAD
 		id:              id,
 		Peer:            p,
 		rw:              rw,
@@ -140,41 +139,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, blo
 		receiptBuffer:   make(map[uint64]*receiptRequest),
 		term:            make(chan struct{}),
 		txTerm:          make(chan struct{}),
-||||||| 117e067f0f
-		id:            p.ID().String(),
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		knownTxs:      newKnownCache(maxKnownTxs),
-		txBroadcast:   make(chan []common.Hash),
-		txAnnounce:    make(chan []common.Hash),
-		tracker:       tracker.New(cap, id, 5*time.Minute),
-		reqDispatch:   make(chan *request),
-		reqCancel:     make(chan *cancel),
-		resDispatch:   make(chan *response),
-		txpool:        txpool,
-		chainConfig:   chainConfig,
-		receiptBuffer: make(map[uint64]*receiptRequest),
-		term:          make(chan struct{}),
-=======
-		id:            id,
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		knownTxs:      newKnownCache(maxKnownTxs),
-		txBroadcast:   make(chan []common.Hash),
-		txAnnounce:    make(chan []common.Hash),
-		tracker:       tracker.New(cap, id, 5*time.Minute),
-		reqDispatch:   make(chan *request),
-		reqCancel:     make(chan *cancel),
-		reqResend:     make(chan *resend),
-		resDispatch:   make(chan *response),
-		txpool:        txpool,
-		blobpool:      blobpool,
-		chainConfig:   chainConfig,
-		receiptBuffer: make(map[uint64]*receiptRequest),
-		term:          make(chan struct{}),
->>>>>>> geth-v1.17.9
+		blobpool:        blobpool,
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()

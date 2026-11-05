@@ -127,7 +127,7 @@ func NewTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address]
 }
 
 // Copy copies a new TransactionsPriceAndNonce with the same *transaction
-func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
+func (t *TransactionsByPriceAndNonce) Copy() *TransactionsByPriceAndNonce {
 	heads := make([]*txWithMinerFee, len(t.heads))
 	copy(heads, t.heads)
 	txs := make(map[common.Address][]*txpool.LazyTransaction, len(t.txs))
@@ -138,7 +138,7 @@ func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
 	if t.baseFee != nil {
 		baseFee = *t.baseFee
 	}
-	return &transactionsByPriceAndNonce{
+	return &TransactionsByPriceAndNonce{
 		heads:   heads,
 		txs:     txs,
 		signer:  t.signer,
@@ -155,7 +155,7 @@ func (t *TransactionsByPriceAndNonce) Peek() (*txpool.LazyTransaction, *uint256.
 }
 
 // Peek returns the next transaction by price.
-func (t *transactionsByPriceAndNonce) PeekWithUnwrap() *types.Transaction {
+func (t *TransactionsByPriceAndNonce) PeekWithUnwrap() *types.Transaction {
 	if len(t.heads) > 0 && t.heads[0].tx != nil && t.heads[0].tx.Resolve() != nil {
 		return t.heads[0].tx.Tx
 	}
@@ -193,12 +193,12 @@ func (t *TransactionsByPriceAndNonce) Clear() {
 	t.heads, t.txs = nil, nil
 }
 
-func (t *transactionsByPriceAndNonce) CurrentSize() int {
+func (t *TransactionsByPriceAndNonce) CurrentSize() int {
 	return len(t.heads)
 }
 
 // Forward moves current transaction to be the one which is one index after tx
-func (t *transactionsByPriceAndNonce) Forward(tx *types.Transaction) {
+func (t *TransactionsByPriceAndNonce) Forward(tx *types.Transaction) {
 	if tx == nil {
 		if len(t.heads) > 0 {
 			t.heads = t.heads[0:0]

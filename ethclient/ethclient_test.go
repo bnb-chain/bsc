@@ -143,24 +143,11 @@ var (
 )
 
 var genesis = &core.Genesis{
-<<<<<<< HEAD
 	Config: params.AllEthashProtocolChanges, // AllDevChainProtocolChanges,
 	Alloc: types.GenesisAlloc{
 		testAddr:           {Balance: testBalance},
 		revertContractAddr: {Code: revertCode},
 	},
-||||||| 117e067f0f
-	Config: params.AllDevChainProtocolChanges,
-	Alloc: types.GenesisAlloc{
-		testAddr:           {Balance: testBalance},
-		revertContractAddr: {Code: revertCode},
-	},
-=======
-	Config: params.AllDevChainProtocolChanges,
-	// The config activates every fork from genesis, so the system contracts it
-	// calls into have to be deployed for the chain to be valid.
-	Alloc:     genesisAlloc(),
->>>>>>> geth-v1.17.9
 	ExtraData: []byte("test genesis"),
 	Timestamp: 9000,
 	BaseFee:   big.NewInt(params.InitialBaseFeeForBSC),
@@ -1095,13 +1082,4 @@ func TestSimulateV1WithBlockNumberOrHash(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 block result, got %d", len(results))
 	}
-}
-
-// genesisAlloc funds the test accounts on top of the system contracts every
-// enabled fork calls into.
-func genesisAlloc() types.GenesisAlloc {
-	alloc := core.SystemContractAllocs()
-	alloc[testAddr] = types.Account{Balance: testBalance}
-	alloc[revertContractAddr] = types.Account{Code: revertCode}
-	return alloc
 }

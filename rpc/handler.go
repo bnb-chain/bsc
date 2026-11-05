@@ -183,22 +183,7 @@ func (b *batchCallBuffer) doWrite(ctx context.Context, conn jsonWriter, isErrorR
 }
 
 // handleBatch executes all messages in a batch and returns the responses.
-<<<<<<< HEAD
 func (h *handler) handleBatch(ctx context.Context, msgs []*jsonrpcMessage) {
-	// Emit error response for empty batches:
-	if len(msgs) == 0 {
-		h.startCallProc(func(cp *callProc) {
-			resp := errorMessage(&invalidRequestError{"empty batch"})
-			h.conn.writeJSON(cp.ctx, resp, true)
-||||||| 117e067f0f
-func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
-	// Emit error response for empty batches:
-	if len(msgs) == 0 {
-		h.startCallProc(func(cp *callProc) {
-			resp := errorMessage(&invalidRequestError{"empty batch"})
-			h.conn.writeJSON(cp.ctx, resp, true)
-=======
-func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 	// For valid batches, filter response messages and subscription notifications
 	// out of msgs here.
 	var calls []*jsonrpcMessage
@@ -207,7 +192,6 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 		calls = make([]*jsonrpcMessage, 0, len(msgs))
 		h.handleResponses(msgs, func(msg *jsonrpcMessage) {
 			calls = append(calls, msg)
->>>>>>> geth-v1.17.9
 		})
 		if len(calls) == 0 {
 			// Batch was entirely responses to our own requests; nothing to dispatch.
@@ -267,16 +251,11 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 			if msg == nil {
 				break
 			}
-<<<<<<< HEAD
-			resp := h.handleCallMsg(cp, ctx, msg)
-||||||| 117e067f0f
-			resp := h.handleCallMsg(cp, msg)
-=======
 
 			// Per-call INTERNAL span as a child of the batch SERVER span.
 			var callSpanEnd func(*error)
 			cp.ctx, callSpanEnd = telemetry.StartBatchCallSpan(batchCtx, h.tracer(), rpcInfoFromMessage(msg))
-			resp := h.handleCallMsg(cp, msg)
+			resp := h.handleCallMsg(cp, ctx, msg)
 			var callErr error
 			if resp != nil && resp.Error != nil {
 				callErr = resp.decodeError()
@@ -287,7 +266,6 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 			if msg.isNotification() {
 				resp = nil
 			}
->>>>>>> geth-v1.17.9
 			callBuffer.pushResponse(resp)
 			if resp != nil && h.batchResponseMaxSize != 0 {
 				responseBytes += len(resp.Result) + len(resp.Error)
@@ -559,25 +537,15 @@ func (h *handler) handleCallMsg(ctx *callProc, reqCtx context.Context, msg *json
 		var logctx []any
 		logctx = append(logctx, "reqid", idForLog{msg.ID}, "duration", time.Since(start))
 		if resp.Error != nil {
-<<<<<<< HEAD
+			je := resp.decodeError()
 			monitoredError := "sender or to in black list" // using legacypool.ErrInBlackList.Error() will cause `import cycle`
-			if strings.Contains(resp.Error.Message, monitoredError) {
+			if strings.Contains(je.Message, monitoredError) {
 				accountBlacklistRpcCounter.Inc(1)
 				log.Warn("blacklist account detected from direct rpc", "remoteAddr", h.conn.remoteAddr())
 			}
-			logctx = append(logctx, "err", resp.Error.Message)
-			if resp.Error.Data != nil {
-				logctx = append(logctx, "errdata", formatErrorData(resp.Error.Data))
-||||||| 117e067f0f
-			logctx = append(logctx, "err", resp.Error.Message)
-			if resp.Error.Data != nil {
-				logctx = append(logctx, "errdata", formatErrorData(resp.Error.Data))
-=======
-			je := resp.decodeError()
 			logctx = append(logctx, "err", je.Message)
 			if je.Data != nil {
 				logctx = append(logctx, "errdata", formatErrorData(je.Data))
->>>>>>> geth-v1.17.9
 			}
 
 			xForward := reqCtx.Value("X-Forwarded-For")
