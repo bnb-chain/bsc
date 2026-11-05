@@ -95,3 +95,24 @@ func (q *headerQueue) deliver(peer *peerConnection, packet *eth.Response) (int, 
 	}
 	return accepted, err
 }
+
+// next returns the first skeleton segment waiting for a header request.
+func (q *headerQueue) next() (uint64, bool) {
+	q.queue.lock.RLock()
+	defer q.queue.lock.RUnlock()
+	if q.queue.headerTaskQueue.Empty() {
+		return 0, false
+	}
+	from, _ := q.queue.headerTaskQueue.Peek()
+	return from, true
+}
+
+// requeue retains the legacy skeleton retry path. Late replies to expired
+// header requests are discarded rather than inserted into the result cache.
+func (q *headerQueue) requeue(peer string) { q.unreserve(peer) }
+
+// Header segments do not occupy the body/receipt result cache. Their own
+// request timeouts drive retries, so they cannot stall its head.
+func (q *headerQueue) stalled(threshold time.Duration) string { return "" }
+
+func (q *headerQueue) metrics() *fetchMetrics { return headerFetchMetrics }

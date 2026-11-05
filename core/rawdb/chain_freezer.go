@@ -462,7 +462,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if len(receipts) == 0 {
 				return fmt.Errorf("block receipts missing, can't freeze block %d", number)
 			}
-<<<<<<< HEAD
 			td := ReadTdRLP(nfdb, hash, number)
 			if len(td) == 0 {
 				return fmt.Errorf("total difficulty missing, can't freeze block %d", number)
@@ -476,8 +475,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 				}
 			}
 
-||||||| 117e067f0f
-=======
 			// An empty block access list is allowed and may occur in multiple
 			// scenarios, such as:
 			//   - pre-Amsterdam blocks
@@ -488,7 +485,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			// absence placeholder.
 			bals := ReadAccessListRLP(nfdb, hash, number)
 
->>>>>>> geth-v1.17.9
 			// Write to the batch.
 			if err := op.AppendRaw(ChainFreezerHashTable, number, hash[:]); err != nil {
 				return fmt.Errorf("can't write hash to Freezer: %v", err)
@@ -502,7 +498,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			if err := op.AppendRaw(ChainFreezerReceiptTable, number, receipts); err != nil {
 				return fmt.Errorf("can't write receipts to Freezer: %v", err)
 			}
-<<<<<<< HEAD
 			if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
 				return fmt.Errorf("can't write td to Freezer: %v", err)
 			}
@@ -512,12 +507,9 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 				}
 			}
 
-||||||| 117e067f0f
-=======
 			if err := op.AppendRaw(ChainFreezerBALTable, number, bals); err != nil {
 				return fmt.Errorf("can't write bals to Freezer: %v", err)
 			}
->>>>>>> geth-v1.17.9
 			hashes = append(hashes, hash)
 		}
 		return nil
@@ -555,7 +547,7 @@ func (f *chainFreezer) tryPruneHistoryBlock(best uint64) {
 	if expectTail > ancientHead {
 		expectTail = ancientHead
 	}
-	old, err := f.TruncateTail(expectTail)
+	old, err := f.TruncateTail(ChainFreezerBlockDataGroup, expectTail)
 	if err != nil {
 		log.Warn("PruneHistoryBlock TruncateTail error", "best", best,
 			"expectTail", expectTail, "blockHistory", blockHistory, "err", err)
@@ -580,7 +572,7 @@ func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
 func (f *chainFreezer) Ancient(kind string, number uint64) ([]byte, error) {
 	// Lookup the entry in the underlying ancient store, assuming that
 	// headers and hashes are always available.
-	if chainFreezerTableConfigs[kind].prunable == false {
+	if chainFreezerTableConfigs[kind].tailGroup == "" {
 		return f.ancients.Ancient(kind, number)
 	}
 	group, err := tableTailGroup(kind)

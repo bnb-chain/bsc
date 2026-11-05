@@ -137,7 +137,6 @@ func TestReceiptList(t *testing.T) {
 		}
 	}
 }
-<<<<<<< HEAD
 
 func TestReceiptList68(t *testing.T) {
 	for i, test := range receiptsTests {
@@ -178,8 +177,6 @@ func TestReceiptList68(t *testing.T) {
 		}
 	}
 }
-||||||| 117e067f0f
-=======
 
 // TestReceiptListInvalidTrailing checks that an undecodable receipt changes the
 // derived root, so it can't sneak into the database via EncodeForStorage.
@@ -203,4 +200,3 @@ func TestReceiptListInvalidTrailing(t *testing.T) {
 		t.Fatal("invalid trailing receipt did not change the derived root")
 	}
 }
->>>>>>> geth-v1.17.9

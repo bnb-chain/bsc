@@ -89,7 +89,6 @@ type StateDB interface {
 	ClearAccessList()
 
 	Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList)
-	SetTxContext(thash common.Hash, ti int)
 	TxIndex() int
 
 	RevertToSnapshot(int)
@@ -98,13 +97,7 @@ type StateDB interface {
 	NoTries() bool
 
 	AddLog(*types.Log)
-<<<<<<< HEAD
 	GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log
-	LogsForBurnAccounts() []*types.Log
-||||||| 117e067f0f
-	LogsForBurnAccounts() []*types.Log
-=======
->>>>>>> geth-v1.17.9
 	AddPreimage(common.Hash, []byte)
 
 	Witness() *stateless.Witness
@@ -112,13 +105,7 @@ type StateDB interface {
 	AccessEvents() *state.AccessEvents
 
 	// Finalise must be invoked at the end of a transaction
-<<<<<<< HEAD
-	Finalise(bool) *bal.StateAccessList
-	IntermediateRoot(deleteEmptyObjects bool) common.Hash
-||||||| 117e067f0f
-	Finalise(bool) *bal.StateAccessList
-=======
 	Finalise(rules params.Rules) *bal.ConstructionBlockAccessList
 	SetTxContext(thash common.Hash, ti int, blockAccessIndex uint32)
->>>>>>> geth-v1.17.9
+	IntermediateRoot(rules params.Rules) common.Hash
 }

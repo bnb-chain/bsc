@@ -75,18 +75,14 @@ func (mt *mockTransactor) SendTransaction(ctx context.Context, tx *types.Transac
 	return nil
 }
 
-<<<<<<< HEAD
 func (mt *mockTransactor) SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts types.TransactionOpts) error {
 	return nil
 }
 
-||||||| 117e067f0f
-=======
 func (mt *mockTransactor) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
 	return nil, false, nil
 }
 
->>>>>>> geth-v1.17.9
 type mockCaller struct {
 	codeAtBlockNumber       *big.Int
 	callContractBlockNumber *big.Int

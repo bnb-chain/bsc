@@ -60,6 +60,14 @@ func (t *EmptyTrie) UpdateAccount(address common.Address, account *types.StateAc
 	return nil
 }
 
+func (t *EmptyTrie) UpdateAccountBatch(addresses []common.Address, accounts []*types.StateAccount, codeLengths []int) error {
+	return nil
+}
+
+func (t *EmptyTrie) UpdateStorageBatch(address common.Address, keys, values [][]byte) error {
+	return nil
+}
+
 func (t *EmptyTrie) UpdateContractCode(_ common.Address, _ common.Hash, _ []byte) error {
 	return nil
 }

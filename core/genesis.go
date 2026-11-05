@@ -164,14 +164,7 @@ func hashAlloc(ga *types.GenesisAlloc, isUBT bool) (common.Hash, error) {
 			statedb.SetState(addr, key, value)
 		}
 	}
-<<<<<<< HEAD
-	root, err := statedb.Commit(0, false, false)
-	return root, err
-||||||| 117e067f0f
-	return statedb.Commit(0, false, false)
-=======
 	return statedb.Commit(params.Rules{}, 0)
->>>>>>> geth-v1.17.9
 }
 
 // flushAlloc is very similar with hash, but the main difference is all the
@@ -254,24 +247,10 @@ func getGenesisState(db ethdb.Database, blockhash common.Hash) (alloc types.Gene
 	switch blockhash {
 	case params.MainnetGenesisHash:
 		genesis = DefaultGenesisBlock()
-<<<<<<< HEAD
 	case params.BSCGenesisHash:
 		genesis = DefaultBSCGenesisBlock()
 	case params.ChapelGenesisHash:
 		genesis = DefaultChapelGenesisBlock()
-||||||| 117e067f0f
-	case params.SepoliaGenesisHash:
-		genesis = DefaultSepoliaGenesisBlock()
-	case params.HoleskyGenesisHash:
-		genesis = DefaultHoleskyGenesisBlock()
-	case params.HoodiGenesisHash:
-		genesis = DefaultHoodiGenesisBlock()
-=======
-	case params.SepoliaGenesisHash:
-		genesis = DefaultSepoliaGenesisBlock()
-	case params.HoodiGenesisHash:
-		genesis = DefaultHoodiGenesisBlock()
->>>>>>> geth-v1.17.9
 	}
 	if genesis != nil {
 		return genesis.Alloc, nil
@@ -309,7 +288,6 @@ func (e *GenesisMismatchError) Error() string {
 // ChainOverrides contains the changes to chain config
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-<<<<<<< HEAD
 	OverridePassedForkTime *uint64
 	OverrideLorentz        *uint64
 	OverrideMaxwell        *uint64
@@ -321,18 +299,7 @@ type ChainOverrides struct {
 	OverrideBPO1           *uint64
 	OverrideBPO2           *uint64
 	OverrideUBT            *uint64
-||||||| 117e067f0f
-	OverrideOsaka *uint64
-	OverrideBPO1  *uint64
-	OverrideBPO2  *uint64
-	OverrideUBT   *uint64
-=======
-	OverrideOsaka     *uint64
-	OverrideAmsterdam *uint64
-	OverrideBPO1      *uint64
-	OverrideBPO2      *uint64
-	OverrideUBT       *uint64
->>>>>>> geth-v1.17.9
+	OverrideAmsterdam      *uint64
 }
 
 // apply applies the chain overrides on the supplied chain config.
@@ -364,7 +331,6 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideOsaka != nil {
 		cfg.OsakaTime = o.OverrideOsaka
 	}
-<<<<<<< HEAD
 	if o.OverrideMendel != nil {
 		cfg.MendelTime = o.OverrideMendel
 	}
@@ -374,12 +340,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideJenner != nil {
 		cfg.JennerTime = o.OverrideJenner
 	}
-||||||| 117e067f0f
-=======
 	if o.OverrideAmsterdam != nil {
 		cfg.AmsterdamTime = o.OverrideAmsterdam
 	}
->>>>>>> geth-v1.17.9
 	if o.OverrideBPO1 != nil {
 		cfg.BPO1Time = o.OverrideBPO1
 	}
@@ -549,37 +512,9 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (cfg *params.ChainConf
 // object is null, it returns the default chain configuration based on the given
 // genesis hash, or the locally stored config if it's not a pre-defined network.
 func (g *Genesis) chainConfigOrDefault(ghash common.Hash, stored *params.ChainConfig) *params.ChainConfig {
-<<<<<<< HEAD
 	conf := params.GetBuiltInChainConfig(ghash)
 	if conf != nil {
 		return conf
-||||||| 117e067f0f
-	switch {
-	case g != nil:
-		return g.Config
-	case ghash == params.MainnetGenesisHash:
-		return params.MainnetChainConfig
-	case ghash == params.HoleskyGenesisHash:
-		return params.HoleskyChainConfig
-	case ghash == params.SepoliaGenesisHash:
-		return params.SepoliaChainConfig
-	case ghash == params.HoodiGenesisHash:
-		return params.HoodiChainConfig
-	default:
-		return stored
-=======
-	switch {
-	case g != nil:
-		return g.Config
-	case ghash == params.MainnetGenesisHash:
-		return params.MainnetChainConfig
-	case ghash == params.SepoliaGenesisHash:
-		return params.SepoliaChainConfig
-	case ghash == params.HoodiGenesisHash:
-		return params.HoodiChainConfig
-	default:
-		return stored
->>>>>>> geth-v1.17.9
 	}
 	if g != nil {
 		return g.Config // it could be a custom config for QA test, just return
@@ -791,7 +726,6 @@ func DefaultBSCGenesisBlock() *Genesis {
 	}
 }
 
-<<<<<<< HEAD
 // DefaultChapelGenesisBlock returns the BSC mainnet genesis block.
 func DefaultChapelGenesisBlock() *Genesis {
 	alloc := decodePrealloc(bscChapelAllocData)
@@ -805,39 +739,6 @@ func DefaultChapelGenesisBlock() *Genesis {
 		Coinbase:   common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE"),
 		Timestamp:  0x5e9da7ce,
 		Alloc:      alloc,
-||||||| 117e067f0f
-// DefaultHoleskyGenesisBlock returns the Holesky network genesis block.
-func DefaultHoleskyGenesisBlock() *Genesis {
-	return &Genesis{
-		Config:     params.HoleskyChainConfig,
-		Nonce:      0x1234,
-		GasLimit:   0x17d7840,
-		Difficulty: big.NewInt(0x01),
-		Timestamp:  1695902100,
-		Alloc:      decodePrealloc(holeskyAllocData),
-	}
-}
-
-// DefaultHoodiGenesisBlock returns the Hoodi network genesis block.
-func DefaultHoodiGenesisBlock() *Genesis {
-	return &Genesis{
-		Config:     params.HoodiChainConfig,
-		Nonce:      0x1234,
-		GasLimit:   0x2255100,
-		Difficulty: big.NewInt(0x01),
-		Timestamp:  1742212800,
-		Alloc:      decodePrealloc(hoodiAllocData),
-=======
-// DefaultHoodiGenesisBlock returns the Hoodi network genesis block.
-func DefaultHoodiGenesisBlock() *Genesis {
-	return &Genesis{
-		Config:     params.HoodiChainConfig,
-		Nonce:      0x1234,
-		GasLimit:   0x2255100,
-		Difficulty: big.NewInt(0x01),
-		Timestamp:  1742212800,
-		Alloc:      decodePrealloc(hoodiAllocData),
->>>>>>> geth-v1.17.9
 	}
 }
 

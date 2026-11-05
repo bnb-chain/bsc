@@ -64,11 +64,11 @@ type frameAccounting struct {
 func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 	prior, ok := ctx.gas.Charge(cost)
 	if !ok {
-		ctx.gas.Exhaust()
+		*ctx.gas = ctx.gas.ExitHalt()
 		return false
 	}
-	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnGasChange != nil {
-		ctx.evm.Config.Tracer.OnGasChange(prior, ctx.gas.RegularGas, tracing.GasChangeCallPrecompiledContract)
+	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.HasGasHook() {
+		ctx.evm.Config.Tracer.EmitGasChange(prior.AsTracing(), ctx.gas.AsTracing(), tracing.GasChangeCallPrecompiledContract)
 	}
 	return true
 }
@@ -114,7 +114,7 @@ func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 	if ctx.OutOfGas() {
 		return false
 	}
-	if !ctx.UseGas(GasCosts{RegularGas: cost}) {
+	if !ctx.UseGas(GasCosts{ExecutionGas: cost}) {
 		ctx.markOutOfGas()
 		return false
 	}
@@ -123,7 +123,7 @@ func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
 
 func (ctx *PrecompileContext) OutOfGas() bool { return ctx.frame != nil && ctx.frame.outOfGas }
 
-func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.RegularGas }
+func (ctx *PrecompileContext) gasLeft() uint64 { return ctx.gas.ExecutionGas }
 
 func (ctx *PrecompileContext) BlockTime() uint64 { return ctx.evm.Context.Time }
 
@@ -160,13 +160,12 @@ func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) bool {
 
 func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool, value *uint256.Int) (ret []byte, remaining GasBudget, err error) {
 	gasCost := p.RequiredGas(input)
-	prior, ok := gas.Charge(GasCosts{RegularGas: gasCost})
+	prior, ok := gas.ChargeExecution(gasCost)
 	if !ok {
-		gas.Exhaust()
 		return nil, gas, ErrOutOfGas
 	}
-	if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
-		evm.Config.Tracer.OnGasChange(prior, gas.RegularGas, tracing.GasChangeCallPrecompiledContract)
+	if evm.Config.Tracer != nil && evm.Config.Tracer.HasGasHook() {
+		evm.Config.Tracer.EmitGasChange(prior.AsTracing(), gas.AsTracing(), tracing.GasChangeCallPrecompiledContract)
 	}
 	// Mirror the access-list touch performed for plain precompiles.
 	if evm.chainRules.IsAmsterdam {

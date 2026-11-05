@@ -22,19 +22,11 @@ import (
 )
 
 type txMetadata struct {
-<<<<<<< HEAD
-	id   uint64 // the billy id of transaction
-	size uint64 // the RLP encoded size of transaction (blobs are included)
-||||||| 117e067f0f
-	id   uint64 // the billy id of transction
-	size uint64 // the RLP encoded size of transaction (blobs are included)
-=======
 	id              uint64 // the billy id of transaction
 	size            uint64 // the RLP encoded size of transaction (blobs are included)
 	sizeWithoutBlob uint64 // the RLP encoded size without blob data (for ETH/72 announcements)
 	custody         types.CustodyBitmap
 	vhashes         []common.Hash // blob versioned hashes for the transaction
->>>>>>> geth-v1.17.9
 }
 
 // lookup maps blob versioned hashes to transaction hashes that include them,

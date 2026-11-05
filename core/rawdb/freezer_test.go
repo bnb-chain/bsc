@@ -33,8 +33,8 @@ import (
 
 var (
 	freezerTestTableDef = map[string]freezerTableConfig{"test": {noSnappy: true}}
-	o1o2TableDef        = map[string]freezerTableConfig{"o1": {noSnappy: true, prunable: true}, "o2": {noSnappy: true, prunable: true}}
-	o1o2a1TableDef      = map[string]freezerTableConfig{"o1": {noSnappy: true, prunable: true}, "o2": {noSnappy: true, prunable: true}, "a1": {noSnappy: true, prunable: true}}
+	o1o2TableDef        = map[string]freezerTableConfig{"o1": {noSnappy: true, tailGroup: "test"}, "o2": {noSnappy: true, tailGroup: "test"}}
+	o1o2a1TableDef      = map[string]freezerTableConfig{"o1": {noSnappy: true, tailGroup: "test"}, "o2": {noSnappy: true, tailGroup: "test"}, "a1": {noSnappy: true, tailGroup: "addition"}}
 )
 
 func TestFreezerModify(t *testing.T) {
@@ -338,6 +338,8 @@ func TestFreezerConcurrentReadonly(t *testing.T) {
 }
 
 func TestFreezer_AdditionTables(t *testing.T) {
+	previous := additionTables
+	t.Cleanup(func() { additionTables = previous })
 	dir := t.TempDir()
 	// Open non-readonly freezer and fill individual tables
 	// with different amount of data.
@@ -430,6 +432,8 @@ func TestFreezer_AdditionTables(t *testing.T) {
 }
 
 func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
+	previous := additionTables
+	t.Cleanup(func() { additionTables = previous })
 	dir := t.TempDir()
 	f, err := NewFreezer(dir, "", false, 2049, o1o2TableDef)
 	if err != nil {
@@ -494,7 +498,7 @@ func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 	require.Equal(t, item, actual)
 
 	// truncate tail
-	_, err = f.TruncateTail(offset + 2)
+	_, err = f.TruncateTail("test", offset+2)
 	require.NoError(t, err)
 	actual, err = f.Ancient("o1", offset+2)
 	require.NoError(t, err)
@@ -505,6 +509,8 @@ func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 }
 
 func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
+	previous := additionTables
+	t.Cleanup(func() { additionTables = previous })
 	dir := t.TempDir()
 	f, err := NewFreezer(dir, "", false, 2049, o1o2TableDef)
 	if err != nil {
@@ -557,7 +563,7 @@ func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
 	require.NoError(t, f.SyncAncient())
 
 	// truncate tail
-	_, err = f.TruncateTail(offset + 2)
+	_, err = f.TruncateTail("test", offset+2)
 	require.NoError(t, err)
 	actual, err := f.Ancient("o1", offset+2)
 	require.NoError(t, err)
@@ -654,6 +660,9 @@ func TestChainFreezerBALAlignment(t *testing.T) {
 			if err := op.AppendRaw(ChainFreezerReceiptTable, i, payload); err != nil {
 				return err
 			}
+			if err := op.AppendRaw(ChainFreezerDifficultyTable, i, payload); err != nil {
+				return err
+			}
 		}
 		return nil
 	}); err != nil {
@@ -720,6 +729,9 @@ func TestChainFreezerBALAlignment(t *testing.T) {
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerReceiptTable, i, payload); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(ChainFreezerDifficultyTable, i, payload); err != nil {
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerBALTable, i, balPayload); err != nil {
@@ -800,7 +812,7 @@ func TestTruncateHeadBelowGroupTail(t *testing.T) {
 		payload = bytes.Repeat([]byte{0xab}, 32)
 		tables  = []string{
 			ChainFreezerHashTable, ChainFreezerHeaderTable,
-			ChainFreezerBodiesTable, ChainFreezerReceiptTable, ChainFreezerBALTable,
+			ChainFreezerBodiesTable, ChainFreezerReceiptTable, ChainFreezerDifficultyTable, ChainFreezerBALTable,
 		}
 	)
 	f, err := NewFreezer(dir, "", false, 2049, chainFreezerTableConfigs)

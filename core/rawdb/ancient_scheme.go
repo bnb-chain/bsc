@@ -35,15 +35,12 @@ const (
 
 	// ChainFreezerReceiptTable indicates the name of the freezer receipts table.
 	ChainFreezerReceiptTable = "receipts"
-<<<<<<< HEAD
 
 	// ChainFreezerDifficultyTable indicates the name of the freezer total difficulty table.
 	ChainFreezerDifficultyTable = "diffs"
 
 	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
 	ChainFreezerBlobSidecarTable = "blobs"
-||||||| 117e067f0f
-=======
 
 	// ChainFreezerBALTable indicates the name of the freezer block access list
 	// table introduced by EIP-7928.
@@ -61,31 +58,21 @@ const (
 	// BAL is only populated after EIP-7928 activates, so it generally has a
 	// higher tail than the block-data group and is pruned independently.
 	ChainFreezerBALGroup = "bal"
->>>>>>> geth-v1.17.9
+
+	// ChainFreezerBlobGroup BSC blob sidecars are pruned independently from block data.
+	ChainFreezerBlobGroup = "blobs"
 )
 
 // chainFreezerTableConfigs configures the settings for tables in the chain freezer.
 // Compression is disabled for hashes as they don't compress well.
 var chainFreezerTableConfigs = map[string]freezerTableConfig{
-<<<<<<< HEAD
-	ChainFreezerHeaderTable:      {noSnappy: false, prunable: true},
-	ChainFreezerHashTable:        {noSnappy: true, prunable: true},
-	ChainFreezerBodiesTable:      {noSnappy: false, prunable: true},
-	ChainFreezerReceiptTable:     {noSnappy: false, prunable: true},
-	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: true},
-	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true},
-||||||| 117e067f0f
-	ChainFreezerHeaderTable:  {noSnappy: false, prunable: false},
-	ChainFreezerHashTable:    {noSnappy: true, prunable: false},
-	ChainFreezerBodiesTable:  {noSnappy: false, prunable: true},
-	ChainFreezerReceiptTable: {noSnappy: false, prunable: true},
-=======
-	ChainFreezerHeaderTable:  {noSnappy: false},
-	ChainFreezerHashTable:    {noSnappy: true},
-	ChainFreezerBodiesTable:  {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
-	ChainFreezerReceiptTable: {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
-	ChainFreezerBALTable:     {noSnappy: false, tailGroup: ChainFreezerBALGroup},
->>>>>>> geth-v1.17.9
+	ChainFreezerHeaderTable:      {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerHashTable:        {noSnappy: true, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerBodiesTable:      {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerReceiptTable:     {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerDifficultyTable:  {noSnappy: true, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerBlobSidecarTable: {noSnappy: false, tailGroup: ChainFreezerBlobGroup},
+	ChainFreezerBALTable:         {noSnappy: false, tailGroup: ChainFreezerBALGroup},
 }
 var additionTables = []string{ChainFreezerBlobSidecarTable}
 

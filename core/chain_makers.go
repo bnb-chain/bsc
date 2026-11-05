@@ -124,18 +124,10 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		blockContext = NewEVMBlockContext(b.header, bc, &b.header.Coinbase)
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
-<<<<<<< HEAD
-	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
 	laneType := b.lane.Classify(tx)
 	usedBefore := b.gasPool.Used()
-	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx, NewReceiptBloomGenerator())
-||||||| 117e067f0f
-	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
-	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx)
-=======
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs), uint32(len(b.txs)+1))
 	receipt, bal, err := ApplyTransaction(context.Background(), evm, b.gasPool, b.statedb, b.header, tx)
->>>>>>> geth-v1.17.9
 	if err != nil {
 		panic(err)
 	}
@@ -353,57 +345,9 @@ func (b *BlockGen) collectRequests(readonly bool) (requests [][]byte, bal *bal.C
 		// off the statedb before executing the system calls.
 		statedb = statedb.Copy()
 	}
-<<<<<<< HEAD
-
-	if b.cm.config.IsPrague(b.header.Number, b.header.Time) && b.cm.config.IsNotInBSC() {
-		requests = [][]byte{}
-		// EIP-6110 deposits
-		var blockLogs []*types.Log
-		for _, r := range b.receipts {
-			blockLogs = append(blockLogs, r.Logs...)
-		}
-		if err := ParseDepositLogs(&requests, blockLogs, b.cm.config); err != nil {
-			panic(fmt.Sprintf("failed to parse deposit log: %v", err))
-		}
-		// create EVM for system calls
-		blockContext := NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
-		evm := vm.NewEVM(blockContext, statedb, b.cm.config, vm.Config{})
-		// EIP-7002
-		if err := ProcessWithdrawalQueue(&requests, evm); err != nil {
-			panic(fmt.Sprintf("could not process withdrawal requests: %v", err))
-		}
-		// EIP-7251
-		if err := ProcessConsolidationQueue(&requests, evm); err != nil {
-			panic(fmt.Sprintf("could not process consolidation requests: %v", err))
-		}
-||||||| 117e067f0f
-
-	if b.cm.config.IsPrague(b.header.Number, b.header.Time) {
-		requests = [][]byte{}
-		// EIP-6110 deposits
-		var blockLogs []*types.Log
-		for _, r := range b.receipts {
-			blockLogs = append(blockLogs, r.Logs...)
-		}
-		if err := ParseDepositLogs(&requests, blockLogs, b.cm.config); err != nil {
-			panic(fmt.Sprintf("failed to parse deposit log: %v", err))
-		}
-		// create EVM for system calls
-		blockContext := NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
-		evm := vm.NewEVM(blockContext, statedb, b.cm.config, vm.Config{})
-		// EIP-7002
-		if err := ProcessWithdrawalQueue(&requests, evm); err != nil {
-			panic(fmt.Sprintf("could not process withdrawal requests: %v", err))
-		}
-		// EIP-7251
-		if err := ProcessConsolidationQueue(&requests, evm); err != nil {
-			panic(fmt.Sprintf("could not process consolidation requests: %v", err))
-		}
-=======
 	var blockLogs []*types.Log
 	for _, r := range b.receipts {
 		blockLogs = append(blockLogs, r.Logs...)
->>>>>>> geth-v1.17.9
 	}
 	// TODO use the shared EVM throughout the entire generation cycle
 	blockContext := NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
@@ -439,17 +383,11 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 
 	genblock := func(i int, parent *types.Block, triedb *triedb.Database, statedb *state.StateDB) (*types.Block, types.Receipts) {
 		b := &BlockGen{i: i, cm: cm, parent: parent, statedb: statedb, engine: engine}
-<<<<<<< HEAD
-		b.header = cm.makeHeader(parent, statedb, b.engine)
+		b.header = cm.makeHeader(parent, b.engine)
+		b.bal = bal.NewConstructionBlockAccessList()
 		if b.header.EmptyWithdrawalsHash() {
 			b.withdrawals = make([]*types.Withdrawal, 0)
 		}
-||||||| 117e067f0f
-		b.header = cm.makeHeader(parent, statedb, b.engine)
-=======
-		b.header = cm.makeHeader(parent, b.engine)
-		b.bal = bal.NewConstructionBlockAccessList()
->>>>>>> geth-v1.17.9
 
 		// Set the difficulty for clique block. The chain maker doesn't have access
 		// to a chain, so the difficulty will be left unset (nil). Set it here to the
@@ -476,7 +414,6 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if config.DAOForkSupport && config.DAOForkBlock != nil && config.DAOForkBlock.Cmp(b.header.Number) == 0 {
 			misc.ApplyDAOHardFork(statedb)
 		}
-<<<<<<< HEAD
 
 		lane, err := ResolveLaneState(config, engine, parent.Header(), b.header, statedb)
 		if err != nil {
@@ -485,10 +422,6 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		b.lane = lane
 
 		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
-||||||| 117e067f0f
-
-=======
->>>>>>> geth-v1.17.9
 		if config.IsPrague(b.header.Number, b.header.Time) || config.IsUBT(b.header.Number, b.header.Time) {
 			// EIP-2935
 			blockContext := NewEVMBlockContext(b.header, cm, &b.header.Coinbase)
@@ -539,12 +472,8 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 				body.Withdrawals = make([]*types.Withdrawal, 0)
 			}
 		}
-		// Apply the consensus-specific post-transaction changes
-		b.engine.Finalize(cm, b.header, statedb, &body)
-
-		// Assemble the block for delivery.
-<<<<<<< HEAD
-		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts)
+		// AssembleBlock applies consensus finalization before assembling the block.
+		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts, b.bal)
 		if err != nil {
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
@@ -560,11 +489,6 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			}
 			block = block.WithSidecars(b.sidecars)
 		}
-||||||| 117e067f0f
-		block := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts)
-=======
-		block := AssembleBlock(cm, b.header, statedb, &body, b.receipts, b.bal)
->>>>>>> geth-v1.17.9
 
 		// Write state changes to db
 		rules := config.Rules(b.header.Number, b.header.Difficulty.Sign() == 0, b.header.Time)

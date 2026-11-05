@@ -182,7 +182,7 @@ func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) {
 	if block == nil {
 		return nil, nil, nil
 	}
-	stateDb, err := miner.worker.chain.StateAt(block)
+	stateDb, err := miner.worker.chain.StateAt(block.Root, block.Number, block.Time)
 	if err != nil {
 		return nil, nil, nil
 	}
@@ -228,94 +228,6 @@ func (miner *Miner) BuildPayload(ctx context.Context, args *BuildPayloadArgs, wi
 	return miner.worker.buildPayload(ctx, args, witness)
 }
 
-<<<<<<< HEAD
 func (miner *Miner) GasCeil() uint64 {
 	return miner.worker.getGasCeil()
-||||||| 117e067f0f
-// getPending retrieves the pending block based on the current head block.
-// The result might be nil if pending generation is failed.
-func (miner *Miner) getPending() *newPayloadResult {
-	header := miner.chain.CurrentHeader()
-	miner.pendingMu.Lock()
-	defer miner.pendingMu.Unlock()
-
-	if cached := miner.pending.resolve(header.Hash()); cached != nil {
-		return cached
-	}
-	var (
-		timestamp  = uint64(time.Now().Unix())
-		withdrawal types.Withdrawals
-	)
-	if miner.chainConfig.IsShanghai(new(big.Int).Add(header.Number, big.NewInt(1)), timestamp) {
-		withdrawal = []*types.Withdrawal{}
-	}
-	ret := miner.generateWork(context.Background(),
-		&generateParams{
-			timestamp:   timestamp,
-			forceTime:   false,
-			parentHash:  header.Hash(),
-			coinbase:    miner.config.PendingFeeRecipient,
-			random:      common.Hash{},
-			withdrawals: withdrawal,
-			beaconRoot:  nil,
-			noTxs:       false,
-		}, false) // we will never make a witness for a pending block
-	if ret.err != nil {
-		return nil
-	}
-	miner.pending.update(header.Hash(), ret)
-	return ret
-=======
-// getPending retrieves the pending block based on the current head block.
-// The result might be nil if pending generation is failed.
-func (miner *Miner) getPending() *newPayloadResult {
-	header := miner.chain.CurrentHeader()
-	miner.pendingMu.Lock()
-	defer miner.pendingMu.Unlock()
-
-	if cached := miner.pending.resolve(header.Hash()); cached != nil {
-		return cached
-	}
-	var (
-		timestamp   = uint64(time.Now().Unix())
-		childNumber = new(big.Int).Add(header.Number, big.NewInt(1))
-		withdrawal  types.Withdrawals
-		slotNum     *uint64
-	)
-	// prepareWork raises the timestamp to parent+1 when the local clock is
-	// behind the head. Do it here too, so the fork rules match the block.
-	if header.Time >= timestamp {
-		timestamp = header.Time + 1
-	}
-	if miner.chainConfig.IsShanghai(childNumber, timestamp) {
-		withdrawal = []*types.Withdrawal{}
-	}
-	// Post-Amsterdam, prepareWork requires a slot number (EIP-7843). The pending
-	// block is synthetic and has no canonical slot, so derive one from the parent
-	// when available and fall back to zero otherwise.
-	if miner.chainConfig.IsAmsterdam(childNumber, timestamp) {
-		var n uint64
-		if header.SlotNumber != nil {
-			n = *header.SlotNumber + 1
-		}
-		slotNum = &n
-	}
-	ret := miner.generateWork(context.Background(),
-		&generateParams{
-			timestamp:   timestamp,
-			forceTime:   false,
-			parentHash:  header.Hash(),
-			coinbase:    miner.config.PendingFeeRecipient,
-			random:      common.Hash{},
-			withdrawals: withdrawal,
-			beaconRoot:  nil,
-			slotNum:     slotNum,
-			noTxs:       false,
-		}, false) // we will never make a witness for a pending block
-	if ret.err != nil {
-		return nil
-	}
-	miner.pending.update(header.Hash(), ret)
-	return ret
->>>>>>> geth-v1.17.9
 }

@@ -461,7 +461,7 @@ func (f *FilterMaps) init() error {
 		}}
 		localBase = true
 		log.Info("Starting log index at history cutoff with a local log value index base", "block", f.historyCutoff)
-		if f.exportFileName != "" {
+		if f.checkpointFile != "" {
 			log.Warn("Log index checkpoints cannot be exported from a local log value index base")
 		}
 	}

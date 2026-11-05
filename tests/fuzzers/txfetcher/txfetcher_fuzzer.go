@@ -41,7 +41,7 @@ func init() {
 	// Random is nice, but we need it deterministic
 	rand := rand.New(rand.NewSource(0x3a29))
 
-	supportedVersions := []uint{eth.ETH69, eth.ETH70, eth.ETH72}
+	supportedVersions := []uint{eth.ETH70, eth.ETH70, eth.ETH72}
 	peers = make([]string, 10)
 	peerVersions = make(map[string]uint, len(peers))
 	for i := 0; i < len(peers); i++ {

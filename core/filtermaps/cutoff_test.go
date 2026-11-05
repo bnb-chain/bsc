@@ -136,7 +136,7 @@ func TestIndexerHistoryCutoffExport(t *testing.T) {
 	ts.chain.addBlocks(300, 5, 2, 4, true)
 	chain := ts.chain.getCanonicalChain()
 	file := filepath.Join(t.TempDir(), "checkpoints.json")
-	ts.fm, _ = NewFilterMaps(ts.db, NewChainView(ts.chain, 299, chain[299]), 100, 0, ts.params, Config{ExportFileName: file})
+	ts.fm, _ = NewFilterMaps(ts.db, NewChainView(ts.chain, 299, chain[299]), 100, 0, ts.params, Config{CheckpointFileName: file})
 	ts.fm.Start()
 	// export runs at the next head after the finalized block changed
 	ts.fm.SetTarget(NewChainView(ts.chain, 300, chain[300]), 100, 250)

@@ -70,7 +70,7 @@ func TestMetricsSharedSocket(t *testing.T) {
 		egress  = egressTrafficMeter.Snapshot().Count()
 		pings   = metrics.GetOrRegisterMeter(ingressMeterName+"/PING/v5", nil).Snapshot().Count()
 	)
-	if _, err := remote.Ping(ln.Node()); err != nil {
+	if err := remote.Ping(ln.Node()); err != nil {
 		t.Fatal(err)
 	}
 	if n := v4BadPacketMeter.Snapshot().Count() - v4bad; n != 0 {

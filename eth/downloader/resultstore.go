@@ -75,15 +75,7 @@ func (r *resultStore) SetThrottleThreshold(threshold uint64) uint64 {
 //	stale     - if true, this item is already passed, and should not be requested again
 //	throttled - if true, the store is at capacity, this particular header is not prio now
 //	item      - the result to store data into
-<<<<<<< HEAD
-//	err       - any error that occurred
-func (r *resultStore) AddFetch(header *types.Header, snapSync bool, pid string) (stale, throttled bool, item *fetchResult, err error) {
-||||||| 117e067f0f
-//	err       - any error that occurred
-func (r *resultStore) AddFetch(header *types.Header, snapSync bool) (stale, throttled bool, item *fetchResult, err error) {
-=======
-func (r *resultStore) AddFetch(header *types.Header, snapSync bool, fetchBAL bool) (stale, throttled bool, item *fetchResult) {
->>>>>>> geth-v1.17.9
+func (r *resultStore) AddFetch(header *types.Header, snapSync bool, pid string, fetchBAL bool) (stale, throttled bool, item *fetchResult) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -95,13 +87,7 @@ func (r *resultStore) AddFetch(header *types.Header, snapSync bool, fetchBAL boo
 		return stale, throttled, nil
 	}
 	if item == nil {
-<<<<<<< HEAD
-		item = newFetchResult(header, snapSync, pid)
-||||||| 117e067f0f
-		item = newFetchResult(header, snapSync)
-=======
-		item = newFetchResult(header, snapSync, fetchBAL)
->>>>>>> geth-v1.17.9
+		item = newFetchResult(header, snapSync, pid, fetchBAL)
 		r.items[index] = item
 	}
 	return false, false, item

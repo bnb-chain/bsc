@@ -171,9 +171,10 @@ type AncientWriter interface {
 	// immediately, but only once the accumulated deleted data reaches the
 	// threshold, at which point they are removed all together.
 	//
-<<<<<<< HEAD
-	// Note that data marked as non-prunable will still be retained and remain accessible.
-	TruncateTail(n uint64) (uint64, error)
+	// The previous tail of the group is returned. BSC blockdata pruning also
+	// advances initialized blob sidecar tables. Other tables outside the group
+	// (including non-prunable ones) are untouched.
+	TruncateTail(group string, n uint64) (uint64, error)
 
 	// TruncateTableTail will truncate certain table to new tail
 	TruncateTableTail(kind string, tail uint64) (uint64, error)
@@ -191,14 +192,6 @@ type FreezerEnv struct {
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
 	SetupFreezerEnv(env *FreezerEnv, blockHistory uint64) error
-||||||| 117e067f0f
-	// Note that data marked as non-prunable will still be retained and remain accessible.
-	TruncateTail(n uint64) (uint64, error)
-=======
-	// The previous tail of the group is returned. Tables outside the group
-	// (including non-prunable ones) are untouched.
-	TruncateTail(group string, n uint64) (uint64, error)
->>>>>>> geth-v1.17.9
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.

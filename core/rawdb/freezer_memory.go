@@ -90,7 +90,7 @@ func (t *memoryTable) truncateHead(items uint64) error {
 		return nil
 	}
 	if items < t.offset {
-		return errors.New("truncation below tail")
+		return t.reset(items)
 	}
 	for i := int(items - t.offset); i < len(t.data); i++ {
 		if t.size > uint64(len(t.data[i])) {
@@ -129,7 +129,7 @@ func (t *memoryTable) truncateTail(items uint64) error {
 }
 
 // reset clears the entire table and sets both the head and tail to the given
-// value. It assumes the caller holds the lock and that tail > t.items.
+// value. It assumes the caller holds the lock.
 func (t *memoryTable) reset(offset uint64) error {
 	t.size = 0
 	t.data = nil
@@ -386,12 +386,29 @@ func (f *MemoryFreezer) TruncateHead(items uint64) (uint64, error) {
 	if old <= items {
 		return old, nil
 	}
+	lowest := uint64(math.MaxUint64)
+	for group, tail := range f.tails {
+		if group == ChainFreezerBlobGroup {
+			if table := f.tables[ChainFreezerBlobSidecarTable]; table != nil && table.items == table.offset {
+				continue // An unpopulated BSC blob table cannot retain block history.
+			}
+		}
+		lowest = min(lowest, tail)
+	}
+	if lowest != math.MaxUint64 && items < lowest {
+		return 0, fmt.Errorf("truncation below tail: head %d, lowest group tail %d", items, lowest)
+	}
 	for _, table := range f.tables {
 		if err := table.truncateHead(items); err != nil {
 			return 0, err
 		}
 	}
 	f.items = items
+	for group, tail := range f.tails {
+		if tail > items {
+			f.tails[group] = items
+		}
+	}
 	return old, nil
 }
 
@@ -415,29 +432,16 @@ func (f *MemoryFreezer) TruncateTail(group string, tail uint64) (uint64, error) 
 	if prev >= tail {
 		return prev, nil
 	}
-<<<<<<< HEAD
 	for kind, table := range f.tables {
-		if slices.Contains(additionTables, kind) && table.items == 0 {
-			continue
-		}
-		if table.config.prunable {
-			if err := table.truncateTail(tail); err != nil {
-				return 0, err
-			}
-||||||| 117e067f0f
-	for _, table := range f.tables {
-		if table.config.prunable {
-			if err := table.truncateTail(tail); err != nil {
-				return 0, err
-			}
-=======
-	for _, table := range f.tables {
-		if table.config.tailGroup != group {
+		pruneBlob := group == ChainFreezerBlockDataGroup && kind == ChainFreezerBlobSidecarTable && table.items != 0
+		if table.config.tailGroup != group && !pruneBlob {
 			continue
 		}
 		if err := table.truncateTail(tail); err != nil {
 			return 0, err
->>>>>>> geth-v1.17.9
+		}
+		if pruneBlob {
+			f.tails[table.config.tailGroup] = table.offset
 		}
 	}
 	f.tails[group] = tail

@@ -23,7 +23,7 @@ func callGetter(config *params.ChainConfig, header *types.Header, statedb *state
 	evm := vm.NewEVM(blockContext(header), statedb, config, vm.Config{NoBaseFee: true})
 	defer evm.Release()
 
-	ret, _, callErr := evm.StaticCall(common.Address{}, paymentlane.ContractAddress, input, vm.NewGasBudget(getterGasLimit))
+	ret, _, callErr := evm.StaticCall(common.Address{}, paymentlane.ContractAddress, input, vm.NewGasBudget(getterGasLimit, 0))
 	if err := statedb.Error(); err != nil {
 		return nil, fmt.Errorf("%w: payment lane state read: %w", paymentlane.ErrStateUnavailable, err)
 	}

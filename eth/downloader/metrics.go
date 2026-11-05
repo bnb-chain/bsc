@@ -43,6 +43,7 @@ var (
 	balDropMeter    = metrics.NewRegisteredMeter("eth/downloader/bals/drop", nil)
 	balTimeoutMeter = metrics.NewRegisteredMeter("eth/downloader/bals/timeout", nil)
 
+	headerFetchMetrics  = newFetchMetrics("headers")
 	bodyFetchMetrics    = newFetchMetrics("bodies")
 	receiptFetchMetrics = newFetchMetrics("receipts")
 	balFetchMetrics     = newFetchMetrics("bals")

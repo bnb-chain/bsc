@@ -200,30 +200,14 @@ func (p *Peer) announceTransactions() {
 			// If there's anything available to transfer, fire up an async writer
 			if len(pending) > 0 {
 				done = make(chan struct{})
-<<<<<<< HEAD
 				gopool.Submit(func() {
-					if err := p.sendPooledTransactionHashes(pending, pendingTypes, pendingSizes); err != nil {
-||||||| 117e067f0f
-				go func() {
-					if err := p.sendPooledTransactionHashes(pending, pendingTypes, pendingSizes); err != nil {
-=======
-				go func() {
 					if err := p.sendPooledTransactionHashes(pending, pendingTypes, pendingSizes, mask); err != nil {
->>>>>>> geth-v1.17.9
 						fail <- err
 						return
 					}
 					close(done)
-<<<<<<< HEAD
-					//p.Log().Trace("Sent transaction announcements", "count", len(pending))
+					//p.Log().Trace("Sent transaction announcements", "count", len(pending), "mask", mask, "tx", pending)
 				})
-||||||| 117e067f0f
-					p.Log().Trace("Sent transaction announcements", "count", len(pending))
-				}()
-=======
-					p.Log().Trace("Sent transaction announcements", "count", len(pending), "mask", mask, "tx", pending)
-				}()
->>>>>>> geth-v1.17.9
 			}
 		}
 		// Transfer goroutine may or may not have been started, listen for events

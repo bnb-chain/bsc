@@ -97,22 +97,13 @@ type fetchResult struct {
 	Transactions types.Transactions
 	Receipts     rlp.RawValue
 	Withdrawals  types.Withdrawals
-<<<<<<< HEAD
 	Sidecars     types.BlobSidecars
-||||||| 117e067f0f
-=======
 
 	// accessList is the optional EIP-7928 block access list, retrieved on a
 	// best effort basis for blocks close to the head of the network chain.
 	accessList atomic.Pointer[bal.BlockAccessList]
->>>>>>> geth-v1.17.9
 }
 
-<<<<<<< HEAD
-func newFetchResult(header *types.Header, snapSync bool, pid string) *fetchResult {
-||||||| 117e067f0f
-func newFetchResult(header *types.Header, snapSync bool) *fetchResult {
-=======
 // SetBAL attaches a downloaded block access list.
 func (f *fetchResult) SetBAL(list *bal.BlockAccessList) {
 	f.accessList.Store(list)
@@ -123,8 +114,7 @@ func (f *fetchResult) BAL() *bal.BlockAccessList {
 	return f.accessList.Load()
 }
 
-func newFetchResult(header *types.Header, snapSync bool, fetchBAL bool) *fetchResult {
->>>>>>> geth-v1.17.9
+func newFetchResult(header *types.Header, snapSync bool, pid string, fetchBAL bool) *fetchResult {
 	item := &fetchResult{
 		Header: header,
 		pid:    pid,
@@ -834,15 +824,7 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 		}
 		// we can ask the resultcache if this header is within the
 		// "prioritized" segment of blocks. If it is not, we need to throttle
-<<<<<<< HEAD
-
-		stale, throttle, item, err := q.resultCache.AddFetch(header, q.mode == ethconfig.SnapSync, p.id)
-||||||| 117e067f0f
-
-		stale, throttle, item, err := q.resultCache.AddFetch(header, q.mode == ethconfig.SnapSync)
-=======
-		stale, throttle, item := q.resultCache.AddFetch(header, q.mode == ethconfig.SnapSync, q.balEligible(header))
->>>>>>> geth-v1.17.9
+		stale, throttle, item := q.resultCache.AddFetch(header, q.mode == ethconfig.SnapSync, p.id, q.balEligible(header))
 		if stale {
 			// Don't put back in the task queue, this item has already been
 			// delivered upstream. A task outliving the delivery of its block
@@ -913,26 +895,16 @@ func (q *queue) Revoke(peerID string) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
-<<<<<<< HEAD
 	if request, ok := q.headerPendPool[peerID]; ok {
 		q.headerTaskQueue.Push(request.From, -int64(request.From))
 		delete(q.headerPendPool, peerID)
 	}
-	if request, ok := q.blockPendPool[peerID]; ok {
-		for _, header := range request.Headers {
-			q.blockTaskQueue.Push(header, -int64(header.Number.Uint64()))
-||||||| 117e067f0f
-	if request, ok := q.blockPendPool[peerID]; ok {
-		for _, header := range request.Headers {
-			q.blockTaskQueue.Push(header, -int64(header.Number.Uint64()))
-=======
 	// A request requeued on timeout, or on the drop that leads here, has already
 	// handed its headers back; pushing them again would have them fetched twice.
 	revoke := func(pendPool map[string]*fetchRequest, taskQueue *prque.Prque[int64, *types.Header]) {
 		request, ok := pendPool[peerID]
 		if !ok {
 			return
->>>>>>> geth-v1.17.9
 		}
 		if !request.Requeued {
 			for _, header := range request.Headers {
@@ -946,7 +918,6 @@ func (q *queue) Revoke(peerID string) {
 	revoke(q.balPendPool, q.balTaskQueue)
 }
 
-<<<<<<< HEAD
 // ExpireHeaders cancels a request that timed out and moves the pending fetch
 // task back into the queue for rescheduling.
 func (q *queue) ExpireHeaders(peer string) int {
@@ -954,22 +925,19 @@ func (q *queue) ExpireHeaders(peer string) int {
 	defer q.lock.Unlock()
 
 	headerTimeoutMeter.Mark(1)
-	return q.expire(peer, q.headerPendPool, q.headerTaskQueue)
+	request := q.headerPendPool[peer]
+	if request == nil {
+		return 0
+	}
+	q.headerTaskQueue.Push(request.From, -int64(request.From))
+	delete(q.headerPendPool, peer)
+	return len(request.Headers)
 }
 
-// ExpireBodies checks for in flight block body requests that exceeded a timeout
-// allowance, canceling them and returning the responsible peers for penalisation.
-func (q *queue) ExpireBodies(peer string) int {
-||||||| 117e067f0f
-// ExpireBodies checks for in flight block body requests that exceeded a timeout
-// allowance, canceling them and returning the responsible peers for penalisation.
-func (q *queue) ExpireBodies(peer string) int {
-=======
 // RequeueBodies returns the bodies reserved by the given peer to the task queue
 // for another peer to retrieve as well, keeping the reservation so that a late
 // delivery is still accepted. See the requeue method for details.
 func (q *queue) RequeueBodies(peer string) {
->>>>>>> geth-v1.17.9
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -988,50 +956,12 @@ func (q *queue) RequeueReceipts(peer string) {
 	q.requeue(peer, q.receiptPendPool, q.receiptTaskQueue)
 }
 
-<<<<<<< HEAD
-// expire is the generic check that moves a specific expired task from a pending
-// pool back into a task pool. The syntax on the passed taskQueue is a bit weird
-// as we would need a generic expire method to handle both types, but that is not
-// supported at the moment at least (Go 1.19).
-//
-// Note, this method expects the queue lock to be already held. The reason the
-// lock is not obtained in here is that the parameters already need to access
-// the queue, so they already need a lock anyway.
-func (q *queue) expire(peer string, pendPool map[string]*fetchRequest, taskQueue interface{}) int {
-	// Retrieve the request being expired and log an error if it's non-existent,
-	// as there's no order of events that should lead to such expirations.
-	req := pendPool[peer]
-	if req == nil {
-		log.Trace("Expired request does not exist", "peer", peer)
-		return 0
-	}
-	delete(pendPool, peer)
-||||||| 117e067f0f
-// expire is the generic check that moves a specific expired task from a pending
-// pool back into a task pool. The syntax on the passed taskQueue is a bit weird
-// as we would need a generic expire method to handle both types, but that is not
-// supported at the moment at least (Go 1.19).
-//
-// Note, this method expects the queue lock to be already held. The reason the
-// lock is not obtained in here is that the parameters already need to access
-// the queue, so they already need a lock anyway.
-func (q *queue) expire(peer string, pendPool map[string]*fetchRequest, taskQueue interface{}) int {
-	// Retrieve the request being expired and log an error if it's non-existent,
-	// as there's no order of events that should lead to such expirations.
-	req := pendPool[peer]
-	if req == nil {
-		log.Error("Expired request does not exist", "peer", peer)
-		return 0
-	}
-	delete(pendPool, peer)
-=======
 // RequeueBALs returns the access lists reserved by the given peer to the task
 // queue for another peer to retrieve as well, keeping the reservation so that
 // a late delivery is still accepted. See the requeue method for details.
 func (q *queue) RequeueBALs(peer string) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
->>>>>>> geth-v1.17.9
 
 	balTimeoutMeter.Mark(1)
 	q.requeue(peer, q.balPendPool, q.balTaskQueue)

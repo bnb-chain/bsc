@@ -165,15 +165,15 @@ func TestMilliTimestamp_PreActivation(t *testing.T) {
 			t.Fatalf("0x70 must not be in ActivePrecompiles before Jenner")
 		}
 	}
-	ret, gas, err := evm.Call(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000), new(uint256.Int))
+	ret, gas, err := evm.Call(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000, 0), new(uint256.Int))
 	if err != nil {
 		t.Fatalf("pre-activation call must succeed like an empty account call, got %v", err)
 	}
 	if len(ret) != 0 {
 		t.Fatalf("pre-activation call must return empty data, got %x", ret)
 	}
-	if gas.RegularGas != 100_000 {
-		t.Fatalf("pre-activation call must not consume gas in the callee, left %d", gas.RegularGas)
+	if gas.ExecutionGas != 100_000 {
+		t.Fatalf("pre-activation call must not consume gas in the callee, left %d", gas.ExecutionGas)
 	}
 }
 
@@ -196,14 +196,14 @@ func TestMilliTimestamp_PostActivation(t *testing.T) {
 	if !found {
 		t.Fatalf("0x70 must be in ActivePrecompiles(rules) after Jenner (EIP-2929 warm set)")
 	}
-	ret, gas, err := evm.Call(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000), new(uint256.Int))
+	ret, gas, err := evm.Call(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000, 0), new(uint256.Int))
 	if err != nil {
 		t.Fatalf("post-activation call: %v", err)
 	}
 	if got := new(big.Int).SetBytes(ret).Uint64(); got != wantMilli {
 		t.Fatalf("post-activation call returned %d, want %d", got, wantMilli)
 	}
-	if used := 100_000 - gas.RegularGas; used != params.MilliTimestampGas {
+	if used := 100_000 - gas.ExecutionGas; used != params.MilliTimestampGas {
 		t.Fatalf("call must consume exactly %d gas, used %d", params.MilliTimestampGas, used)
 	}
 }
@@ -212,7 +212,7 @@ func TestMilliTimestamp_PostActivation(t *testing.T) {
 // (read-only) context: it is a pure read and must not be rejected.
 func TestMilliTimestamp_StaticCall(t *testing.T) {
 	evm, wantMilli := newJennerTestEVM(t, true)
-	ret, _, err := evm.StaticCall(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000))
+	ret, _, err := evm.StaticCall(common.Address{1}, milliTimestampAddr, nil, NewGasBudget(100_000, 0))
 	if err != nil {
 		t.Fatalf("STATICCALL must succeed: %v", err)
 	}
@@ -231,16 +231,16 @@ func TestMilliTimestamp_AllCallKindsUseBlockContext(t *testing.T) {
 
 	kinds := map[string]func() ([]byte, GasBudget, error){
 		"CALL": func() ([]byte, GasBudget, error) {
-			return evm.Call(caller, milliTimestampAddr, nil, NewGasBudget(100_000), zero)
+			return evm.Call(caller, milliTimestampAddr, nil, NewGasBudget(100_000, 0), zero)
 		},
 		"CALLCODE": func() ([]byte, GasBudget, error) {
-			return evm.CallCode(caller, milliTimestampAddr, nil, NewGasBudget(100_000), zero)
+			return evm.CallCode(caller, milliTimestampAddr, nil, NewGasBudget(100_000, 0), zero)
 		},
 		"DELEGATECALL": func() ([]byte, GasBudget, error) {
-			return evm.DelegateCall(caller, caller, milliTimestampAddr, nil, NewGasBudget(100_000), zero)
+			return evm.DelegateCall(caller, caller, milliTimestampAddr, nil, NewGasBudget(100_000, 0), zero)
 		},
 		"STATICCALL": func() ([]byte, GasBudget, error) {
-			return evm.StaticCall(caller, milliTimestampAddr, nil, NewGasBudget(100_000))
+			return evm.StaticCall(caller, milliTimestampAddr, nil, NewGasBudget(100_000, 0))
 		},
 	}
 	for kind, call := range kinds {
@@ -267,7 +267,7 @@ func TestMilliTimestamp_BSCOnlyGate_VM(t *testing.T) {
 	if rules.IsJenner {
 		t.Fatalf("Rules().IsJenner must be false on a non-Parlia config")
 	}
-	if _, ok := activePrecompiledContracts(rules)[milliTimestampAddr]; ok {
+	if _, ok := (*activePrecompiledContracts(rules))[milliTimestampAddr]; ok {
 		t.Fatalf("non-Parlia config must not activate the Jenner precompile set")
 	}
 	for _, addr := range ActivePrecompiles(rules) {
@@ -283,7 +283,7 @@ func TestMilliTimestamp_BSCOnlyGate_VM(t *testing.T) {
 // set keeps winning, exactly as it already shadows Pasteur and every other
 // BSC fork set, and every UBT precompile stays available.
 func TestPrecompiles_UBTShadowsJenner(t *testing.T) {
-	m := activePrecompiledContracts(params.Rules{IsJenner: true, IsUBT: true})
+	m := *activePrecompiledContracts(params.Rules{IsJenner: true, IsUBT: true})
 	if _, ok := m[milliTimestampAddr]; ok {
 		t.Fatalf("UBT must keep shadowing Jenner: 0x70 must not be in the active set")
 	}

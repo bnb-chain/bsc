@@ -48,7 +48,6 @@ func NewGasPool(amount uint64) *GasPool {
 	}
 }
 
-<<<<<<< HEAD
 func (gp *GasPool) AddGas(amount uint64) error {
 	if gp.remaining+amount < gp.remaining {
 		return ErrGasLimitOverflow
@@ -57,18 +56,9 @@ func (gp *GasPool) AddGas(amount uint64) error {
 	return nil
 }
 
-// SubGas deducts the given amount from the pool if enough gas is
-// available and returns an error otherwise.
-func (gp *GasPool) SubGas(amount uint64) error {
-||||||| 117e067f0f
-// SubGas deducts the given amount from the pool if enough gas is
-// available and returns an error otherwise.
-func (gp *GasPool) SubGas(amount uint64) error {
-=======
 // CheckGasLegacy deducts the given amount from the pool if enough gas is
 // available and returns an error otherwise. Used before Amsterdam.
 func (gp *GasPool) CheckGasLegacy(amount uint64) error {
->>>>>>> geth-v1.17.9
 	if gp.remaining < amount {
 		return ErrGasLimitReached
 	}

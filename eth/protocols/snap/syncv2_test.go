@@ -1516,7 +1516,7 @@ func TestIsPivotReorged(t *testing.T) {
 		db := rawdb.NewMemoryDatabase()
 		headers := chain(other, 5)
 		for _, h := range headers {
-			rawdb.WriteSkeletonHeader(db, h)
+			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
 		if !s.isPivotReorged(prev, headers[4]) {
@@ -1529,7 +1529,7 @@ func TestIsPivotReorged(t *testing.T) {
 		db := rawdb.NewMemoryDatabase()
 		headers := chain(prev, 5)
 		for _, h := range headers[1:] {
-			rawdb.WriteSkeletonHeader(db, h)
+			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
 		if !s.isPivotReorged(prev, headers[4]) {
@@ -1542,9 +1542,9 @@ func TestIsPivotReorged(t *testing.T) {
 	t.Run("Ancestor_Skeleton", func(t *testing.T) {
 		db := rawdb.NewMemoryDatabase()
 		headers := chain(prev, 5)
-		rawdb.WriteSkeletonHeader(db, prev)
+		rawdb.WriteHeader(db, prev)
 		for _, h := range headers {
-			rawdb.WriteSkeletonHeader(db, h)
+			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
 		if s.isPivotReorged(prev, headers[4]) {
@@ -1562,7 +1562,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteCanonicalHash(db, h.Hash(), h.Number.Uint64())
 		}
 		for _, h := range headers[2:] {
-			rawdb.WriteSkeletonHeader(db, h)
+			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
 		if s.isPivotReorged(prev, headers[4]) {
@@ -1881,7 +1881,7 @@ func testPivotMovement(t *testing.T, scheme string, pivotMoves int) {
 			ParentBeaconRoot: &emptyHash, RequestsHash: &emptyHash,
 			BlockAccessListHash: &balHash,
 		}
-		rawdb.WriteSkeletonHeader(db, header)
+		rawdb.WriteHeader(db, header)
 		moves[m] = pivotMove{
 			header:  header,
 			trie:    resultTrie,

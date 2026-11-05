@@ -1076,7 +1076,7 @@ func TestHandleNewBlock(t *testing.T) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, backend.chain.Config())
+	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil, backend.chain.Config())
 
 	// Run the tests
 	for _, tc := range testCases {
@@ -1095,7 +1095,7 @@ func TestHandleNewBlockhashes(t *testing.T) {
 	backend := newTestBackendWithGenerator(1, false, false, nil)
 	defer backend.close()
 
-	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "peer", nil), nil, nil, backend.chain.Config())
+	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "peer", nil), nil, nil, nil, backend.chain.Config())
 
 	newPacket := func(n int) NewBlockHashesPacket {
 		ann := make(NewBlockHashesPacket, n)
@@ -1254,10 +1254,10 @@ func TestGetPooledTransactionsLookupCap(t *testing.T) {
 		query[index] = tx.Hash()
 		return query
 	}
-	if hashes, _ := answerGetPooledTransactions(backend, request(maxPooledTxServe-1), ETH69); len(hashes) != 1 {
+	if hashes, _ := answerGetPooledTransactions(backend, request(maxPooledTxServe-1), ETH70); len(hashes) != 1 {
 		t.Errorf("transaction within lookup cap not served: have %d, want 1", len(hashes))
 	}
-	if hashes, _ := answerGetPooledTransactions(backend, request(maxPooledTxServe), ETH69); len(hashes) != 0 {
+	if hashes, _ := answerGetPooledTransactions(backend, request(maxPooledTxServe), ETH70); len(hashes) != 0 {
 		t.Errorf("transaction beyond lookup cap served: have %d, want 0", len(hashes))
 	}
 }

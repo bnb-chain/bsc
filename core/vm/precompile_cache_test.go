@@ -283,8 +283,8 @@ func TestPrecompileCacheHit(t *testing.T) {
 	if !ok {
 		t.Fatalf("%s is not cacheable, pick a different fixture", p.Name())
 	}
-	want, wantGas, wantErr := RunPrecompiledContract(nil, p, addr, input, NewGasBudget(gasCost, 0), nil, rules, cache)
-	got, gotGas, gotErr := RunPrecompiledContract(nil, p, addr, input, NewGasBudget(gasCost, 0), nil, rules, cache)
+	want, wantGas, wantErr := RunPrecompiledContract(nil, p, addr, input, NewGasBudget(gasCost, 0), nil, rules, cache, BlockContext{})
+	got, gotGas, gotErr := RunPrecompiledContract(nil, p, addr, input, NewGasBudget(gasCost, 0), nil, rules, cache, BlockContext{})
 	if !bytes.Equal(got, want) {
 		t.Errorf("cached output %x, computed %x", got, want)
 	}

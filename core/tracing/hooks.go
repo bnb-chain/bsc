@@ -356,19 +356,12 @@ type Hooks struct {
 	OnSystemCallStart   OnSystemCallStartHook
 	OnSystemCallStartV2 OnSystemCallStartHookV2
 	OnSystemCallEnd     OnSystemCallEndHook
-<<<<<<< HEAD
+	OnStateUpdate       StateUpdateHook
 
 	OnSystemTxStart           OnSystemTxStartHook
 	OnSystemTxEnd             OnSystemTxEndHook
 	OnSystemTxFixIntrinsicGas OnSystemTxFixIntrinsicGasHook
 
-	OnStateUpdate StateUpdateHook
-||||||| 117e067f0f
-	OnStateUpdate       StateUpdateHook
-=======
-	OnStateUpdate       StateUpdateHook
-
->>>>>>> geth-v1.17.9
 	// State events
 	OnBalanceChange BalanceChangeHook
 	OnNonceChange   NonceChangeHook

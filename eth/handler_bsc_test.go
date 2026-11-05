@@ -88,8 +88,8 @@ func testSendVotes(t *testing.T, protocol uint) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil)
-	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil, nil)
+	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil, nil)
+	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil, nil, nil)
 	defer localEth.Close()
 	defer remoteEth.Close()
 
@@ -187,8 +187,8 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil)
-	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil, nil)
+	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil, nil)
+	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil, nil, nil)
 	defer localEth.Close()
 	defer remoteEth.Close()
 

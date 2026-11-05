@@ -77,7 +77,7 @@ func TestCAS20AdminLifecycle(t *testing.T) {
 	view.setSupplyCap(uint256.NewInt(1_000_000))
 
 	run := func(caller common.Address, input []byte) ([]byte, error) {
-		gas := NewGasBudget(2_000_000)
+		gas := NewGasBudget(2_000_000, 0)
 		ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
 		return newCAS20Token(ctx, 18).dispatch(input)
 	}
@@ -148,7 +148,7 @@ func TestCAS20AdminLastAdminProtection(t *testing.T) {
 	view.setAdminCount(uint256.NewInt(1))
 
 	run := func(caller common.Address, input []byte) ([]byte, error) {
-		gas := NewGasBudget(2_000_000)
+		gas := NewGasBudget(2_000_000, 0)
 		ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
 		return newCAS20Token(ctx, 6).dispatch(input)
 	}
@@ -176,7 +176,7 @@ func TestCAS20AdminLastAdminProtection(t *testing.T) {
 		t.Fatalf("adminCount = %d, want 1", view.adminCount().Uint64())
 	}
 
-	statedb.SetTxContext(common.HexToHash("0x1a57"), 0)
+	statedb.SetTxContext(common.HexToHash("0x1a57"), 0, uint32(0+1))
 	if _, err := run(admin, cas20Call(selRenounceLastAdmin)); err != nil {
 		t.Fatalf("renounceLastAdmin: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestCAS20BurnChecksSupplyUnderflow(t *testing.T) {
 			cas20Call(selGrantRole, roleMint, addrKey(creator)),
 			cas20Call(selGrantRole, roleBurn, addrKey(creator)),
 			cas20Call(selMint, addrKey(cas20Alice), u256hash(100)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestCAS20BurnChecksSupplyUnderflow(t *testing.T) {
 	view := newUnmeteredCAS20Storage(statedb, token)
 
 	if _, _, err := evm.Call(creator, token, cas20Call(selGrantRole, roleBurn, addrKey(cas20Alice)),
-		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
+		NewGasBudget(1_000_000, 0), uint256.NewInt(0)); err != nil {
 		t.Fatalf("granting alice BURN_ROLE: %v", err)
 	}
 	// Break the invariant: alice holds more than the token has ever issued.
@@ -226,7 +226,7 @@ func TestCAS20BurnChecksSupplyUnderflow(t *testing.T) {
 	}
 
 	_, _, err = evm.Call(cas20Alice, token, cas20Call(selBurn, u256hash(300)),
-		NewGasBudget(1_000_000), uint256.NewInt(0))
+		NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("burning past totalSupply: err = %v, want a revert", err)
 	}
@@ -241,7 +241,7 @@ func TestCAS20PauseDecodesBeforeAuthorizing(t *testing.T) {
 	creator := common.HexToAddress("0xdec0de")
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xba"), creator, nil),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestCAS20PauseDecodesBeforeAuthorizing(t *testing.T) {
 
 	// cas20Bob holds no role, so both checks would refuse him.
 	good := cas20CallU8Array(selPause, byte(cas20PauseTransfer))
-	out, _, err := evm.Call(cas20Bob, token, good[:len(good)-1], NewGasBudget(1_000_000), uint256.NewInt(0))
+	out, _, err := evm.Call(cas20Bob, token, good[:len(good)-1], NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("truncated pause args: err = %v, want a revert", err)
 	}
@@ -258,7 +258,7 @@ func TestCAS20PauseDecodesBeforeAuthorizing(t *testing.T) {
 			"(BEP-702 3.2); a role error here means authorization ran first", out)
 	}
 
-	out, _, err = evm.Call(cas20Bob, token, good, NewGasBudget(1_000_000), uint256.NewInt(0))
+	out, _, err = evm.Call(cas20Bob, token, good, NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unauthorized pause: err = %v, want a revert", err)
 	}

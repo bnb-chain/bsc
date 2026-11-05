@@ -49,6 +49,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/testrand"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
@@ -460,7 +461,7 @@ func startEthService(t testing.TB, genesis *core.Genesis, blocks []*types.Block,
 		TrieTimeout:    time.Minute,
 		TrieDirtyCache: 256,
 		TrieCleanCache: 256,
-		Miner:          miner.DefaultConfig,
+		Miner:          minerconfig.DefaultConfig,
 	}
 	for _, mod := range mods {
 		mod(ethcfg)

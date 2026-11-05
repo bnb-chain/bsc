@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,11 +92,11 @@ func recordLanes(into map[uint64]laneRecord, gen func(int, *BlockGen)) func(int,
 func laneRequiredTxGas(t testing.TB, config *params.ChainConfig, data []byte) uint64 {
 	t.Helper()
 	rules := config.Rules(common.Big1, false, 1)
-	cost, err := IntrinsicGas(data, nil, nil, false, rules.IsHomestead, rules.IsIstanbul, rules.IsShanghai, rules.IsAmsterdam)
+	cost, err := IntrinsicGas(data, nil, nil, common.Address{}, &common.Address{}, new(uint256.Int), rules)
 	require.NoError(t, err)
-	gas := cost.RegularGas
+	gas := cost
 	if rules.IsPrague {
-		floor, err := FloorDataGas(rules, data, nil)
+		floor, err := FloorDataGas(rules, common.Address{}, &common.Address{}, new(uint256.Int), data, nil)
 		require.NoError(t, err)
 		if floor > gas {
 			gas = floor
@@ -381,20 +382,22 @@ func TestSystemTxOracleComesFromTheEngine(t *testing.T) {
 		"a sender that will not recover is a failing transaction, not a system one")
 }
 
-// The gas pool can move backwards: applyTransaction restores a snapshot when a transaction
-// fails, and the bid path calls AddGas before committing payBidTx. A negative delta in uint64
-// would fill the quota with phantom payment gas and switch the lane off for the block.
+// Applying a transaction can restore a gas-pool snapshot on failure. A negative
+// usage delta must not fill the payment quota with phantom gas.
 func TestRecordUsedFromIgnoresARolledBackPool(t *testing.T) {
 	ls := &LaneState{classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
 	gp := NewGasPool(1000)
-	require.NoError(t, gp.SubGas(100))
+	snapshot := *gp
+	require.NoError(t, gp.CheckGasLegacy(100))
+	require.NoError(t, gp.ChargeGasLegacy(0, 100))
 	usedBefore := gp.Used()
 
-	require.NoError(t, gp.SubGas(40))
+	require.NoError(t, gp.CheckGasLegacy(40))
+	require.NoError(t, gp.ChargeGasLegacy(0, 40))
 	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, usedBefore)
 	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed)
 
-	require.NoError(t, gp.AddGas(60)) // back past usedBefore
+	*gp = snapshot // back past usedBefore
 	require.Less(t, gp.Used(), usedBefore)
 	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, usedBefore)
 	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed, "a rolled-back pool books nothing rather than wrapping")

@@ -291,7 +291,9 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		return nil, err
 	}
 	blockAccessList.Merge(postBAL)
-	p.chain.Engine().Finalize(p.chain, header, postState, block.Body())
+	if err := p.chain.Engine().Finalize(p.chain, header, postState, block.Body(), nil, nil, nil, cfg.Tracer); err != nil {
+		return nil, err
+	}
 	if err := postState.Error(); err != nil {
 		return nil, fmt.Errorf("database error in post-execution system calls: %w", err)
 	}

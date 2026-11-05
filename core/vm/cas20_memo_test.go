@@ -13,7 +13,7 @@ func TestCAS20TransferWithMemoFormat(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(caller common.Address, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(3_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(3_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	sel := func(ret []byte, want [4]byte) bool { return len(ret) >= 4 && [4]byte(ret[:4]) == want }
@@ -31,7 +31,7 @@ func TestCAS20TransferWithMemoFormat(t *testing.T) {
 	memo, format := common.HexToHash("0x1234"), common.HexToHash("0x5c4e")
 
 	// Transfer, Memo, MemoFormatDeclared, in that order; the declarer is the caller.
-	statedb.SetTxContext(common.HexToHash("0x7b"), 0)
+	statedb.SetTxContext(common.HexToHash("0x7b"), 0, uint32(0+1))
 	if ret, err := call(cas20Alice, token, cas20Call(selTransferWithMemoFormat, addrKey(cas20Bob), u256hash(40), memo, format)); err != nil || !bytes.Equal(ret, encBool(true)) {
 		t.Fatalf("transferWithMemoFormat: ret %x err %v", ret, err)
 	}
@@ -63,7 +63,7 @@ func TestCAS20TransferWithMemoFormat(t *testing.T) {
 	view.setPaused(new(uint256.Int))
 
 	// A static frame is refused.
-	if ret, _, _ := evm.StaticCall(cas20Alice, token, cas20Call(selTransferWithMemoFormat, addrKey(cas20Bob), u256hash(1), memo, format), NewGasBudget(1_000_000)); !sel(ret, errSelStaticCallDenied) {
+	if ret, _, _ := evm.StaticCall(cas20Alice, token, cas20Call(selTransferWithMemoFormat, addrKey(cas20Bob), u256hash(1), memo, format), NewGasBudget(1_000_000, 0)); !sel(ret, errSelStaticCallDenied) {
 		t.Errorf("STATICCALL: ret %x, want StaticCallNotAllowed", ret)
 	}
 
@@ -71,7 +71,7 @@ func TestCAS20TransferWithMemoFormat(t *testing.T) {
 	if _, err := call(cas20Alice, token, cas20Call(selApprove, addrKey(cas20Carol), u256hash(10))); err != nil {
 		t.Fatal(err)
 	}
-	statedb.SetTxContext(common.HexToHash("0x7c"), 0)
+	statedb.SetTxContext(common.HexToHash("0x7c"), 0, uint32(0+1))
 	if _, err := call(cas20Carol, token, cas20Call(selTransferFromWithMemoFormat, addrKey(cas20Alice), addrKey(cas20Bob), u256hash(6), memo, format)); err != nil {
 		t.Fatalf("transferFromWithMemoFormat: %v", err)
 	}

@@ -1430,8 +1430,9 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, txs *[]*types.Transaction,
-	uncles []*types.Header, _ []*types.Withdrawal, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body,
+	receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	txs := &body.Transactions
 	// warn if not in majority fork
 	p.detectNewVersionWithFork(chain, header, state)
 
@@ -1633,7 +1634,7 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		rootHash = state.IntermediateRoot(chain.Config().Rules(header.Number, false, header.Time))
 		wg.Done()
 	}()
 	go func() {
@@ -2190,13 +2191,14 @@ func (p *Parlia) applyTransaction(
 	default:
 		return fmt.Errorf("unknown system tx mode %d", mode)
 	}
-	state.SetTxContext(expectedTx.Hash(), len(*txs))
+	state.SetTxContext(expectedTx.Hash(), len(*txs), uint32(len(*txs)+1))
 
 	// Create a new context to be used in the EVM environment
 	context := core.NewEVMBlockContext(header, chainContext, nil)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	evm := vm.NewEVM(context, state, p.chainConfig, vm.Config{Tracer: tracer})
+	defer evm.Release()
 	evm.SetTxContext(core.NewEVMTxContext(msg))
 
 	// Tracing receipt will be set if there is no error and will be used to trace the transaction
@@ -2232,9 +2234,9 @@ func (p *Parlia) applyTransaction(
 	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 	var root []byte
 	if p.chainConfig.IsByzantium(header.Number) {
-		state.Finalise(true)
+		state.Finalise(evm.GetRules())
 	} else {
-		root = state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number)).Bytes()
+		root = state.IntermediateRoot(evm.GetRules()).Bytes()
 	}
 	*usedGas += gasUsed
 	// Continue the receipt (refund-inclusive) chain from the previous receipt;
@@ -2539,7 +2541,7 @@ func applyMessage(
 		state.ClearAccessList()
 	}
 
-	gasBudget := vm.NewGasBudget(msg.GasLimit)
+	gasBudget := vm.NewGasBudget(msg.GasLimit, 0)
 	ret, leftOverGas, err := evm.Call(
 		msg.From,
 		*msg.To,

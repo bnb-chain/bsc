@@ -112,16 +112,12 @@ type Engine interface {
 	//
 	// Note: The state database might be updated to reflect any consensus rules
 	// that happen at finalization (e.g. block rewards).
-<<<<<<< HEAD
-	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, txs *[]*types.Transaction,
-		uncles []*types.Header, withdrawals []*types.Withdrawal, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error
-||||||| 117e067f0f
-	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body)
-=======
+	// BSC may append system transactions to body.Transactions and update receipts
+	// and usedGas during finalization.
 	//
 	// TODO(rjl) Integrate the state mutation into core.PostExecution.
-	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body)
->>>>>>> geth-v1.17.9
+	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body,
+		receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error
 
 	// Seal generates a new sealing request for the given input block and pushes
 	// the result into the given channel.

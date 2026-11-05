@@ -19,7 +19,7 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 	minter := common.HexToAddress("0x33333")
 	bundle := [][]byte{cas20Call(selGrantRole, roleMint, addrKey(minter))}
 	input := encodeCreateCAS20(cas20VariantAsset, salt, caller, bundle)
-	budget := NewGasBudget(5_000_000)
+	budget := NewGasBudget(5_000_000, 0)
 	ret, left, err := evm.StaticCall(caller, CAS20FactoryAddress, input, budget)
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("STATICCALL createCAS20 gave %v, want a revert", err)
@@ -28,7 +28,7 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 	if !bytes.Equal(ret, wantData) {
 		t.Errorf("returndata = %x, want StaticCallNotAllowed() = %x", ret, wantData)
 	}
-	if left.RegularGas == 0 {
+	if left.ExecutionGas == 0 {
 		t.Error("the whole budget was consumed; a revert refunds what it did not spend")
 	}
 
@@ -54,7 +54,7 @@ func TestCAS20CreateRejectsStaticCall(t *testing.T) {
 		if tc.name == "updateParam" {
 			caller = params.CAS20GovHubAddress // the one caller authorization would admit
 		}
-		if _, _, err := evm.StaticCall(caller, tc.to, tc.input, NewGasBudget(5_000_000)); err == nil {
+		if _, _, err := evm.StaticCall(caller, tc.to, tc.input, NewGasBudget(5_000_000, 0)); err == nil {
 			t.Errorf("%s succeeded under STATICCALL", tc.name)
 		}
 	}
@@ -102,7 +102,7 @@ func TestCAS20AnnounceKeepsInnerRoleChecks(t *testing.T) {
 	salt := common.HexToHash("0x0e2")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -135,7 +135,7 @@ func TestCAS20NonDirectCallPlumbing(t *testing.T) {
 	creator := common.HexToAddress("0xc4ea70")
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x9a11"), creator, nil),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -150,10 +150,10 @@ func TestCAS20NonDirectCallPlumbing(t *testing.T) {
 		run  func() ([]byte, GasBudget, error)
 	}{
 		{"CALLCODE", func() ([]byte, GasBudget, error) {
-			return evm.CallCode(caller, token, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(7))
+			return evm.CallCode(caller, token, cas20Call(selTotalSupply), NewGasBudget(100_000, 0), uint256.NewInt(7))
 		}},
 		{"DELEGATECALL", func() ([]byte, GasBudget, error) {
-			return evm.DelegateCall(origin, caller, token, cas20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
+			return evm.DelegateCall(origin, caller, token, cas20Call(selTotalSupply), NewGasBudget(100_000, 0), uint256.NewInt(0))
 		}},
 	} {
 		ret, left, err := tc.run()
@@ -163,7 +163,7 @@ func TestCAS20NonDirectCallPlumbing(t *testing.T) {
 		if !bytes.Equal(ret, wantDelegate) {
 			t.Errorf("%s returndata = %x, want %x", tc.name, ret, wantDelegate)
 		}
-		if left.RegularGas == 0 {
+		if left.ExecutionGas == 0 {
 			t.Errorf("%s consumed the whole budget; a revert refunds the rest", tc.name)
 		}
 	}
@@ -175,7 +175,7 @@ func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	ret, _, err := evm.Call(cas20TestCaller, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x5711"), cas20TestCaller, nil),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestCAS20MeteringRefusesWritesInStaticFrames(t *testing.T) {
 	// own guard is missing.
 	tok := cas20Token{
 		ctx: &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: cas20Alice,
-			ReadOnly: true, DirectCall: true, Value: uint256.NewInt(0), gas: &GasBudget{RegularGas: 5_000_000}},
+			ReadOnly: true, DirectCall: true, Value: uint256.NewInt(0), gas: &GasBudget{ExecutionGas: 5_000_000}},
 	}
 	tok.s = newMeteredCAS20StorageAt(tok.ctx, token)
 
@@ -241,12 +241,12 @@ func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 		{"createCompositePolicy", selCreateComposite[:]},
 		{"updateComposite", selUpdateComposite[:]},
 	} {
-		before := statedb.IntermediateRoot(true)
-		_, _, err := evm.StaticCall(caller, CAS20PolicyRegistryAddress, tc.input, NewGasBudget(5_000_000))
+		before := statedb.IntermediateRoot(params.Rules{IsEIP158: true})
+		_, _, err := evm.StaticCall(caller, CAS20PolicyRegistryAddress, tc.input, NewGasBudget(5_000_000, 0))
 		if err == nil {
 			t.Errorf("%s succeeded under STATICCALL", tc.name)
 		}
-		if after := statedb.IntermediateRoot(true); after != before {
+		if after := statedb.IntermediateRoot(params.Rules{IsEIP158: true}); after != before {
 			t.Errorf("%s changed state under STATICCALL: %x -> %x", tc.name, before, after)
 		}
 	}
@@ -256,7 +256,7 @@ func TestCAS20PolicyWritesAllRefuseStaticFrames(t *testing.T) {
 		selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin,
 		selCreateComposite, selUpdateComposite,
 	} {
-		if _, _, err := evm.StaticCall(caller, CAS20PolicyRegistryAddress, sel[:], NewGasBudget(5_000_000)); err == nil {
+		if _, _, err := evm.StaticCall(caller, CAS20PolicyRegistryAddress, sel[:], NewGasBudget(5_000_000, 0)); err == nil {
 			t.Errorf("selector %x accepted a static frame", sel)
 		}
 	}
@@ -294,21 +294,21 @@ func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 				[]common.Hash{addrKey(caller), outOfEnum}, []uint64{cas20PolicyAlwaysAllow})},
 	} {
 		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, tc.input,
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		assertEmpty(tc.name, ret, err)
 	}
 
 	// A live policy, so the bool fails on its own encoding rather than on the policy's absence.
 	ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(caller), u256hash(cas20PolicyAllowlist)),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createPolicy: %v", err)
 	}
 	id := new(uint256.Int).SetBytes(ret).Uint64()
 	ret, _, err = evm.Call(caller, CAS20PolicyRegistryAddress,
 		encodeUpdateListRaw(selUpdateAllowlist, id, u256hash(2), []common.Hash{addrKey(cas20Alice)}),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	assertEmpty("updateAllowlist, allowed = 2", ret, err)
 
 	// Through evm.Call, not a bare dispatch: revert data is materialized on the way
@@ -316,13 +316,13 @@ func TestCAS20MalformedArgsRevertEmpty(t *testing.T) {
 	initCalls := [][]byte{cas20Call(selGrantRole, rolePause, addrKey(caller))}
 	ret, _, err = evm.Call(caller, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x9174d5"), caller, initCalls),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
 	asset := common.BytesToAddress(ret)
 	onToken := func(input []byte) ([]byte, error) {
-		r, _, e := evm.Call(caller, asset, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		r, _, e := evm.Call(caller, asset, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return r, e
 	}
 
@@ -369,7 +369,7 @@ func TestCAS20DecodePrecedesBusinessChecks(t *testing.T) {
 				cas20Call(selGrantRole, rolePause, addrKey(creator)),
 				cas20CallU8Array(selPause, byte(cas20PauseMint)),
 			}),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestCAS20DecodePrecedesBusinessChecks(t *testing.T) {
 		{"announce, no role and no arguments", selAnnounce},
 		{"batchMint, mint paused and no arguments", selBatchMint},
 	} {
-		ret, _, err := evm.Call(stranger, token, tc.sel[:], NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(stranger, token, tc.sel[:], NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if !errors.Is(err, ErrExecutionReverted) {
 			t.Errorf("%s: err = %v, want a revert", tc.name, err)
 			continue
@@ -395,7 +395,7 @@ func TestCAS20DecodePrecedesBusinessChecks(t *testing.T) {
 	}
 
 	if ret, _, _ := evm.Call(stranger, token,
-		encodeAnnounceWith(nil, "id", "d", "u"), NewGasBudget(5_000_000), uint256.NewInt(0)); len(ret) < 4 ||
+		encodeAnnounceWith(nil, "id", "d", "u"), NewGasBudget(5_000_000, 0), uint256.NewInt(0)); len(ret) < 4 ||
 		[4]byte(ret[:4]) != errSelACUnauthorized {
 		t.Errorf("announce with valid args: revert data %x, want AccessControlUnauthorizedAccount", ret)
 	}
@@ -405,7 +405,7 @@ func TestCAS20DecodePrecedesBusinessChecks(t *testing.T) {
 	emptyPair = append(emptyPair, u256hash(0).Bytes()...)    // len(recipients)
 	emptyPair = append(emptyPair, u256hash(0).Bytes()...)    // len(amounts)
 	if ret, _, _ := evm.Call(stranger, token, emptyPair,
-		NewGasBudget(5_000_000), uint256.NewInt(0)); len(ret) < 4 ||
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0)); len(ret) < 4 ||
 		[4]byte(ret[:4]) != errSelContractPaused {
 		t.Errorf("batchMint with valid args: revert data %x, want ContractPaused", ret)
 	}

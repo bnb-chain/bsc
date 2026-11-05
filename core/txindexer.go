@@ -246,7 +246,6 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		done   chan struct{} // Non-nil if background routine is active
 		headCh = indexer.headCh
 	)
-<<<<<<< HEAD
 
 	lastTail := rawdb.ReadTxIndexTail(indexer.db)
 	if lastTail != nil {
@@ -264,12 +263,6 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 			return
 		}
 	}
-
-	defer sub.Unsubscribe()
-||||||| 117e067f0f
-	defer sub.Unsubscribe()
-=======
->>>>>>> geth-v1.17.9
 
 	// Validate the transaction indexes and repair if necessary
 	head := indexer.head.Load()
