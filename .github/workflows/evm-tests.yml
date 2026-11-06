@@ -5,11 +5,13 @@ on:
     branches: 
       - master
       - develop
+      - codex/upstream-geth-v1.17.9-ci-fix
 
   pull_request:
     branches:
       - master
       - develop
+      - codex/upstream-geth-v1.17.9-ci-fix
 
 jobs:
   evm-test:

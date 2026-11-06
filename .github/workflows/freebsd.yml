@@ -2,6 +2,11 @@ on:
   push:
     branches:
       - freebsd-github-action
+      - codex/upstream-geth-v1.17.9-ci-fix
+
+  pull_request:
+    branches:
+      - codex/upstream-geth-v1.17.9-ci-fix
 
   workflow_dispatch:
 
