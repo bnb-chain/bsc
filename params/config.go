@@ -102,7 +102,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -157,7 +156,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -214,7 +212,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -503,7 +500,6 @@ var (
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
-	DefaultOsakaBlobConfigBSC  = DefaultCancunBlobConfig
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
@@ -852,12 +848,12 @@ func (bc *BlobConfig) String() string {
 
 // BlobScheduleConfig determines target and max number of blobs allow per fork.
 //
-// Ethereum updates the schedule at BPO forks after Prague. BSC also retains its
-// Osaka entry for compatibility with existing chain configurations.
+// From Prague onward, the blob schedule is updated only at BPO (Blob Parameter-Only)
+// forks. Named forks such as Osaka or Amsterdam inherit the most recently configured
+// BPO entry and must not declare their own BlobConfig.
 type BlobScheduleConfig struct {
 	Cancun *BlobConfig `json:"cancun,omitempty"`
 	Prague *BlobConfig `json:"prague,omitempty"`
-	Osaka  *BlobConfig `json:"osaka,omitempty"`
 	BPO1   *BlobConfig `json:"bpo1,omitempty"`
 	BPO2   *BlobConfig `json:"bpo2,omitempty"`
 	BPO3   *BlobConfig `json:"bpo3,omitempty"`
@@ -1415,10 +1411,6 @@ func (c *ChainConfig) CheckCompatible(newcfg *ChainConfig, height uint64, time u
 // CheckConfigForkOrder checks that we don't "skip" any forks, geth isn't pluggable enough
 // to guarantee that forks can be implemented in a different order than on official networks
 func (c *ChainConfig) CheckConfigForkOrder() error {
-	// skip checking for non-Parlia egine
-	if c.IsNotInBSC() {
-		return nil
-	}
 	type fork struct {
 		name      string
 		block     *big.Int // forks up to - and including the merge - were defined with block numbers
@@ -1426,41 +1418,75 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		optional  bool     // if true, the fork may be nil and next fork is still allowed
 	}
 	var lastFork fork
-	for _, cur := range []fork{
-		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
-		{name: "brunoBlock", block: c.BrunoBlock},
-		{name: "eulerBlock", block: c.EulerBlock},
-		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "planckBlock", block: c.PlanckBlock},
-		{name: "lubanBlock", block: c.LubanBlock},
-		{name: "platoBlock", block: c.PlatoBlock},
-		{name: "hertzBlock", block: c.HertzBlock},
-		{name: "hertzfixBlock", block: c.HertzfixBlock},
-		{name: "keplerTime", timestamp: c.KeplerTime},
-		{name: "feynmanTime", timestamp: c.FeynmanTime},
-		{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
-		{name: "cancunTime", timestamp: c.CancunTime},
-		{name: "haberTime", timestamp: c.HaberTime},
-		{name: "haberFixTime", timestamp: c.HaberFixTime},
-		{name: "bohrTime", timestamp: c.BohrTime},
-		{name: "pascalTime", timestamp: c.PascalTime},
-		{name: "pragueTime", timestamp: c.PragueTime},
-		{name: "lorentzTime", timestamp: c.LorentzTime},
-		{name: "maxwellTime", timestamp: c.MaxwellTime},
-		{name: "fermiTime", timestamp: c.FermiTime},
-		{name: "osakaTime", timestamp: c.OsakaTime},
-		{name: "mendelTime", timestamp: c.MendelTime},
-		{name: "pasteurTime", timestamp: c.PasteurTime},
-		{name: "jennerTime", timestamp: c.JennerTime, optional: true},
-		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
-		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
-		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
-		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
-		{name: "bogota", timestamp: c.BogotaTime, optional: true},
-		{name: "bpo3", timestamp: c.BPO3Time, optional: true},
-		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
-		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
-	} {
+	var forkOrder []fork
+	if c.IsInBSC() {
+		forkOrder = []fork{
+			{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
+			{name: "brunoBlock", block: c.BrunoBlock},
+			{name: "eulerBlock", block: c.EulerBlock},
+			{name: "gibbsBlock", block: c.GibbsBlock},
+			{name: "planckBlock", block: c.PlanckBlock},
+			{name: "lubanBlock", block: c.LubanBlock},
+			{name: "platoBlock", block: c.PlatoBlock},
+			{name: "hertzBlock", block: c.HertzBlock},
+			{name: "hertzfixBlock", block: c.HertzfixBlock},
+			{name: "keplerTime", timestamp: c.KeplerTime},
+			{name: "feynmanTime", timestamp: c.FeynmanTime},
+			{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
+			{name: "cancunTime", timestamp: c.CancunTime},
+			{name: "haberTime", timestamp: c.HaberTime},
+			{name: "haberFixTime", timestamp: c.HaberFixTime},
+			{name: "bohrTime", timestamp: c.BohrTime},
+			{name: "pascalTime", timestamp: c.PascalTime},
+			{name: "pragueTime", timestamp: c.PragueTime},
+			{name: "lorentzTime", timestamp: c.LorentzTime},
+			{name: "maxwellTime", timestamp: c.MaxwellTime},
+			{name: "fermiTime", timestamp: c.FermiTime},
+			{name: "osakaTime", timestamp: c.OsakaTime},
+			{name: "mendelTime", timestamp: c.MendelTime},
+			{name: "pasteurTime", timestamp: c.PasteurTime},
+			{name: "jennerTime", timestamp: c.JennerTime, optional: true},
+			{name: "ubtTime", timestamp: c.UBTTime, optional: true},
+			{name: "bpo1", timestamp: c.BPO1Time, optional: true},
+			{name: "bpo2", timestamp: c.BPO2Time, optional: true},
+			{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+			{name: "bogota", timestamp: c.BogotaTime, optional: true},
+			{name: "bpo3", timestamp: c.BPO3Time, optional: true},
+			{name: "bpo4", timestamp: c.BPO4Time, optional: true},
+			{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		}
+	} else {
+		forkOrder = []fork{
+			{name: "homesteadBlock", block: c.HomesteadBlock},
+			{name: "daoForkBlock", block: c.DAOForkBlock, optional: true},
+			{name: "eip150Block", block: c.EIP150Block},
+			{name: "eip155Block", block: c.EIP155Block},
+			{name: "eip158Block", block: c.EIP158Block},
+			{name: "byzantiumBlock", block: c.ByzantiumBlock},
+			{name: "constantinopleBlock", block: c.ConstantinopleBlock},
+			{name: "petersburgBlock", block: c.PetersburgBlock},
+			{name: "istanbulBlock", block: c.IstanbulBlock},
+			{name: "muirGlacierBlock", block: c.MuirGlacierBlock, optional: true},
+			{name: "berlinBlock", block: c.BerlinBlock},
+			{name: "londonBlock", block: c.LondonBlock},
+			{name: "arrowGlacierBlock", block: c.ArrowGlacierBlock, optional: true},
+			{name: "grayGlacierBlock", block: c.GrayGlacierBlock, optional: true},
+			{name: "mergeNetsplitBlock", block: c.MergeNetsplitBlock, optional: true},
+			{name: "shanghaiTime", timestamp: c.ShanghaiTime},
+			{name: "cancunTime", timestamp: c.CancunTime, optional: true},
+			{name: "pragueTime", timestamp: c.PragueTime, optional: true},
+			{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
+			{name: "ubtTime", timestamp: c.UBTTime, optional: true},
+			{name: "bpo1", timestamp: c.BPO1Time, optional: true},
+			{name: "bpo2", timestamp: c.BPO2Time, optional: true},
+			{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+			{name: "bogota", timestamp: c.BogotaTime, optional: true},
+			{name: "bpo3", timestamp: c.BPO3Time, optional: true},
+			{name: "bpo4", timestamp: c.BPO4Time, optional: true},
+			{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		}
+	}
+	for _, cur := range forkOrder {
 		if lastFork.name != "" {
 			switch {
 			// Non-optional forks must all be present in the chain config up to the last defined fork
@@ -1770,34 +1796,10 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	}
 }
 
-// BlobConfig returns the blob config active at the provided fork. BSC uses its
-// named-fork schedule. Ethereum inherits the most recent configured BPO entry
-// or falls back to Prague/Cancun.
+// BlobConfig returns the blob config active at the provided fork.
 func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
 	if c.BlobScheduleConfig == nil {
 		return nil
-	}
-	if c.IsInBSC() {
-		switch fork {
-		case forks.BPO5:
-			return c.BlobScheduleConfig.BPO5
-		case forks.BPO4:
-			return c.BlobScheduleConfig.BPO4
-		case forks.BPO3:
-			return c.BlobScheduleConfig.BPO3
-		case forks.BPO2:
-			return c.BlobScheduleConfig.BPO2
-		case forks.BPO1:
-			return c.BlobScheduleConfig.BPO1
-		case forks.Jenner, forks.Pasteur, forks.Mendel, forks.Osaka:
-			return c.BlobScheduleConfig.Osaka
-		case forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague:
-			return c.BlobScheduleConfig.Prague
-		case forks.Cancun:
-			return c.BlobScheduleConfig.Cancun
-		default:
-			return nil
-		}
 	}
 	bsc := c.BlobScheduleConfig
 	chain := []struct {

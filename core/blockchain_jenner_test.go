@@ -36,7 +36,6 @@ func jennerTestChainConfig(jennerTime uint64) *params.ChainConfig {
 	config.BlobScheduleConfig = &params.BlobScheduleConfig{
 		Cancun: params.DefaultCancunBlobConfig,
 		Prague: params.DefaultPragueBlobConfigBSC,
-		Osaka:  params.DefaultOsakaBlobConfigBSC,
 	}
 	return &config
 }

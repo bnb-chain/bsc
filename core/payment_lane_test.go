@@ -53,7 +53,6 @@ func laneGenesis(t testing.TB, gasLimit uint64) (*params.ChainConfig, *Genesis, 
 	config.BlobScheduleConfig = &params.BlobScheduleConfig{
 		Cancun: params.DefaultCancunBlobConfig,
 		Prague: params.DefaultPragueBlobConfigBSC,
-		Osaka:  params.DefaultOsakaBlobConfigBSC,
 	}
 
 	key := newKey(t)
