@@ -470,8 +470,11 @@ func (f *Freezer) validate() error {
 		}
 		// Validate the table tail
 		if table.config.tailGroup == "" {
-			if table.itemHidden.Load() != 0 {
-				return fmt.Errorf("non-prunable freezer table '%s' has a non-zero tail: %d", kind, table.itemHidden.Load())
+			if tail := table.itemHidden.Load(); tail != 0 {
+				if !legacyPrunedChainTable(kind) {
+					return fmt.Errorf("non-prunable freezer table '%s' has a non-zero tail: %d", kind, tail)
+				}
+				log.Warn("Retaining legacy pruned chain table tail", "table", kind, "tail", tail)
 			}
 			continue
 		}
@@ -540,12 +543,15 @@ func (f *Freezer) repair() error {
 		}
 	}
 	// Per-group tail alignment: take the maximum tail in each group and apply
-	// it to all members. Non-prunable tables must remain at tail 0.
+	// it to all members. Non-prunable tables may retain a legacy BSC tail.
 	tails := make(map[string]uint64)
 	for kind, table := range f.tables {
 		if table.config.tailGroup == "" {
-			if table.itemHidden.Load() != 0 {
-				panic(fmt.Sprintf("non-prunable freezer table %s has non-zero tail: %v", kind, table.itemHidden.Load()))
+			if tail := table.itemHidden.Load(); tail != 0 {
+				if !legacyPrunedChainTable(kind) {
+					panic(fmt.Sprintf("non-prunable freezer table %s has non-zero tail: %v", kind, tail))
+				}
+				log.Warn("Retaining legacy pruned chain table tail", "table", kind, "tail", tail)
 			}
 			continue
 		}
