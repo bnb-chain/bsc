@@ -321,6 +321,7 @@ func newTestHandlerWithBlocks(blocks int, mode ethconfig.SyncMode) *testHandler 
 		Database:   db,
 		Chain:      chain,
 		TxPool:     txpool,
+		BlobPool:   txpool,
 		VotePool:   votepool,
 		Network:    1,
 		Sync:       mode,
@@ -335,6 +336,7 @@ func newTestHandlerWithBlocks(blocks int, mode ethconfig.SyncMode) *testHandler 
 		db:       db,
 		chain:    chain,
 		txpool:   txpool,
+		blobpool: txpool,
 		votepool: votepool,
 		handler:  handler,
 	}
