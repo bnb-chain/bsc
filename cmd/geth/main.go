@@ -53,6 +53,7 @@ var (
 	// flags that configure the node
 	nodeFlags = slices.Concat([]cli.Flag{
 		utils.IdentityFlag,
+		utils.UnlockedAccountFlag,
 		utils.PasswordFileFlag,
 		utils.BootnodesFlag,
 		utils.MinFreeDiskSpaceFlag,
@@ -213,6 +214,7 @@ var (
 		utils.MevGRPCDisabledFlag,
 		utils.IPCDisabledFlag,
 		utils.IPCPathFlag,
+		utils.InsecureUnlockAllowedFlag,
 		utils.RPCGlobalGasCapFlag,
 		utils.RPCGlobalEVMTimeoutFlag,
 		utils.RPCGlobalTxFeeCapFlag,
