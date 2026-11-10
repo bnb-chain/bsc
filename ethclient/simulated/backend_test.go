@@ -57,7 +57,7 @@ func newBlobTx(sim *Backend, key *ecdsa.PrivateKey, nonce uint64) (*types.Transa
 
 	testBlob := &kzg4844.Blob{0x00}
 	testBlobCommit, _ := kzg4844.BlobToCommitment(testBlob)
-	testBlobProof, _ := kzg4844.ComputeBlobProof(testBlob, testBlobCommit)
+	testBlobProofs, _ := kzg4844.ComputeCellProofs(testBlob)
 	testBlobVHash := kzg4844.CalcBlobHashV1(sha256.New(), &testBlobCommit)
 
 	head, _ := client.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
@@ -79,7 +79,7 @@ func newBlobTx(sim *Backend, key *ecdsa.PrivateKey, nonce uint64) (*types.Transa
 		To:         addr,
 		AccessList: nil,
 		BlobHashes: []common.Hash{testBlobVHash},
-		Sidecar:    types.NewBlobTxSidecar(types.BlobSidecarVersion0, []kzg4844.Blob{*testBlob}, []kzg4844.Commitment{testBlobCommit}, []kzg4844.Proof{testBlobProof}),
+		Sidecar:    types.NewBlobTxSidecar(types.BlobSidecarVersion1, []kzg4844.Blob{*testBlob}, []kzg4844.Commitment{testBlobCommit}, testBlobProofs),
 	})
 	return types.SignTx(tx, types.LatestSignerForChainID(chainid), key)
 }
