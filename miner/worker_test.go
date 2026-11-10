@@ -222,26 +222,11 @@ func TestGenerateAndImportBlock(t *testing.T) {
 }
 
 func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
-	// TODO: rewrite this test with ParliaTestChainConfig + a parlia-formatted
-	// genesis (vanity + validator + seal) so the snapshot bootstrap inside
-	// SetExtraData / prepareValidators succeeds. The current TestChainConfig
-	// has no parlia config and the empty genesis has no validator bytes, so
-	// prepareBidBlockTask returns "invalid validators bytes" before any of the
-	// preservation assertions can run.
-	t.Skip("needs parlia-formatted genesis; see TODO above")
-	engine := parlia.New(params.TestChainConfig, rawdb.NewMemoryDatabase(), nil, common.Hash{})
+	engine := parlia.New(params.ParliaTestChainConfig, rawdb.NewMemoryDatabase(), nil, common.Hash{})
 	defer engine.Close()
-	chain, err := core.NewBlockChain(rawdb.NewMemoryDatabase(), &core.Genesis{Config: params.TestChainConfig}, ethash.NewFaker(), nil)
-	if err != nil {
-		t.Fatalf("core.NewBlockChain failed: %v", err)
-	}
-	defer chain.Stop()
 	w := &worker{
-		chainConfig: params.TestChainConfig,
-		chain:       chain,
+		chainConfig: params.ParliaTestChainConfig,
 		engine:      engine,
-		taskCh:      make(chan *task, 1),
-		exitCh:      make(chan struct{}),
 	}
 	w.running.Store(true)
 
@@ -255,7 +240,7 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	decoded := &buildertypes.DecodedBidBlock{
 		Header: &types.Header{
 			Number:      big.NewInt(1),
-			ParentHash:  chain.Genesis().Hash(),
+			ParentHash:  common.Hash{0x44},
 			UncleHash:   builderUncleHash,
 			Root:        root,
 			ReceiptHash: receiptHash,
@@ -268,6 +253,7 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 		SystemTxStart: 1, // no trailing unsigned system txs in this test
 	}
 	w.extra = []byte{0x44, 0x55}
+	wantExtra := common.CopyBytes(decoded.Header.Extra)
 
 	task, err := w.prepareBidBlockTask(decoded, time.Now())
 	if err != nil {
@@ -296,13 +282,8 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	if block.UncleHash() != builderUncleHash {
 		t.Fatalf("uncle hash mismatch: got %s want %s", block.UncleHash(), builderUncleHash)
 	}
-	expectedHeader := types.CopyHeader(decoded.Header)
-	expectedHeader.Extra = common.CopyBytes(w.extra)
-	if err := engine.SetExtraData(chain, expectedHeader); err != nil {
-		t.Fatalf("SetExtraData failed: %v", err)
-	}
-	if got := block.Extra(); !bytes.Equal(got, expectedHeader.Extra) {
-		t.Fatalf("extra mismatch: got %x want %x", got, expectedHeader.Extra)
+	if got := block.Extra(); !bytes.Equal(got, wantExtra) {
+		t.Fatalf("extra mismatch: got %x want %x", got, wantExtra)
 	}
 }
 
