@@ -370,7 +370,8 @@ func (d *Downloader) concurrentFetch(queue typedQueue, beaconMode bool) error {
 			// Unless a peer delivered something completely else than requested (usually
 			// caused by a timed out request which came through in the end), set it to
 			// idle. If the delivery's stale, the peer should have already been idled.
-			if !errors.Is(err, errStaleDelivery) {
+			// Local cache pressure says nothing about the peer's throughput.
+			if !errors.Is(err, errStaleDelivery) && !errors.Is(err, errBodyCacheFull) {
 				items, elapsed := accepted, res.Time
 				if res.Roundtrips > 1 && items > 0 {
 					// Partial receipt response can be assembled over multiple round trips.
