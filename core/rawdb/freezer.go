@@ -142,6 +142,9 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 			return nil, err
 		}
 		freezer.tables[name] = table
+		if config.tailGroup != "" {
+			freezer.tails[config.tailGroup] = new(atomic.Uint64)
+		}
 	}
 	var err error
 	if freezer.readonly {
