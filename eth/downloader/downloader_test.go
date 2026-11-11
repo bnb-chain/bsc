@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p/tracker"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -885,6 +886,8 @@ func testBlockHeaderAttackerDropping(t *testing.T, protocol uint) {
 		{errInvalidBody, false},             // A bad peer was detected, but not the sync origin
 		{errInvalidReceipt, false},          // A bad peer was detected, but not the sync origin
 		{errCancelContentProcessing, false}, // Synchronisation was canceled, origin may be innocent, don't drop
+		{tracker.ErrLimitReached, true},     // Requests cannot be sent to this peer, drop it instead of retrying
+		{fmt.Errorf("header request: %w", tracker.ErrLimitReached), true},
 	}
 	// Run the tests and check disconnection status
 	tester := newTester(t, mode)
