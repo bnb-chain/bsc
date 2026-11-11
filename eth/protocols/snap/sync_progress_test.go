@@ -75,6 +75,7 @@ func TestForwardAccountTaskCompletionFlags(t *testing.T) {
 				db := rawdb.NewMemoryDatabase()
 				defer db.Close()
 				syncer := newSyncer(db, scheme)
+				defer syncer.syncRunner.barrier()
 				syncer.loadSyncStatus()
 				task := syncer.tasks[0]
 				task.Next, task.Last = hash(10), common.MaxHash

@@ -1200,9 +1200,12 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
 	var pendingBlobTxs map[common.Address][]*txpool.LazyTransaction
-	if env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
+	if w.chainConfig.IsNotInBSC() || env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
 		filter.BlobTxs = true
 		filter.BlobVersion = types.BlobSidecarVersion0
+		if w.chainConfig.IsNotInBSC() && w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+			filter.BlobVersion = types.BlobSidecarVersion1
+		}
 
 		blobTxsStart := time.Now()
 		pendingBlobTxs, _ = w.eth.TxPool().Pending(filter)

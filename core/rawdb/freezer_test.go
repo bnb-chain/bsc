@@ -286,6 +286,63 @@ func TestFreezerReadonlyValidate(t *testing.T) {
 	}
 }
 
+func TestFreezerLegacyPrunedHeaders(t *testing.T) {
+	dir := t.TempDir()
+	kinds := []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerDifficultyTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable}
+	legacyTables := make(map[string]freezerTableConfig)
+	tables := make(map[string]freezerTableConfig)
+	for _, kind := range kinds {
+		cfg := chainFreezerTableConfigs[kind]
+		tables[kind] = cfg
+		cfg.tailGroup = ChainFreezerBlockDataGroup
+		legacyTables[kind] = cfg
+	}
+	f, err := NewFreezer(dir, "", false, 2049, legacyTables)
+	require.NoError(t, err)
+	payload := getChunk(1024, 1)
+	appendItem := func(n uint64) {
+		_, err := f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+			for _, kind := range kinds {
+				if err := op.AppendRaw(kind, n, payload); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+	}
+	for n := uint64(0); n < 4; n++ {
+		appendItem(n)
+	}
+	_, err = f.TruncateTail(ChainFreezerBlockDataGroup, 2)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Validate the legacy tails before and after a writable reopen. Subsequent
+	// pruning advances only block data, and writes must continue normally.
+	for _, readonly := range []bool{true, false, true} {
+		f, err = NewFreezer(dir, "", readonly, 2049, tables)
+		require.NoError(t, err)
+		for _, kind := range kinds[:3] {
+			require.Equal(t, uint64(2), f.tables[kind].itemHidden.Load())
+			_, err := f.Ancient(kind, 1)
+			require.Error(t, err)
+			data, err := f.Ancient(kind, 2)
+			require.NoError(t, err)
+			require.Equal(t, payload, data)
+		}
+		if !readonly {
+			_, err = f.TruncateTail(ChainFreezerBlockDataGroup, 3)
+			require.NoError(t, err)
+			for _, kind := range kinds[:3] {
+				require.Equal(t, uint64(2), f.tables[kind].itemHidden.Load())
+			}
+			appendItem(4)
+		}
+		require.NoError(t, f.Close())
+	}
+}
+
 func TestFreezerConcurrentReadonly(t *testing.T) {
 	t.Parallel()
 

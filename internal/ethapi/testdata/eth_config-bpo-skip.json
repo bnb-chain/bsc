@@ -7,7 +7,7 @@
       "baseFeeUpdateFraction": 11684671
     },
     "chainId": "0x88bb0",
-    "forkId": "0x903f5b4c",
+    "forkId": "0x4a6761ab",
     "precompiles": {
       "BLAKE2F": "0x0000000000000000000000000000000000000009",
       "BLS12_G1ADD": "0x000000000000000000000000000000000000000b",
@@ -44,7 +44,7 @@
       "baseFeeUpdateFraction": 11684671
     },
     "chainId": "0x88bb0",
-    "forkId": "0x46cc8f34",
+    "forkId": "0xe052b432",
     "precompiles": {
       "BLAKE2F": "0x0000000000000000000000000000000000000009",
       "BLS12_G1ADD": "0x000000000000000000000000000000000000000b",
@@ -83,7 +83,7 @@
       "baseFeeUpdateFraction": 11684671
     },
     "chainId": "0x88bb0",
-    "forkId": "0x46cc8f34",
+    "forkId": "0xe052b432",
     "precompiles": {
       "BLAKE2F": "0x0000000000000000000000000000000000000009",
       "BLS12_G1ADD": "0x000000000000000000000000000000000000000b",

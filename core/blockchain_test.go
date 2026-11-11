@@ -53,6 +53,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -4515,15 +4516,11 @@ func testChainReorgSnapSync(t *testing.T, ancientLimit uint64) {
 	}
 }
 
-// TODO(sysvm): need fix when pruned sync enabled
-//
 // Tests the scenario that all the inserted chain segment are with the configured
 // chain cutoff point. In this case the chain segment before the cutoff should
 // be persisted without the receipts and bodies; chain after should be persisted
 // normally.
-//
-//nolint:unused
-func testInsertChainWithCutoff1(t *testing.T) {
+func TestInsertChainWithCutoff(t *testing.T) {
 	const chainLength = 64
 
 	// Configure and generate a sample block chain
@@ -4563,9 +4560,6 @@ func testInsertChainWithCutoff1(t *testing.T) {
 	})
 }
 
-// TODO(sysvm): need fix when pruned sync enabled
-//
-//nolint:unused
 func testInsertChainWithCutoff(t *testing.T, cutoff uint64, ancientLimit uint64, genesis *Genesis, blocks []*types.Block, receipts []types.Receipts) {
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 
@@ -4829,6 +4823,7 @@ func cutoffConfig(cutoff *types.Block) *BlockChainConfig {
 // a completed batch of the headers before the cutoff. In that phase the ancient
 // store holds headers but no block data, so there is nothing to prune.
 func TestRestartDuringHeadersBeforeCutoff(t *testing.T) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 	t.Run("memory", func(t *testing.T) { testRestartDuringHeadersBeforeCutoff(t, false) })
 	t.Run("disk", func(t *testing.T) { testRestartDuringHeadersBeforeCutoff(t, true) })
 }
@@ -4916,6 +4911,7 @@ func testRestartDuringHeadersBeforeCutoff(t *testing.T, disk bool) {
 // write and its tail truncation. The block data tail is then behind the ancient
 // head, with only nil placeholders in between, and is repaired on startup.
 func TestRestartDuringInterruptedHeadersBeforeCutoff(t *testing.T) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 	t.Run("memory", func(t *testing.T) { testRestartDuringInterruptedHeadersBeforeCutoff(t, false) })
 	t.Run("disk", func(t *testing.T) { testRestartDuringInterruptedHeadersBeforeCutoff(t, true) })
 }

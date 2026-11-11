@@ -1161,6 +1161,9 @@ func TestReadAccessListRLPAncientNonCanonical(t *testing.T) {
 		if err := op.AppendRaw(ChainFreezerReceiptTable, 0, types.EncodeBlockReceiptLists([]types.Receipts{nil})[0]); err != nil {
 			return err
 		}
+		if err := op.Append(ChainFreezerDifficultyTable, 0, new(big.Int)); err != nil {
+			return err
+		}
 		return op.AppendRaw(ChainFreezerBALTable, 0, encoded)
 	}); err != nil {
 		t.Fatalf("failed to write ancient block: %v", err)

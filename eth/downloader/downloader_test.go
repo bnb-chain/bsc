@@ -138,12 +138,13 @@ func (dl *downloadTester) newPeerWithChain(id string, version uint, chain *core.
 	defer dl.lock.Unlock()
 
 	peer := &downloadTesterPeer{
-		dl:             dl,
-		id:             id,
-		chain:          chain,
-		withholdBodies: make(map[common.Hash]struct{}),
-		balGate:        gate,
-		dropped:        make(chan error, 1),
+		dl:              dl,
+		id:              id,
+		chain:           chain,
+		withholdHeaders: make(map[common.Hash]struct{}),
+		withholdBodies:  make(map[common.Hash]struct{}),
+		balGate:         gate,
+		dropped:         make(chan error, 1),
 	}
 	dl.peers[id] = peer
 

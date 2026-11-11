@@ -103,6 +103,7 @@ var deprecatedConfigFields = map[string]bool{
 	"ethconfig.Config.LightNoPrune":            true,
 	"ethconfig.Config.LightNoSyncServe":        true,
 	"legacypool.Config.OverflowPoolSlots":      true,
+	"params.BlobScheduleConfig.Osaka":          true,
 
 	// Deprecated May 2026, the incremental snapshot feature was removed.
 	"ethconfig.Config.EnableIncrSnapshots":       true,

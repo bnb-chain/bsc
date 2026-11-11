@@ -64,17 +64,24 @@ const (
 )
 
 // chainFreezerTableConfigs configures the settings for tables in the chain freezer.
-// Compression is disabled for hashes as they don't compress well.
+// Compression is disabled for hashes as they don't compress well. Headers,
+// canonical hashes and total difficulty are retained when pruning block history.
 var chainFreezerTableConfigs = map[string]freezerTableConfig{
-	ChainFreezerHeaderTable:      {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
-	ChainFreezerHashTable:        {noSnappy: true, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerHeaderTable:      {noSnappy: false},
+	ChainFreezerHashTable:        {noSnappy: true},
 	ChainFreezerBodiesTable:      {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
 	ChainFreezerReceiptTable:     {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
-	ChainFreezerDifficultyTable:  {noSnappy: true, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerDifficultyTable:  {noSnappy: true},
 	ChainFreezerBlobSidecarTable: {noSnappy: false, tailGroup: ChainFreezerBlobGroup},
 	ChainFreezerBALTable:         {noSnappy: false, tailGroup: ChainFreezerBALGroup},
 }
 var additionTables = []string{ChainFreezerBlobSidecarTable}
+
+// legacyPrunedChainTable identifies tables pruned by older BSC versions. Their
+// existing tails must be preserved even though new tail pruning is disabled.
+func legacyPrunedChainTable(kind string) bool {
+	return kind == ChainFreezerHeaderTable || kind == ChainFreezerHashTable || kind == ChainFreezerDifficultyTable
+}
 
 // freezerTableConfig contains the settings for a freezer table.
 type freezerTableConfig struct {

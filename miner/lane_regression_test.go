@@ -45,7 +45,6 @@ func laneMinerChain(t *testing.T, corruptRatio bool) (*worker, *params.ChainConf
 	config.BlobScheduleConfig = &params.BlobScheduleConfig{
 		Cancun: params.DefaultCancunBlobConfig,
 		Prague: params.DefaultPragueBlobConfigBSC,
-		Osaka:  params.DefaultOsakaBlobConfigBSC,
 	}
 
 	lane := types.Account{Code: code, Balance: common.Big0}
