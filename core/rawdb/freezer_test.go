@@ -486,6 +486,26 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), ancients)
 	require.NoError(t, f.Close())
+
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
+	require.NoError(t, err)
+	_, err = f.TruncateHead(2)
+	require.NoError(t, err)
+	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		return appendSameItem(op, []string{"o1", "o2"}, 2, item)
+	})
+	require.Error(t, err)
+	ancients, err = f.Ancients()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), ancients)
+	require.NoError(t, f.Close())
+
+	f, err = NewFreezer(dir, "", true, 2049, o1o2a1TableDef)
+	require.NoError(t, err)
+	actual, err = f.Ancient("o1", 1)
+	require.NoError(t, err)
+	require.Equal(t, item, actual)
+	require.NoError(t, f.Close())
 }
 
 func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
