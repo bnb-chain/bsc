@@ -118,14 +118,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		}
 	}
 
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, parent.Time, block.Time(), statedb, true)
 	recordSystemBAL := config.IsInBSC() && config.IsAmsterdam(blockNumber, block.Time())
-	var upgradeBAL *bal.ConstructionBlockAccessList
-	if recordSystemBAL {
-		rules := config.Rules(blockNumber, header.Difficulty.Sign() == 0, header.Time)
-		upgradeBAL = finaliseProtocolChanges(statedb, rules, 0)
-	}
 
 	var (
 		context         = NewEVMBlockContext(header, p.chain, nil)
@@ -135,7 +128,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		txNum           = len(block.Transactions())
 	)
 	defer evm.Release()
-	blockAccessList.Merge(upgradeBAL)
 
 	if jumpDestCache != nil {
 		evm.SetJumpDestCache(jumpDestCache)
@@ -192,7 +184,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockAccessList.Merge(bal)
 	}
 	numUserReceipts := len(receipts)
-	requests, bal, err := PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+	requests, bal, err := PostExecution(ctx, parent, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +246,10 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 	if config.IsAmsterdam(number, time) {
 		blockAccessList = bal.NewConstructionBlockAccessList()
 	}
+	systemcontracts.TryUpdateBuildInSystemContract(config, number, parent.Time, time, evm.StateDB, true)
+	if config.IsInBSC() && config.IsAmsterdam(number, time) {
+		blockAccessList.Merge(finaliseProtocolChanges(evm.StateDB, evm.GetRules(), 0))
+	}
 	// EIP-4788
 	if beaconRoot != nil {
 		ProcessBeaconBlockRoot(*beaconRoot, evm, blockAccessList)
@@ -268,12 +264,18 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 // PostExecution processes the withdrawals and then the post-execution system
 // calls when Prague is enabled. If Prague is not activated, it returns null
 // requests to differentiate from empty requests.
-func PostExecution(ctx context.Context, config *params.ChainConfig, number *big.Int, time uint64, allLogs []*types.Log, withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32) (requests [][]byte, blockAccessList *bal.ConstructionBlockAccessList, err error) {
+// On BSC, it applies upgrades before Parlia executes the system transactions.
+func PostExecution(ctx context.Context, parent *types.Header, config *params.ChainConfig, number *big.Int, time uint64, allLogs []*types.Log, withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32) (requests [][]byte, blockAccessList *bal.ConstructionBlockAccessList, err error) {
 	_, _, spanEnd := telemetry.StartSpan(ctx, "core.postExecution")
 	defer spanEnd(&err)
 
 	if config.IsAmsterdam(number, time) {
 		blockAccessList = bal.NewConstructionBlockAccessList()
+	}
+	if config.IsInBSC() {
+		// Leave the mutations pending for the following Parlia system transaction.
+		systemcontracts.TryUpdateBuildInSystemContract(config, number, parent.Time, time, evm.StateDB, false)
+		return nil, blockAccessList, nil
 	}
 	rules := config.Rules(number, true, time) // IsMerge is always true
 

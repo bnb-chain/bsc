@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -11,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
@@ -19,6 +21,73 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 )
+
+func TestBSCSystemContractUpgradePhases(t *testing.T) {
+	genesisHash := systemcontracts.GenesisHash
+	systemcontracts.GenesisHash = params.BSCGenesisHash
+	t.Cleanup(func() { systemcontracts.GenesisHash = genesisHash })
+	for _, active := range []bool{false, true} {
+		t.Run(map[bool]string{false: "pre-amsterdam", true: "amsterdam"}[active], func(t *testing.T) {
+			config := *params.ParliaTestChainConfig
+			config.JennerTime = u64(2)
+			if active {
+				config.AmsterdamTime = u64(2)
+			}
+			parent := &types.Header{Time: 1}
+			number := big.NewInt(2)
+			db := state.NewDatabaseForTesting()
+			sdb, _ := state.New(types.EmptyRootHash, db)
+			evm := vm.NewEVM(vm.BlockContext{BlockNumber: number, Time: 2}, sdb, &config, vm.Config{})
+			defer evm.Release()
+			list := bal.NewConstructionBlockAccessList()
+			list.Merge(PreExecution(context.Background(), nil, parent, &config, evm, number, 2))
+			for _, addr := range []common.Address{vm.CAS20ActivationRegistryAddress, vm.CAS20PolicyRegistryAddress} {
+				if code := sdb.GetCode(addr); !bytes.Equal(code, vm.CAS20MarkerCode) {
+					t.Fatalf("missing pre-execution sentinel at %s", addr)
+				}
+			}
+			paymentLane := common.HexToAddress(systemcontracts.PaymentLaneContract)
+			if len(sdb.GetCode(paymentLane)) != 0 {
+				t.Fatal("payment-lane contract upgraded before normal transactions")
+			}
+			requests, postBAL, err := PostExecution(context.Background(), parent, &config, number, 2, nil, nil, evm, 2)
+			if err != nil || requests != nil {
+				t.Fatalf("post-execution: requests %v, err %v", requests, err)
+			}
+			list.Merge(postBAL)
+			code := sdb.GetCode(paymentLane)
+			if len(code) == 0 {
+				t.Fatal("payment-lane contract not upgraded before system transactions")
+			}
+			coinbase := common.HexToAddress("0xbeef")
+			systemState := &systemTxStateDB{StateDB: sdb, accessList: list}
+			systemState.Prepare(evm.GetRules(), coinbase, coinbase, nil, nil, nil)
+			systemState.SetTxContext(common.Hash{1}, 0, 1)
+			systemState.SetNonce(coinbase, 1, tracing.NonceChangeEoACall)
+			systemState.Finalise(evm.GetRules())
+
+			want := bal.NewConstructionBlockAccessList()
+			if active {
+				want.CodeChange(vm.CAS20ActivationRegistryAddress, 0, vm.CAS20MarkerCode)
+				want.CodeChange(vm.CAS20PolicyRegistryAddress, 0, vm.CAS20MarkerCode)
+				want.CodeChange(paymentLane, 1, code)
+				want.NonceChange(coinbase, 1, 1)
+			}
+			if list.ToEncodingObj().Hash() != want.ToEncodingObj().Hash() {
+				t.Fatalf("unexpected upgrade BAL:\n%s\nwant:\n%s", list.PrettyPrint(), want.PrettyPrint())
+			}
+			if active {
+				replayed, _ := state.New(types.EmptyRootHash, db)
+				if err := replayed.ApplyBlockAccessList(list.ToEncodingObj()); err != nil {
+					t.Fatal(err)
+				}
+				if replayed.IntermediateRoot(evm.GetRules()) != sdb.IntermediateRoot(evm.GetRules()) {
+					t.Fatal("BAL replay differs from executed upgrades")
+				}
+			}
+		})
+	}
+}
 
 func TestSystemTransactionAccessList(t *testing.T) {
 	for _, traced := range []bool{false, true} {

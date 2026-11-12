@@ -353,7 +353,7 @@ func (b *BlockGen) collectRequests(readonly bool) (requests [][]byte, bal *bal.C
 	blockContext := NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
 	evm := vm.NewEVM(blockContext, statedb, b.cm.config, vm.Config{})
 
-	requests, bal, err := PostExecution(context.Background(), b.cm.config, b.header.Number, b.header.Time, blockLogs, b.withdrawals, evm, uint32(len(b.txs)+1))
+	requests, bal, err := PostExecution(context.Background(), b.parent.Header(), b.cm.config, b.header.Number, b.header.Time, blockLogs, b.withdrawals, evm, uint32(len(b.txs)+1))
 	if err != nil {
 		panic(fmt.Sprintf("failed to run post-execution: %v", err))
 	}
