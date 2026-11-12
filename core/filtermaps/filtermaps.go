@@ -454,6 +454,7 @@ func (f *FilterMaps) init() error {
 		if f.historyCutoff >= f.targetView.HeadNumber() {
 			return errors.New("cannot start indexing at history cutoff point after chain head")
 		}
+		initBlockNumber = f.historyCutoff
 		cpList = checkpointList{{
 			BlockNumber: f.historyCutoff,
 			BlockId:     f.targetView.BlockId(f.historyCutoff),

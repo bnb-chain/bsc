@@ -107,6 +107,67 @@ func TestIndexerHistoryCutoff(t *testing.T) {
 	ts.checkCutoffIndex(301, 1132)
 }
 
+// prunedHashChain models older BSC databases where history pruning also removed
+// canonical hashes, except for genesis.
+type prunedHashChain struct {
+	blockchain
+	cutoff uint64
+}
+
+func (c prunedHashChain) GetCanonicalHash(number uint64) common.Hash {
+	if number > 0 && number < c.cutoff {
+		return common.Hash{}
+	}
+	return c.blockchain.GetCanonicalHash(number)
+}
+
+func TestIndexerHistoryCutoffPrunedHashes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		hashCutoff uint64
+		wantError  bool
+	}{
+		{"before_cutoff", 100, false},
+		{"including_cutoff", 101, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestSetup(t)
+			defer ts.close()
+			ts.historyCutoff.Store(100)
+			ts.chain.addBlocks(200, 3, 2, 2, false)
+			chain := prunedHashChain{blockchain: ts.chain, cutoff: tc.hashCutoff}
+			open := func() {
+				head := ts.chain.CurrentBlock()
+				var err error
+				ts.fm, err = NewFilterMaps(ts.db, NewChainView(chain, head.Number.Uint64(), head.Hash()), 100, 0, ts.params, Config{})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			open()
+			if err := ts.fm.init(); err != nil {
+				if !tc.wantError || err.Error() != "cannot start indexing: blockNumber=100 is pruned" {
+					t.Fatalf("unexpected initialization error: %v", err)
+				}
+				return
+			}
+			if tc.wantError {
+				t.Fatal("initialization accepted a missing cutoff hash")
+			}
+			ts.fm.Start()
+			ts.fm.WaitIdle()
+			ts.checkCutoffIndex(101, 200)
+
+			// Reopen the index with the early hashes still unavailable.
+			ts.fm.Stop()
+			open()
+			ts.fm.Start()
+			ts.fm.WaitIdle()
+			ts.checkCutoffIndex(101, 200)
+		})
+	}
+}
+
 // TestIndexerHistoryCutoffBlock tests a local base at a cutoff block without
 // logs and at one whose logs span several maps.
 func TestIndexerHistoryCutoffBlock(t *testing.T) {
