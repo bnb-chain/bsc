@@ -120,6 +120,12 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, parent.Time, block.Time(), statedb, true)
+	recordSystemBAL := config.IsInBSC() && config.IsAmsterdam(blockNumber, block.Time())
+	var upgradeBAL *bal.ConstructionBlockAccessList
+	if recordSystemBAL {
+		rules := config.Rules(blockNumber, header.Difficulty.Sign() == 0, header.Time)
+		upgradeBAL = finaliseProtocolChanges(statedb, rules, 0)
+	}
 
 	var (
 		context         = NewEVMBlockContext(header, p.chain, nil)
@@ -129,6 +135,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		txNum           = len(block.Transactions())
 	)
 	defer evm.Release()
+	blockAccessList.Merge(upgradeBAL)
 
 	if jumpDestCache != nil {
 		evm.SetJumpDestCache(jumpDestCache)
@@ -194,11 +201,16 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	gasUsed := gp.Used()
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	body := &types.Body{Transactions: commonTxs, Uncles: block.Uncles(), Withdrawals: block.Withdrawals()}
-	// TODO: Include Parlia system transactions and system-contract upgrades in
-	// the block access list before enabling Amsterdam on BSC.
-	err = p.chain.Engine().Finalize(p.chain, header, tracingStateDB, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
+	finalizeState := tracingStateDB
+	if recordSystemBAL {
+		finalizeState = &systemTxStateDB{StateDB: tracingStateDB, accessList: blockAccessList}
+	}
+	err = p.chain.Engine().Finalize(p.chain, header, finalizeState, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
 	if err != nil {
 		return nil, err
+	}
+	if recordSystemBAL {
+		blockAccessList.Merge(finaliseProtocolChanges(tracingStateDB, evm.GetRules(), uint32(len(block.Transactions())+1)))
 	}
 	if len(receipts) != len(block.Transactions()) {
 		return nil, fmt.Errorf("receipt count mismatch: have %d, want %d", len(receipts), len(block.Transactions()))
