@@ -14,11 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -49,6 +51,15 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return nil, nil, errors.New("parent not found")
+	}
+	evm := vm.NewEVM(core.NewEVMBlockContext(header, chainContext{chain, p}, nil), state, p.chainConfig, vm.Config{Tracer: tracer})
+	defer evm.Release()
+	if _, _, err := core.PostExecution(context.Background(), parent, p.chainConfig, header.Number, header.Time, nil, body.Withdrawals, evm, uint32(len(body.Transactions)+1)); err != nil {
+		return nil, nil, err
+	}
 	block, receipts, err := p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking)
 	if err != nil {
 		return nil, nil, err
