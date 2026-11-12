@@ -630,6 +630,95 @@ func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
 	require.Equal(t, item, actual)
 }
 
+func TestFreezer_ResetTailMeta_BlobTable(t *testing.T) {
+	for _, state := range []string{"uninitialized", "initialized_empty", "populated"} {
+		t.Run(state, func(t *testing.T) {
+			tables := make(map[string]freezerTableConfig)
+			for kind, cfg := range chainFreezerTableConfigs {
+				if kind != ChainFreezerBALTable {
+					tables[kind] = cfg
+				}
+			}
+			dir := t.TempDir()
+			f, err := NewFreezer(dir, "", false, 2049, tables)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				if f != nil {
+					f.Close()
+				}
+			})
+			_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+				for n := uint64(0); n < 2; n++ {
+					for kind := range tables {
+						if kind == ChainFreezerBlobSidecarTable && state != "populated" {
+							continue
+						}
+						if err := op.AppendRaw(kind, n, []byte{byte(n)}); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+			require.NoError(t, err)
+			if state == "initialized_empty" {
+				require.NoError(t, ResetEmptyBlobAncientTable(f, 2))
+			}
+			require.NoError(t, f.Close())
+			f = nil
+
+			const offset = uint64(1000)
+			for attempt := 0; attempt < 2; attempt++ {
+				if f != nil {
+					require.NoError(t, f.Close())
+					f = nil
+				}
+				require.NoError(t, resetFreezerMeta(dir, "", offset))
+				f, err = NewFreezer(dir, "", false, 2049, chainFreezerTableConfigs)
+				require.NoError(t, err)
+				head, err := f.Ancients()
+				require.NoError(t, err)
+				require.Equal(t, offset+2, head)
+				require.Equal(t, offset, f.tables[ChainFreezerHeaderTable].itemOffset.Load())
+				require.Equal(t, head, f.tables[ChainFreezerBALTable].itemHidden.Load())
+				blobHead := head
+				if state == "uninitialized" {
+					blobHead = 0
+				}
+				require.Equal(t, blobHead, f.tables[ChainFreezerBlobSidecarTable].items.Load())
+				for kind := range tables {
+					if kind == ChainFreezerBlobSidecarTable && state != "populated" {
+						continue
+					}
+					for n := uint64(0); n < 2; n++ {
+						item, err := f.Ancient(kind, offset+n)
+						require.NoError(t, err)
+						require.Equal(t, []byte{byte(n)}, item)
+					}
+				}
+			}
+			require.NoError(t, ResetEmptyBlobAncientTable(f, offset+2))
+			_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+				for kind := range chainFreezerTableConfigs {
+					if err := op.AppendRaw(kind, offset+2, []byte{2}); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			f, err = NewFreezer(dir, "", true, 2049, chainFreezerTableConfigs)
+			require.NoError(t, err)
+			for kind := range chainFreezerTableConfigs {
+				item, err := f.Ancient(kind, offset+2)
+				require.NoError(t, err)
+				require.Equal(t, []byte{2}, item)
+			}
+		})
+	}
+}
+
 func appendSameItem(op ethdb.AncientWriteOp, tables []string, i uint64, item []byte) error {
 	for _, t := range tables {
 		if err := op.AppendRaw(t, i, item); err != nil {
