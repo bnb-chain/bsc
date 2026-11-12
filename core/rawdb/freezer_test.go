@@ -979,3 +979,107 @@ func TestTruncateHeadBelowGroupTail(t *testing.T) {
 		t.Fatalf("block data tail after reopen = %d, want 10", tail)
 	}
 }
+
+func TestFreezerInspectCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		memory, legacy bool
+	}{
+		{name: "disk"},
+		{name: "memory", memory: true},
+		{name: "legacy_tails", legacy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tables := chainFreezerTableConfigs
+			if tc.legacy {
+				tables = make(map[string]freezerTableConfig)
+				for kind, cfg := range chainFreezerTableConfigs {
+					if kind == ChainFreezerBALTable {
+						continue
+					}
+					if legacyPrunedChainTable(kind) {
+						cfg.tailGroup = ChainFreezerBlockDataGroup
+					}
+					tables[kind] = cfg
+				}
+			}
+			dir := t.TempDir()
+			var f ethdb.AncientStore
+			var err error
+			if tc.memory {
+				f = NewMemoryFreezer(false, tables)
+			} else {
+				f, err = NewFreezer(dir, "", false, 2049, tables)
+			}
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				if f != nil {
+					f.Close()
+				}
+			})
+			appendBlocks := func(first, end uint64, withBlob bool) {
+				t.Helper()
+				_, err := f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+					for n := first; n < end; n++ {
+						for kind := range tables {
+							if kind == ChainFreezerBlobSidecarTable && !withBlob {
+								continue
+							}
+							if err := op.AppendRaw(kind, n, nil); err != nil {
+								return err
+							}
+						}
+					}
+					return nil
+				})
+				require.NoError(t, err)
+			}
+			check := func(headers, bodies, bals, blobs uint64) {
+				t.Helper()
+				want := map[string]uint64{
+					ChainFreezerHeaderTable: headers, ChainFreezerHashTable: headers, ChainFreezerDifficultyTable: headers,
+					ChainFreezerBodiesTable: bodies, ChainFreezerReceiptTable: bodies,
+					ChainFreezerBALTable: bals, ChainFreezerBlobSidecarTable: blobs,
+				}
+				db := &freezerdb{chainFreezer: &chainFreezer{ancients: f}}
+				for _, reader := range []ethdb.AncientReader{f, db, NewTable(db, "prefix")} {
+					info, err := inspect(ChainFreezerName, chainFreezerTableConfigs, reader)
+					require.NoError(t, err)
+					got := make(map[string]uint64)
+					for _, table := range info.tables {
+						got[table.name] = table.count
+					}
+					require.Equal(t, want, got)
+				}
+			}
+			appendBlocks(0, 4, false)
+			if tc.legacy {
+				_, err = f.TruncateTail(ChainFreezerBlockDataGroup, 2)
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
+				f, err = NewFreezer(dir, "", false, 2049, chainFreezerTableConfigs)
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
+				f, err = NewFreezer(dir, "", true, 2049, chainFreezerTableConfigs)
+				require.NoError(t, err)
+				check(2, 2, 0, 0)
+				return
+			}
+			check(4, 4, 4, 0)
+			if tc.memory {
+				return
+			}
+
+			require.NoError(t, ResetEmptyBlobAncientTable(f, 4))
+			check(4, 4, 4, 0)
+			appendBlocks(4, 8, true)
+			check(8, 8, 8, 4)
+			_, err = f.TruncateTableTail(ChainFreezerBlobSidecarTable, 6)
+			require.NoError(t, err)
+			check(8, 8, 8, 2)
+			_, err = f.TruncateTail(ChainFreezerBlockDataGroup, 7)
+			require.NoError(t, err)
+			check(8, 1, 8, 1)
+		})
+	}
+}
