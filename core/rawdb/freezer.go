@@ -670,7 +670,11 @@ func (f *Freezer) resetTailMeta(legacyOffset uint64) error {
 	}
 	f.writeLock.Lock()
 	defer f.writeLock.Unlock()
-	for _, t := range f.tables {
+	for kind, t := range f.tables {
+		// Keep uninitialized blob tables at zero during legacy offset migration.
+		if slices.Contains(additionTables, kind) && t.items.Load() == 0 {
+			continue
+		}
 		if err := t.resetTailMeta(legacyOffset); err != nil {
 			return err
 		}

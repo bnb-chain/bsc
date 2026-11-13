@@ -297,10 +297,6 @@ func (f *FilterMaps) Start() {
 			log.Error("Could not load head filter map snapshot", "error", err)
 		}
 	}
-	if f.indexedView == nil {
-		log.Error("FilterMaps fail to Start, restart maybe ok!")
-		return
-	}
 	f.closeWg.Add(2)
 	go f.removeBloomBits()
 	go f.indexerLoop()
@@ -454,6 +450,7 @@ func (f *FilterMaps) init() error {
 		if f.historyCutoff >= f.targetView.HeadNumber() {
 			return errors.New("cannot start indexing at history cutoff point after chain head")
 		}
+		initBlockNumber = f.historyCutoff
 		cpList = checkpointList{{
 			BlockNumber: f.historyCutoff,
 			BlockId:     f.targetView.BlockId(f.historyCutoff),
@@ -470,7 +467,7 @@ func (f *FilterMaps) init() error {
 		if initBlockNumber == 0 {
 			initBlockNumber = 1
 		}
-		if f.indexedView.chain.GetCanonicalHash(initBlockNumber) == (common.Hash{}) {
+		if f.targetView.chain.GetCanonicalHash(initBlockNumber) == (common.Hash{}) {
 			return fmt.Errorf("cannot start indexing: blockNumber=%d is pruned", initBlockNumber)
 		}
 	}
