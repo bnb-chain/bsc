@@ -76,7 +76,7 @@ var (
 
 	// Files that end up in the geth-alltools*.zip archive (and the NSIS installer
 	// dev-tools section). Order matches the historical layout produced by ci.go.
-	allToolsBinaries = []string{"abigen", "bootnode", "evm", "geth", "rlpdump", "clef"}
+	allToolsBinaries = []string{"abigen", "bootnode", "evm", "geth", "rlpdump"}
 
 	// Keeper build targets with their configurations
 	keeperTargets = []struct {
