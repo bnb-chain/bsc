@@ -578,7 +578,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 		}
 		statedb.SetTxContext(tx.Hash(), i, uint32(i+1))
 		if _, err := core.ApplyMessage(evm, msg, nil); err != nil {
@@ -776,7 +776,7 @@ txloop:
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 		}
 		statedb.SetTxContext(tx.Hash(), i, uint32(i+1))
 		if _, err := core.ApplyMessage(evm, msg, nil); err != nil {
@@ -877,7 +877,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		// Prepare the transaction for un-traced execution
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 		}
 		if txHash != (common.Hash{}) && tx.Hash() != txHash {
 			// Process the tx to update state, but don't trace it.
@@ -1160,7 +1160,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
 		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, message.From, message.To, message.Value, evm.GetRules())
-		message.SkipNonceCheck().SkipEOACheck()
+		message.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 	}
 
 	// Call Prepare to clear out the statedb access list
