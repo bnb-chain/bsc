@@ -6,7 +6,7 @@ ADD . /bsc
 WORKDIR /bsc
 ENV CGO_CFLAGS="-O -D__BLST_PORTABLE__" 
 ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
-RUN make geth
+RUN go run build/ci.go install -static ./cmd/geth
 RUN mv /bsc/build/bin/geth /usr/local/bin/geth
 
 EXPOSE 8545 8547 30303 30303/udp
