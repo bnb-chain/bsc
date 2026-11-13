@@ -293,7 +293,7 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
 		}
 
 		// Not yet the searched for transaction, execute on top of the current state
