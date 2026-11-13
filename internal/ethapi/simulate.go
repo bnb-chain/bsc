@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -528,6 +529,10 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	// header and emit withdrawals fields for pre-Shanghai blocks.
 	if sim.chainConfig.IsShanghai(header.Number, header.Time) {
 		blockBody.Withdrawals = *block.BlockOverrides.Withdrawals
+	}
+	if sim.isBSC() {
+		// Simulation omits Parlia system transactions but still applies contract upgrades.
+		systemcontracts.TryUpdateBuildInSystemContract(sim.chainConfig, header.Number, parent.Time, header.Time, sim.state, false)
 	}
 	// Process the withdrawals and EIP-7685 requests
 	requests, bal, err := core.PostExecution(ctx, sim.chainConfig, header.Number, header.Time, allLogs, blockBody.Withdrawals, evm, uint32(len(block.Calls)+1))

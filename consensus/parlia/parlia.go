@@ -1624,6 +1624,18 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 	}
 
+	if p.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		var allLogs []*types.Log
+		for _, receipt := range receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		evm := vm.NewEVM(core.NewEVMBlockContext(header, cx, nil), state, p.chainConfig, vm.Config{Tracer: tracer})
+		_, _, err := core.PostExecution(context.Background(), p.chainConfig, header.Number, header.Time, allLogs, body.Withdrawals, evm, uint32(len(body.Transactions)+1))
+		evm.Release()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	// should not happen. Once happen, stop the node is better than broadcast the block
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")

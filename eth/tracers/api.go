@@ -393,9 +393,6 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				break
 			}
 
-			// upgrade built-in system contract before normal txs if Feynman is not enabled
-			systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), next.Number(), block.Time(), next.Time(), statedb, true)
-
 			// Insert block's parent beacon block root in the state
 			// as per EIP-4788.
 			context := core.NewEVMBlockContext(next.Header(), api.chainContext(ctx), nil)
@@ -541,9 +538,6 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	}
 	defer release()
 
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
-
 	var (
 		roots          []common.Hash
 		signer         = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
@@ -627,8 +621,6 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	}
 	defer release()
 
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 	blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 	evm := vm.NewEVM(blockCtx, statedb, api.backend.ChainConfig(), vm.Config{})
 	defer evm.Release()
@@ -819,9 +811,6 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		return nil, err
 	}
 	defer release()
-
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	// Retrieve the tracing configurations, or use default values
 	var (

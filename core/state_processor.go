@@ -118,8 +118,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		}
 	}
 
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, parent.Time, block.Time(), statedb, true)
+	recordSystemBAL := config.IsInBSC() && config.IsAmsterdam(blockNumber, block.Time())
 
 	var (
 		context         = NewEVMBlockContext(header, p.chain, nil)
@@ -185,18 +184,24 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockAccessList.Merge(bal)
 	}
 	numUserReceipts := len(receipts)
-	requests, bal, err := PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
-	if err != nil {
-		return nil, err
+	var requests [][]byte
+	if config.IsNotInBSC() {
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+		if err != nil {
+			return nil, err
+		}
+		blockAccessList.Merge(postBAL)
 	}
-	blockAccessList.Merge(bal)
 
 	gasUsed := gp.Used()
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	body := &types.Body{Transactions: commonTxs, Uncles: block.Uncles(), Withdrawals: block.Withdrawals()}
-	// TODO: Include Parlia system transactions and system-contract upgrades in
-	// the block access list before enabling Amsterdam on BSC.
-	err = p.chain.Engine().Finalize(p.chain, header, tracingStateDB, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
+	finalizeState := tracingStateDB
+	if recordSystemBAL {
+		finalizeState = &systemTxStateDB{StateDB: tracingStateDB, accessList: blockAccessList}
+	}
+	err = p.chain.Engine().Finalize(p.chain, header, finalizeState, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +212,14 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	for _, receipt := range receipts[numUserReceipts:] {
 		pipeline.feedReceipt(receipt)
 		allLogs = append(allLogs, receipt.Logs...)
+	}
+	if config.IsInBSC() {
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+		if err != nil {
+			return nil, err
+		}
+		blockAccessList.Merge(postBAL)
 	}
 
 	if err := lane.Verify(gasUsed); err != nil {
@@ -242,6 +255,10 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 	if config.IsAmsterdam(number, time) {
 		blockAccessList = bal.NewConstructionBlockAccessList()
 	}
+	systemcontracts.TryUpdateBuildInSystemContract(config, number, parent.Time, time, evm.StateDB, true)
+	if config.IsInBSC() && config.IsAmsterdam(number, time) {
+		blockAccessList.Merge(finaliseProtocolChanges(evm.StateDB, evm.GetRules(), 0))
+	}
 	// EIP-4788
 	if beaconRoot != nil {
 		ProcessBeaconBlockRoot(*beaconRoot, evm, blockAccessList)
@@ -256,12 +273,19 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 // PostExecution processes the withdrawals and then the post-execution system
 // calls when Prague is enabled. If Prague is not activated, it returns null
 // requests to differentiate from empty requests.
+// On BSC, it collects remaining protocol changes after all system transactions.
 func PostExecution(ctx context.Context, config *params.ChainConfig, number *big.Int, time uint64, allLogs []*types.Log, withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32) (requests [][]byte, blockAccessList *bal.ConstructionBlockAccessList, err error) {
 	_, _, spanEnd := telemetry.StartSpan(ctx, "core.postExecution")
 	defer spanEnd(&err)
 
 	if config.IsAmsterdam(number, time) {
 		blockAccessList = bal.NewConstructionBlockAccessList()
+	}
+	if config.IsInBSC() {
+		if config.IsAmsterdam(number, time) {
+			blockAccessList.Merge(finaliseProtocolChanges(evm.StateDB, evm.GetRules(), blockAccessIndex))
+		}
+		return nil, blockAccessList, nil
 	}
 	rules := config.Rules(number, true, time) // IsMerge is always true
 

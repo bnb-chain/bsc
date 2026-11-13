@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/txorder"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -1164,9 +1163,6 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		return nil, err
 	}
 
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
-
 	env.bal.Merge(core.PreExecution(context.Background(), header.ParentBeaconRoot, parent, w.chainConfig, env.evm, header.Number, header.Time))
 	return env, nil
 }
@@ -1318,18 +1314,22 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 			}
 		}
 	}
-	allLogs := make([]*types.Log, 0)
-	for _, r := range work.receipts {
-		allLogs = append(allLogs, r.Logs...)
-	}
-	requests, postBAL, err := core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
-	if err != nil {
-		return &newPayloadResult{err: err}
-	}
-	work.bal.Merge(postBAL)
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
+	var requests [][]byte
+	if w.chainConfig.IsNotInBSC() {
+		var allLogs []*types.Log
+		for _, receipt := range work.receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
+		if err != nil {
+			return &newPayloadResult{err: err}
+		}
+		work.bal.Merge(postBAL)
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			work.header.RequestsHash = &reqHash
+		}
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
@@ -1703,8 +1703,8 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		// TODO: Run post-execution and collect Parlia finalization changes into
-		// the BAL, then attach it to the block before enabling Amsterdam on BSC.
+		// TODO: Collect Parlia finalization changes into the BAL and attach it
+		// to the block before enabling Amsterdam on BSC.
 		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, env.bal)
 		env.committed = true
 		if err != nil {
