@@ -184,11 +184,15 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockAccessList.Merge(bal)
 	}
 	numUserReceipts := len(receipts)
-	requests, bal, err := PostExecution(ctx, parent, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
-	if err != nil {
-		return nil, err
+	var requests [][]byte
+	if config.IsNotInBSC() {
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+		if err != nil {
+			return nil, err
+		}
+		blockAccessList.Merge(postBAL)
 	}
-	blockAccessList.Merge(bal)
 
 	gasUsed := gp.Used()
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
@@ -201,9 +205,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	if err != nil {
 		return nil, err
 	}
-	if recordSystemBAL {
-		blockAccessList.Merge(finaliseProtocolChanges(tracingStateDB, evm.GetRules(), uint32(len(block.Transactions())+1)))
-	}
 	if len(receipts) != len(block.Transactions()) {
 		return nil, fmt.Errorf("receipt count mismatch: have %d, want %d", len(receipts), len(block.Transactions()))
 	}
@@ -211,6 +212,14 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	for _, receipt := range receipts[numUserReceipts:] {
 		pipeline.feedReceipt(receipt)
 		allLogs = append(allLogs, receipt.Logs...)
+	}
+	if config.IsInBSC() {
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+		if err != nil {
+			return nil, err
+		}
+		blockAccessList.Merge(postBAL)
 	}
 
 	if err := lane.Verify(gasUsed); err != nil {
@@ -264,8 +273,8 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 // PostExecution processes the withdrawals and then the post-execution system
 // calls when Prague is enabled. If Prague is not activated, it returns null
 // requests to differentiate from empty requests.
-// On BSC, it applies upgrades before Parlia executes the system transactions.
-func PostExecution(ctx context.Context, parent *types.Header, config *params.ChainConfig, number *big.Int, time uint64, allLogs []*types.Log, withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32) (requests [][]byte, blockAccessList *bal.ConstructionBlockAccessList, err error) {
+// On BSC, it collects remaining protocol changes after all system transactions.
+func PostExecution(ctx context.Context, config *params.ChainConfig, number *big.Int, time uint64, allLogs []*types.Log, withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32) (requests [][]byte, blockAccessList *bal.ConstructionBlockAccessList, err error) {
 	_, _, spanEnd := telemetry.StartSpan(ctx, "core.postExecution")
 	defer spanEnd(&err)
 
@@ -273,8 +282,9 @@ func PostExecution(ctx context.Context, parent *types.Header, config *params.Cha
 		blockAccessList = bal.NewConstructionBlockAccessList()
 	}
 	if config.IsInBSC() {
-		// Leave the mutations pending for the following Parlia system transaction.
-		systemcontracts.TryUpdateBuildInSystemContract(config, number, parent.Time, time, evm.StateDB, false)
+		if config.IsAmsterdam(number, time) {
+			blockAccessList.Merge(finaliseProtocolChanges(evm.StateDB, evm.GetRules(), blockAccessIndex))
+		}
 		return nil, blockAccessList, nil
 	}
 	rules := config.Rules(number, true, time) // IsMerge is always true

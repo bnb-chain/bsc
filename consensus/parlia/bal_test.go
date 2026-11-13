@@ -95,4 +95,20 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 	if err := core.NewBlockValidator(&config, chain).ValidateState(block, sdb, res, false); err != nil {
 		t.Fatalf("Parlia execution differs from the expected BAL and post-state: %v", err)
 	}
+	miningState, _ := state.New(parent.Root, state.NewDatabase(triedb, nil))
+	preEVM := vm.NewEVM(core.NewEVMBlockContext(header, chain, nil), miningState, &config, vm.Config{})
+	core.PreExecution(context.Background(), nil, parent, &config, preEVM, header.Number, header.Time)
+	preEVM.Release()
+	packingHeader := types.CopyHeader(header)
+	packingHeader.GasUsed = 0
+	packed, _, err := engine.FinalizeAndAssembleBidBlock(chain, packingHeader, miningState, &types.Body{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if miningState.TxIndex() != len(packed.Transactions()) {
+		t.Fatal("post-execution did not follow the packed system transactions")
+	}
+	if packed.Root() != header.Root {
+		t.Fatal("packed system transactions differ from imported post-state")
+	}
 }

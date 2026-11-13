@@ -50,11 +50,7 @@ func TestBSCSystemContractUpgradePhases(t *testing.T) {
 			if len(sdb.GetCode(paymentLane)) != 0 {
 				t.Fatal("payment-lane contract upgraded before normal transactions")
 			}
-			requests, postBAL, err := PostExecution(context.Background(), parent, &config, number, 2, nil, nil, evm, 2)
-			if err != nil || requests != nil {
-				t.Fatalf("post-execution: requests %v, err %v", requests, err)
-			}
-			list.Merge(postBAL)
+			systemcontracts.TryUpdateBuildInSystemContract(&config, number, parent.Time, 2, sdb, false)
 			code := sdb.GetCode(paymentLane)
 			if len(code) == 0 {
 				t.Fatal("payment-lane contract not upgraded before system transactions")
@@ -65,6 +61,11 @@ func TestBSCSystemContractUpgradePhases(t *testing.T) {
 			systemState.SetTxContext(common.Hash{1}, 0, 1)
 			systemState.SetNonce(coinbase, 1, tracing.NonceChangeEoACall)
 			systemState.Finalise(evm.GetRules())
+			requests, postBAL, err := PostExecution(context.Background(), &config, number, 2, nil, nil, evm, 2)
+			if err != nil || requests != nil {
+				t.Fatalf("post-execution: requests %v, err %v", requests, err)
+			}
+			list.Merge(postBAL)
 
 			want := bal.NewConstructionBlockAccessList()
 			if active {

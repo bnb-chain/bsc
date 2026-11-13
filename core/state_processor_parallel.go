@@ -285,7 +285,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	if precompileCache != nil {
 		postEVM.SetPrecompileCache(precompileCache)
 	}
-	requests, postBAL, err := PostExecution(ctx, parent, config, header.Number, header.Time, allLogs, block.Withdrawals(), postEVM, postIndex)
+	requests, postBAL, err := PostExecution(ctx, config, header.Number, header.Time, allLogs, block.Withdrawals(), postEVM, postIndex)
 	postEVM.Release()
 	if err != nil {
 		return nil, err
