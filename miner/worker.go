@@ -1314,13 +1314,22 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 			}
 		}
 	}
-	requests, err := w.postExecution(work, genParam.withdrawals)
-	if err != nil {
-		return &newPayloadResult{err: err}
-	}
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
+	var requests [][]byte
+	if w.chainConfig.IsNotInBSC() {
+		var allLogs []*types.Log
+		for _, receipt := range work.receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
+		if err != nil {
+			return &newPayloadResult{err: err}
+		}
+		work.bal.Merge(postBAL)
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			work.header.RequestsHash = &reqHash
+		}
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
@@ -1348,23 +1357,6 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 		requests:    requests,
 		witness:     work.witness,
 	}
-}
-
-func (w *worker) postExecution(work *environment, withdrawals types.Withdrawals) ([][]byte, error) {
-	parent := w.chain.GetHeader(work.header.ParentHash, work.header.Number.Uint64()-1)
-	if parent == nil {
-		return nil, consensus.ErrUnknownAncestor
-	}
-	var allLogs []*types.Log
-	for _, receipt := range work.receipts {
-		allLogs = append(allLogs, receipt.Logs...)
-	}
-	requests, postBAL, err := core.PostExecution(context.Background(), parent, w.chainConfig, work.header.Number, work.header.Time, allLogs, withdrawals, work.evm, uint32(work.tcount+1))
-	if err != nil {
-		return nil, err
-	}
-	work.bal.Merge(postBAL)
-	return requests, nil
 }
 
 // delay returns the time budget for local block building.
@@ -1710,11 +1702,6 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		body := types.Body{Transactions: env.txs}
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
-		}
-		if w.chainConfig.IsInBSC() {
-			if _, err := w.postExecution(env, body.Withdrawals); err != nil {
-				return err
-			}
 		}
 		// TODO: Collect Parlia finalization changes into the BAL and attach it
 		// to the block before enabling Amsterdam on BSC.

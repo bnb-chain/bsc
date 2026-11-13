@@ -1430,7 +1430,6 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-// Finalize executes system transactions after the caller has run core.PostExecution.
 func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body,
 	receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	txs := &body.Transactions
@@ -1453,6 +1452,8 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if parent == nil {
 		return errors.New("parent not found")
 	}
+
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, systemTxImporting, tracer)
@@ -1539,7 +1540,6 @@ const (
 	systemTxPacking
 )
 
-// FinalizeAndAssemble requires core.PostExecution to have run on the state.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	return p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxMining)
@@ -1561,6 +1561,8 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if parent == nil {
 		return nil, nil, errors.New("parent not found")
 	}
+
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
@@ -1622,6 +1624,18 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 	}
 
+	if p.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		var allLogs []*types.Log
+		for _, receipt := range receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		evm := vm.NewEVM(core.NewEVMBlockContext(header, cx, nil), state, p.chainConfig, vm.Config{Tracer: tracer})
+		_, _, err := core.PostExecution(context.Background(), p.chainConfig, header.Number, header.Time, allLogs, body.Withdrawals, evm, uint32(len(body.Transactions)+1))
+		evm.Release()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	// should not happen. Once happen, stop the node is better than broadcast the block
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
