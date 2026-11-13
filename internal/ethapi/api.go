@@ -582,10 +582,7 @@ func (api *BlockChainAPI) GetBlockMevInfo(ctx context.Context, blockNrOrHash rpc
 }
 
 func (api *BlockChainAPI) Health() bool {
-	if rpc.RpcServingTimer != nil {
-		return rpc.RpcServingTimer.Snapshot().Percentile(0.75) < float64(UnHealthyTimeout)
-	}
-	return true
+	return rpc.RpcServingHealthSample.Snapshot().Percentile(0.75) < float64(UnHealthyTimeout)
 }
 
 func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValidatorNum int64) (int64, error) {
@@ -1211,6 +1208,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		State:       state,
 		Precompiles: precompiles,
 		BlobBaseFee: blobBaseFee,
+		Random:      blockCtx.Random,
 		ErrorRatio:  estimateGasErrorRatio,
 	}
 	// Set any required transaction default, but make sure the gas cap itself is not messed with

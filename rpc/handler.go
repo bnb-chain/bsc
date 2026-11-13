@@ -569,6 +569,10 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 	}
 	rSpanEnd(&rErr)
 
+	if msg.Method != "eth_health" {
+		RpcServingHealthSample.Update(time.Since(start).Nanoseconds())
+	}
+
 	// Collect the statistics for RPC calls if metrics is enabled.
 	rpcRequestGauge.Inc(1)
 	if answer.Error != nil {

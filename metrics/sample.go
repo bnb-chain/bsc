@@ -133,6 +133,7 @@ func (s *sampleSnapshot) Variance() float64 {
 //
 // <http://dimacs.rutgers.edu/~graham/pubs/papers/fwddecay.pdf>
 type ExpDecaySample struct {
+	force         bool
 	alpha         float64
 	count         int64
 	mutex         sync.Mutex
@@ -152,6 +153,15 @@ func NewExpDecaySample(reservoirSize int, alpha float64) Sample {
 		values:        newExpDecaySampleHeap(reservoirSize),
 	}
 	s.t1 = s.t0.Add(rescaleThreshold)
+	return s
+}
+
+// NewExpDecaySampleForced constructs an exponentially-decaying sample that records
+// values even when metrics collection is disabled. Use it for samples required
+// for application behavior rather than optional monitoring.
+func NewExpDecaySampleForced(reservoirSize int, alpha float64) Sample {
+	s := NewExpDecaySample(reservoirSize, alpha).(*ExpDecaySample)
+	s.force = true
 	return s
 }
 
@@ -198,7 +208,7 @@ func (s *ExpDecaySample) Snapshot() *sampleSnapshot {
 
 // Update samples a new value.
 func (s *ExpDecaySample) Update(v int64) {
-	if !metricsEnabled {
+	if !s.force && !metricsEnabled {
 		return
 	}
 	s.update(time.Now(), v)

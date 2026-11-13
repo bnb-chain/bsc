@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -44,7 +45,8 @@ type Options struct {
 
 	Precompiles vm.PrecompiledContracts // Optional precompile overrides for this call.
 
-	BlobBaseFee *big.Int // BlobBaseFee optionally overrides the blob base fee in the execution context.
+	BlobBaseFee *big.Int     // BlobBaseFee optionally overrides the blob base fee in the execution context.
+	Random      *common.Hash // Random optionally overrides PREVRANDAO, including on non-zero-difficulty headers.
 
 	ErrorRatio float64 // Allowed overestimation ratio for faster estimation termination
 }
@@ -234,6 +236,9 @@ func run(ctx context.Context, call *core.Message, opts *Options) (*core.Executio
 		evmContext = core.NewEVMBlockContext(opts.Header, opts.Chain, nil)
 		dirtyState = opts.State.Copy()
 	)
+	if opts.Random != nil {
+		evmContext.Random = opts.Random
+	}
 	if opts.BlobBaseFee != nil {
 		evmContext.BlobBaseFee = new(big.Int).Set(opts.BlobBaseFee)
 	}
