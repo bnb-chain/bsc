@@ -322,4 +322,3 @@ func BenchmarkCalculatePercentiles(b *testing.B) {
 		_ = CalculatePercentiles(v, pss)
 	}
 }
-
