@@ -51,6 +51,7 @@ func TestTracerStopRace(t *testing.T) {
 		{"4byteTracer", false},
 		{"prestateTracer", false},
 		{"erc7562Tracer", true},
+		{"keccak256PreimageTracer", false},
 	}
 	for _, s := range cases {
 		t.Run(s.name, func(t *testing.T) {
