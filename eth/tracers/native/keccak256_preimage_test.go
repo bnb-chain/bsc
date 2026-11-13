@@ -18,6 +18,7 @@ package native_test
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -75,6 +76,31 @@ func TestKeccak256PreimageTracerCreation(t *testing.T) {
 	require.NotNil(t, tracer.Hooks)
 	require.NotNil(t, tracer.Hooks.OnOpcode)
 	require.NotNil(t, tracer.GetResult)
+	require.NotNil(t, tracer.Stop)
+}
+
+func TestKeccak256PreimageTracerStop(t *testing.T) {
+	tracer, err := tracers.DefaultDirectory.New("keccak256PreimageTracer", &tracers.Context{}, nil, params.MainnetChainConfig)
+	require.NoError(t, err)
+
+	scope := &mockOpContext{
+		memory: []byte("before"),
+		stack:  []uint256.Int{*uint256.NewInt(6), *uint256.NewInt(0)},
+	}
+	tracer.OnOpcode(0, byte(vm.KECCAK256), 0, 0, scope, nil, 0, nil)
+
+	stopErr := errors.New("execution timeout")
+	tracer.Stop(stopErr)
+	scope.memory = []byte("after!")
+	tracer.OnOpcode(0, byte(vm.KECCAK256), 0, 0, scope, nil, 0, nil)
+
+	result, err := tracer.GetResult()
+	require.ErrorIs(t, err, stopErr)
+	var hashes map[common.Hash]hexutil.Bytes
+	require.NoError(t, json.Unmarshal(result, &hashes))
+	require.Equal(t, map[common.Hash]hexutil.Bytes{
+		crypto.Keccak256Hash([]byte("before")): hexutil.Bytes("before"),
+	}, hashes)
 }
 
 func TestKeccak256PreimageTracerInitialResult(t *testing.T) {
