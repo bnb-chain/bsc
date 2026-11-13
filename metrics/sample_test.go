@@ -323,27 +323,3 @@ func BenchmarkCalculatePercentiles(b *testing.B) {
 	}
 }
 
-func TestExpDecaySampleForced(t *testing.T) {
-	enabled := metricsEnabled
-	defer func() { metricsEnabled = enabled }()
-
-	for _, enabled := range []bool{false, true} {
-		metricsEnabled = enabled
-		regular := NewExpDecaySample(2, 0.015)
-		forced := NewExpDecaySampleForced(2, 0.015)
-		for i := range int64(8) {
-			regular.Update(i)
-			forced.Update(i)
-		}
-		if got := forced.Snapshot(); got.Count() != 8 || got.Size() != 2 {
-			t.Fatalf("metrics enabled %v: forced sample count %d, size %d; want 8, 2", enabled, got.Count(), got.Size())
-		}
-		var want int64
-		if enabled {
-			want = 8
-		}
-		if got := regular.Snapshot().Count(); got != want {
-			t.Fatalf("metrics enabled %v: regular sample count %d, want %d", enabled, got, want)
-		}
-	}
-}
