@@ -41,7 +41,7 @@ import (
 const (
 	maxMevGRPCMessageSize        = 2 * params.MaxBlockSize
 	mevGRPCStreamHeadroom        = uint32(16)
-	defaultMevGRPCConcurrency    = uint32(32)
+	defaultMevGRPCConcurrency    = uint32(256)
 	defaultMevGRPCRequestTimeout = 10 * time.Second
 	mevGRPCShutdownTimeout       = 15 * time.Second
 )
