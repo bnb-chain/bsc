@@ -63,6 +63,9 @@ type Syncer interface {
 	OnTrieNodes(peer SyncPeerV2, id uint64, trienodes [][]byte) error
 	OnAccessLists(peer SyncPeerV2, id uint64, lists rlp.RawList[rlp.RawValue]) error
 
+	// Pivot returns the current state-sync cursor, if any.
+	Pivot() *types.Header
+
 	// FrozenPivot returns the pivot header the syncer is bound to, or nil if
 	// the pivot may still be chosen and moved freely.
 	FrozenPivot() *types.Header
@@ -130,6 +133,9 @@ func (syncerV1Adapter) OnAccessLists(SyncPeerV2, uint64, rlp.RawList[rlp.RawValu
 
 // Version is SNAP1
 func (syncerV1Adapter) Version() uint { return SNAP1 }
+
+// Pivot is nil for snap/1, whose progress is keyed by state root.
+func (syncerV1Adapter) Pivot() *types.Header { return nil }
 
 // FrozenPivot is always nil for snap/1: the sync target must keep tracking
 // the chain head, ensuring the state is available in the network, so the

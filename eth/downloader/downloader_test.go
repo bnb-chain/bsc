@@ -629,6 +629,14 @@ func TestCanonicalSynchronisationSnap(t *testing.T)   { testCanonSync(t, eth.ETH
 func TestCanonicalSynchronisationFull71(t *testing.T) { testCanonSync(t, eth.ETH71, FullSync, false) }
 func TestCanonicalSynchronisationSnap71(t *testing.T) { testCanonSync(t, eth.ETH71, SnapSync, false) }
 
+func TestCanonicalSynchronisationSnapV2(t *testing.T) {
+	for _, protocol := range []uint{eth.ETH71, eth.ETH68} {
+		t.Run(fmt.Sprintf("eth%d", protocol), func(t *testing.T) {
+			testCanonSync(t, protocol, SnapSync, true)
+		})
+	}
+}
+
 func testCanonSync(t *testing.T, protocol uint, mode SyncMode, snapV2 bool) {
 	success := make(chan struct{})
 	tester := newTesterWithSnap(t, mode, func() {

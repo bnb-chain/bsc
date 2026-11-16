@@ -632,13 +632,10 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 				s.resetSyncState()
 				break
 			}
-			// A canonical pivot move past a frozen pivot should be impossible:
-			// the downloader both refuses moves (FrozenPivot) and resumes new
-			// cycles against the frozen header itself. Reaching this branch
-			// frozen indicates a bug on the downloader side; roll the flat
-			// state forward defensively and regenerate.
+			// A resumed peer-driven cycle may have a newer target; roll the
+			// downloaded state forward and regenerate its tries.
 			if s.getPhase() == phaseGenerate {
-				log.Warn("Frozen pivot moved unexpectedly, rolling forward", "frozen", prevPivot.Number, "new", target.Number)
+				log.Debug("Moving pivot before trie generation", "old", prevPivot.Number, "new", target.Number)
 			}
 			if err := s.catchUp(target, cancel); err != nil {
 				if errors.Is(err, errNoBALHistory) {
@@ -713,14 +710,20 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 	return nil
 }
 
+// Pivot returns the state-sync cursor restored from the journal or advanced by catch-up.
+func (s *syncerV2) Pivot() *types.Header {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.pivot
+}
+
 // FrozenPivot returns the pivot header the sync is bound to, or nil while
 // the pivot may move freely.
 //
 // The pivot is frozen only for the trie generation phase, in which it targets
-// the exact pivot root the download finished with, so for its duration the
-// downloader must neither move the pivot nor start a new cycle against a
-// different one. Once the tries are complete, a pivot move is rolled forward
-// locally by the BAL catch-up again.
+// the exact pivot root the download finished with, so the downloader must stop
+// moving its target during generation. A resumed cycle may catch up to a newer
+// target once the gap headers are available.
 func (s *syncerV2) FrozenPivot() *types.Header {
 	if s.getPhase() != phaseGenerate {
 		return nil
@@ -998,8 +1001,8 @@ func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, erro
 }
 
 // gapHeader reads the header of a gap block with the given number and
-// expected hash from the header database. Headers are persisted before their
-// bodies are imported by the legacy downloader.
+// expected hash from the header database. The downloader persists the required
+// prefix before starting catch-up.
 func (s *syncerV2) gapHeader(num uint64, hash common.Hash) *types.Header {
 	return rawdb.ReadHeader(s.db, hash, num)
 }

@@ -1130,17 +1130,19 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 					log.Warn("Peer sent invalid pivot confirmer", "have", have, "want", want)
 					return fmt.Errorf("%w: next pivot confirmer number %d != requested %d", errInvalidChain, have, want)
 				}
-				log.Warn("Pivot seemingly stale, moving", "old", pivot, "new", headers[0].Number)
-				pivot = headers[0].Number.Uint64()
+				if d.snapSyncer.FrozenPivot() == nil {
+					log.Warn("Pivot seemingly stale, moving", "old", pivot, "new", headers[0].Number)
+					pivot = headers[0].Number.Uint64()
 
-				d.pivotLock.Lock()
-				d.pivotHeader = headers[0]
-				d.pivotLock.Unlock()
+					d.pivotLock.Lock()
+					d.pivotHeader = headers[0]
+					d.pivotLock.Unlock()
 
-				// Write out the pivot into the database so a rollback beyond
-				// it will reenable snap sync and update the state root that
-				// the state syncer will be downloading.
-				rawdb.WriteLastPivotNumber(d.stateDB, pivot)
+					// Write out the pivot into the database so a rollback beyond
+					// it will reenable snap sync and update the state root that
+					// the state syncer will be downloading.
+					rawdb.WriteLastPivotNumber(d.stateDB, pivot)
+				}
 			}
 			// Disable the pivot check and fetch the next batch of headers
 			pivoting = false
@@ -1251,7 +1253,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 		}
 		// If we're still skeleton filling snap sync, check pivot staleness
 		// before continuing to the next skeleton filling
-		if skeleton && pivot > 0 {
+		if skeleton && pivot > 0 && d.snapSyncer.FrozenPivot() == nil {
 			pivoting = true
 		}
 	}
@@ -1559,12 +1561,18 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 // processSnapSyncContent takes fetch results from the queue and writes them to the
 // database. It also controls the synchronisation of state nodes of the pivot block.
 func (d *Downloader) processSnapSyncContent() error {
-	// Start syncing state of the reported head block. This should get us most of
-	// the state of the pivot block.
+	// Resume snap/2 state progress before retargeting to the downloaded pivot.
 	d.pivotLock.RLock()
 	pivot := d.pivotHeader
 	d.pivotLock.RUnlock()
-	sync := d.syncState(pivot)
+	isSnapV2 := d.snapSyncer.Version() == snap.SNAP2
+	initial := pivot
+	if !d.committed.Load() && isSnapV2 {
+		if previous := d.snapSyncer.Pivot(); previous != nil {
+			initial = previous
+		}
+	}
+	sync := d.syncState(initial)
 
 	defer func() {
 		// The `sync` object is replaced every time the pivot moves. We need to
@@ -1676,7 +1684,14 @@ func (d *Downloader) processSnapSyncContent() error {
 			if P != nil {
 				target = P.Header
 			}
-			if target.Hash() != sync.pivot.Hash() {
+			if target.Hash() != sync.pivot.Hash() && (!isSnapV2 || P != nil) {
+				if isSnapV2 {
+					// BAL catch-up reads gap headers from the imported prefix.
+					if err := d.commitSnapSyncData(beforeP, sync); err != nil {
+						return err
+					}
+					beforeP = nil
+				}
 				sync.Cancel()
 				sync = d.syncState(target)
 				go closeOnErr(sync)
