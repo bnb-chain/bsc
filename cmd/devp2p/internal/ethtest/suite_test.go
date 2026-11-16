@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with go-ethereum. If not, see <http://www.gnu.org/licenses/>.
 
-package ethtest // TOFIX
+package ethtest
 
 import (
 	crand "crypto/rand"
@@ -48,15 +48,21 @@ func makeJWTSecret(t *testing.T) (string, [32]byte, error) {
 	return jwtPath, secret, nil
 }
 
-func TestEthSuite(t *testing.T) {
-	testEthSuite(t, ethproto.ETH72)
-}
+// Keep eth/70 coverage until the production protocol list drops it.
+var suiteEthVersions = []uint{ethproto.ETH71, ethproto.ETH68, ethproto.ETH70}
 
-func TestEthSuiteEth71(t *testing.T) {
-	testEthSuite(t, ethproto.ETH71)
+func TestEthSuite(t *testing.T) {
+	for _, version := range suiteEthVersions {
+		t.Run(fmt.Sprintf("eth%d", version), func(t *testing.T) {
+			testEthSuite(t, version)
+		})
+	}
 }
 
 func testEthSuite(t *testing.T, ethVersion uint) {
+	if !slices.Contains(ethproto.ProtocolVersions, ethVersion) {
+		t.Skipf("eth/%d is not enabled in the node", ethVersion)
+	}
 	jwtPath, secret, err := makeJWTSecret(t)
 	if err != nil {
 		t.Fatalf("could not make jwt secret: %v", err)
@@ -71,6 +77,10 @@ func testEthSuite(t *testing.T, ethVersion uint) {
 	if err != nil {
 		t.Fatalf("could not create new test suite: %v", err)
 	}
+	// The default 71+68 capabilities must negotiate either target version.
+	if ethVersion == ethproto.ETH70 {
+		suite.ethVersion = ethVersion
+	}
 	conn, err := suite.dialAndPeer(nil)
 	if err != nil {
 		t.Fatalf("could not peer with test node: %v", err)
@@ -79,9 +89,24 @@ func testEthSuite(t *testing.T, ethVersion uint) {
 	if conn.negotiatedProtoVersion != ethVersion {
 		t.Fatalf("negotiated eth/%d, want eth/%d", conn.negotiatedProtoVersion, ethVersion)
 	}
+	suite.ethVersion = ethVersion
 	suite.requireAvailableBALs = true
 	for _, test := range suite.EthTests() {
 		t.Run(test.Name, func(t *testing.T) {
+			switch test.Name {
+			case "GetBlockAccessLists":
+				if ethVersion < ethproto.ETH71 {
+					t.Skip("BAL exchange requires eth/71")
+				}
+			case "GetLargeReceipts":
+				if ethVersion < ethproto.ETH70 {
+					t.Skip("receipt pagination requires eth/70")
+				}
+			case "BlobTxAvailabilityFailure", "GetCells", "BlobTxWithInvalidCells":
+				if ethVersion < ethproto.ETH72 {
+					t.Skip("cell exchange requires eth/72")
+				}
+			}
 			if test.Slow && testing.Short() {
 				t.Skipf("%s: skipping in -short mode", test.Name)
 			}
@@ -94,47 +119,45 @@ func testEthSuite(t *testing.T, ethVersion uint) {
 }
 
 func TestSnapSuite(t *testing.T) {
-	jwtPath, secret, err := makeJWTSecret(t)
-	if err != nil {
-		t.Fatalf("could not make jwt secret: %v", err)
-	}
-	geth, err := runGeth("./testdata", jwtPath, ethproto.ETH72)
-	if err != nil {
-		t.Fatalf("could not run geth: %v", err)
-	}
-	defer geth.Close()
-
-	suite, err := NewSuite(geth.Server().Self(), "./testdata", geth.HTTPAuthEndpoint(), common.Bytes2Hex(secret[:]))
-	if err != nil {
-		t.Fatalf("could not create new test suite: %v", err)
-	}
-	for _, test := range suite.SnapTests() {
-		t.Run(test.Name, func(t *testing.T) {
-			result := utesting.RunTests([]utesting.Test{{Name: test.Name, Fn: test.Fn}}, os.Stdout)
-			if result[0].Failed {
-				t.Fatal()
-			}
+	for _, version := range suiteEthVersions {
+		t.Run(fmt.Sprintf("eth%d", version), func(t *testing.T) {
+			testSnapSuite(t, version, false)
 		})
 	}
 }
 
 func TestSnap2Suite(t *testing.T) {
+	for _, version := range suiteEthVersions {
+		t.Run(fmt.Sprintf("eth%d", version), func(t *testing.T) {
+			testSnapSuite(t, version, true)
+		})
+	}
+}
+
+func testSnapSuite(t *testing.T, ethVersion uint, snap2 bool) {
+	if !slices.Contains(ethproto.ProtocolVersions, ethVersion) {
+		t.Skipf("eth/%d is not enabled in the node", ethVersion)
+	}
 	jwtPath, secret, err := makeJWTSecret(t)
 	if err != nil {
 		t.Fatalf("could not make jwt secret: %v", err)
 	}
-	geth, err := runGeth("./testdata", jwtPath, ethproto.ETH72)
+	geth, err := runGeth("./testdata", jwtPath, ethVersion)
 	if err != nil {
 		t.Fatalf("could not run geth: %v", err)
 	}
 	defer geth.Close()
-
 	suite, err := NewSuite(geth.Server().Self(), "./testdata", geth.HTTPAuthEndpoint(), common.Bytes2Hex(secret[:]))
 	if err != nil {
 		t.Fatalf("could not create new test suite: %v", err)
 	}
-	suite.requireAvailableBALs = true
-	for _, test := range suite.Snap2Tests() {
+	suite.ethVersion = ethVersion
+	tests := suite.SnapTests()
+	if snap2 {
+		suite.requireAvailableBALs = true
+		tests = suite.Snap2Tests()
+	}
+	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			result := utesting.RunTests([]utesting.Test{{Name: test.Name, Fn: test.Fn}}, os.Stdout)
 			if result[0].Failed {
@@ -168,7 +191,7 @@ func runGeth(dir string, jwtPath string, ethVersion uint) (*node.Node, error) {
 		return nil, err
 	}
 	stack.Server().Protocols = slices.DeleteFunc(stack.Server().Protocols, func(protocol p2p.Protocol) bool {
-		return protocol.Name == "eth" && protocol.Version > ethVersion
+		return protocol.Name == "eth" && protocol.Version != ethVersion
 	})
 	if err = stack.Start(); err != nil {
 		stack.Close()

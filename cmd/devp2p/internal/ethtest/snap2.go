@@ -17,7 +17,9 @@
 package ethtest
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -239,15 +241,14 @@ is removed in snap/2.`)
 		t.Fatalf("failed to write GetTrieNodes: %v", err)
 	}
 
-	// We expect either a disconnect or a read error/timeout. We must NOT
-	// receive a valid TrieNodes response. Loop a few times to consume any
-	// incidental messages the peer might send (e.g. block updates) before
-	// deciding.
+	// A timeout is not evidence that the peer rejected the removed message.
 	for i := 0; i < 5; i++ {
 		msg, err := conn.ReadSnap()
-		if err != nil {
-			// Disconnect or read error — the peer rejected the request.
+		if errors.Is(err, errDisc) || errors.Is(err, io.EOF) {
 			return
+		}
+		if err != nil {
+			t.Fatalf("expected disconnect after GetTrieNodes, got: %v", err)
 		}
 		if _, ok := msg.(*snap.TrieNodesPacket); ok {
 			t.Fatal("peer responded with TrieNodes over snap/2; GetTrieNodes must be unsupported")

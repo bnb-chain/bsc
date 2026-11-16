@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -66,15 +67,13 @@ func (s *Suite) dialAs(key *ecdsa.PrivateKey) (*Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	// TODO(BSC): Enable ETH/71 after adapting the handshake and block propagation
-	// handlers, and testing sync, v0 blob relay, unavailable BAL responses and
-	// ETH/70 and ETH/68 fallback. Update the node's ProtocolVersions, these caps
-	// and ourHighestProtoVersion together when enabling it.
 	conn.caps = []p2p.Cap{
-		{Name: "eth", Version: eth.ETH70},
+		{Name: "eth", Version: eth.ETH71},
 		{Name: "eth", Version: eth.ETH68},
 	}
-	conn.ourHighestProtoVersion = eth.ETH70
+	if s.ethVersion != 0 {
+		conn.caps = []p2p.Cap{{Name: "eth", Version: s.ethVersion}}
+	}
 	return &conn, nil
 }
 
@@ -111,7 +110,6 @@ func (s *Suite) dialEth71() (*Conn, error) {
 		return nil, fmt.Errorf("dial failed: %v", err)
 	}
 	conn.caps = []p2p.Cap{{Name: "eth", Version: eth.ETH71}}
-	conn.ourHighestProtoVersion = eth.ETH71
 	return conn, nil
 }
 
@@ -121,7 +119,6 @@ type Conn struct {
 	ourKey                     *ecdsa.PrivateKey
 	negotiatedProtoVersion     uint
 	negotiatedSnapProtoVersion uint
-	ourHighestProtoVersion     uint
 	ourHighestSnapProtoVersion uint
 	caps                       []p2p.Cap
 
@@ -148,7 +145,7 @@ func (c *Conn) ReadMsg(proto Proto, code uint64, msg any) error {
 		if err != nil {
 			return err
 		}
-		if protoOffset(proto)+code == got {
+		if c.protoOffset(proto)+code == got {
 			return rlp.DecodeBytes(data, msg)
 		}
 	}
@@ -161,7 +158,7 @@ func (c *Conn) Write(proto Proto, code uint64, msg any) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.Conn.Write(protoOffset(proto)+code, payload)
+	_, err = c.Conn.Write(c.protoOffset(proto)+code, payload)
 	return err
 }
 
@@ -192,7 +189,7 @@ func (c *Conn) ReadEth() (any, error) {
 			c.Write(baseProto, pongMsg, []byte{})
 			continue
 		}
-		if getProto(code) != ethProto {
+		if c.getProto(code) != ethProto {
 			// Read until eth message.
 			continue
 		}
@@ -253,11 +250,20 @@ func (c *Conn) ReadSnap() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if getProto(code) != snapProto {
+		if code == discMsg {
+			return nil, errDisc
+		}
+		if code == pingMsg {
+			if err := c.Write(baseProto, pongMsg, []byte{}); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if c.getProto(code) != snapProto {
 			// Read until snap message.
 			continue
 		}
-		code -= protoOffset(snapProto)
+		code -= c.protoOffset(snapProto)
 
 		var msg any
 		switch int(code) {
@@ -364,7 +370,7 @@ func (c *Conn) handshake() error {
 		}
 		c.negotiateEthProtocol(msg.Caps)
 		if c.negotiatedProtoVersion == 0 {
-			return fmt.Errorf("could not negotiate eth protocol (remote caps: %v, local eth version: %v)", msg.Caps, c.ourHighestProtoVersion)
+			return fmt.Errorf("could not negotiate eth protocol (remote caps: %v, local caps: %v)", msg.Caps, c.caps)
 		}
 		// If we require snap, verify that it was negotiated.
 		if c.ourHighestSnapProtoVersion != c.negotiatedSnapProtoVersion {
@@ -376,25 +382,25 @@ func (c *Conn) handshake() error {
 	}
 }
 
-// negotiateEthProtocol sets the Conn's eth protocol version to highest
-// advertised capability from peer.
+// negotiateEthProtocol selects the highest capability advertised by both peers.
 func (c *Conn) negotiateEthProtocol(caps []p2p.Cap) {
-	var highestEthVersion uint
-	var highestSnapVersion uint
+	c.negotiatedProtoVersion = 0
+	c.negotiatedSnapProtoVersion = 0
 	for _, capability := range caps {
+		if !slices.Contains(c.caps, capability) {
+			continue
+		}
 		switch capability.Name {
 		case "eth":
-			if capability.Version > highestEthVersion && capability.Version <= c.ourHighestProtoVersion {
-				highestEthVersion = capability.Version
+			if capability.Version > c.negotiatedProtoVersion {
+				c.negotiatedProtoVersion = capability.Version
 			}
 		case "snap":
-			if capability.Version > highestSnapVersion && capability.Version <= c.ourHighestSnapProtoVersion {
-				highestSnapVersion = capability.Version
+			if capability.Version > c.negotiatedSnapProtoVersion {
+				c.negotiatedSnapProtoVersion = capability.Version
 			}
 		}
 	}
-	c.negotiatedProtoVersion = highestEthVersion
-	c.negotiatedSnapProtoVersion = highestSnapVersion
 }
 
 // statusExchange performs a `Status` message exchange with the given node.
@@ -405,13 +411,16 @@ func (c *Conn) statusExchange(chain *Chain, status *eth.StatusPacket) error {
 			return fmt.Errorf("failed to read from connection: %w", err)
 		}
 		switch code {
-		case eth.StatusMsg + protoOffset(ethProto):
+		case eth.StatusMsg + c.protoOffset(ethProto):
 			if c.negotiatedProtoVersion == 0 {
 				return errors.New("eth protocol version must be set in Conn")
 			}
+			if c.negotiatedProtoVersion == eth.ETH68 {
+				return c.statusExchange68(chain, data, status)
+			}
 			msg := new(eth.StatusPacket)
 			if err := rlp.DecodeBytes(data, msg); err != nil {
-				return fmt.Errorf("error decoding eth/70 status packet: %w", err)
+				return fmt.Errorf("error decoding status packet: %w", err)
 			}
 			if uint(msg.ProtocolVersion) != c.negotiatedProtoVersion {
 				return fmt.Errorf("mismatched eth protocol version: node %d, negotiated %d", msg.ProtocolVersion, c.negotiatedProtoVersion)
@@ -459,4 +468,42 @@ func (c *Conn) statusExchange(chain *Chain, status *eth.StatusPacket) error {
 			return fmt.Errorf("bad status message: code %d", code)
 		}
 	}
+}
+
+// statusExchange68 retains the BSC UpgradeStatus exchange used by legacy peers.
+func (c *Conn) statusExchange68(chain *Chain, data []byte, status *eth.StatusPacket) error {
+	var remote eth.StatusPacket68
+	if err := rlp.DecodeBytes(data, &remote); err != nil {
+		return fmt.Errorf("error decoding eth/68 status packet: %w", err)
+	}
+	if remote.ProtocolVersion != eth.ETH68 || remote.NetworkID != chain.config.ChainID.Uint64() ||
+		remote.Genesis != chain.blocks[0].Hash() || remote.Head != chain.Head().Hash() ||
+		remote.TD == nil || remote.TD.Cmp(chain.TD()) != 0 || remote.ForkID != chain.ForkID() {
+		return fmt.Errorf("unexpected eth/68 status: %+v", remote)
+	}
+	local := eth.StatusPacket68{
+		ProtocolVersion: eth.ETH68,
+		NetworkID:       chain.config.ChainID.Uint64(),
+		TD:              chain.TD(),
+		Head:            chain.Head().Hash(),
+		Genesis:         chain.blocks[0].Hash(),
+		ForkID:          chain.ForkID(),
+	}
+	if status != nil {
+		local = eth.StatusPacket68{
+			ProtocolVersion: status.ProtocolVersion, NetworkID: status.NetworkID,
+			TD: status.TD, Head: status.LatestBlockHash, Genesis: status.Genesis, ForkID: status.ForkID,
+		}
+	}
+	if err := c.Write(ethProto, eth.StatusMsg, &local); err != nil {
+		return err
+	}
+	var upgrade eth.UpgradeStatusPacket
+	if err := c.ReadMsg(ethProto, eth.UpgradeStatusMsg, &upgrade); err != nil {
+		return fmt.Errorf("read upgrade status: %w", err)
+	}
+	if _, err := upgrade.GetExtension(); err != nil {
+		return fmt.Errorf("decode upgrade status: %w", err)
+	}
+	return c.Write(ethProto, eth.UpgradeStatusMsg, &eth.UpgradeStatusPacket{})
 }

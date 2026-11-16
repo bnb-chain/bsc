@@ -27,108 +27,100 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestEthProtocolNegotiation tests whether the test suite
-// can negotiate the highest eth protocol in a status message exchange
+// TestEthProtocolNegotiation checks that version gaps do not create a common capability.
 func TestEthProtocolNegotiation(t *testing.T) {
 	t.Parallel()
-	var tests = []struct {
-		conn     *Conn
-		caps     []p2p.Cap
-		expected uint32
+	for _, test := range []struct {
+		name                    string
+		local, remote           []p2p.Cap
+		ethVersion, snapVersion uint
 	}{
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 65,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 63},
-				{Name: "eth", Version: 64},
-				{Name: "eth", Version: 65},
-			},
-			expected: uint32(65),
+			name:       "prefer71",
+			local:      []p2p.Cap{{Name: "eth", Version: 71}, {Name: "eth", Version: 68}},
+			remote:     []p2p.Cap{{Name: "eth", Version: 68}, {Name: "eth", Version: 71}},
+			ethVersion: 71,
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 65,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 63},
-				{Name: "eth", Version: 64},
-				{Name: "eth", Version: 65},
-			},
-			expected: uint32(65),
+			name:       "fallback68",
+			local:      []p2p.Cap{{Name: "eth", Version: 71}, {Name: "eth", Version: 68}},
+			remote:     []p2p.Cap{{Name: "eth", Version: 70}, {Name: "eth", Version: 68}},
+			ethVersion: 68,
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 65,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 63},
-				{Name: "eth", Version: 64},
-				{Name: "eth", Version: 65},
-			},
-			expected: uint32(65),
+			name:       "only71",
+			local:      []p2p.Cap{{Name: "eth", Version: 71}},
+			remote:     []p2p.Cap{{Name: "eth", Version: 70}, {Name: "eth", Version: 71}},
+			ethVersion: 71,
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 64,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 63},
-				{Name: "eth", Version: 64},
-				{Name: "eth", Version: 65},
-			},
-			expected: 64,
+			name:   "noCommonVersion",
+			local:  []p2p.Cap{{Name: "eth", Version: 71}, {Name: "eth", Version: 68}},
+			remote: []p2p.Cap{{Name: "eth", Version: 70}},
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 65,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 0},
-				{Name: "eth", Version: 89},
-				{Name: "eth", Version: 65},
-			},
-			expected: uint32(65),
+			name:   "only71Rejects68",
+			local:  []p2p.Cap{{Name: "eth", Version: 71}},
+			remote: []p2p.Cap{{Name: "eth", Version: 68}},
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 64,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 63},
-				{Name: "eth", Version: 64},
-				{Name: "wrongProto", Version: 65},
-			},
-			expected: uint32(64),
+			name:       "ignore72",
+			local:      []p2p.Cap{{Name: "eth", Version: 71}, {Name: "eth", Version: 68}},
+			remote:     []p2p.Cap{{Name: "eth", Version: 72}, {Name: "eth", Version: 68}},
+			ethVersion: 68,
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: 65,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: 63},
-				{Name: "eth", Version: 64},
-				{Name: "wrongProto", Version: 65},
-			},
-			expected: uint32(64),
+			name:       "current70",
+			local:      []p2p.Cap{{Name: "eth", Version: 70}, {Name: "eth", Version: 68}},
+			remote:     []p2p.Cap{{Name: "eth", Version: 70}, {Name: "eth", Version: 68}},
+			ethVersion: 70,
 		},
 		{
-			conn: &Conn{
-				ourHighestProtoVersion: eth.ETH70,
-			},
-			caps: []p2p.Cap{
-				{Name: "eth", Version: eth.ETH68},
-				{Name: "eth", Version: eth.ETH70},
-			},
-			expected: eth.ETH70,
+			name:        "snap1",
+			local:       []p2p.Cap{{Name: "eth", Version: 71}, {Name: "snap", Version: 1}},
+			remote:      []p2p.Cap{{Name: "snap", Version: 2}, {Name: "eth", Version: 71}, {Name: "snap", Version: 1}},
+			ethVersion:  71,
+			snapVersion: 1,
 		},
+		{
+			name:        "snap2",
+			local:       []p2p.Cap{{Name: "eth", Version: 71}, {Name: "snap", Version: 1}, {Name: "snap", Version: 2}},
+			remote:      []p2p.Cap{{Name: "snap", Version: 2}, {Name: "eth", Version: 71}, {Name: "snap", Version: 1}},
+			ethVersion:  71,
+			snapVersion: 2,
+		},
+		{
+			name:       "noCommonSnap",
+			local:      []p2p.Cap{{Name: "eth", Version: 68}, {Name: "snap", Version: 2}},
+			remote:     []p2p.Cap{{Name: "eth", Version: 68}, {Name: "snap", Version: 1}},
+			ethVersion: 68,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			conn := &Conn{caps: test.local}
+			conn.negotiateEthProtocol(test.remote)
+			assert.Equal(t, test.ethVersion, conn.negotiatedProtoVersion)
+			assert.Equal(t, test.snapVersion, conn.negotiatedSnapProtoVersion)
+		})
 	}
+}
 
-	for i, tt := range tests {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			tt.conn.negotiateEthProtocol(tt.caps)
-			assert.Equal(t, tt.expected, uint32(tt.conn.negotiatedProtoVersion))
+func TestProtocolOffsets(t *testing.T) {
+	for _, test := range []struct {
+		version uint
+		length  uint64
+	}{
+		{eth.ETH68, 17}, {eth.ETH70, 18}, {eth.ETH71, 20}, {eth.ETH72, 22},
+	} {
+		t.Run(strconv.Itoa(int(test.version)), func(t *testing.T) {
+			conn := &Conn{negotiatedProtoVersion: test.version}
+			assert.Equal(t, uint64(16), conn.protoOffset(ethProto))
+			assert.Equal(t, 16+test.length, conn.protoOffset(snapProto))
+			assert.Equal(t, baseProto, conn.getProto(15))
+			assert.Equal(t, ethProto, conn.getProto(16))
+			assert.Equal(t, ethProto, conn.getProto(15+test.length))
+			assert.Equal(t, snapProto, conn.getProto(16+test.length))
+			assert.Equal(t, snapProto, conn.getProto(25+test.length))
 		})
 	}
 }
