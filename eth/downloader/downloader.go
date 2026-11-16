@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -175,20 +176,16 @@ type Downloader struct {
 
 // BlockChain encapsulates functions required to sync a (full or snap) blockchain.
 type BlockChain interface {
+	consensus.ChainHeaderReader
+
+	// Engine retrieves the consensus engine for header verification.
+	Engine() consensus.Engine
+
 	// HasHeader verifies a header's presence in the local chain.
 	HasHeader(common.Hash, uint64) bool
 
 	// HasState checks if state trie is fully present in the database or not.
 	HasState(root common.Hash) bool
-
-	// GetHeaderByHash retrieves a header from the local chain.
-	GetHeaderByHash(common.Hash) *types.Header
-
-	// CurrentHeader retrieves the head header from the local chain.
-	CurrentHeader() *types.Header
-
-	// GetTd returns the total difficulty of a local block.
-	GetTd(common.Hash, uint64) *big.Int
 
 	// SetHead rewinds the local chain to a new head.
 	SetHead(uint64) error
@@ -1293,6 +1290,11 @@ func (d *Downloader) processHeaders(origin uint64, td, ttd *big.Int, beaconMode 
 	)
 	defer timer.Stop()
 
+	var verifier *headerVerifier
+	if d.blockchain.Config().Parlia != nil {
+		verifier = newHeaderVerifier(d.blockchain)
+	}
+
 	for {
 		select {
 		case <-d.cancelCh:
@@ -1328,6 +1330,28 @@ func (d *Downloader) processHeaders(origin uint64, td, ttd *big.Int, beaconMode 
 				chunkHeaders := headers[:limit]
 				chunkHashes := hashes[:limit]
 
+				// Bound both download tasks and headers retained for verification.
+				for {
+					pending := 0
+					if verifier != nil {
+						pending = verifier.prune()
+					}
+					if pending < maxQueuedHeaders && d.queue.PendingBodies() < maxQueuedHeaders && d.queue.PendingReceipts() < maxQueuedHeaders {
+						break
+					}
+					timer.Reset(time.Second)
+					select {
+					case <-d.cancelCh:
+						return errCanceled
+					case <-timer.C:
+					}
+				}
+				if verifier != nil {
+					if err := verifier.verify(chunkHeaders, d.cancelCh); err != nil {
+						return err
+					}
+				}
+
 				// Split the headers around the chain cutoff
 				var cutoff int
 				if mode == ethconfig.SnapSync && d.chainCutoffNumber != 0 {
@@ -1343,15 +1367,6 @@ func (d *Downloader) processHeaders(origin uint64, td, ttd *big.Int, beaconMode 
 						return fmt.Errorf("%w: %v", errInvalidChain, err)
 					}
 					log.Debug("Inserted headers before cutoff", "number", chunkHeaders[cutoff-1].Number, "hash", chunkHashes[cutoff-1])
-				}
-				// If we've reached the allowed number of pending headers, stall a bit
-				for d.queue.PendingBodies() >= maxQueuedHeaders || d.queue.PendingReceipts() >= maxQueuedHeaders {
-					timer.Reset(time.Second)
-					select {
-					case <-d.cancelCh:
-						return errCanceled
-					case <-timer.C:
-					}
 				}
 				// Otherwise, schedule the headers for content retrieval (block bodies and
 				// potentially receipts in snap sync).
