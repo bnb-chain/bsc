@@ -14,12 +14,18 @@ import (
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 const (
 	maxBlobValConcurrency = 3
 	maxBlobTxPerBlock     = 6
 )
+
+// isAmsterdamActivation identifies the block validators must build locally.
+func isAmsterdamActivation(config *params.ChainConfig, parent, header *types.Header) bool {
+	return !config.IsAmsterdam(parent.Number, parent.Time) && config.IsAmsterdam(header.Number, header.Time)
+}
 
 // MevRunning return true if mev is running.
 func (miner *Miner) MevRunning() bool {
@@ -114,6 +120,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
 	}
 
+	if isAmsterdamActivation(miner.worker.chainConfig, parent, bb.Header) {
+		return common.Hash{}, buildertypes.NewInvalidBidError("builder bids disabled on Amsterdam activation block")
+	}
 	// Security: validators must self-produce hard-fork activation blocks.
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
 		miner.worker.chainConfig.IsOnJenner(bb.Header.Number, parent.Time, bb.Header.Time) {

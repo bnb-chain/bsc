@@ -1579,7 +1579,10 @@ LOOP:
 	var simBidBlockReward *uint256.Int
 	var simBidValidatorReward *uint256.Int
 	var localValidatorReward *uint256.Int
-	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+	parent := w.chain.GetHeaderByHash(bestWork.header.ParentHash)
+	// Cached builder bids must not replace the validator's Amsterdam activation block.
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 &&
+		parent != nil && !isAmsterdamActivation(w.chainConfig, parent, bestWork.header) {
 		inturnBlocksGauge.Inc(1)
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))

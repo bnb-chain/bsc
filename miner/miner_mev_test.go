@@ -3,11 +3,15 @@ package miner
 import (
 	"crypto/rand"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	gokzg4844 "github.com/crate-crypto/go-eth-kzg"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -105,5 +109,45 @@ func TestValidateBidBlockBlobTxs_InvalidProof(t *testing.T) {
 		t.Fatalf("expected invalid BidBlock blob tx error, got %v", err)
 	} else if !strings.Contains(err.Error(), "BidBlock blob validation failed") {
 		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestAmsterdamActivation(t *testing.T) {
+	config := *params.ParliaTestChainConfig
+	fork := uint64(100)
+	config.AmsterdamTime = &fork
+	for _, tc := range []struct {
+		name         string
+		parent, time uint64
+		want         bool
+	}{
+		{"before", 98, 99, false}, {"activation", 99, 100, true}, {"skipped-timestamp", 99, 101, true}, {"after", 100, 101, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := &types.Header{Number: big.NewInt(1), Time: tc.parent}
+			header := &types.Header{Number: big.NewInt(2), Time: tc.time}
+			if got := isAmsterdamActivation(&config, parent, header); got != tc.want {
+				t.Fatalf("activation=%v, want %v", got, tc.want)
+			}
+		})
+	}
+	config.AmsterdamTime = nil
+	if isAmsterdamActivation(&config, &types.Header{Number: big.NewInt(1)}, &types.Header{Number: big.NewInt(2), Time: 100}) {
+		t.Fatal("disabled Amsterdam detected as activation")
+	}
+}
+
+func TestBidBlockRejectsAmsterdamActivation(t *testing.T) {
+	w, config, _, header, _ := laneMinerChain(t, false)
+	config.AmsterdamTime = &header.Time
+	header.Root = common.Hash{1}
+	db := rawdb.NewMemoryDatabase()
+	defer db.Close()
+	engine := parlia.New(config, db, nil, common.Hash{})
+	defer engine.Close()
+	simulator := &bidSimulator{chain: w.chain, chainConfig: config, engine: engine, bidWorker: w}
+	err := simulator.preSealVerifyBidBlock(&buildertypes.DecodedBidBlock{Header: header})
+	if err == nil || err.Error() != "builder bids disabled on Amsterdam activation block" {
+		t.Fatalf("activation bid error: %v", err)
 	}
 }

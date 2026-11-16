@@ -734,6 +734,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlo
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
+	if isAmsterdamActivation(b.chainConfig, parent, header) {
+		return errors.New("builder bids disabled on Amsterdam activation block")
+	}
 	expectedGasLimit := core.CalcGasLimit(parent.GasLimit, b.bidWorker.getGasCeil())
 	if header.GasLimit != expectedGasLimit {
 		return fmt.Errorf("invalid gasLimit: got %d, want %d", header.GasLimit, expectedGasLimit)
@@ -1048,6 +1051,16 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay == nil || *delay <= 0 {
 		err = errNoTimeLeft
+		return
+	}
+
+	parent := b.chain.GetHeaderByHash(bidRuntime.env.header.ParentHash)
+	if parent == nil {
+		err = consensus.ErrUnknownAncestor
+		return
+	}
+	if isAmsterdamActivation(b.chainConfig, parent, bidRuntime.env.header) {
+		err = errors.New("builder bids disabled on Amsterdam activation block")
 		return
 	}
 
