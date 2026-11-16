@@ -70,7 +70,7 @@ func TestEthProtocolNegotiation(t *testing.T) {
 			ethVersion: 68,
 		},
 		{
-			name:       "current70",
+			name:       "eth70",
 			local:      []p2p.Cap{{Name: "eth", Version: 70}, {Name: "eth", Version: 68}},
 			remote:     []p2p.Cap{{Name: "eth", Version: 70}, {Name: "eth", Version: 68}},
 			ethVersion: 70,

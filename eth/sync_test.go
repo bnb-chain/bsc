@@ -106,14 +106,22 @@ func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
 }
 
 func TestFullSyncWithBlobs(t *testing.T) {
-	testChainSyncWithBlobs(t, ethconfig.FullSync, 128, 128)
+	testChainSyncWithBlobs(t, eth.ETH68, ethconfig.FullSync, 128, 128)
 }
 
 func TestSnapSyncWithBlobs(t *testing.T) {
-	testChainSyncWithBlobs(t, ethconfig.SnapSync, 128, 128)
+	testChainSyncWithBlobs(t, eth.ETH68, ethconfig.SnapSync, 128, 128)
 }
 
-func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlks, postCancunBlks uint64) {
+func TestFullSyncWithBlobs71(t *testing.T) {
+	testChainSyncWithBlobs(t, eth.ETH71, ethconfig.FullSync, 128, 128)
+}
+
+func TestSnapSyncWithBlobs71(t *testing.T) {
+	testChainSyncWithBlobs(t, eth.ETH71, ethconfig.SnapSync, 128, 128)
+}
+
+func testChainSyncWithBlobs(t *testing.T, ethVer uint, mode downloader.SyncMode, preCancunBlks, postCancunBlks uint64) {
 	t.Parallel()
 	config := *params.ParliaTestChainConfig
 	cancunTime := (preCancunBlks + 1) * 10
@@ -137,7 +145,6 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 	checkChainWithBlobs(t, full.chain, preCancunBlks, postCancunBlks)
 
 	// Sync up the two handlers via both `eth` and `snap`
-	ethVer := uint(eth.ETH68)
 	snapVer := uint(snap.SNAP1)
 
 	// Sync up the two handlers via both `eth` and `snap`

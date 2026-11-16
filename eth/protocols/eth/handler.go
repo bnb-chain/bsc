@@ -233,6 +233,9 @@ var eth70 = map[uint64]msgHandler{
 }
 
 var eth71 = map[uint64]msgHandler{
+	// Parlia retains block propagation alongside BAL exchange.
+	NewBlockHashesMsg:             handleNewBlockhashes,
+	NewBlockMsg:                   handleNewBlock,
 	TransactionsMsg:               handleTransactions,
 	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
 	GetBlockHeadersMsg:            handleGetBlockHeaders,

@@ -48,8 +48,7 @@ func makeJWTSecret(t *testing.T) (string, [32]byte, error) {
 	return jwtPath, secret, nil
 }
 
-// Keep eth/70 coverage until the production protocol list drops it.
-var suiteEthVersions = []uint{ethproto.ETH71, ethproto.ETH68, ethproto.ETH70}
+var suiteEthVersions = []uint{ethproto.ETH71, ethproto.ETH68}
 
 func TestEthSuite(t *testing.T) {
 	for _, version := range suiteEthVersions {
@@ -61,7 +60,7 @@ func TestEthSuite(t *testing.T) {
 
 func testEthSuite(t *testing.T, ethVersion uint) {
 	if !slices.Contains(ethproto.ProtocolVersions, ethVersion) {
-		t.Skipf("eth/%d is not enabled in the node", ethVersion)
+		t.Fatalf("required protocol eth/%d is not enabled in the node", ethVersion)
 	}
 	jwtPath, secret, err := makeJWTSecret(t)
 	if err != nil {
@@ -77,10 +76,7 @@ func testEthSuite(t *testing.T, ethVersion uint) {
 	if err != nil {
 		t.Fatalf("could not create new test suite: %v", err)
 	}
-	// The default 71+68 capabilities must negotiate either target version.
-	if ethVersion == ethproto.ETH70 {
-		suite.ethVersion = ethVersion
-	}
+	// The default capabilities must negotiate the requested version.
 	conn, err := suite.dialAndPeer(nil)
 	if err != nil {
 		t.Fatalf("could not peer with test node: %v", err)
@@ -136,7 +132,7 @@ func TestSnap2Suite(t *testing.T) {
 
 func testSnapSuite(t *testing.T, ethVersion uint, snap2 bool) {
 	if !slices.Contains(ethproto.ProtocolVersions, ethVersion) {
-		t.Skipf("eth/%d is not enabled in the node", ethVersion)
+		t.Fatalf("required protocol eth/%d is not enabled in the node", ethVersion)
 	}
 	jwtPath, secret, err := makeJWTSecret(t)
 	if err != nil {

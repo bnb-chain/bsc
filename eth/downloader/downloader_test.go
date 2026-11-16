@@ -624,8 +624,10 @@ func assertOwnChain(t *testing.T, tester *downloadTester, length int) {
 	}
 }
 
-func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH70, FullSync, false) }
-func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH70, SnapSync, false) }
+func TestCanonicalSynchronisationFull(t *testing.T)   { testCanonSync(t, eth.ETH70, FullSync, false) }
+func TestCanonicalSynchronisationSnap(t *testing.T)   { testCanonSync(t, eth.ETH70, SnapSync, false) }
+func TestCanonicalSynchronisationFull71(t *testing.T) { testCanonSync(t, eth.ETH71, FullSync, false) }
+func TestCanonicalSynchronisationSnap71(t *testing.T) { testCanonSync(t, eth.ETH71, SnapSync, false) }
 
 func testCanonSync(t *testing.T, protocol uint, mode SyncMode, snapV2 bool) {
 	success := make(chan struct{})
@@ -756,9 +758,10 @@ func makeBALChain(n int) (*core.Genesis, []*types.Block) {
 // and end up attached to the imported blocks; and that syncing against peers
 // which cannot (or do not) serve access lists still completes, importing the
 // blocks without them.
-func TestBALSynchronisationFull(t *testing.T)       { testBALSync(t, FullSync, eth.ETH71) }
-func TestBALSynchronisationSnap(t *testing.T)       { testBALSync(t, SnapSync, eth.ETH71) }
-func TestBALSynchronisationLegacyPeer(t *testing.T) { testBALSync(t, FullSync, eth.ETH70) }
+func TestBALSynchronisationFull(t *testing.T)         { testBALSync(t, FullSync, eth.ETH71) }
+func TestBALSynchronisationSnap(t *testing.T)         { testBALSync(t, SnapSync, eth.ETH71) }
+func TestBALSynchronisationLegacyPeer(t *testing.T)   { testBALSync(t, FullSync, eth.ETH70) }
+func TestBALSynchronisationLegacyPeer68(t *testing.T) { testBALSync(t, FullSync, eth.ETH68) }
 
 func testBALSync(t *testing.T, mode SyncMode, protocol uint) {
 	gspec, blocks := makeBALChain(96) // long enough for a snap sync pivot below the head

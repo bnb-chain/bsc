@@ -184,6 +184,7 @@ func (b *testBackend) Handle(*Peer, Packet) error {
 
 // Tests that block headers can be retrieved from a remote chain based on user queries.
 func TestGetBlockHeaders68(t *testing.T) { testGetBlockHeaders(t, ETH68) }
+func TestGetBlockHeaders71(t *testing.T) { testGetBlockHeaders(t, ETH71) }
 
 func testGetBlockHeaders(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -397,6 +398,7 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 
 // Tests that block contents can be retrieved from a remote chain based on their hashes.
 func TestGetBlockBodies68(t *testing.T) { testGetBlockBodies(t, ETH68) }
+func TestGetBlockBodies71(t *testing.T) { testGetBlockBodies(t, ETH71) }
 
 func testGetBlockBodies(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -697,7 +699,8 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	}
 }
 
-func TestGetBlockPartialReceipts(t *testing.T) { testGetBlockPartialReceipts(t, ETH70) }
+func TestGetBlockPartialReceipts(t *testing.T)   { testGetBlockPartialReceipts(t, ETH70) }
+func TestGetBlockPartialReceipts71(t *testing.T) { testGetBlockPartialReceipts(t, ETH71) }
 
 func testGetBlockPartialReceipts(t *testing.T, protocol int) {
 	// First, generate the chain and overwrite the receipts.
@@ -964,7 +967,10 @@ func FuzzEthProtocolHandlers(f *testing.F) {
 	})
 }
 
-func TestHandleNewBlock(t *testing.T) {
+func TestHandleNewBlock(t *testing.T)   { testHandleNewBlock(t, ETH68) }
+func TestHandleNewBlock71(t *testing.T) { testHandleNewBlock(t, ETH71) }
+
+func testHandleNewBlock(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	gen := func(n int, g *core.BlockGen) {
@@ -980,11 +986,6 @@ func TestHandleNewBlock(t *testing.T) {
 	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
 	defer backend.close()
 
-	peer, _ := newTestPeer("peer", ETH68, backend)
-	defer peer.close()
-
-	v := new(uint32)
-	*v = 1
 	genBlobs := makeBlkBlobs(1, 2)
 	tx1 := types.NewTx(&types.BlobTx{
 		ChainID:    new(uint256.Int).SetUint64(1),
@@ -1034,7 +1035,7 @@ func TestHandleNewBlock(t *testing.T) {
 		{
 			name: "Valid block",
 			msg: p2p.Msg{
-				Code:    1,
+				Code:    NewBlockMsg,
 				Size:    uint32(sizeNonNil),
 				Payload: rNonNil,
 			},
@@ -1043,7 +1044,7 @@ func TestHandleNewBlock(t *testing.T) {
 		{
 			name: "Nil sidecars",
 			msg: p2p.Msg{
-				Code:    2,
+				Code:    NewBlockMsg,
 				Size:    uint32(sizeNil),
 				Payload: rNil,
 			},
@@ -1054,7 +1055,7 @@ func TestHandleNewBlock(t *testing.T) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: ETH68,
+			Version: protocol,
 		},
 		{
 			Name:    "bsc",
@@ -1064,7 +1065,7 @@ func TestHandleNewBlock(t *testing.T) {
 	caps := []p2p.Cap{
 		{
 			Name:    "eth",
-			Version: ETH68,
+			Version: protocol,
 		},
 		{
 			Name:    "bsc",
@@ -1076,12 +1077,14 @@ func TestHandleNewBlock(t *testing.T) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil, backend.chain.Config())
+	localEth := NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil, backend.chain.Config())
+	defer localEth.Close()
 
 	// Run the tests
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := handleNewBlock(backend, tc.msg, localEth)
+			go p2pEthSink.WriteMsg(tc.msg)
+			err := handleMessage(backend, localEth)
 			if err != tc.err {
 				t.Errorf("expected error %v, got %v", tc.err, err)
 			}
@@ -1089,13 +1092,20 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 }
 
-func TestHandleNewBlockhashes(t *testing.T) {
+func TestHandleNewBlockhashes(t *testing.T)   { testHandleNewBlockhashes(t, ETH68) }
+func TestHandleNewBlockhashes71(t *testing.T) { testHandleNewBlockhashes(t, ETH71) }
+
+func testHandleNewBlockhashes(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	backend := newTestBackendWithGenerator(1, false, false, nil)
 	defer backend.close()
 
-	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "peer", nil), nil, nil, nil, backend.chain.Config())
+	app, net := p2p.MsgPipe()
+	defer app.Close()
+	defer net.Close()
+	localEth := NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "peer", nil), net, nil, nil, backend.chain.Config())
+	defer localEth.Close()
 
 	newPacket := func(n int) NewBlockHashesPacket {
 		ann := make(NewBlockHashesPacket, n)
@@ -1120,7 +1130,8 @@ func TestHandleNewBlockhashes(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := handleNewBlockhashes(backend, msgFor(newPacket(tc.count)), localEth)
+			go app.WriteMsg(msgFor(newPacket(tc.count)))
+			err := handleMessage(backend, localEth)
 			if tc.wantErr && err == nil {
 				t.Fatalf("expected error for %d announcements, got nil", tc.count)
 			}
