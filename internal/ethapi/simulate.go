@@ -734,9 +734,13 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 		if overrides.Difficulty != nil && difficulty.Sign() == 0 {
 			return nil, &invalidParamsError{fmt.Sprintf("block %d: difficulty override is not allowed after the merge", number)}
 		}
-		// The slot number is unknown when the parent has none, so it is omitted then.
 		var slotNumber *uint64
-		if header.SlotNumber != nil {
+		if sim.isBSC() {
+			if sim.chainConfig.IsAmsterdam(number, timestamp) {
+				slot := number.Uint64()
+				slotNumber = &slot
+			}
+		} else if header.SlotNumber != nil {
 			slot := *header.SlotNumber + 1
 			slotNumber = &slot
 		}

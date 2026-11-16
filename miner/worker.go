@@ -1147,13 +1147,17 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 	}
 	// Apply EIP-7843.
-	// TODO: Define BSC's slot mapping and supply slotNum from commitWork
-	// before enabling Amsterdam block production.
 	if w.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		if genParams.slotNum == nil {
-			return nil, errors.New("missing slot number")
+		if w.chainConfig.IsInBSC() {
+			// BSC uses block numbers instead of beacon slots.
+			slot := header.Number.Uint64()
+			header.SlotNumber = &slot
+		} else {
+			if genParams.slotNum == nil {
+				return nil, errors.New("missing slot number")
+			}
+			header.SlotNumber = genParams.slotNum
 		}
-		header.SlotNumber = genParams.slotNum
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
