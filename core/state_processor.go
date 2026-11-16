@@ -199,7 +199,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	body := &types.Body{Transactions: commonTxs, Uncles: block.Uncles(), Withdrawals: block.Withdrawals()}
 	finalizeState := tracingStateDB
 	if recordSystemBAL {
-		finalizeState = &systemTxStateDB{StateDB: tracingStateDB, accessList: blockAccessList}
+		finalizeState = NewSystemTxStateDB(tracingStateDB, blockAccessList)
 	}
 	err = p.chain.Engine().Finalize(p.chain, header, finalizeState, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
 	if err != nil {
@@ -656,20 +656,14 @@ func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
 
 // blockAssembler is implemented by consensus engines that support FinalizeAndAssemble.
 type blockAssembler interface {
-	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
+	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error)
 }
 
 // AssembleBlock finalizes the state and assembles the block with provided
 // body and receipts.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
 	if p, ok := engine.(blockAssembler); ok {
-		// TODO: Include Parlia finalization in BAL construction and attach the
-		// completed access list here before enabling Amsterdam on BSC.
-		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
-		if err != nil {
-			return nil, nil, err
-		}
-		return block, receipts, nil
+		return p.FinalizeAndAssemble(chain, header, state, body, receipts, nil, blockAccessLists...)
 	}
 	if err := engine.Finalize(chain, header, state, body, &receipts, nil, &header.GasUsed, nil); err != nil {
 		return nil, nil, err

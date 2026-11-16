@@ -31,6 +31,11 @@ type systemTxStateDB struct {
 	accessList *bal.ConstructionBlockAccessList
 }
 
+// NewSystemTxStateDB collects the BALs returned by Parlia system transactions.
+func NewSystemTxStateDB(statedb vm.StateDB, accessList *bal.ConstructionBlockAccessList) vm.StateDB {
+	return &systemTxStateDB{StateDB: statedb, accessList: accessList}
+}
+
 func (s *systemTxStateDB) Finalise(rules params.Rules) *bal.ConstructionBlockAccessList {
 	list := s.StateDB.Finalise(rules)
 	s.accessList.Merge(list)

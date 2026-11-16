@@ -46,6 +46,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/program"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -4105,6 +4106,8 @@ type mockParlia struct {
 	consensus.Engine
 }
 
+var _ blockAssembler = (*mockParlia)(nil)
+
 func (c *mockParlia) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
 }
@@ -4135,7 +4138,7 @@ func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.H
 	return
 }
 
-func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, _ ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
 	// Finalize block
 	c.Finalize(chain, header, state, body, nil, nil, nil, tracer)
 
