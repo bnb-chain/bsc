@@ -38,6 +38,10 @@ type GasPool struct {
 	// the larger of the two.
 	cumulativeExecution uint64
 	cumulativeState     uint64
+
+	// Local reservations leave room for transactions appended later.
+	reservedExecution uint64
+	reservedState     uint64
 }
 
 // NewGasPool initializes the gasPool with the given amount.
@@ -70,12 +74,32 @@ func (gp *GasPool) CheckGasLegacy(amount uint64) error {
 // the worst-case execution contribution must fit in the execution dimension and
 // the worst-case state contribution must fit in the state dimension
 func (gp *GasPool) CheckGasAmsterdam(executionReservation, stateReservation uint64) error {
-	if gp.initial-gp.cumulativeExecution < executionReservation {
+	if gp.initial-gp.cumulativeExecution-gp.reservedExecution < executionReservation {
 		return ErrGasLimitReached
 	}
-	if gp.initial-gp.cumulativeState < stateReservation {
+	if gp.initial-gp.cumulativeState-gp.reservedState < stateReservation {
 		return ErrGasLimitReached
 	}
+	return nil
+}
+
+// ReserveGasAmsterdam leaves room for a later transaction without charging gas used.
+func (gp *GasPool) ReserveGasAmsterdam(execution, state uint64) error {
+	if err := gp.CheckGasAmsterdam(execution, state); err != nil {
+		return err
+	}
+	gp.reservedExecution += execution
+	gp.reservedState += state
+	return nil
+}
+
+// ReleaseGasAmsterdam returns a reservation without changing cumulative gas used.
+func (gp *GasPool) ReleaseGasAmsterdam(execution, state uint64) error {
+	if execution > gp.reservedExecution || state > gp.reservedState {
+		return fmt.Errorf("gas reservation underflow: execution %d, state %d", execution, state)
+	}
+	gp.reservedExecution -= execution
+	gp.reservedState -= state
 	return nil
 }
 
@@ -101,7 +125,7 @@ func (gp *GasPool) ChargeGasAmsterdam(txExecution, txState, receiptGasUsed uint6
 	cumulativeExecution := gp.cumulativeExecution + txExecution
 	cumulativeState := gp.cumulativeState + txState
 	blockUsed := max(cumulativeExecution, cumulativeState)
-	if gp.initial < blockUsed {
+	if gp.initial-gp.reservedExecution < cumulativeExecution || gp.initial-gp.reservedState < cumulativeState {
 		return fmt.Errorf("%w: block gas overflow: initial %d, used %d (execution: %d, state: %d)",
 			ErrGasLimitReached, gp.initial, blockUsed, cumulativeExecution, cumulativeState)
 	}
@@ -119,8 +143,8 @@ func (gp *GasPool) Available(amsterdam bool) uint64 {
 	if !amsterdam {
 		return gp.remaining
 	}
-	exec := gp.initial - gp.cumulativeExecution
-	state := gp.initial - gp.cumulativeState
+	exec := gp.initial - gp.cumulativeExecution - gp.reservedExecution
+	state := gp.initial - gp.cumulativeState - gp.reservedState
 	if exec >= params.MaxTxGas {
 		return state
 	}
@@ -166,6 +190,8 @@ func (gp *GasPool) Snapshot() *GasPool {
 		cumulativeUsed:      gp.cumulativeUsed,
 		cumulativeExecution: gp.cumulativeExecution,
 		cumulativeState:     gp.cumulativeState,
+		reservedExecution:   gp.reservedExecution,
+		reservedState:       gp.reservedState,
 	}
 }
 
@@ -176,6 +202,8 @@ func (gp *GasPool) Set(other *GasPool) {
 	gp.cumulativeUsed = other.cumulativeUsed
 	gp.cumulativeExecution = other.cumulativeExecution
 	gp.cumulativeState = other.cumulativeState
+	gp.reservedExecution = other.reservedExecution
+	gp.reservedState = other.reservedState
 }
 
 func (gp *GasPool) String() string {

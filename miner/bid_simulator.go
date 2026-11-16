@@ -478,11 +478,16 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			// Pre-check before simulation for fast feedback to the builder;
-			// simulation would reject these txs anyway via state_transition preCheck.
-			if errCap := b.checkIfBidExceedsTxGasLimit(newBid.bid); errCap != nil {
+			// Builders cannot produce the Amsterdam activation block, so parent rules suffice here.
+			parent := b.chain.GetHeaderByHash(newBid.bid.ParentHash)
+			if parent == nil {
+				err = consensus.ErrUnknownAncestor
+			} else {
+				err = b.checkIfBidExceedsTxGasLimit(newBid.bid, parent)
+			}
+			if err != nil {
 				if newBid.feedback != nil {
-					newBid.feedback <- errCap
+					newBid.feedback <- err
 				}
 				continue
 			}
@@ -578,21 +583,23 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 }
 
 // checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
-func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *buildertypes.Bid) error {
-	currentHeader := b.chain.CurrentBlock()
-	if !b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
+func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *buildertypes.Bid, header *types.Header) error {
+	cap := params.MaxTxGas
+	if b.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		cap = params.MaxTxTotalGas
+	} else if !b.chainConfig.IsOsaka(header.Number, header.Time) {
 		return nil
 	}
 	for _, tx := range bid.Txs {
-		if tx.Gas() > params.MaxTxGas {
+		if tx.Gas() > cap {
 			log.Debug("discard bid due to per-tx gas limit",
 				"block", bid.BlockNumber,
 				"bidHash", bid.Hash().TerminalString(),
 				"txHash", tx.Hash().TerminalString(),
 				"txGas", tx.Gas(),
-				"txGasLimit", params.MaxTxGas,
+				"txGasLimit", cap,
 			)
-			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
+			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, cap, tx.Gas())
 		}
 	}
 	return nil
@@ -767,9 +774,13 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlo
 	}
 
 	// Per-tx gas cap over user txs only, mirroring SendBid.
+	cap := params.MaxTxGas
+	if b.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		cap = params.MaxTxTotalGas
+	}
 	for _, tx := range decoded.Txs[:decoded.SystemTxStart] {
-		if tx.Gas() > params.MaxTxGas {
-			return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
+		if tx.Gas() > cap {
+			return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, cap, tx.Gas())
 		}
 	}
 
@@ -1063,28 +1074,18 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		err = errors.New("builder bids disabled on Amsterdam activation block")
 		return
 	}
-
-	// TODO: Adapt this reservation to both gas dimensions before enabling
-	// Amsterdam on BSC.
-	// Reserve gas for the payBidTx appended at the end of the block so the
-	// admission check and greedy merge leave room for it; returned right before
-	// it is committed.
-	if err = bidRuntime.env.gasPool.CheckGasLegacy(params.PayBidTxGasLimit); err != nil {
+	amsterdam := bidRuntime.env.evm.GetRules().IsAmsterdam
+	// Leave both budgets available for the payment appended after greedy merge.
+	if amsterdam {
+		err = bidRuntime.env.gasPool.ReserveGasAmsterdam(min(payBidTx.Gas(), params.MaxTxGas), payBidTx.Gas())
+	} else {
+		err = bidRuntime.env.gasPool.CheckGasLegacy(params.PayBidTxGasLimit)
+	}
+	if err != nil {
 		return
 	}
-
-	// error log:
-	// 	simulation failed blockNumber=47630147 parentHash=0x2476bcc93db4c924a2c8079c6d5d783441a72d6ff70c5850b1afd778102e175e builder=0x48a5Ed9abC1a8FBe86ceC4900483f43a7f2dBB48
-	// 	gasUsed=136807406 gasLimit=137816878 err="gas used exceeds gas limit"
-	// error tracing:
-	// 	left: b.RawBid.GasUsed + b.PayBidTxGasUsed => (136782406 + 25000 = 136807406)
-	// 	right: headerGasLimit - b.PayBidTxGasLimit - systemGasReserved => (137816878 - 25000 - 1000000 = 136791878)
-	// 	cause: 136807406 > 136791878 => true
-	// error reason:
-	//	left should not be added with PayBidTxGasUsed, Or right should be not be subtracted with PayBidTxGasLimit
-	// error fix:
-	//	136782406 > 136791878 => false, Or 136807406 > 136816878 => false
-	if bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Available(bidRuntime.env.evm.GetRules().IsAmsterdam) {
+	// Amsterdam validates capacity per transaction in both dimensions, not by receipt gas sums.
+	if !amsterdam && bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Available(false) {
 		err = errors.New("gas used exceeds gas limit")
 		return
 	}
@@ -1218,7 +1219,14 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// commit payBidTx at the end of the block
-	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
+	if amsterdam {
+		err = bidRuntime.env.gasPool.ReleaseGasAmsterdam(min(payBidTx.Gas(), params.MaxTxGas), payBidTx.Gas())
+	} else {
+		err = bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
+	}
+	if err != nil {
+		return
+	}
 	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx, true)
 	if err != nil {
 		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,

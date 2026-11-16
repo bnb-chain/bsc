@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
@@ -133,6 +134,10 @@ func TestPaymentLaneWorkerRollback(t *testing.T) {
 			require.True(t, env.lane.On())
 			sender := crypto.PubkeyToAddress(key.PublicKey)
 			balance := env.state.GetBalance(sender).ToBig()
+			if amsterdam {
+				require.NoError(t, env.gasPool.ReserveGasAmsterdam(25_000, 300_000))
+			}
+			before := env.gasPool.Snapshot()
 			pool := env.gasPool.String()
 			tx, err := types.SignTx(types.NewTransaction(0, common.Address{0xaa}, big.NewInt(1), 1, big.NewInt(1), nil), types.LatestSigner(config), key)
 			require.NoError(t, err)
@@ -140,9 +145,85 @@ func TestPaymentLaneWorkerRollback(t *testing.T) {
 			_, err = w.applyTransaction(env, tx)
 			require.ErrorIs(t, err, core.ErrIntrinsicGas)
 			require.Equal(t, pool, env.gasPool.String())
+			require.Equal(t, before, env.gasPool)
 			require.Equal(t, balance, env.state.GetBalance(sender).ToBig())
 			require.Zero(t, env.lane.PaymentGasUsed())
 			require.Equal(t, env.lane.Budget.PaymentLaneQuota, env.lane.IdleGas())
+		})
+	}
+}
+
+func TestBidPaymentGasReservation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		amsterdam bool
+		gas       uint64
+	}{
+		{"legacy", false, params.PayBidTxGasLimit},
+		{"amsterdam", true, params.PayBidTxGasLimit},
+		{"amsterdam-state-creation", true, 300_000},
+		{"amsterdam-above-execution-cap", true, 30_000_000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, config, parent, header, key := laneMinerChain(t, false)
+			if tc.amsterdam {
+				zero := uint64(0)
+				config.AmsterdamTime = &zero
+				slot := header.Number.Uint64()
+				header.SlotNumber = &slot
+			}
+			header.ExcessBlobGas = new(uint64)
+			header.BlobGasUsed = new(uint64)
+			env, err := w.makeEnv(parent, header, common.Address{}, nil, false)
+			require.NoError(t, err)
+			defer env.discard()
+			sender := crypto.PubkeyToAddress(key.PublicKey)
+			recipient := common.Address{0xaa}
+			payee := sender
+			if tc.gas == 300_000 {
+				payee = recipient
+			}
+			pay, err := types.SignTx(types.NewTransaction(1, payee, big.NewInt(1), tc.gas, common.Big0, nil), types.LatestSigner(config), key)
+			require.NoError(t, err)
+			if tc.amsterdam {
+				require.NoError(t, env.gasPool.ReserveGasAmsterdam(min(pay.Gas(), params.MaxTxGas), pay.Gas()))
+			} else {
+				require.NoError(t, env.gasPool.CheckGasLegacy(params.PayBidTxGasLimit))
+			}
+			if tc.amsterdam {
+				require.Zero(t, env.gasPool.Used())
+				require.Zero(t, env.lane.PaymentGasUsed())
+			}
+			// The preceding payment must be booked even while the final payment has a reservation.
+			tx, err := types.SignTx(types.NewTransaction(0, sender, big.NewInt(1), 25_000, common.Big0, nil), types.LatestSigner(config), key)
+			require.NoError(t, err)
+			r := &BidRuntime{env: env, bid: &buildertypes.Bid{}}
+			require.NoError(t, r.commitTransaction(w.chain, config, tx, true))
+			if tc.amsterdam {
+				require.Equal(t, uint64(12_000), env.lane.PaymentGasUsed())
+			} else {
+				require.Equal(t, uint64(21_000), env.lane.PaymentGasUsed())
+			}
+			before := env.gasPool.Snapshot()
+			if tc.amsterdam {
+				require.NoError(t, env.gasPool.ReleaseGasAmsterdam(min(pay.Gas(), params.MaxTxGas), pay.Gas()))
+			} else {
+				require.NoError(t, env.gasPool.AddGas(params.PayBidTxGasLimit))
+			}
+			require.Equal(t, before.CumulativeUsed(), env.gasPool.CumulativeUsed())
+			require.NoError(t, r.commitTransaction(w.chain, config, pay, true))
+			require.Equal(t, types.ReceiptStatusSuccessful, env.receipts[1].Status)
+			require.NoError(t, env.lane.VerifyPackedBid(env.gasPool))
+			if tc.amsterdam {
+				require.Equal(t, max(env.gasPool.CumulativeExecution(), env.gasPool.CumulativeState()), env.lane.PaymentGasUsed())
+				require.Equal(t, env.receipts[0].GasUsed+env.receipts[1].GasUsed, env.gasPool.CumulativeUsed())
+				if payee == recipient {
+					require.Equal(t, uint64(params.AccountCreationSize)*env.evm.Context.CostPerStateByte, env.gasPool.CumulativeState())
+				}
+			} else {
+				require.Equal(t, uint64(42_000), env.gasPool.Used())
+				require.Equal(t, uint64(42_000), env.lane.PaymentGasUsed())
+			}
 		})
 	}
 }
