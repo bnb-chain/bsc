@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -178,5 +179,58 @@ func testSendTx(t *testing.T, withLocal bool) {
 		if !errors.Is(err, txpool.ErrInflightTxLimitReached) {
 			t.Fatalf("Unexpected error, want: %v, got: %v", txpool.ErrInflightTxLimitReached, err)
 		}
+	}
+}
+
+func TestStateAtSystemTransactionGasBudget(t *testing.T) {
+	config := *params.ParliaTestChainConfig
+	config.Parlia = &params.ParliaConfig{}
+	config.HaberTime, config.HaberFixTime, config.BohrTime, config.PascalTime = new(uint64), new(uint64), new(uint64), new(uint64)
+	config.PragueTime, config.LorentzTime, config.MaxwellTime, config.FermiTime = new(uint64), new(uint64), new(uint64), new(uint64)
+	config.OsakaTime, config.MendelTime, config.PasteurTime = new(uint64), new(uint64), new(uint64)
+	forkTime := uint64(2)
+	config.AmsterdamTime = &forkTime
+	config.BlobScheduleConfig = params.BSCChainConfig.BlobScheduleConfig
+	to := common.HexToAddress("0x1000")
+	genesis := &core.Genesis{Config: &config, Alloc: types.GenesisAlloc{
+		address: {Balance: big.NewInt(100)},
+		// The first transaction records whether more than 16M execution gas is available.
+		to: {Code: common.FromHex("0x63010000005a1160005500")},
+	}}
+	chain := newTestBlockChain(t, 0, genesis, nil)
+	defer chain.Stop()
+	parent := chain.GetBlockByNumber(0)
+	engine := parlia.New(&config, nil, nil, parent.Hash())
+	defer engine.Close()
+	backend := &Ethereum{blockchain: chain, engine: engine}
+	var txs []*types.Transaction
+	for nonce := uint64(0); nonce < 2; nonce++ {
+		txs = append(txs, types.MustSignNewTx(key, types.LatestSigner(&config), &types.LegacyTx{
+			Nonce: nonce, To: &to, Gas: math.MaxUint64 / 2, GasPrice: common.Big0,
+		}))
+	}
+	for _, timestamp := range []uint64{1, 2} {
+		t.Run(new(big.Int).SetUint64(timestamp).String(), func(t *testing.T) {
+			header := parent.Header()
+			header.Number, header.ParentHash = big.NewInt(1), parent.Hash()
+			header.Time, header.Coinbase, header.GasLimit = timestamp, address, 30_000_000
+			header.BaseFee, header.Difficulty = common.Big0, common.Big1
+			if timestamp >= forkTime {
+				slot := uint64(1)
+				header.SlotNumber = &slot
+			}
+			block := types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs})
+			tx, _, statedb, release, err := backend.stateAtTransaction(context.Background(), block, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			if tx.Hash() != txs[1].Hash() || statedb.GetNonce(address) != 1 {
+				t.Fatal("incorrect transaction or nonce after system transaction replay")
+			}
+			if have := statedb.GetState(to, common.Hash{}); have != common.BigToHash(common.Big1) {
+				t.Fatalf("incorrect system transaction prestate: have %s, want 1", have)
+			}
+		})
 	}
 }
