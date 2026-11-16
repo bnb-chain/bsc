@@ -157,8 +157,9 @@ type queue struct {
 	receiptPendPool  map[string]*fetchRequest           // Currently pending receipt retrieval operations
 	receiptWakeCh    chan bool                          // Channel to notify when receipt fetcher of new tasks
 
-	resultCache *resultStore       // Downloaded but not yet delivered fetch results
-	resultSize  common.StorageSize // Approximate size of a block (exponential moving average)
+	resultCache   *resultStore       // Downloaded but not yet delivered fetch results
+	resultSize    common.StorageSize // Approximate size of a block (exponential moving average)
+	resultTimeout time.Duration      // Maximum wait for contiguous results; zero disables the timeout
 
 	lock   *sync.RWMutex
 	active *sync.Cond
@@ -189,6 +190,7 @@ func (q *queue) Reset(blockCacheLimit int, thresholdInitialSize int) {
 	defer q.lock.Unlock()
 
 	q.closed = false
+	q.resultTimeout = 0
 	q.mode = ethconfig.FullSync
 
 	q.headerHead = common.Hash{}
@@ -356,10 +358,20 @@ func (q *queue) Schedule(headers []*types.Header, hashes []common.Hash, from uin
 // the cache. the result slice will be empty if the queue has been closed.
 // Results can be called concurrently with Deliver and Schedule,
 // but assumes that there are not two simultaneous callers to Results
-func (q *queue) Results(block bool) []*fetchResult {
+func (q *queue) Results(block bool) ([]*fetchResult, error) {
 	// Abort early if there are no items and non-blocking requested
 	if !block && !q.resultCache.HasCompletedItems() {
-		return nil
+		return nil, nil
+	}
+	var expired bool // Protected by q.lock, like the condition variable.
+	if block && q.resultTimeout > 0 {
+		timer := time.AfterFunc(q.resultTimeout, func() {
+			q.lock.Lock()
+			expired = true
+			q.active.Signal()
+			q.lock.Unlock()
+		})
+		defer timer.Stop()
 	}
 	closed := false
 	for !closed && !q.resultCache.HasCompletedItems() {
@@ -374,6 +386,10 @@ func (q *queue) Results(block bool) []*fetchResult {
 		if q.resultCache.HasCompletedItems() || q.closed {
 			q.lock.Unlock()
 			break
+		}
+		if expired {
+			q.lock.Unlock()
+			return nil, fmt.Errorf("%w: no contiguous download results for %s", errStallingPeer, q.resultTimeout)
 		}
 		// No items available, and not closed
 		q.active.Wait()
@@ -416,7 +432,7 @@ func (q *queue) Results(block bool) []*fetchResult {
 		info = append(info, "throttle", throttleThreshold)
 		log.Debug("Downloader queue stats", info...)
 	}
-	return results
+	return results, nil
 }
 
 func (q *queue) Stats() []interface{} {
