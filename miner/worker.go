@@ -97,7 +97,7 @@ var (
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
 	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
-	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
+	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // largest unused payment reservation, at seal
 	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
 	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
@@ -847,9 +847,8 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
 	laneType := env.lane.Classify(tx)
 	var (
-		snap       = env.state.Snapshot()
-		gp         = env.gasPool.Snapshot()
-		usedBefore = env.gasPool.Used()
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Snapshot()
 	)
 
 	receipt, txBAL, err := core.ApplyTransaction(context.Background(), env.evm, env.gasPool, env.state, env.header, tx)
@@ -865,7 +864,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		}
 	}
 	env.header.GasUsed = env.gasPool.Used()
-	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, gp)
 	return receipt, err
 }
 
@@ -995,10 +994,10 @@ LOOP:
 		prefetchCurr.Store(tx)
 
 		laneType := env.lane.Classify(tx)
-		if !env.lane.Admits(env.gasPool.Available(env.evm.GetRules().IsAmsterdam), laneType, tx.Gas()) {
+		if !env.lane.Admits(env.gasPool, laneType, tx.Gas()) {
 			generalLaneYieldedCounter.Inc(1)
 			env.generalLaneYielded++
-			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Available(env.evm.GetRules().IsAmsterdam), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Available(env.evm.GetRules().IsAmsterdam), "paymentLaneIdle", env.lane.IdleGas())
 			txs.Pop()
 			continue
 		}
@@ -1341,7 +1340,7 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.Verify(block.GasUsed()); err != nil {
+	if err := work.lane.Verify(block.GasUsed(), work.gasPool); err != nil {
 		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
@@ -1719,14 +1718,14 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.Verify(block.GasUsed()); err != nil {
+		if err := env.lane.Verify(block.GasUsed(), env.gasPool); err != nil {
 			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
 		if env.lane.On() {
 			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
-			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+			paymentLaneIdleGauge.Update(int64(env.lane.IdleGas()))
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.
@@ -1739,7 +1738,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
-				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
+				"paymentLaneIdle", env.lane.IdleGas(), "generalLaneYielded", env.generalLaneYielded,
 				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:

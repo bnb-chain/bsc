@@ -170,7 +170,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		laneType := lane.Classify(tx)
-		usedBefore := gp.Used()
+		usedBefore := gp.Snapshot()
 		statedb.SetTxContext(tx.Hash(), i, uint32(i+1))
 		receipt, bal, err := applyTransactionWithEVM(ctx, msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm, eagerBloom)
 		if err != nil {
@@ -222,7 +222,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockAccessList.Merge(postBAL)
 	}
 
-	if err := lane.Verify(gasUsed); err != nil {
+	if err := lane.Verify(gasUsed, gp); err != nil {
 		return nil, laneReject(err)
 	}
 	lane.recordImported()

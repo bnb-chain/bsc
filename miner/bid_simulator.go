@@ -1214,7 +1214,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	if err = bidRuntime.env.lane.VerifyPackedBid(bidRuntime.env.gasPool.Available(bidRuntime.env.evm.GetRules().IsAmsterdam)); err != nil {
+	if err = bidRuntime.env.lane.VerifyPackedBid(bidRuntime.env.gasPool); err != nil {
 		log.Warn("BidSimulator: bid rejected by the payment lane", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "err", err)
 		return
@@ -1388,7 +1388,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	}
 
 	laneType := env.lane.Classify(tx)
-	usedBefore := env.gasPool.Used()
+	usedBefore := env.gasPool.Snapshot()
 
 	receipt, txBAL, err := core.ApplyTransaction(context.Background(), env.evm, env.gasPool, env.state, env.header, tx)
 	if err != nil {

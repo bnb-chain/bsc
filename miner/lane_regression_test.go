@@ -119,3 +119,30 @@ func TestBidCommitTransactionBooksNothingForAFailedTransaction(t *testing.T) {
 	require.NotZero(t, env.gasPool.Used(), "buyGas must have drawn from the pool, or the test proves nothing")
 	require.Zero(t, env.lane.Budget.PaymentLaneUsed, "a failed transaction must not book lane gas")
 }
+
+func TestPaymentLaneWorkerRollback(t *testing.T) {
+	for _, amsterdam := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy", true: "amsterdam"}[amsterdam], func(t *testing.T) {
+			w, config, parent, header, key := laneMinerChain(t, false)
+			if amsterdam {
+				config.AmsterdamTime = &header.Time
+			}
+			env, err := w.makeEnv(parent, header, common.Address{}, nil, false)
+			require.NoError(t, err)
+			defer env.discard()
+			require.True(t, env.lane.On())
+			sender := crypto.PubkeyToAddress(key.PublicKey)
+			balance := env.state.GetBalance(sender).ToBig()
+			pool := env.gasPool.String()
+			tx, err := types.SignTx(types.NewTransaction(0, common.Address{0xaa}, big.NewInt(1), 1, big.NewInt(1), nil), types.LatestSigner(config), key)
+			require.NoError(t, err)
+			require.Equal(t, paymentlane.PaymentLane, env.lane.Classify(tx))
+			_, err = w.applyTransaction(env, tx)
+			require.ErrorIs(t, err, core.ErrIntrinsicGas)
+			require.Equal(t, pool, env.gasPool.String())
+			require.Equal(t, balance, env.state.GetBalance(sender).ToBig())
+			require.Zero(t, env.lane.PaymentGasUsed())
+			require.Equal(t, env.lane.Budget.PaymentLaneQuota, env.lane.IdleGas())
+		})
+	}
+}
