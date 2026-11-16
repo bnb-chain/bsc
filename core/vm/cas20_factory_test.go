@@ -3,11 +3,14 @@ package vm
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -487,5 +490,98 @@ func TestCAS20BootstrapReachesTheVariant(t *testing.T) {
 
 	if got := u(at(token, cas20Call(selTotalSupply))); got != 30 {
 		t.Errorf("totalSupply = %d, want 30", got)
+	}
+}
+
+func TestCAS20CodeWriteGas(t *testing.T) {
+	for _, amsterdam := range []bool{false, true} {
+		for _, prefunded := range []bool{false, true} {
+			t.Run(fmt.Sprintf("amsterdam=%t/prefunded=%t", amsterdam, prefunded), func(t *testing.T) {
+				st, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+				addr := cas20Addr(cas20VariantAsset, 1)
+				if prefunded {
+					st.SetBalance(addr, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
+				}
+				bc := cas20BlockContext(1)
+				bc.CostPerStateByte = params.CostPerStateByte
+				evm := NewEVM(bc, st, cas20GasChainConfig(amsterdam), Config{})
+				defer evm.Release()
+				gas := NewGasBudget(1_000_000, 1_000_000)
+				ctx := &PrecompileContext{evm: evm, StateDB: st, Self: CAS20FactoryAddress, gas: &gas}
+				if !ctx.chargeCodeWrite(addr, CAS20MarkerCode) {
+					t.Fatal("code write charge failed")
+				}
+				size := uint64(len(CAS20MarkerCode))
+				execution := params.CreateGas + size*params.CreateDataGas
+				var stateGas uint64
+				if amsterdam {
+					execution = params.CreateAccessAmsterdam
+					stateGas = (params.AccountCreationSize + size) * params.CostPerStateByte
+				}
+				execution += params.Keccak256Gas + toWordSize(size)*params.Keccak256WordGas
+				if gas.UsedExecutionGas != execution || gas.UsedStateGas != int64(stateGas) {
+					t.Fatalf("charged %v, want execution=%d state=%d", gas, execution, stateGas)
+				}
+			})
+		}
+	}
+}
+
+func TestCAS20FactoryGas(t *testing.T) {
+	for _, variant := range []byte{cas20VariantAsset, cas20VariantStablecoin} {
+		for _, amsterdam := range []bool{false, true} {
+			for _, prefunded := range []bool{false, true} {
+				for _, reservoir := range []uint64{0, 1_000_000} {
+					t.Run(fmt.Sprintf("variant=%d/amsterdam=%t/prefunded=%t/state=%d", variant, amsterdam, prefunded, reservoir), func(t *testing.T) {
+						cfg := cas20GasChainConfig(amsterdam)
+						bc := cas20BlockContext(1)
+						bc.CostPerStateByte = params.CostPerStateByte
+						st, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+						seedActivation(st, cas20TestCaller)
+						creator, salt := cas20Alice, common.Hash{31: 1}
+						token := cas20DeriveAddress(variant, creator, salt)
+						if prefunded {
+							st.SetBalance(token, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
+						}
+						rules := cfg.Rules(bc.BlockNumber, true, bc.Time)
+						before := st.IntermediateRoot(rules)
+						evm := NewEVM(bc, st, cfg, Config{})
+						defer evm.Release()
+						input := encodeCreateCAS20(variant, salt, creator, nil)
+						ret, left, err := evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(300_000, reservoir), new(uint256.Int))
+						if amsterdam && reservoir == 0 {
+							if !errors.Is(err, ErrOutOfGas) || left.UsedStateGas != 0 || st.IntermediateRoot(rules) != before {
+								t.Fatalf("failed factory did not restore state: gas=%v err=%v", left, err)
+							}
+							return
+						}
+						if err != nil || common.BytesToAddress(ret) != token || !bytes.Equal(st.GetCode(token), CAS20MarkerCode) {
+							t.Fatalf("factory failed: gas=%v err=%v", left, err)
+						}
+						if amsterdam {
+							if left.UsedStateGas <= int64((params.AccountCreationSize+len(CAS20MarkerCode))*params.CostPerStateByte) {
+								t.Fatalf("factory storage was not charged: %v", left)
+							}
+						} else if left.UsedStateGas != 0 {
+							t.Fatalf("state gas charged before Amsterdam: %v", left)
+						}
+						if prefunded && st.GetBalance(token).Uint64() != 1 {
+							t.Fatal("factory changed the prefunded balance")
+						}
+						root := st.IntermediateRoot(rules)
+						_, _, err = evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(1_000_000, 1_000_000), new(uint256.Int))
+						if !errors.Is(err, ErrExecutionReverted) || st.IntermediateRoot(rules) != root {
+							t.Fatalf("duplicate creation did not preserve the token: %v", err)
+						}
+						// A failing init call must also undo the code and state already created.
+						input = encodeCreateCAS20(variant, common.Hash{31: 2}, creator, [][]byte{{0xff, 0xff, 0xff, 0xff}})
+						_, left, err = evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(1_000_000, 2_000_000), new(uint256.Int))
+						if !errors.Is(err, ErrExecutionReverted) || left.UsedStateGas != 0 || left.StateGas != 2_000_000 || st.IntermediateRoot(rules) != root {
+							t.Fatalf("failed bootstrap did not restore state and reservoir: gas=%v err=%v", left, err)
+						}
+					})
+				}
+			}
+		}
 	}
 }

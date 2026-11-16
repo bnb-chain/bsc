@@ -541,29 +541,45 @@ func TestPaymentLaneAmsterdamImport(t *testing.T) {
 	gspec.Alloc[revert] = types.Account{Code: common.FromHex("0x600060005560006000fd"), Storage: map[common.Hash]common.Hash{{}: common.BigToHash(common.Big1)}, Balance: common.Big0}
 	gspec.Alloc[create] = types.Account{Code: common.FromHex("0x600160005500"), Balance: common.Big0}
 	gspec.Alloc[floor] = types.Account{Code: common.FromHex("0x600160005500"), Balance: common.Big0}
+	token := common.Address{0: 0xca, 1: 0x52, 19: 1}
+	gspec.Alloc[token] = types.Account{Code: vm.CAS20MarkerCode, Balance: common.Big0}
 	gspec.Alloc[refill] = types.Account{Code: common.FromHex("0x6001600055600060005500"), Balance: common.Big0}
 	contract := gspec.Alloc[paymentlane.ContractAddress]
-	contract.Storage = map[common.Hash]common.Hash{laneListedLenSlot: common.BigToHash(big.NewInt(5))}
-	for i, addr := range []common.Address{clear, revert, create, floor, refill} {
+	contract.Storage = map[common.Hash]common.Hash{laneListedLenSlot: common.BigToHash(big.NewInt(6))}
+	for i, addr := range []common.Address{clear, revert, create, floor, refill, token} {
 		contract.Storage[enumerableSetSlot(laneListedLenSlot, uint64(i))] = common.BytesToHash(addr[:])
 	}
 	gspec.Alloc[paymentlane.ContractAddress] = contract
 	engine := &laneTestEngine{ethash.NewFullFaker()}
 	signer := types.LatestSigner(config)
+	approve := func(spender common.Address) []byte {
+		data := append(common.FromHex("0x095ea7b3"), common.LeftPadBytes(spender[:], 32)...)
+		return append(data, common.LeftPadBytes([]byte{1}, 32)...)
+	}
 	_, blocks, _ := GenerateChainWithGenesis(gspec, engine, 4, func(i int, b *BlockGen) {
+		if i == 1 {
+			require.True(t, config.IsJenner(b.header.Number, b.header.Time))
+			require.False(t, config.IsAmsterdam(b.header.Number, b.header.Time))
+			b.AddTx(key.sign(t, signer, 0, token, common.Big0, 400_000, approve(common.Address{0xcd})))
+			require.EqualValues(t, types.ReceiptStatusSuccessful, b.receipts[0].Status)
+			require.Zero(t, b.gasPool.CumulativeState())
+			return
+		}
 		if i != 2 {
 			return
 		}
 		require.True(t, b.lane.On())
 		require.True(t, b.lane.amsterdam)
 		b.SetCoinbase(common.Address{})
-		for n, addr := range []common.Address{clear, revert, create, floor, refill} {
+		for n, addr := range []common.Address{clear, revert, create, floor, refill, token} {
 			before := b.gasPool.Snapshot()
 			var data []byte
 			if n == 3 {
 				data = make([]byte, 4096)
+			} else if n == 5 {
+				data = approve(common.Address{0xcc})
 			}
-			b.AddTx(key.sign(t, signer, uint64(n), addr, common.Big0, 400_000, data))
+			b.AddTx(key.sign(t, signer, uint64(n+1), addr, common.Big0, 400_000, data))
 			receipt := b.receipts[n]
 			execution := b.gasPool.CumulativeExecution() - before.CumulativeExecution()
 			switch n {
@@ -584,6 +600,11 @@ func TestPaymentLaneAmsterdamImport(t *testing.T) {
 				require.EqualValues(t, types.ReceiptStatusSuccessful, receipt.Status)
 				require.Zero(t, b.gasPool.CumulativeState()-before.CumulativeState(), "state refill reverses temporary creation, unlike a transaction refund")
 				require.Equal(t, common.Hash{}, b.statedb.GetState(addr, common.Hash{}))
+			case 5:
+				stateGas := b.gasPool.CumulativeState() - before.CumulativeState()
+				require.EqualValues(t, types.ReceiptStatusSuccessful, receipt.Status)
+				require.EqualValues(t, params.StorageCreationSize*params.CostPerStateByte, stateGas)
+				require.Equal(t, execution+stateGas, receipt.GasUsed)
 			}
 		}
 		require.Equal(t, b.gasPool.CumulativeExecution(), b.lane.paymentExecution)
@@ -596,6 +617,19 @@ func TestPaymentLaneAmsterdamImport(t *testing.T) {
 	require.NoError(t, err, "block index %d", n)
 	require.Empty(t, blocks[3].Transactions())
 	require.Equal(t, blocks[3].Root(), chain.CurrentBlock().Root)
+	header := chain.CurrentBlock()
+	st, err := chain.StateAt(header.Root, header.Number, header.Time)
+	require.NoError(t, err)
+	evm := vm.NewEVM(NewEVMBlockContext(header, chain, nil), st, config, vm.Config{})
+	defer evm.Release()
+	for _, spender := range []common.Address{{0xcd}, {0xcc}} {
+		input := append(common.FromHex("0xdd62ed3e"), common.LeftPadBytes(key.addr[:], 32)...)
+		input = append(input, common.LeftPadBytes(spender[:], 32)...)
+		ret, _, err := evm.StaticCall(key.addr, token, input, vm.NewGasBudget(100_000, 0))
+		require.NoError(t, err)
+		require.Equal(t, common.Big1, new(big.Int).SetBytes(ret), "allowance must survive the fork")
+	}
+
 }
 
 func TestPaymentLaneAmsterdamRejectsStateOverflow(t *testing.T) {
