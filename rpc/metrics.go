@@ -32,6 +32,10 @@ var (
 	serveTimeHistName = "rpc/duration"
 
 	RpcServingTimer = metrics.NewRegisteredTimer("rpc/duration/all", nil)
+
+	// RpcServingHealthSample tracks completed RPC calls independently of optional
+	// metrics collection. Health probes are excluded to avoid diluting the signal.
+	RpcServingHealthSample = metrics.NewExpDecaySampleForced(1028, 0.015)
 )
 
 // updateServeTimeHistogram tracks the serving time of a remote RPC call.
