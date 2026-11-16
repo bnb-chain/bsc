@@ -91,6 +91,9 @@ var maxCatchUpBlocks = params.FullImmutabilityThreshold
 // block's access list cannot be retrieved against the current peerset.
 var errAccessListUnavailable = errors.New("block access lists unavailable")
 
+// errNoBALHistory marks a gap containing blocks that never committed to a BAL.
+var errNoBALHistory = errors.New("catch-up gap predates block access lists")
+
 // accountRequestV2 tracks a pending account range request to ensure responses are
 // to actual requests and to validate any security constraints.
 //
@@ -638,6 +641,10 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 				log.Warn("Frozen pivot moved unexpectedly, rolling forward", "frozen", prevPivot.Number, "new", target.Number)
 			}
 			if err := s.catchUp(target, cancel); err != nil {
+				if errors.Is(err, errNoBALHistory) {
+					s.resetSyncState()
+					break
+				}
 				return err
 			}
 			// A completed sync is rolled forward in full by the catch-up. There is
@@ -894,6 +901,12 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 				return fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, hash)
 			}
 			headers[hash] = header
+		}
+
+		for _, header := range headers {
+			if header.BlockAccessListHash == nil {
+				return errNoBALHistory
+			}
 		}
 
 		// Fetch this window's BALs from peers.
