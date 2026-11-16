@@ -629,7 +629,6 @@ func TestPaymentLaneAmsterdamImport(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, common.Big1, new(big.Int).SetBytes(ret), "allowance must survive the fork")
 	}
-
 }
 
 func TestPaymentLaneAmsterdamRejectsStateOverflow(t *testing.T) {
@@ -651,7 +650,7 @@ func TestPaymentLaneAmsterdamRejectsStateOverflow(t *testing.T) {
 			b.AddTx(key.sign(t, signer, n, contract, common.Big0, 130_000, []byte{byte(n)}))
 		}
 	})
-	require.Greater(t, blocks[2].GasUsed(), uint64(gasLimit-paymentlane.Quota(500, gasLimit)))
+	require.Greater(t, blocks[2].GasUsed(), gasLimit-paymentlane.Quota(500, gasLimit))
 	require.LessOrEqual(t, blocks[2].GasUsed(), uint64(gasLimit))
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, DefaultConfig())
 	require.NoError(t, err)
