@@ -80,7 +80,8 @@ func NewV1Syncer(db ethdb.Database, scheme string) Syncer {
 //
 // getHeader supplies headers not yet committed by the block downloader. It must
 // resolve the requested hash and number, or return an error without changing state.
-func NewV2Syncer(db ethdb.Database, scheme string, getHeader func(common.Hash, uint64) (*types.Header, error)) Syncer {
+// It must stop when the supplied state sync cycle is cancelled.
+func NewV2Syncer(db ethdb.Database, scheme string, getHeader func(common.Hash, uint64, <-chan struct{}) (*types.Header, error)) Syncer {
 	s := newSyncerV2(db, scheme)
 	s.getHeader = getHeader
 	return syncerV2Adapter{s}

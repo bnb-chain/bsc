@@ -381,7 +381,7 @@ type syncerV2 struct {
 	tasks  []*accountTaskV2 // Current account task set being synced
 	update chan struct{}    // Notification channel for possible sync progression
 
-	getHeader func(common.Hash, uint64) (*types.Header, error) // Uncommitted catch-up headers
+	getHeader func(common.Hash, uint64, <-chan struct{}) (*types.Header, error) // Uncommitted catch-up headers
 
 	peerJoin *event.Feed       // Event feed to react to peers joining
 	peerDrop *event.Feed       // Event feed to react to peers dropping
@@ -606,7 +606,7 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 		var reorged bool
 		if !exceedsRetention {
 			var err error
-			reorged, err = s.isPivotReorged(prevPivot, target)
+			reorged, err = s.isPivotReorged(prevPivot, target, cancel)
 			if err != nil {
 				return err // Missing ancestry is not evidence of a reorg. Keep the checkpoint.
 			}
@@ -829,7 +829,7 @@ func (s *syncerV2) downloadState(cancel chan struct{}) error {
 // as a starting point for forward catch-up. Either the new pivot doesn't
 // advance past it, or it is not an ancestor of the new pivot.
 // Unavailable ancestry is returned as an error, leaving the checkpoint usable.
-func (s *syncerV2) isPivotReorged(prev, curr *types.Header) (bool, error) {
+func (s *syncerV2) isPivotReorged(prev, curr *types.Header, cancel <-chan struct{}) (bool, error) {
 	// If the new pivot is at or below the old one, there's nothing for
 	// catchUp to roll forward.
 	if curr.Number.Cmp(prev.Number) <= 0 {
@@ -838,7 +838,7 @@ func (s *syncerV2) isPivotReorged(prev, curr *types.Header) (bool, error) {
 	// Walk the header chain back from the new pivot. The canonical index
 	// can't answer this, it only covers the blocks the downloader has
 	// committed so far, and those trail the pivot.
-	_, err := s.gapHashChain(prev, curr)
+	_, err := s.gapHashChain(prev, curr, cancel)
 	if errors.Is(err, errPivotReorged) {
 		return true, nil
 	}
@@ -876,7 +876,7 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 
 	// Resolve the hash chain of the whole gap upfront by walking the parent
 	// hashes backward from the trusted target header.
-	hashes, err := s.gapHashChain(prev, target)
+	hashes, err := s.gapHashChain(prev, target, cancel)
 	if err != nil {
 		return err
 	}
@@ -910,7 +910,7 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 				headers[hash] = target
 				continue
 			}
-			header, err := s.gapHeader(num, hash)
+			header, err := s.gapHeader(num, hash, cancel)
 			if err != nil {
 				return err
 			}
@@ -983,7 +983,7 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 // gapHashChain resolves the hashes of the catch-up gap (prev, target] by
 // walking the parent hashes backward from the trusted target header.
 // Out-of-memory is not expected as only the 32 bytes hashes are kept.
-func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, error) {
+func (s *syncerV2) gapHashChain(prev, target *types.Header, cancel <-chan struct{}) ([]common.Hash, error) {
 	var (
 		from   = prev.Number.Uint64() + 1
 		to     = target.Number.Uint64()
@@ -992,7 +992,7 @@ func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, erro
 	)
 	hashes[to-from] = target.Hash()
 	for num := to - 1; num >= from; num-- {
-		header, err := s.gapHeader(num, want)
+		header, err := s.gapHeader(num, want, cancel)
 		if err != nil {
 			return nil, err
 		}
@@ -1007,12 +1007,17 @@ func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, erro
 
 // gapHeader also resolves headers that the downloader has not committed yet.
 // Missing data must not be confused with a proven ancestry mismatch.
-func (s *syncerV2) gapHeader(num uint64, hash common.Hash) (*types.Header, error) {
+func (s *syncerV2) gapHeader(num uint64, hash common.Hash, cancel <-chan struct{}) (*types.Header, error) {
+	select {
+	case <-cancel:
+		return nil, ErrCancelled
+	default:
+	}
 	if header := rawdb.ReadHeader(s.db, hash, num); header != nil {
 		return header, nil
 	}
 	if s.getHeader != nil {
-		header, err := s.getHeader(hash, num)
+		header, err := s.getHeader(hash, num, cancel)
 		if err != nil {
 			return nil, err
 		}

@@ -156,7 +156,7 @@ func TestSyncHeaderBatchAndValidation(t *testing.T) {
 	t.Run("batch-cache", func(t *testing.T) {
 		d, p, headers := newPivotHeaderDownloader(t)
 		for i := len(headers) - 1; i >= 0; i-- {
-			got, err := d.syncHeader(headers[i].Hash(), headers[i].Number.Uint64())
+			got, err := d.syncHeader(headers[i].Hash(), headers[i].Number.Uint64(), nil)
 			if err != nil || got.Hash() != headers[i].Hash() {
 				t.Fatalf("header %d: %v", i, err)
 			}
@@ -171,7 +171,7 @@ func TestSyncHeaderBatchAndValidation(t *testing.T) {
 	t.Run("malformed-chain", func(t *testing.T) {
 		d, p, headers := newPivotHeaderDownloader(t)
 		p.malformed = true
-		_, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64())
+		_, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), nil)
 		if !errors.Is(err, errBadPeer) {
 			t.Fatalf("error = %v, want bad peer", err)
 		}
@@ -186,7 +186,7 @@ func TestSyncHeaderCancellation(t *testing.T) {
 	p.stall = true
 	p.requested = make(chan struct{})
 	result := make(chan error, 1)
-	go func() { _, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64()); result <- err }()
+	go func() { _, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), nil); result <- err }()
 	<-p.requested
 	close(d.cancelCh)
 	select {
@@ -234,5 +234,77 @@ func TestMovePivotGuards(t *testing.T) {
 				t.Fatal("rejected move changed persisted pivot")
 			}
 		})
+	}
+}
+
+// Retargeting cancels only the state cycle. It must release an ancestry request
+// without shutting down the downloader or discarding the previous checkpoint.
+func TestStateCycleHeaderCancellation(t *testing.T) {
+	d, p, headers := newPivotHeaderDownloader(t)
+	p.stall = true
+	p.requested = make(chan struct{})
+	progress, err := json.Marshal(struct {
+		Pivot *types.Header
+		Phase uint8
+	}{headers[0], 2}) // completed checkpoint; the next cycle must validate ancestry
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawdb.WriteSnapshotSyncStatus(d.stateDB, append([]byte{2}, progress...))
+	d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.syncHeader)
+	s := newStateSync(d, headers[5])
+	go s.run()
+	defer func() {
+		close(d.cancelCh)
+		s.Cancel()
+	}()
+	select {
+	case <-p.requested:
+	case <-time.After(3 * time.Second):
+		t.Fatal("ancestry request did not start")
+	}
+	result := make(chan error, 1)
+	go func() { result <- s.Cancel() }()
+	select {
+	case err := <-result:
+		if err != snap.ErrCancelled {
+			t.Fatalf("error = %v, want state cycle cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("state cycle cancellation did not interrupt the header request")
+	}
+	select {
+	case <-d.cancelCh:
+		t.Fatal("state cycle cancellation shut down the downloader")
+	default:
+	}
+	var checkpoint struct {
+		Pivot *types.Header
+		Phase uint8
+	}
+	journal := rawdb.ReadSnapshotSyncStatus(d.stateDB)
+	if len(journal) == 0 {
+		t.Fatal("cancelled cycle discarded the checkpoint")
+	}
+	if err := json.Unmarshal(journal[1:], &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if checkpoint.Pivot == nil || checkpoint.Pivot.Hash() != headers[0].Hash() || checkpoint.Phase != 2 {
+		t.Fatal("cancelled ancestry lookup changed checkpoint pivot or phase")
+	}
+	// The same downloader must remain usable for the next cycle's ancestry.
+	p.stall = false
+	p.requested = nil
+	got, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), make(chan struct{}))
+	if err != nil || got == nil || got.Hash() != headers[5].Hash() {
+		t.Fatalf("next cycle header request failed: %v", err)
+	}
+	cancel := make(chan struct{})
+	close(cancel)
+	if _, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), cancel); err != snap.ErrCancelled {
+		t.Fatalf("cached header ignored cancellation: %v", err)
+	}
+	if p.requests.Load() != 2 {
+		t.Fatalf("requests = %d, want two cycles", p.requests.Load())
 	}
 }

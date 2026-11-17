@@ -67,7 +67,7 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 	header := head
 	for header.Number.Cmp(frozen.Number) > 0 {
 		var err error
-		header, err = d.syncHeader(header.ParentHash, header.Number.Uint64()-1)
+		header, err = d.syncHeader(header.ParentHash, header.Number.Uint64()-1, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -81,8 +81,10 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 // syncHeader resolves a header by hash, including headers not yet persisted by
 // InsertReceiptChain. Reverse batches amortize ancestry walks; the bounded cache
 // is content-addressed and never changes canonical indices or on-disk progress.
-func (d *Downloader) syncHeader(hash common.Hash, number uint64) (*types.Header, error) {
+func (d *Downloader) syncHeader(hash common.Hash, number uint64, cancel <-chan struct{}) (*types.Header, error) {
 	select {
+	case <-cancel:
+		return nil, snap.ErrCancelled
 	case <-d.cancelCh:
 		return nil, errCanceled
 	default:
@@ -101,7 +103,7 @@ func (d *Downloader) syncHeader(hash common.Hash, number uint64) (*types.Header,
 	if number < uint64(count-1) {
 		count = int(number) + 1
 	}
-	headers, _, err := d.fetchHeadersByHash(peer, hash, count, 0, true)
+	headers, _, err := d.fetchHeadersByHashWithCancel(peer, hash, count, 0, true, cancel)
 	if err != nil {
 		return nil, err
 	}

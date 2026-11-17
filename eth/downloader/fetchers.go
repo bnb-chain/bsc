@@ -22,12 +22,18 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 )
 
 // fetchHeadersByHash is a blocking version of Peer.RequestHeadersByHash which
 // handles all the cancellation, interruption and timeout mechanisms of a data
 // retrieval to allow blocking API calls.
 func (d *Downloader) fetchHeadersByHash(p *peerConnection, hash common.Hash, amount int, skip int, reverse bool) ([]*types.Header, []common.Hash, error) {
+	return d.fetchHeadersByHashWithCancel(p, hash, amount, skip, reverse, nil)
+}
+
+// fetchHeadersByHashWithCancel also observes the state sync cycle cancellation.
+func (d *Downloader) fetchHeadersByHashWithCancel(p *peerConnection, hash common.Hash, amount int, skip int, reverse bool, cancel <-chan struct{}) ([]*types.Header, []common.Hash, error) {
 	// Create the response sink and send the network request
 	start := time.Now()
 	resCh := make(chan *eth.Response)
@@ -45,6 +51,9 @@ func (d *Downloader) fetchHeadersByHash(p *peerConnection, hash common.Hash, amo
 	defer timeoutTimer.Stop()
 
 	select {
+	case <-cancel:
+		return nil, nil, snap.ErrCancelled
+
 	case <-d.cancelCh:
 		return nil, nil, errCanceled
 

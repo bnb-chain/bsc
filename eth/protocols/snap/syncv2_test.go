@@ -1505,7 +1505,7 @@ func TestIsPivotReorged(t *testing.T) {
 	// The new pivot is at or below the old one, nothing to roll forward.
 	t.Run("NonAdvancingPivot", func(t *testing.T) {
 		s := newSyncerV2(rawdb.NewMemoryDatabase(), rawdb.HashScheme)
-		if reorged, err := s.isPivotReorged(prev, mkPivot(95, common.HexToHash("0xcccc"))); err != nil || !reorged {
+		if reorged, err := s.isPivotReorged(prev, mkPivot(95, common.HexToHash("0xcccc")), nil); err != nil || !reorged {
 			t.Fatal("expected reorg detection when new pivot is at or below the old one")
 		}
 	})
@@ -1519,7 +1519,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if reorged, err := s.isPivotReorged(prev, headers[4]); err != nil || !reorged {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err != nil || !reorged {
 			t.Fatal("expected reorg detection when the new pivot descends from another block")
 		}
 	})
@@ -1532,7 +1532,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if reorged, err := s.isPivotReorged(prev, headers[4]); err == nil || reorged {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err == nil || reorged {
 			t.Fatal("missing ancestry must return an error without declaring a reorg")
 		}
 	})
@@ -1547,7 +1547,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if reorged, err := s.isPivotReorged(prev, headers[4]); err != nil || reorged {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err != nil || reorged {
 			t.Fatal("should not detect reorg when the old pivot is an unindexed ancestor")
 		}
 	})
@@ -1565,7 +1565,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if reorged, err := s.isPivotReorged(prev, headers[4]); err != nil || reorged {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err != nil || reorged {
 			t.Fatal("should not detect reorg when the old pivot is an ancestor")
 		}
 	})
@@ -4050,27 +4050,66 @@ func TestSyncV2HeaderSourceRecovery(t *testing.T) {
 	s.saveSyncStatus()
 	checkpoint := rawdb.ReadSnapshotSyncStatus(db)
 	unavailable := errors.New("ancestry peer disconnected")
-	s.getHeader = func(common.Hash, uint64) (*types.Header, error) { return nil, unavailable }
+	s.getHeader = func(common.Hash, uint64, <-chan struct{}) (*types.Header, error) { return nil, unavailable }
 	if err := s.Sync(target, make(chan struct{})); !errors.Is(err, unavailable) {
 		t.Fatalf("error = %v, want source error", err)
 	}
 	if !bytes.Equal(checkpoint, rawdb.ReadSnapshotSyncStatus(db)) {
 		t.Fatal("failed ancestry lookup changed the checkpoint")
 	}
-	s.getHeader = func(hash common.Hash, number uint64) (*types.Header, error) {
+	s.getHeader = func(hash common.Hash, number uint64, _ <-chan struct{}) (*types.Header, error) {
 		if hash != middle.Hash() || number != 101 {
 			t.Fatalf("unexpected ancestry lookup %d %s", number, hash)
 		}
 		return middle, nil
 	}
-	if reorged, err := s.isPivotReorged(prev, target); err != nil || reorged {
+	if reorged, err := s.isPivotReorged(prev, target, nil); err != nil || reorged {
 		t.Fatalf("uncommitted ancestor rejected: reorg=%v err=%v", reorged, err)
 	}
 	if rawdb.ReadHeader(db, middle.Hash(), 101) != nil {
 		t.Fatal("ancestry lookup persisted an unvalidated header")
 	}
-	s.getHeader = func(common.Hash, uint64) (*types.Header, error) { return prev, nil }
-	if reorged, err := s.isPivotReorged(prev, target); err == nil || reorged {
+	s.getHeader = func(common.Hash, uint64, <-chan struct{}) (*types.Header, error) { return prev, nil }
+	if reorged, err := s.isPivotReorged(prev, target, nil); err == nil || reorged {
 		t.Fatal("mismatching source header must fail without declaring a reorg")
+	}
+}
+
+func TestAncestryCycleCancellation(t *testing.T) {
+	for _, source := range []string{"database", "callback"} {
+		t.Run(source, func(t *testing.T) {
+			db := rawdb.NewMemoryDatabase()
+			defer db.Close()
+			s := newSyncerV2(db, rawdb.HashScheme)
+			prev := mkPivot(100, common.HexToHash("0x1234"))
+			first := &types.Header{Number: big.NewInt(101), ParentHash: prev.Hash()}
+			second := &types.Header{Number: big.NewInt(102), ParentHash: first.Hash()}
+			target := &types.Header{Number: big.NewInt(103), ParentHash: second.Hash()}
+			cancel := make(chan struct{})
+			calls := 0
+			s.getHeader = func(hash common.Hash, number uint64, cycleCancel <-chan struct{}) (*types.Header, error) {
+				calls++
+				if cycleCancel != cancel || hash != second.Hash() || number != 102 {
+					t.Fatal("unexpected ancestry request or cancellation signal")
+				}
+				close(cancel)
+				return second, nil
+			}
+			if source == "database" {
+				rawdb.WriteHeader(db, first)
+				rawdb.WriteHeader(db, second)
+				close(cancel)
+			}
+			if _, err := s.gapHashChain(prev, target, cancel); err != ErrCancelled {
+				t.Fatalf("ancestry cancellation = %v", err)
+			}
+			wantCalls := 1
+			if source == "database" {
+				wantCalls = 0
+			}
+			if calls != wantCalls {
+				t.Fatalf("header lookups = %d, want %d", calls, wantCalls)
+			}
+		})
 	}
 }
