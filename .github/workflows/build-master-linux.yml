@@ -1,0 +1,94 @@
+name: Build master Linux binary
+
+on:
+  push:
+    branches:
+      - codex/build-master-linux-20261117
+
+permissions:
+  contents: read
+
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+    env:
+      SOURCE_SHA: 4bd1c73016e31038a0ce9fdadce24d19d7128e25
+      CGO_CFLAGS: -O -D__BLST_PORTABLE__
+      CGO_CFLAGS_ALLOW: -O -D__BLST_PORTABLE__
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - name: Checkout pinned master source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: source
+          persist-credentials: false
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+          cache-dependency-path: source/go.sum
+
+      - name: Build static Linux amd64 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          go mod download
+          curl --fail --location --retry 3 \
+            https://pub-c0627345c16f47ab858c9469133073a8.r2.dev/x86_64-linux-musl-cross.tgz \
+            -o x86_64-linux-musl-cross.tgz
+          tar -xzf x86_64-linux-musl-cross.tgz
+          export GOOS=linux GOARCH=amd64 CGO_ENABLED=1
+          export CC="$PWD/x86_64-linux-musl-cross/bin/x86_64-linux-musl-gcc"
+          commit_date=$(git log -1 --format=%cd --date=format:%Y%m%d)
+          mkdir -p build/bin
+          go build -trimpath -a \
+            -ldflags "-X main.gitCommit=$SOURCE_SHA -X main.gitDate=$commit_date -linkmode=external -extldflags=-static" \
+            -o build/bin/geth_linux ./cmd/geth
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "workflow_sha=$GITHUB_SHA"
+            echo "run_url=https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            go version
+            sha256sum x86_64-linux-musl-cross.tgz
+          } > build/bin/build-info.txt
+
+      - name: Verify static linking and binary version
+        shell: bash
+        run: |
+          set -euo pipefail
+          file build/bin/geth_linux | tee -a build/bin/build-info.txt
+          readelf -l build/bin/geth_linux > program-headers.txt
+          readelf -d build/bin/geth_linux > dynamic-section.txt
+          if grep -q INTERP program-headers.txt || grep -q '(NEEDED)' dynamic-section.txt; then
+            echo 'Binary unexpectedly requires a dynamic loader or shared library'
+            exit 1
+          fi
+          ./build/bin/geth_linux version | tee -a build/bin/build-info.txt
+          cd build/bin
+          sha256sum geth_linux | tee geth_linux.sha256
+
+      - name: Verify on Amazon Linux 2
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/build/bin:/artifacts:ro" \
+            public.ecr.aws/amazonlinux/amazonlinux:2 \
+            /artifacts/geth_linux version
+
+      - name: Upload Linux binary and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: geth-linux-amd64-master-4bd1c730
+          path: |
+            source/build/bin/geth_linux
+            source/build/bin/geth_linux.sha256
+            source/build/bin/build-info.txt
+          if-no-files-found: error
+          retention-days: 30
