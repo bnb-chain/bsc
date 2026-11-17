@@ -322,6 +322,29 @@ func PostExecution(ctx context.Context, config *params.ChainConfig, number *big.
 	return requests, blockAccessList, nil
 }
 
+// systemTxStateDB collects the BALs finalized by Parlia without changing the
+// consensus engine interface. Pending protocol mutations share the next system
+// transaction's scope, so their combined net changes are recorded together.
+type systemTxStateDB struct {
+	vm.StateDB
+	accessList *bal.ConstructionBlockAccessList
+}
+
+func (s *systemTxStateDB) Finalise(rules params.Rules) *bal.ConstructionBlockAccessList {
+	list := s.StateDB.Finalise(rules)
+	s.accessList.Merge(list)
+	return list
+}
+
+// finaliseProtocolChanges records only pending mutations. Prepare runs after
+// the protocol operations so their read-only accesses, including any omitted
+// system transaction attempt, do not enter the BAL.
+func finaliseProtocolChanges(statedb vm.StateDB, rules params.Rules, index uint32) *bal.ConstructionBlockAccessList {
+	statedb.Prepare(rules, common.Address{}, common.Address{}, nil, nil, nil)
+	statedb.SetTxContext(common.Hash{}, max(0, int(index)-1), index)
+	return statedb.Finalise(rules)
+}
+
 // ProcessWithdrawals credits the given withdrawals to their recipients.
 func ProcessWithdrawals(withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32, blockAccessList *bal.ConstructionBlockAccessList) {
 	rules := evm.GetRules()
