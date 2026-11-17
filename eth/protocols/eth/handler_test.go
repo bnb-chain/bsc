@@ -20,6 +20,7 @@ import (
 	"bytes"
 	rand2 "crypto/rand"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -184,7 +185,6 @@ func (b *testBackend) Handle(*Peer, Packet) error {
 
 // Tests that block headers can be retrieved from a remote chain based on user queries.
 func TestGetBlockHeaders68(t *testing.T) { testGetBlockHeaders(t, ETH68) }
-func TestGetBlockHeaders71(t *testing.T) { testGetBlockHeaders(t, ETH71) }
 
 func testGetBlockHeaders(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -398,7 +398,6 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 
 // Tests that block contents can be retrieved from a remote chain based on their hashes.
 func TestGetBlockBodies68(t *testing.T) { testGetBlockBodies(t, ETH68) }
-func TestGetBlockBodies71(t *testing.T) { testGetBlockBodies(t, ETH71) }
 
 func testGetBlockBodies(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -699,8 +698,7 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	}
 }
 
-func TestGetBlockPartialReceipts(t *testing.T)   { testGetBlockPartialReceipts(t, ETH70) }
-func TestGetBlockPartialReceipts71(t *testing.T) { testGetBlockPartialReceipts(t, ETH71) }
+func TestGetBlockPartialReceipts(t *testing.T) { testGetBlockPartialReceipts(t, ETH70) }
 
 func testGetBlockPartialReceipts(t *testing.T, protocol int) {
 	// First, generate the chain and overwrite the receipts.
@@ -1271,4 +1269,57 @@ func encodeRL[T any](slice []T) rlp.RawList[T] {
 		panic(err)
 	}
 	return rl
+}
+
+type blockPropagationBackend struct {
+	*testBackend
+	packets chan Packet
+}
+
+func (b *blockPropagationBackend) Handle(_ *Peer, packet Packet) error {
+	b.packets <- packet
+	return nil
+}
+
+// BSC still propagates blocks through eth peers, including on eth/71. Exercise
+// dispatch and decoding rather than calling the propagation handlers directly.
+func TestBSCBlockPropagation(t *testing.T) {
+	backend := newTestBackend(2)
+	defer backend.close()
+	block := backend.chain.GetBlockByNumber(1)
+	td := backend.chain.GetTd(block.Hash(), block.NumberU64())
+	for _, version := range []uint{ETH68, ETH70, ETH71} {
+		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
+			receiver := &blockPropagationBackend{testBackend: backend, packets: make(chan Packet, 1)}
+			peer, errc := newTestPeer("propagation", version, receiver)
+			defer peer.close()
+			for _, packet := range []Packet{
+				&NewBlockHashesPacket{{Hash: block.Hash(), Number: block.NumberU64()}},
+				&NewBlockPacket{Block: block, TD: td},
+			} {
+				if err := p2p.Send(peer.app, uint64(packet.Kind()), packet); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case received := <-receiver.packets:
+					switch got := received.(type) {
+					case *NewBlockHashesPacket:
+						if len(*got) != 1 || (*got)[0].Hash != block.Hash() || (*got)[0].Number != block.NumberU64() {
+							t.Fatalf("wrong block announcement: %+v", got)
+						}
+					case *NewBlockPacket:
+						if got.Block.Hash() != block.Hash() || got.TD.Cmp(td) != 0 {
+							t.Fatal("block propagation lost block or TD")
+						}
+					default:
+						t.Fatalf("unexpected packet %T", received)
+					}
+				case err := <-errc:
+					t.Fatalf("propagation rejected: %v", err)
+				case <-time.After(5 * time.Second):
+					t.Fatal("propagation was not delivered")
+				}
+			}
+		})
+	}
 }

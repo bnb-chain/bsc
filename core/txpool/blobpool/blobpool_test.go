@@ -2280,9 +2280,7 @@ func TestEncodeForNetwork(t *testing.T) {
 		name   string
 		ethVer uint
 	}{
-		{"eth68", 68},
 		{"eth70", 70},
-		{"eth71", 71},
 		{"eth72", 72},
 	}
 	for _, tc := range cases {

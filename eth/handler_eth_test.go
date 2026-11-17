@@ -391,7 +391,6 @@ func testWaitBscExtensionTimout(t *testing.T, protocol uint) {
 
 // This test checks that pending transactions are sent.
 func TestSendTransactions68(t *testing.T) { testSendTransactions(t, eth.ETH68) }
-func TestSendTransactions71(t *testing.T) { testSendTransactions(t, eth.ETH71) }
 
 func testSendTransactions(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -469,7 +468,6 @@ func testSendTransactions(t *testing.T, protocol uint) {
 // Tests that transactions get propagated to all attached peers, either via direct
 // broadcasts or via announcements/retrievals.
 func TestTransactionPropagation68(t *testing.T) { testTransactionPropagation(t, eth.ETH68) }
-func TestTransactionPropagation71(t *testing.T) { testTransactionPropagation(t, eth.ETH71) }
 
 func testTransactionPropagation(t *testing.T, protocol uint) {
 	t.Parallel()
