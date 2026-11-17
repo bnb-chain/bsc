@@ -18,6 +18,7 @@
 package minerconfig
 
 import (
+	"errors"
 	"math/big"
 	"time"
 
@@ -113,13 +114,55 @@ type BuilderConfig struct {
 	URL     string
 }
 
+// RegistryDuration supports duration strings (for example "10m") in TOML.
+type RegistryDuration time.Duration
+
+func (d RegistryDuration) MarshalText() ([]byte, error) {
+	return []byte(time.Duration(d).String()), nil
+}
+
+func (d *RegistryDuration) UnmarshalText(text []byte) error {
+	parsed, err := time.ParseDuration(string(text))
+	if err != nil {
+		return err
+	}
+	*d = RegistryDuration(parsed)
+	return nil
+}
+
+// BuilderRegistryConfig selects the optional on-chain builder allowlist. When
+// disabled, admission is delegated to a configured sentry or uses static Builders
+// if no sentry is configured. When enabled, Builders remains the fallback until
+// the first successful read. A successfully decoded empty registry permits every
+// builder; failed reads keep the last successful policy.
+type BuilderRegistryConfig struct {
+	Enabled         bool
+	ContractAddress common.Address
+	PollInterval    RegistryDuration // Zero uses ten minutes; otherwise at least one second.
+}
+
+const DefaultBuilderRegistryPollInterval = 10 * time.Minute
+
+func (c BuilderRegistryConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.ContractAddress == (common.Address{}) {
+		return errors.New("Mev.BuilderRegistry.ContractAddress is required")
+	}
+	if c.PollInterval != 0 && time.Duration(c.PollInterval) < time.Second {
+		return errors.New("Mev.BuilderRegistry.PollInterval must be zero (default) or at least 1s")
+	}
+	return nil
+}
+
 type MevConfig struct {
 	Enabled               *bool           `toml:",omitempty"` // Whether to enable Mev or not
 	BidBlockEnabled       *bool           `toml:",omitempty"` // Whether to accept SendBidBlock RPC (BEP-675); coexists with legacy SendBid
 	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
 	BuilderFeeCeil        *string         `toml:",omitempty"` // The maximum builder fee of a bid
-	SentryURL             string          // The url of Mev sentry
-	Builders              []BuilderConfig // The list of builders
+	SentryURL             string          // MEV sentry URL; delegates builder admission when BuilderRegistry is disabled
+	Builders              []BuilderConfig // Static builders and report endpoints; startup fallback when BuilderRegistry is enabled
 	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
@@ -128,6 +171,8 @@ type MevConfig struct {
 	GRPCDisabled          bool            `toml:",omitempty"` // Whether to disable the BEP-675 BidBlockService
 	GRPCConcurrency       uint32          `toml:",omitempty"` // Maximum in-flight gRPC SendBidBlock calls; 0 uses the default
 	GRPCRequestTimeout    time.Duration   `toml:",omitempty"` // Total gRPC request timeout, including body upload; 0 uses the default
+
+	BuilderRegistry BuilderRegistryConfig
 }
 
 var DefaultMevConfig = MevConfig{
@@ -137,6 +182,7 @@ var DefaultMevConfig = MevConfig{
 	BuilderFeeCeil:        &defaultBuilderFeeCeil,
 	SentryURL:             "",
 	Builders:              nil,
+	BuilderRegistry:       BuilderRegistryConfig{PollInterval: RegistryDuration(DefaultBuilderRegistryPollInterval)},
 	ValidatorCommission:   &defaultValidatorCommission,
 	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
 	NoInterruptLeftOver:   getDefaultNoInterruptLeftOver(),
@@ -167,6 +213,9 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	}
 
 	// check [Eth.Miner.Mev]
+	if cfg.Mev.BuilderRegistry.PollInterval == 0 {
+		cfg.Mev.BuilderRegistry.PollInterval = RegistryDuration(DefaultBuilderRegistryPollInterval)
+	}
 	if cfg.Mev.Enabled == nil {
 		cfg.Mev.Enabled = &defaultMevEnabled
 		log.Info("ApplyDefaultMinerConfig", "Mev.Enabled", *cfg.Mev.Enabled)

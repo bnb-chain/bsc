@@ -21,6 +21,15 @@ const (
 	maxBlobTxPerBlock     = 6
 )
 
+// StartBuilderRegistry starts polling after the Ethereum backend and consensus
+// engine are fully initialized (in particular, Parlia's vote pool).
+func (miner *Miner) StartBuilderRegistry() {
+	b := miner.bidSimulator
+	if b.registry != nil {
+		b.registryStartOnce.Do(func() { close(b.registryStart) })
+	}
+}
+
 // MevRunning return true if mev is running.
 func (miner *Miner) MevRunning() bool {
 	return miner.bidSimulator.isRunning() && miner.bidSimulator.receivingBid()
@@ -46,9 +55,9 @@ func (miner *Miner) RemoveBuilder(builderAddr common.Address) error {
 	return miner.bidSimulator.RemoveBuilder(builderAddr)
 }
 
-// HasBuilder returns true if the builder is in the builder list.
+// HasBuilder returns whether the current admission policy permits the builder.
 func (miner *Miner) HasBuilder(builder common.Address) bool {
-	return miner.bidSimulator.ExistBuilder(builder)
+	return miner.bidSimulator.builderAllowed(builder)
 }
 
 func (miner *Miner) GetBidBlockPermission(builder common.Address) buildertypes.BidBlockPermissionStatus {
@@ -94,7 +103,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 		"parentHash", bb.Header.ParentHash,
 		"txs", len(bb.Transactions))
 
-	if !miner.bidSimulator.ExistBuilder(builder) {
+	if !miner.bidSimulator.builderAllowed(builder) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("builder is not registered: builder=%s, bidHash=%s", builder, bidHash))
 	}
 	miner.bidSimulator.recordBidBlockBuilder(builder)
@@ -178,7 +187,7 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *buildertypes.BidArgs) 
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("invalid signature:%v", err))
 	}
 
-	if !miner.bidSimulator.ExistBuilder(builder) {
+	if !miner.bidSimulator.builderAllowed(builder) {
 		return common.Hash{}, buildertypes.NewInvalidBidError("builder is not registered")
 	}
 

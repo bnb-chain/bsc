@@ -265,18 +265,21 @@ func (p *Parlia) callValidatorSet(blockHash common.Hash, method string, out inte
 	defer cancel()
 
 	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
-	msgData := (hexutil.Bytes)(data)
 	toAddress := common.HexToAddress(systemcontracts.ValidatorContract)
-	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
-	result, err := p.ethAPI.Call(ctx, ethapi.TransactionArgs{
-		Gas:  &gas,
-		To:   &toAddress,
-		Data: &msgData,
-	}, &blockNr, nil, nil)
+	result, err := p.CallContract(ctx, blockNr, toAddress, data, math.MaxUint64/2)
 	if err != nil {
 		return err
 	}
 	return unpackValidatorSet(p.validatorSetABI, method, result, out)
+}
+
+// CallContract executes a read-only call against local state at the given block.
+// The caller controls cancellation, gas and whether the hash must be canonical.
+func (p *Parlia) CallContract(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error) {
+	msgData, gasLimit := hexutil.Bytes(data), hexutil.Uint64(gas)
+	return p.ethAPI.Call(ctx, ethapi.TransactionArgs{
+		Gas: &gasLimit, To: &to, Data: &msgData,
+	}, &block, nil, nil)
 }
 
 // unpackValidatorSet decodes a single-output validator-contract return value.
