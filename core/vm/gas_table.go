@@ -685,29 +685,27 @@ func gasSStore8037And8038(evm *EVM, contract *Contract, stack *Stack, mem *Memor
 	if contract.Gas.ExecutionGas <= params.SstoreSentryGasEIP2200 {
 		return GasCosts{}, errors.New("not enough gas for reentrancy sentry")
 	}
-	var (
-		y, x     = stack.back(1), stack.peek()
-		slot     = common.Hash(x.Bytes32())
-		stateSet = params.StorageCreationSize * evm.Context.CostPerStateByte
-	)
+	return gasSStoreCostAmsterdam(evm, &contract.Gas, contract.Address(), stack.peek().Bytes32(), stack.back(1).Bytes32())
+}
+
+// gasSStoreCostAmsterdam also prices native writes; callers enforce write protection and the sentry.
+func gasSStoreCostAmsterdam(evm *EVM, budget *GasBudget, addr common.Address, slot, value common.Hash) (GasCosts, error) {
+	stateSet := params.StorageCreationSize * evm.Context.CostPerStateByte
 	// Check slot presence in the access list
 	access := params.WarmStorageAccessAmsterdam
-	_, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), slot)
+	_, slotPresent := evm.StateDB.SlotInAccessList(addr, slot)
 	if !slotPresent {
 		access = params.ColdStorageAccessAmsterdam
 	}
 	// Check access cost affordability before reading slot
-	if contract.Gas.ExecutionGas < access {
+	if budget.ExecutionGas < access {
 		return GasCosts{}, errors.New("not enough gas for slot access")
 	}
 	if !slotPresent {
-		evm.StateDB.AddSlotToAccessList(contract.Address(), slot)
+		evm.StateDB.AddSlotToAccessList(addr, slot)
 	}
 	// Read the slot value for gas cost measurement
-	var (
-		value             = common.Hash(y.Bytes32())
-		current, original = evm.StateDB.GetStateAndCommittedState(contract.Address(), slot)
-	)
+	current, original := evm.StateDB.GetStateAndCommittedState(addr, slot)
 	if current == value { // noop (1)
 		return GasCosts{ExecutionGas: access}, nil
 	}
@@ -732,7 +730,7 @@ func gasSStore8037And8038(evm *EVM, contract *Contract, stack *Stack, mem *Memor
 	}
 	if original == value { // reset to original value (2.2.2)
 		if original == (common.Hash{}) { // reset to original inexistent slot (2.2.2.1)
-			contract.Gas.RefundState(stateSet)
+			budget.RefundState(stateSet)
 		}
 		evm.StateDB.AddRefund(params.StorageWriteAmsterdam)
 	}

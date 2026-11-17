@@ -1402,7 +1402,6 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 	// Block level pre-execution, in the same order as core.StateProcessor.Process. Without it the
 	// system contracts touched here keep their parent values and transactions reading them diverge.
 	config := api.b.ChainConfig()
-	systemcontracts.TryUpdateBuildInSystemContract(config, block.Number(), parent.Time(), block.Time(), statedb, true)
 	evm := vm.NewEVM(core.NewEVMBlockContext(block.Header(), api.b.Chain(), nil), statedb, config, vm.Config{})
 	defer evm.Release()
 	core.PreExecution(ctx, block.BeaconRoot(), parent.Header(), config, evm, block.Number(), block.Time())
@@ -1438,7 +1437,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 
 		if posa, ok := api.b.Engine().(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-				msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+				msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 				balance := statedb.GetBalance(consensus.SystemAddress)
 				if balance.Cmp(common.U2560) > 0 {
 					statedb.SetBalance(consensus.SystemAddress, uint256.NewInt(0), tracing.BalanceChangeUnspecified)

@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/txorder"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -98,7 +97,7 @@ var (
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
 	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
-	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
+	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // largest unused payment reservation, at seal
 	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
 	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
@@ -848,9 +847,8 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
 	laneType := env.lane.Classify(tx)
 	var (
-		snap       = env.state.Snapshot()
-		gp         = env.gasPool.Snapshot()
-		usedBefore = env.gasPool.Used()
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Snapshot()
 	)
 
 	receipt, txBAL, err := core.ApplyTransaction(context.Background(), env.evm, env.gasPool, env.state, env.header, tx)
@@ -866,7 +864,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		}
 	}
 	env.header.GasUsed = env.gasPool.Used()
-	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, gp)
 	return receipt, err
 }
 
@@ -996,10 +994,10 @@ LOOP:
 		prefetchCurr.Store(tx)
 
 		laneType := env.lane.Classify(tx)
-		if !env.lane.Admits(env.gasPool.Available(env.evm.GetRules().IsAmsterdam), laneType, tx.Gas()) {
+		if !env.lane.Admits(env.gasPool, laneType, tx.Gas()) {
 			generalLaneYieldedCounter.Inc(1)
 			env.generalLaneYielded++
-			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Available(env.evm.GetRules().IsAmsterdam), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Available(env.evm.GetRules().IsAmsterdam), "paymentLaneIdle", env.lane.IdleGas())
 			txs.Pop()
 			continue
 		}
@@ -1147,13 +1145,17 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 	}
 	// Apply EIP-7843.
-	// TODO: Define BSC's slot mapping and supply slotNum from commitWork
-	// before enabling Amsterdam block production.
 	if w.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		if genParams.slotNum == nil {
-			return nil, errors.New("missing slot number")
+		if w.chainConfig.IsInBSC() {
+			// BSC uses block numbers instead of beacon slots.
+			slot := header.Number.Uint64()
+			header.SlotNumber = &slot
+		} else {
+			if genParams.slotNum == nil {
+				return nil, errors.New("missing slot number")
+			}
+			header.SlotNumber = genParams.slotNum
 		}
-		header.SlotNumber = genParams.slotNum
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
@@ -1163,9 +1165,6 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
-
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
 	env.bal.Merge(core.PreExecution(context.Background(), header.ParentBeaconRoot, parent, w.chainConfig, env.evm, header.Number, header.Time))
 	return env, nil
@@ -1318,18 +1317,22 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 			}
 		}
 	}
-	allLogs := make([]*types.Log, 0)
-	for _, r := range work.receipts {
-		allLogs = append(allLogs, r.Logs...)
-	}
-	requests, postBAL, err := core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
-	if err != nil {
-		return &newPayloadResult{err: err}
-	}
-	work.bal.Merge(postBAL)
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
+	var requests [][]byte
+	if w.chainConfig.IsNotInBSC() {
+		var allLogs []*types.Log
+		for _, receipt := range work.receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
+		if err != nil {
+			return &newPayloadResult{err: err}
+		}
+		work.bal.Merge(postBAL)
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			work.header.RequestsHash = &reqHash
+		}
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
@@ -1337,7 +1340,7 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.Verify(block.GasUsed()); err != nil {
+	if err := work.lane.Verify(block.GasUsed(), work.gasPool); err != nil {
 		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
@@ -1576,7 +1579,10 @@ LOOP:
 	var simBidBlockReward *uint256.Int
 	var simBidValidatorReward *uint256.Int
 	var localValidatorReward *uint256.Int
-	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+	parent := w.chain.GetHeaderByHash(bestWork.header.ParentHash)
+	// Cached builder bids must not replace the validator's Amsterdam activation block.
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 &&
+		parent != nil && !isAmsterdamActivation(w.chainConfig, parent, bestWork.header) {
 		inturnBlocksGauge.Inc(1)
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
@@ -1703,8 +1709,6 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		// TODO: Run post-execution and collect Parlia finalization changes into
-		// the BAL, then attach it to the block before enabling Amsterdam on BSC.
 		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, env.bal)
 		env.committed = true
 		if err != nil {
@@ -1717,14 +1721,14 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.Verify(block.GasUsed()); err != nil {
+		if err := env.lane.Verify(block.GasUsed(), env.gasPool); err != nil {
 			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
 		if env.lane.On() {
 			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
-			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+			paymentLaneIdleGauge.Update(int64(env.lane.IdleGas()))
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.
@@ -1737,7 +1741,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
-				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
+				"paymentLaneIdle", env.lane.IdleGas(), "generalLaneYielded", env.generalLaneYielded,
 				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:

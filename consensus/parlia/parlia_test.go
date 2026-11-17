@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -1458,7 +1459,7 @@ func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.H
 	return
 }
 
-func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, _ ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
 	// Finalize block
 	c.Finalize(chain, header, state, body, nil, nil, nil, tracer)
 
@@ -1471,4 +1472,45 @@ func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, head
 
 func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
 	return big.NewInt(1)
+}
+
+func TestVerifyHeaderAmsterdamSlotNumber(t *testing.T) {
+	fork := uint64(3)
+	cfg := &params.ChainConfig{ChainID: big.NewInt(56), Parlia: &params.ParliaConfig{}, LondonBlock: big.NewInt(0), AmsterdamTime: &fork}
+	parent := &types.Header{Number: big.NewInt(0), GasLimit: 30_000_000, Time: 1, BaseFee: big.NewInt(0)}
+	chain := &finalizedHeaderChain{cfg: cfg, byHash: map[common.Hash]*types.Header{parent.Hash(): parent}}
+	engine := New(cfg, nil, nil, parent.Hash())
+	engine.recentSnaps.Add(parent.Hash(), newSnapshot(cfg.Parlia, engine.signatures, 0, parent.Hash(), []common.Address{testAddr}, nil, nil))
+	slot := uint64(1)
+	balHash := types.EmptyBlockAccessListHash
+	header := &types.Header{ParentHash: parent.Hash(), Number: big.NewInt(1), Coinbase: testAddr,
+		UncleHash: types.EmptyUncleHash, Difficulty: new(big.Int).Set(diffInTurn), GasLimit: parent.GasLimit,
+		Time: 4, Extra: make([]byte, extraVanity+extraSeal), BaseFee: big.NewInt(0),
+		SlotNumber: &slot, BlockAccessListHash: &balHash}
+	seal := types.SealHash(header, cfg.ChainID)
+	sig, err := crypto.Sign(seal[:], testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(header.Extra[len(header.Extra)-extraSeal:], sig)
+	if err := engine.VerifyHeader(chain, header); err != nil {
+		t.Fatalf("valid slot rejected: %v", err)
+	}
+	for _, invalidSlot := range []uint64{0, 2, ^uint64(0)} {
+		invalid := types.CopyHeader(header)
+		invalid.SlotNumber = &invalidSlot
+		if types.SealHash(invalid, cfg.ChainID) != seal {
+			t.Fatal("slot changed seal hash")
+		}
+		if err := engine.VerifyHeader(chain, invalid); err == nil || !strings.HasPrefix(err.Error(), "invalid SlotNumber") {
+			t.Fatalf("slot %d: expected rejection, got %v", invalidSlot, err)
+		}
+		if err := engine.VerifyUnsealedHeader(chain, invalid, nil); err == nil {
+			t.Fatalf("unsealed slot %d accepted", invalidSlot)
+		}
+	}
+	header.SlotNumber = nil
+	if err := engine.VerifyHeader(chain, header); err == nil {
+		t.Fatal("nil slot accepted")
+	}
 }

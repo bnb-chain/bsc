@@ -118,8 +118,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		}
 	}
 
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, parent.Time, block.Time(), statedb, true)
+	recordSystemBAL := config.IsInBSC() && config.IsAmsterdam(blockNumber, block.Time())
 
 	var (
 		context         = NewEVMBlockContext(header, p.chain, nil)
@@ -171,7 +170,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		laneType := lane.Classify(tx)
-		usedBefore := gp.Used()
+		usedBefore := gp.Snapshot()
 		statedb.SetTxContext(tx.Hash(), i, uint32(i+1))
 		receipt, bal, err := applyTransactionWithEVM(ctx, msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm, eagerBloom)
 		if err != nil {
@@ -185,18 +184,24 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		blockAccessList.Merge(bal)
 	}
 	numUserReceipts := len(receipts)
-	requests, bal, err := PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
-	if err != nil {
-		return nil, err
+	var requests [][]byte
+	if config.IsNotInBSC() {
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+		if err != nil {
+			return nil, err
+		}
+		blockAccessList.Merge(postBAL)
 	}
-	blockAccessList.Merge(bal)
 
 	gasUsed := gp.Used()
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	body := &types.Body{Transactions: commonTxs, Uncles: block.Uncles(), Withdrawals: block.Withdrawals()}
-	// TODO: Include Parlia system transactions and system-contract upgrades in
-	// the block access list before enabling Amsterdam on BSC.
-	err = p.chain.Engine().Finalize(p.chain, header, tracingStateDB, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
+	finalizeState := tracingStateDB
+	if recordSystemBAL {
+		finalizeState = NewSystemTxStateDB(tracingStateDB, blockAccessList)
+	}
+	err = p.chain.Engine().Finalize(p.chain, header, finalizeState, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -208,8 +213,16 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		pipeline.feedReceipt(receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
+	if config.IsInBSC() {
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = PostExecution(ctx, config, block.Number(), block.Time(), allLogs, block.Withdrawals(), evm, uint32(len(block.Transactions())+1))
+		if err != nil {
+			return nil, err
+		}
+		blockAccessList.Merge(postBAL)
+	}
 
-	if err := lane.Verify(gasUsed); err != nil {
+	if err := lane.Verify(gasUsed, gp); err != nil {
 		return nil, laneReject(err)
 	}
 	lane.recordImported()
@@ -242,6 +255,10 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 	if config.IsAmsterdam(number, time) {
 		blockAccessList = bal.NewConstructionBlockAccessList()
 	}
+	systemcontracts.TryUpdateBuildInSystemContract(config, number, parent.Time, time, evm.StateDB, true)
+	if config.IsInBSC() && config.IsAmsterdam(number, time) {
+		blockAccessList.Merge(finaliseProtocolChanges(evm.StateDB, evm.GetRules(), 0))
+	}
 	// EIP-4788
 	if beaconRoot != nil {
 		ProcessBeaconBlockRoot(*beaconRoot, evm, blockAccessList)
@@ -256,12 +273,19 @@ func PreExecution(ctx context.Context, beaconRoot *common.Hash, parent *types.He
 // PostExecution processes the withdrawals and then the post-execution system
 // calls when Prague is enabled. If Prague is not activated, it returns null
 // requests to differentiate from empty requests.
+// On BSC, it collects remaining protocol changes after all system transactions.
 func PostExecution(ctx context.Context, config *params.ChainConfig, number *big.Int, time uint64, allLogs []*types.Log, withdrawals types.Withdrawals, evm *vm.EVM, blockAccessIndex uint32) (requests [][]byte, blockAccessList *bal.ConstructionBlockAccessList, err error) {
 	_, _, spanEnd := telemetry.StartSpan(ctx, "core.postExecution")
 	defer spanEnd(&err)
 
 	if config.IsAmsterdam(number, time) {
 		blockAccessList = bal.NewConstructionBlockAccessList()
+	}
+	if config.IsInBSC() {
+		if config.IsAmsterdam(number, time) {
+			blockAccessList.Merge(finaliseProtocolChanges(evm.StateDB, evm.GetRules(), blockAccessIndex))
+		}
+		return nil, blockAccessList, nil
 	}
 	rules := config.Rules(number, true, time) // IsMerge is always true
 
@@ -632,20 +656,14 @@ func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
 
 // blockAssembler is implemented by consensus engines that support FinalizeAndAssemble.
 type blockAssembler interface {
-	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
+	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error)
 }
 
 // AssembleBlock finalizes the state and assembles the block with provided
 // body and receipts.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
 	if p, ok := engine.(blockAssembler); ok {
-		// TODO: Include Parlia finalization in BAL construction and attach the
-		// completed access list here before enabling Amsterdam on BSC.
-		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
-		if err != nil {
-			return nil, nil, err
-		}
-		return block, receipts, nil
+		return p.FinalizeAndAssemble(chain, header, state, body, receipts, nil, blockAccessLists...)
 	}
 	if err := engine.Finalize(chain, header, state, body, &receipts, nil, &header.GasUsed, nil); err != nil {
 		return nil, nil, err

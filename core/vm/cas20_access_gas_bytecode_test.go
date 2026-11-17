@@ -79,6 +79,22 @@ func (p cas20AccessProgram) RunStateful(ctx *PrecompileContext, _ []byte) ([]byt
 }
 
 func TestCAS20AccessGasAgainstBytecode(t *testing.T) {
+	for _, amsterdam := range []bool{false, true} {
+		for _, table := range []bool{false, true} {
+			t.Run(fmt.Sprintf("amsterdam=%t/table=%t", amsterdam, table), func(t *testing.T) {
+				testCAS20AccessGasAgainstBytecode(t, cas20GasChainConfig(amsterdam), table)
+			})
+		}
+	}
+}
+
+func testCAS20AccessGasAgainstBytecode(t *testing.T, cfg *params.ChainConfig, table bool) {
+	if err := cfg.CheckConfigForkOrder(); err != nil {
+		t.Fatal(err)
+	}
+	bc := cas20BlockContext(1)
+	bc.CostPerStateByte = params.CostPerStateByte
+
 	self := common.HexToAddress("0x1234")
 	slot := common.Hash{31: 1}
 	for _, target := range []struct {
@@ -143,7 +159,8 @@ func TestCAS20AccessGasAgainstBytecode(t *testing.T) {
 					}
 					run := func(native bool, budget uint64) result {
 						sdb := initial.Copy()
-						evm := NewEVM(cas20BlockContext(1), sdb, cas20TestChainConfig(), Config{})
+						evm := NewEVM(bc, sdb, cfg, Config{})
+						evm.forceTableLoop = table
 						defer evm.Release()
 						callee := self
 						if native {

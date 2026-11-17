@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -48,12 +49,8 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	block, receipts, err := p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking)
-	if err != nil {
-		return nil, nil, err
-	}
-	return block, receipts, nil
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
+	return p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking, blockAccessLists...)
 }
 
 // SignSystemTx signs a BidBlock system tx with the validator key.

@@ -21,6 +21,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"slices"
@@ -47,6 +48,9 @@ type Suite struct {
 	Dest   *enode.Node
 	chain  *Chain
 	engine *EngineClient
+
+	// ethVersion forces a single eth capability for in-process protocol tests.
+	ethVersion uint
 
 	// requireAvailableBALs is enabled only by the in-process geth tests.
 	// External conformance runs must continue accepting unavailable BALs.
@@ -593,8 +597,11 @@ func (s *Suite) TestMaliciousHandshake(t *utesting.T) {
 	var (
 		key, _  = crypto.GenerateKey()
 		pub0    = crypto.FromECDSAPub(&key.PublicKey)[1:]
-		version = eth.ProtocolVersions[0]
+		version = s.ethVersion
 	)
+	if version == 0 {
+		version = eth.ETH71
+	}
 	handshakes := []*protoHandshake{
 		{
 			Version: 5,
@@ -639,24 +646,32 @@ func (s *Suite) TestMaliciousHandshake(t *utesting.T) {
 		}
 		defer conn.Close()
 
-		if err := conn.Write(ethProto, handshakeMsg, handshake); err != nil {
+		if err := conn.Write(baseProto, handshakeMsg, handshake); err != nil {
 			t.Fatalf("could not write to connection: %v", err)
 		}
-		// Check that the peer disconnected
+		// Allow the concurrently sent Hello before the disconnect.
+		disconnected := false
 		for i := 0; i < 2; i++ {
 			code, _, err := conn.Read()
+			if errors.Is(err, io.EOF) {
+				disconnected = true
+				break
+			}
 			if err != nil {
-				// Client may have disconnected without sending disconnect msg.
-				continue
+				t.Fatalf("expected disconnect after malicious handshake: %v", err)
 			}
 			switch code {
 			case discMsg:
+				disconnected = true
 			case handshakeMsg:
-				// Discard one hello as Hello's are sent concurrently
 				continue
 			default:
 				t.Fatalf("unexpected msg: code %d", code)
 			}
+			break
+		}
+		if !disconnected {
+			t.Fatal("peer did not reject malicious handshake")
 		}
 	}
 }
@@ -1145,8 +1160,8 @@ func (s *Suite) TestBlobViolations(t *utesting.T) {
 					break
 				}
 				switch code {
-				case protoOffset(ethProto) + eth.NewPooledTransactionHashesMsg,
-					protoOffset(ethProto) + eth.GetCellsMsg:
+				case conn.protoOffset(ethProto) + eth.NewPooledTransactionHashesMsg,
+					conn.protoOffset(ethProto) + eth.GetCellsMsg:
 					continue
 				default:
 					t.Fatalf("expected disconnect on blob violation, got msg code: %d", code)

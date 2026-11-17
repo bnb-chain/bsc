@@ -1,9 +1,9 @@
-// Package paymentlane implements the BEP-703 payment lane rules. One inequality per block:
+// Package paymentlane implements the BEP-703 scalar payment lane budget:
 //
-//	header.GasUsed + max(0, paymentLaneQuota - paymentGasUsed) <= GasLimit
+//	gasUsed + max(0, paymentLaneQuota - paymentGasUsed) <= gasLimit
 //
-// Section 3.3's rule with generalGasUsed as the header residual, so Parlia's system transactions
-// count as general gas. Nothing is committed to the block: the quota is a pure function of the
+// Before Amsterdam this applies to the block total; afterwards it applies to each resource.
+// Parlia system transactions count as general gas. The quota is a pure function of the
 // parent post-state's ratio and this block's gas limit, so every node derives it independently.
 
 package paymentlane

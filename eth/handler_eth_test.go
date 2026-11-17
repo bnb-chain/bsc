@@ -89,6 +89,7 @@ func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 // Tests that peers are correctly accepted (or rejected) based on the advertised
 // fork IDs in the protocol handshake.
 func TestForkIDSplit68(t *testing.T) { testForkIDSplit(t, eth.ETH68) }
+func TestForkIDSplit71(t *testing.T) { testForkIDSplit(t, eth.ETH71) }
 
 func testForkIDSplit(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -468,6 +469,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 // Tests that transactions get propagated to all attached peers, either via direct
 // broadcasts or via announcements/retrievals.
 func TestTransactionPropagation68(t *testing.T) { testTransactionPropagation(t, eth.ETH68) }
+func TestTransactionPropagation71(t *testing.T) { testTransactionPropagation(t, eth.ETH71) }
 
 func testTransactionPropagation(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -546,7 +548,13 @@ func TestBroadcastBlock16Peers(t *testing.T)  { testBroadcastBlock(t, 16, 4) }
 func TestBroadcastBloc26Peers(t *testing.T)   { testBroadcastBlock(t, 26, 5) }
 func TestBroadcastBlock100Peers(t *testing.T) { testBroadcastBlock(t, 100, 10) }
 
+func TestBroadcastBlock71(t *testing.T) { testBroadcastBlockProtocol(t, eth.ETH71, 1, 1) }
+
 func testBroadcastBlock(t *testing.T, peers, bcasts int) {
+	testBroadcastBlockProtocol(t, eth.ETH68, peers, bcasts)
+}
+
+func testBroadcastBlockProtocol(t *testing.T, protocol uint, peers, bcasts int) {
 	t.Parallel()
 
 	// Create a source handler to broadcast blocks from and a number of sinks
@@ -568,8 +576,8 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		defer sourcePipe.Close()
 		defer sinkPipe.Close()
 
-		sourcePeer := eth.NewPeer(eth.ETH68, p2p.NewPeerPipe(enode.ID{byte(i)}, "", nil, sourcePipe), sourcePipe, nil, nil, nil)
-		sinkPeer := eth.NewPeer(eth.ETH68, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, nil, nil, nil)
+		sourcePeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{byte(i)}, "", nil, sourcePipe), sourcePipe, nil, nil, nil)
+		sinkPeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, nil, nil, nil)
 		defer sourcePeer.Close()
 		defer sinkPeer.Close()
 
@@ -579,7 +587,7 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		// Wait a bit for the above handlers to start
 		time.Sleep(100 * time.Millisecond)
 
-		if err := sinkPeer.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
+		if err := sinkPeer.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{LatestBlockHash: genesis.Hash()}, td, nil); err != nil {
 			t.Fatalf("failed to run protocol handshake")
 		}
 		go eth.Handle(sink, sinkPeer)
@@ -624,6 +632,7 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 // Tests that a propagated malformed block (uncles or transactions don't match
 // with the hashes in the header) gets discarded and not broadcast forward.
 func TestBroadcastMalformedBlock68(t *testing.T) { testBroadcastMalformedBlock(t, eth.ETH68) }
+func TestBroadcastMalformedBlock71(t *testing.T) { testBroadcastMalformedBlock(t, eth.ETH71) }
 
 func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -651,7 +660,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 		genesis = source.chain.Genesis()
 		td      = source.chain.GetTd(genesis.Hash(), genesis.NumberU64())
 	)
-	if err := sink.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
+	if err := sink.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{LatestBlockHash: genesis.Hash()}, td, nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// After the handshake completes, the source handler should stream the sink

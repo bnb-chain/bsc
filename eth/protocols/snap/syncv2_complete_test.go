@@ -18,6 +18,7 @@ package snap
 
 import (
 	"bytes"
+	"errors"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -536,5 +537,42 @@ func testCompletePhaseRootMismatch(t *testing.T, scheme string) {
 	}
 	if contract := f.flatAccount(t, f.contractHash); contract == nil || contract.Root == types.EmptyRootHash {
 		t.Fatalf("contract storage wrongly wiped by the rejected block: %+v", contract)
+	}
+}
+
+func TestCompletePhaseNoBALHistory(t *testing.T) {
+	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+		t.Run(scheme, func(t *testing.T) {
+			f := newCompleteFixture(t, scheme)
+			f.seed(t)
+			middle := *f.hdrB
+			middle.BlockAccessListHash = nil
+			rawdb.WriteHeader(f.db, &middle)
+			// Use A's state at the new target so the existing peer can serve the fallback.
+			target := *f.hdrC
+			target.ParentHash, target.Root = middle.Hash(), f.hdrA.Root
+			rawdb.WriteHeader(f.db, &target)
+			if err, requests := f.move(t, &target); err != nil || requests == 0 {
+				t.Fatalf("gap without BAL history: err %v, state requests %d", err, requests)
+			}
+			f.assertJournal(t, &target)
+			f.assertPersistedRoot(t, target.Root)
+		})
+	}
+}
+
+func TestCompletePhaseUnavailableBALPreservesProgress(t *testing.T) {
+	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+		t.Run(scheme, func(t *testing.T) {
+			f := newCompleteFixture(t, scheme)
+			f.seed(t)
+			f.bals = nil
+			err, requests := f.move(t, f.hdrC)
+			if (!errors.Is(err, errAccessListUnavailable) && !errors.Is(err, errAccessListPeersExhausted)) || requests != 0 {
+				t.Fatalf("unavailable BAL: err %v, state requests %d", err, requests)
+			}
+			f.assertJournal(t, f.hdrA)
+			f.assertPersistedRoot(t, f.hdrA.Root)
+		})
 	}
 }

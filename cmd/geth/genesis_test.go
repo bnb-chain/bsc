@@ -229,3 +229,22 @@ func TestCustomBackend(t *testing.T) {
 		}
 	}
 }
+
+func TestAmsterdamOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "unset", want: "undefined"},
+		{name: "timestamp", args: []string{"--override.amsterdam", "1800000000"}, want: "1800000000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append([]string{"--ipcdisable", "--mev.grpc.disable"}, tc.args...)
+			args = append(args, "--exec", "String(admin.nodeInfo.protocols.eth.config.amsterdamTime)", "console")
+			geth := runMinimalGeth(t, args...)
+			geth.ExpectRegexp(tc.want)
+			geth.ExpectExit()
+		})
+	}
+}

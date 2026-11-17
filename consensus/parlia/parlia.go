@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -685,6 +686,9 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 		}
 		if header.SlotNumber == nil {
 			return errors.New("header has nil SlotNumber after Amsterdam")
+		}
+		if *header.SlotNumber != number {
+			return fmt.Errorf("invalid SlotNumber: have %d, want %d", *header.SlotNumber, number)
 		}
 	}
 
@@ -1541,13 +1545,25 @@ const (
 )
 
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	return p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxMining)
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
+	return p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxMining, blockAccessLists...)
 }
 
-func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, mode systemTxMode) (*types.Block, []*types.Receipt, error) {
-	// No block rewards in PoA, so the state remains as is and uncles are dropped
+func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, statedb *state.StateDB,
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, mode systemTxMode, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
+	var accessList *bal.ConstructionBlockAccessList
+	var tracingState vm.StateDB = statedb
+	var finalizationState vm.StateDB = statedb
+	if p.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		if len(blockAccessLists) != 1 || blockAccessLists[0] == nil {
+			return nil, nil, errors.New("missing block access list for Amsterdam assembly")
+		}
+		accessList = blockAccessLists[0]
+		if tracer != nil {
+			tracingState = state.NewHookedState(statedb, tracer)
+		}
+		finalizationState = core.NewSystemTxStateDB(tracingState, accessList)
+	}
 	cx := chainContext{ChainHeaderReader: chain, parlia: p}
 
 	if body.Transactions == nil {
@@ -1562,17 +1578,17 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		return nil, nil, errors.New("parent not found")
 	}
 
-	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, finalizationState, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
+		err := p.initializeFeynmanContract(finalizationState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("init feynman contract failed: %v", err)
 		}
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
+		err := p.initContract(finalizationState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
 		if err != nil {
 			return nil, nil, errors.New("init contract failed")
 		}
@@ -1596,20 +1612,20 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 		}
 		if !signedRecently {
-			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
+			err = p.slash(spoiledVal, finalizationState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
 			if err != nil {
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
 			}
 		}
 	}
 
-	err := p.distributeIncoming(header.Coinbase, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
+	err := p.distributeIncoming(header.Coinbase, finalizationState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
-		if err := p.distributeFinalityReward(chain, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer); err != nil {
+		if err := p.distributeFinalityReward(chain, finalizationState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -1618,23 +1634,43 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
 		// we should avoid update validators in the Feynman upgrade block
 		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-			if err := p.updateValidatorSetV2(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer); err != nil {
+			if err := p.updateValidatorSetV2(finalizationState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, mode, tracer); err != nil {
 				return nil, nil, err
 			}
 		}
 	}
 
+	if p.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		var allLogs []*types.Log
+		for _, receipt := range receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		evm := vm.NewEVM(core.NewEVMBlockContext(header, cx, nil), tracingState, p.chainConfig, vm.Config{Tracer: tracer})
+		_, postBAL, err := core.PostExecution(context.Background(), p.chainConfig, header.Number, header.Time, allLogs, body.Withdrawals, evm, uint32(len(body.Transactions)+1))
+		evm.Release()
+		if err != nil {
+			return nil, nil, err
+		}
+		accessList.Merge(postBAL)
+	}
 	// should not happen. Once happen, stop the node is better than broadcast the block
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
 	header.UncleHash = types.EmptyUncleHash
+	if accessList != nil {
+		header.Root = statedb.IntermediateRoot(chain.Config().Rules(header.Number, false, header.Time))
+		list := accessList.ToEncodingObj()
+		hash := list.Hash()
+		header.BlockAccessListHash = &hash
+		return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)).WithAccessListUnsafe(list), receipts, nil
+	}
 	var blk *types.Block
 	var rootHash common.Hash
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		rootHash = state.IntermediateRoot(chain.Config().Rules(header.Number, false, header.Time))
+		rootHash = statedb.IntermediateRoot(chain.Config().Rules(header.Number, false, header.Time))
 		wg.Done()
 	}()
 	go func() {

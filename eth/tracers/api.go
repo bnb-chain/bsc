@@ -393,9 +393,6 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				break
 			}
 
-			// upgrade built-in system contract before normal txs if Feynman is not enabled
-			systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), next.Number(), block.Time(), next.Time(), statedb, true)
-
 			// Insert block's parent beacon block root in the state
 			// as per EIP-4788.
 			context := core.NewEVMBlockContext(next.Header(), api.chainContext(ctx), nil)
@@ -541,9 +538,6 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	}
 	defer release()
 
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
-
 	var (
 		roots          []common.Hash
 		signer         = types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
@@ -578,7 +572,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 		}
 		statedb.SetTxContext(tx.Hash(), i, uint32(i+1))
 		if _, err := core.ApplyMessage(evm, msg, nil); err != nil {
@@ -627,8 +621,6 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	}
 	defer release()
 
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 	blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 	evm := vm.NewEVM(blockCtx, statedb, api.backend.ChainConfig(), vm.Config{})
 	defer evm.Release()
@@ -776,7 +768,7 @@ txloop:
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 		}
 		statedb.SetTxContext(tx.Hash(), i, uint32(i+1))
 		if _, err := core.ApplyMessage(evm, msg, nil); err != nil {
@@ -819,9 +811,6 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		return nil, err
 	}
 	defer release()
-
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	// Retrieve the tracing configurations, or use default values
 	var (
@@ -877,7 +866,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		// Prepare the transaction for un-traced execution
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if !beforeSystemTx {
-			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+			msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 		}
 		if txHash != (common.Hash{}) && tx.Hash() != txHash {
 			// Process the tx to update state, but don't trace it.
@@ -1160,7 +1149,8 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
 		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, message.From, message.To, message.Value, evm.GetRules())
-		message.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+		// Parlia system transactions are not subject to the execution gas cap.
+		message.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 	}
 
 	// Call Prepare to clear out the statedb access list

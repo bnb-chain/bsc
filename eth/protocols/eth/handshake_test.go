@@ -19,6 +19,8 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -30,6 +32,7 @@ import (
 // Tests that handshake failures are detected and reported correctly.
 func TestHandshake68(t *testing.T) { testHandshake(t, ETH68) }
 func TestHandshake70(t *testing.T) { testHandshake(t, ETH70) }
+func TestHandshake71(t *testing.T) { testHandshake(t, ETH71) }
 
 func testHandshake(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -128,7 +131,7 @@ func testHandshake(t *testing.T, protocol uint) {
 }
 
 func TestHandshakeSuccess(t *testing.T) {
-	for _, protocol := range []uint{ETH68, ETH70} {
+	for _, protocol := range []uint{ETH68, ETH70, ETH71} {
 		t.Run(fmt.Sprintf("eth/%d", protocol), func(t *testing.T) {
 			backend := newTestBackend(3)
 			defer backend.close()
@@ -163,9 +166,9 @@ func TestHandshakeSuccess(t *testing.T) {
 				if gotHead != head.Hash() || gotTD.Cmp(td) != 0 {
 					t.Fatalf("peer head mismatch: have (%s, %s), want (%s, %s)", gotHead, gotTD, head.Hash(), td)
 				}
-				if protocol == ETH70 {
+				if protocol >= ETH70 {
 					if peer.statusExtension != nil {
-						t.Fatal("eth/70 negotiated an upgrade status extension")
+						t.Fatalf("eth/%d negotiated an upgrade status extension", protocol)
 					}
 					if got := peer.BlockRange(); got == nil || *got != blockRange {
 						t.Fatalf("peer block range mismatch: have %+v, want %+v", got, blockRange)
@@ -175,5 +178,31 @@ func TestHandshakeSuccess(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHandshake71LargeTD(t *testing.T) {
+	backend := newTestBackend(1)
+	defer backend.close()
+	head := backend.chain.CurrentBlock()
+	td := backend.chain.GetTd(head.Hash(), head.Number.Uint64())
+	app, net := p2p.MsgPipe()
+	defer app.Close()
+	defer net.Close()
+	peer := NewPeer(ETH71, p2p.NewPeer(enode.ID{}, "peer", nil), net, nil, nil, backend.chain.Config())
+	defer peer.Close()
+	status := StatusPacket{
+		ProtocolVersion: ETH71,
+		NetworkID:       1,
+		TD:              new(big.Int).Lsh(big.NewInt(1), 100),
+		Genesis:         backend.chain.Genesis().Hash(),
+		ForkID:          forkid.NewID(backend.chain.Config(), backend.chain.Genesis(), head.Number.Uint64(), head.Time),
+		LatestBlock:     head.Number.Uint64(),
+		LatestBlockHash: head.Hash(),
+	}
+	go p2p.Send(app, StatusMsg, &status)
+	err := peer.Handshake(1, backend.chain, BlockRangeUpdatePacket{}, td, nil)
+	if err == nil || !strings.Contains(err.Error(), "too large total difficulty") {
+		t.Fatalf("expected oversized TD rejection, got %v", err)
 	}
 }

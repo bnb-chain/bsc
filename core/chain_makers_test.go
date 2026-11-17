@@ -251,3 +251,35 @@ func ExampleGenerateChain() {
 	// balance of addr2: 10000
 	// balance of addr3: 19687500000000001000
 }
+
+func TestChainMakerSlotNumber(t *testing.T) {
+	slot := func(v uint64) *uint64 { return &v }
+	for _, test := range []struct {
+		name       string
+		bsc        bool
+		parentTime uint64
+		parentSlot *uint64
+		want       *uint64
+	}{
+		{name: "bsc-before-fork", bsc: true, parentTime: 1},
+		{name: "bsc-first-fork", bsc: true, parentTime: 10, want: slot(101)},
+		{name: "bsc-next", bsc: true, parentTime: 20, parentSlot: slot(100), want: slot(101)},
+		{name: "eth-first-fork", parentTime: 10, want: slot(0)},
+		{name: "eth-next", parentTime: 20, parentSlot: slot(500), want: slot(501)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fork := uint64(20)
+			cfg := &params.ChainConfig{LondonBlock: big.NewInt(0), AmsterdamTime: &fork}
+			if test.bsc {
+				cfg.Parlia = &params.ParliaConfig{}
+			}
+			parent := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(100), Time: test.parentTime,
+				GasLimit: 30_000_000, Difficulty: big.NewInt(2), BaseFee: big.NewInt(0), SlotNumber: test.parentSlot})
+			engine := ethash.NewFaker()
+			header := newChainMaker(parent, cfg, engine).makeHeader(parent, engine)
+			if !reflect.DeepEqual(header.SlotNumber, test.want) {
+				t.Fatalf("slot: have %v, want %v", header.SlotNumber, test.want)
+			}
+		})
+	}
+}

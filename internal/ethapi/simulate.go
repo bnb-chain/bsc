@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -529,6 +530,10 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	if sim.chainConfig.IsShanghai(header.Number, header.Time) {
 		blockBody.Withdrawals = *block.BlockOverrides.Withdrawals
 	}
+	if sim.isBSC() {
+		// Simulation omits Parlia system transactions but still applies contract upgrades.
+		systemcontracts.TryUpdateBuildInSystemContract(sim.chainConfig, header.Number, parent.Time, header.Time, sim.state, false)
+	}
 	// Process the withdrawals and EIP-7685 requests
 	requests, bal, err := core.PostExecution(ctx, sim.chainConfig, header.Number, header.Time, allLogs, blockBody.Withdrawals, evm, uint32(len(block.Calls)+1))
 	if err != nil {
@@ -734,9 +739,13 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 		if overrides.Difficulty != nil && difficulty.Sign() == 0 {
 			return nil, &invalidParamsError{fmt.Sprintf("block %d: difficulty override is not allowed after the merge", number)}
 		}
-		// The slot number is unknown when the parent has none, so it is omitted then.
 		var slotNumber *uint64
-		if header.SlotNumber != nil {
+		if sim.isBSC() {
+			if sim.chainConfig.IsAmsterdam(number, timestamp) {
+				slot := number.Uint64()
+				slotNumber = &slot
+			}
+		} else if header.SlotNumber != nil {
 			slot := *header.SlotNumber + 1
 			slotNumber = &slot
 		}

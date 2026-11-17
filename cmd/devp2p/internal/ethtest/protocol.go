@@ -17,6 +17,7 @@
 package ethtest
 
 import (
+	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -32,7 +33,6 @@ const (
 // Unexported devp2p protocol lengths from p2p package.
 const (
 	baseProtoLen = 16
-	ethProtoLen  = 22
 	// snapProtoLen accommodates snap/2 (EIP-8189) which extends snap/1 with two
 	// additional message codes (GetBlockAccessLists=0x08, BlockAccessLists=0x09).
 	// Using 10 is safe for snap/1 connections because the extra codes are simply
@@ -63,10 +63,12 @@ const (
 
 // getProto returns the protocol a certain message code is associated with
 // (assuming the negotiated capabilities are exactly {eth,snap})
-func getProto(code uint64) Proto {
-	switch {
-	case code < baseProtoLen:
+func (c *Conn) getProto(code uint64) Proto {
+	if code < baseProtoLen {
 		return baseProto
+	}
+	ethProtoLen := c.ethProtoLen()
+	switch {
 	case code < baseProtoLen+ethProtoLen:
 		return ethProto
 	case code < baseProtoLen+ethProtoLen+snapProtoLen:
@@ -78,15 +80,31 @@ func getProto(code uint64) Proto {
 
 // protoOffset will return the offset at which the specified protocol's messages
 // begin.
-func protoOffset(proto Proto) uint64 {
+func (c *Conn) protoOffset(proto Proto) uint64 {
 	switch proto {
 	case baseProto:
 		return 0
 	case ethProto:
 		return baseProtoLen
 	case snapProto:
-		return baseProtoLen + ethProtoLen
+		return baseProtoLen + c.ethProtoLen()
 	default:
 		panic("unhandled protocol")
+	}
+}
+
+// ethProtoLen determines where snap messages begin for the negotiated eth version.
+func (c *Conn) ethProtoLen() uint64 {
+	switch c.negotiatedProtoVersion {
+	case eth.ETH68:
+		return 17
+	case eth.ETH70:
+		return 18
+	case eth.ETH71:
+		return 20
+	case eth.ETH72:
+		return 22
+	default:
+		panic("unsupported eth protocol version")
 	}
 }

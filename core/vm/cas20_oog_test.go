@@ -109,59 +109,72 @@ func TestCAS20BootstrapStopsOnExhaustion(t *testing.T) {
 // The one loop whose bound comes from state, not calldata: the old tail's length
 // is whatever a previous caller paid to store.
 func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
-	statedb, evm := newCAS20EVM(t)
-	creator := common.HexToAddress("0xc4ea70")
-	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
-		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xta11"), creator,
-			[][]byte{cas20Call(selGrantRole, roleMetadata, addrKey(creator))}),
-		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
-	if err != nil {
-		t.Fatalf("createCAS20: %v", err)
-	}
-	token := common.BytesToAddress(ret)
+	for _, amsterdam := range []bool{false, true} {
+		t.Run(fmt.Sprintf("amsterdam=%v", amsterdam), func(t *testing.T) {
+			statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedActivation(statedb, cas20TestCaller)
+			config := cas20GasChainConfig(amsterdam)
+			blockContext := cas20BlockContext(1)
+			blockContext.Random = nil
+			blockContext.CostPerStateByte = params.CostPerStateByte
+			evm := NewEVM(blockContext, statedb, config, Config{})
+			defer evm.Release()
 
-	long := strings.Repeat("N", 40_000)
-	if _, _, err := evm.Call(creator, token, encodeStringCall(selUpdateName, long),
-		NewGasBudget(500_000_000, 0), uint256.NewInt(0)); err != nil {
-		t.Fatalf("storing the long name: %v", err)
-	}
-	chunks := newUnmeteredCAS20Storage(statedb, token).stringChunks(slotAt(cas20SlotName))
-	if chunks < 1000 {
-		t.Fatalf("the long name occupies %d chunks, too few for this to measure", chunks)
-	}
+			creator := common.HexToAddress("0xc4ea70")
+			ret, _, err := evm.Call(creator, CAS20FactoryAddress,
+				encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x11"), creator,
+					[][]byte{cas20Call(selGrantRole, roleMetadata, addrKey(creator))}),
+				NewGasBudget(9_000_000, 0), uint256.NewInt(0))
+			if err != nil {
+				t.Fatalf("createCAS20: %v", err)
+			}
+			token := common.BytesToAddress(ret)
+			long := strings.Repeat("N", 40_000)
+			if _, _, err := evm.Call(creator, token, encodeStringCall(selUpdateName, long),
+				NewGasBudget(500_000_000, 0), uint256.NewInt(0)); err != nil {
+				t.Fatalf("storing the long name: %v", err)
+			}
+			statedb.Finalise(evm.GetRules())
+			statedb.ClearAccessList()
 
-	short := encodeStringCall(selUpdateName, "x")
-	best := func(budget uint64, wantErr bool) time.Duration {
-		t.Helper()
-		out := time.Hour
-		for rep := 0; rep < 5; rep++ {
-			sdb := statedb.Copy()
-			e := NewEVM(cas20BlockContext(1), sdb, cas20TestChainConfig(), Config{})
-			start := time.Now()
-			_, _, err := e.Call(creator, token, short, NewGasBudget(budget, 0), uint256.NewInt(0))
-			if d := time.Since(start); d < out {
-				out = d
-			}
-			if wantErr && err == nil {
-				t.Fatalf("a starved updateName should not succeed")
-			}
-			if !wantErr && err != nil {
-				t.Fatalf("a funded updateName should succeed: %v", err)
-			}
-			// The surviving long name is what makes the work re-buyable.
-			if wantErr {
-				if got := newUnmeteredCAS20Storage(sdb, token).stringChunks(slotAt(cas20SlotName)); got != chunks {
-					t.Fatalf("after a reverted attempt the name occupies %d chunks, want %d", got, chunks)
-				}
-			}
-		}
-		return out
-	}
+			for _, budget := range []uint64{30_000, 200_000_000} {
+				t.Run(fmt.Sprintf("gas=%d", budget), func(t *testing.T) {
+					sdb := statedb.Copy()
+					e := NewEVM(blockContext, sdb, config, Config{})
+					defer e.Release()
+					funded := budget == 200_000_000
+					gas := NewGasBudget(budget, 0)
+					ctx := &PrecompileContext{StateDB: sdb, Self: token, gas: &gas, evm: e}
 
-	starved, funded := best(30_000, true), best(200_000_000, false)
-	if starved*3 > funded {
-		t.Errorf("a starved release took %v against %v for one that could pay — the "+
-			"old-tail loop is still running past exhaustion", starved, funded)
+					// Check the setter result: the call wrapper also reports OOG after an unchecked tail scan.
+					snapshot := sdb.Snapshot()
+					if ok := newMeteredCAS20Storage(ctx).setName("x"); ok != funded || ctx.OutOfGas() == funded {
+						t.Fatalf("setter: success=%v, out of gas=%v, funded=%v", ok, ctx.OutOfGas(), funded)
+					}
+					sdb.RevertToSnapshot(snapshot)
+
+					_, _, err := e.Call(creator, token, encodeStringCall(selUpdateName, "x"),
+						NewGasBudget(budget, 0), uint256.NewInt(0))
+					want := "x"
+					if funded {
+						if err != nil {
+							t.Fatalf("funded updateName: %v", err)
+						}
+					} else {
+						if !errors.Is(err, ErrOutOfGas) {
+							t.Fatalf("starved updateName: have %v, want out of gas", err)
+						}
+						want = long
+					}
+					if got, ok := newUnmeteredCAS20Storage(sdb, token).name(); !ok || got != want {
+						t.Fatalf("name after update: length=%d, readable=%v, want length=%d", len(got), ok, len(want))
+					}
+				})
+			}
+		})
 	}
 }
 

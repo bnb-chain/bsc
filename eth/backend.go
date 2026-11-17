@@ -239,10 +239,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO(BSC): Enable snap/2 after consensus BAL support and peer-driven
-	// frozen-pivot handling are integrated and tested for restart and reorgs.
-	if config.SnapV2 && chainConfig.IsInBSC() {
-		return nil, errors.New("snap/2 sync is not supported on BSC yet")
+	if config.SnapV2 && chainConfig.IsInBSC() && noTries {
+		return nil, errors.New("snap/2 on BSC requires local trie verification")
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
@@ -286,6 +284,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.OverrideJenner != nil {
 		chainConfig.JennerTime = config.OverrideJenner
 		overrides.OverrideJenner = config.OverrideJenner
+	}
+	if config.OverrideAmsterdam != nil {
+		chainConfig.AmsterdamTime = config.OverrideAmsterdam
+		overrides.OverrideAmsterdam = config.OverrideAmsterdam
 	}
 	if config.OverrideBPO1 != nil {
 		chainConfig.BPO1Time = config.OverrideBPO1

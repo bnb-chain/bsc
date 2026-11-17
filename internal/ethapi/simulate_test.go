@@ -19,11 +19,13 @@ package ethapi
 import (
 	"encoding/json"
 	"math/big"
+	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 func TestSimulateSanitizeBlockOrder(t *testing.T) {
@@ -147,5 +149,44 @@ func TestSimBlockUnmarshalOverrideKeys(t *testing.T) {
 		case tc.err != "" && (err == nil || err.Error() != tc.err):
 			t.Errorf("%s: error mismatch: have %v, want %s", tc.input, err, tc.err)
 		}
+	}
+}
+
+func TestSimulateSlotNumber(t *testing.T) {
+	slot := func(v uint64) *uint64 { return &v }
+	for _, test := range []struct {
+		name       string
+		bsc        bool
+		parentSlot *uint64
+		timestamp  uint64
+		want       *uint64
+	}{
+		{name: "bsc-before-fork", bsc: true, timestamp: 19},
+		{name: "bsc-first-fork", bsc: true, timestamp: 20, want: slot(101)},
+		{name: "bsc-next", bsc: true, timestamp: 21, parentSlot: slot(100), want: slot(101)},
+		{name: "eth-first-fork", timestamp: 20},
+		{name: "eth-next", timestamp: 21, parentSlot: slot(500), want: slot(501)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fork := uint64(20)
+			cfg := &params.ChainConfig{LondonBlock: big.NewInt(0), AmsterdamTime: &fork}
+			if test.bsc {
+				cfg.Parlia = &params.ParliaConfig{}
+			}
+			parentTime := uint64(18)
+			if test.parentSlot != nil {
+				parentTime = 20
+			}
+			sim := &simulator{chainConfig: cfg, base: &types.Header{Number: big.NewInt(100), Time: parentTime,
+				Difficulty: big.NewInt(2), GasLimit: 30_000_000, BaseFee: big.NewInt(0), SlotNumber: test.parentSlot}}
+			number, timestamp := hexutil.Big(*big.NewInt(101)), hexutil.Uint64(test.timestamp)
+			headers, err := sim.makeHeaders([]simBlock{{BlockOverrides: &override.BlockOverrides{Number: &number, Time: &timestamp}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(headers[0].SlotNumber, test.want) {
+				t.Fatalf("slot: have %v, want %v", headers[0].SlotNumber, test.want)
+			}
+		})
 	}
 }

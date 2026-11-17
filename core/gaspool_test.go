@@ -17,6 +17,9 @@
 package core
 
 import (
+	"errors"
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/params"
@@ -70,5 +73,66 @@ func TestGasPoolAvailable(t *testing.T) {
 		if have := gas <= gp.Available(true); have != fits {
 			t.Fatalf("gas %d: available says %v, check says %v", gas, have, fits)
 		}
+	}
+}
+
+func TestGasPoolAmsterdamReservation(t *testing.T) {
+	const limit uint64 = 60_000_000
+	for _, gas := range []uint64{25_000, 300_000, params.MaxTxGas + 1, 30_000_000} {
+		t.Run(fmt.Sprint(gas), func(t *testing.T) {
+			gp := NewGasPool(limit)
+			execution, state := min(gas, params.MaxTxGas), gas
+			if err := gp.ReserveGasAmsterdam(execution, state); err != nil {
+				t.Fatal(err)
+			}
+			if gp.Used() != 0 || gp.CumulativeUsed() != 0 {
+				t.Fatal("reservation counted as consumption")
+			}
+			if gp.Available(false) != limit {
+				t.Fatal("reservation changed legacy budget")
+			}
+			for _, usage := range [][2]uint64{{limit - execution + 1, 0}, {0, limit - state + 1}} {
+				if err := gp.ChargeGasAmsterdam(usage[0], usage[1], 1); !errors.Is(err, ErrGasLimitReached) {
+					t.Fatalf("reserved budget consumed: %v", err)
+				}
+			}
+			before := gp.Snapshot()
+			if err := gp.ReserveGasAmsterdam(math.MaxUint64, 0); !errors.Is(err, ErrGasLimitReached) {
+				t.Fatal(err)
+			}
+			if *gp != *before {
+				t.Fatal("failed reservation changed pool")
+			}
+			if err := gp.ReleaseGasAmsterdam(execution+1, state); err == nil {
+				t.Fatal("invalid release succeeded")
+			}
+			if *gp != *before {
+				t.Fatal("failed release changed pool")
+			}
+			gp.Set(NewGasPool(limit))
+			gp.Set(before)
+			if err := gp.ChargeGasAmsterdam(limit-execution, limit-state, 123); err != nil {
+				t.Fatal(err)
+			}
+			if gp.Available(true) != 0 {
+				t.Fatal("reserved capacity exposed")
+			}
+			consumed := gp.Snapshot()
+			if err := gp.ReleaseGasAmsterdam(execution, state); err != nil {
+				t.Fatal(err)
+			}
+			if gp.Used() != consumed.Used() || gp.CumulativeUsed() != 123 {
+				t.Fatal("release changed consumption")
+			}
+			if err := gp.CheckGasAmsterdam(execution, state); err != nil {
+				t.Fatalf("payment does not fit: %v", err)
+			}
+			if err := gp.ChargeGasAmsterdam(execution, state, 456); err != nil {
+				t.Fatal(err)
+			}
+			if gp.CumulativeExecution() != limit || gp.CumulativeState() != limit || gp.CumulativeUsed() != 579 {
+				t.Fatal("incorrect cumulative accounting")
+			}
+		})
 	}
 }

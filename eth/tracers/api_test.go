@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"reflect"
@@ -49,6 +50,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -1988,5 +1990,93 @@ func TestTraceCallDefaultsToLatest(t *testing.T) {
 	}
 	if !bytes.Equal(omitted, latest) {
 		t.Errorf("omitted-block result %s != latest result %s", omitted, latest)
+	}
+}
+
+func TestTraceSystemTransactionGasBudget(t *testing.T) {
+	config := *params.MergedTestChainConfig
+	config.Parlia = &params.ParliaConfig{}
+	config.Ethash = nil
+	forkTime := uint64(2)
+	config.AmsterdamTime = &forkTime
+	accounts := newAccounts(1)
+	from, to := accounts[0].addr, common.HexToAddress("0x1000")
+	for _, timestamp := range []uint64{1, 2} {
+		for _, tc := range []struct {
+			name   string
+			code   []byte
+			system bool
+		}{
+			// Memory expansion needs more gas than an ordinary transaction can execute with.
+			{"system-memory", common.FromHex("0x600063003000005200"), true},
+			{"system-gas-branch", common.FromHex("0x63010000005a1160005500"), true},
+			{"ordinary-memory", common.FromHex("0x600063003000005200"), false},
+		} {
+			t.Run(fmt.Sprintf("%d/%s", timestamp, tc.name), func(t *testing.T) {
+				blockCtx := vm.BlockContext{
+					CanTransfer: core.CanTransfer, Transfer: core.Transfer,
+					GetHash:  func(uint64) common.Hash { return common.Hash{} },
+					Coinbase: from, BlockNumber: big.NewInt(1), Time: timestamp,
+					Difficulty: common.Big1, GasLimit: 30_000_000,
+					BaseFee: new(big.Int), BlobBaseFee: new(big.Int),
+					CostPerStateByte: params.CostPerStateByte,
+				}
+				if timestamp >= forkTime {
+					blockCtx.SlotNum = blockCtx.BlockNumber.Uint64()
+				}
+				statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+				if err != nil {
+					t.Fatal(err)
+				}
+				statedb.SetCode(to, tc.code, tracing.CodeChangeUnspecified)
+				rules := config.Rules(blockCtx.BlockNumber, false, timestamp)
+				statedb.Finalise(rules)
+				gasLimit := uint64(math.MaxUint64 / 2)
+				if !tc.system {
+					gasLimit = params.MaxTxGas
+					if timestamp >= forkTime {
+						gasLimit = blockCtx.GasLimit
+					}
+				}
+				tx := types.MustSignNewTx(accounts[0].key, types.LatestSigner(&config), &types.LegacyTx{
+					To: &to, Gas: gasLimit, GasPrice: common.Big0,
+				})
+				msg, err := core.TransactionToMessage(tx, types.MakeSigner(&config, blockCtx.BlockNumber, timestamp), common.Big0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				actual := statedb.Copy()
+				result, err := NewAPI(&testBackend{chainConfig: &config}).traceTx(context.Background(), tx, msg,
+					&Context{TxHash: tx.Hash()}, blockCtx, statedb, nil, tc.system, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var trace logger.ExecutionResult
+				if err := json.Unmarshal(result.(json.RawMessage), &trace); err != nil {
+					t.Fatal(err)
+				}
+				if !tc.system {
+					if !trace.Failed || trace.Gas != params.MaxTxGas {
+						t.Fatalf("ordinary transaction execution cap changed: failed=%v gas=%d", trace.Failed, trace.Gas)
+					}
+					return
+				}
+				evm := vm.NewEVM(blockCtx, actual, &config, vm.Config{})
+				defer evm.Release()
+				actual.Prepare(rules, from, from, &to, vm.ActivePrecompiles(rules), nil)
+				budget := vm.NewGasBudget(gasLimit, 0)
+				_, remaining, err := evm.Call(from, to, nil, budget, new(uint256.Int))
+				if err != nil {
+					t.Fatal(err)
+				}
+				actual.SetNonce(from, 1, tracing.NonceChangeEoACall)
+				if trace.Failed || trace.Gas != remaining.Used(budget) {
+					t.Fatalf("system transaction gas mismatch: failed=%v have=%d want=%d", trace.Failed, trace.Gas, remaining.Used(budget))
+				}
+				if statedb.IntermediateRoot(rules) != actual.IntermediateRoot(rules) {
+					t.Fatal("traced system transaction state differs from execution")
+				}
+			})
+		}
 	}
 }

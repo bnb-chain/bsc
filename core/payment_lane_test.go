@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -14,7 +15,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -83,7 +86,7 @@ func recordLanes(into map[uint64]laneRecord, gen func(int, *BlockGen)) func(int,
 		into[b.header.Number.Uint64()] = laneRecord{
 			on:         b.lane.On(),
 			quota:      b.lane.Budget.PaymentLaneQuota,
-			paymentGas: b.lane.Budget.PaymentLaneUsed,
+			paymentGas: b.lane.PaymentGasUsed(),
 		}
 	}
 }
@@ -291,12 +294,12 @@ func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
 	ls := &LaneState{classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
 
 	ls.Budget.PaymentLaneQuota = 100
-	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
-	require.ErrorIs(t, ls.VerifyPackedBid(99), paymentlane.ErrViolated,
+	require.NoError(t, ls.VerifyPackedBid(NewGasPool(100)), "a quota that exactly fits is the accepting case")
+	require.ErrorIs(t, ls.VerifyPackedBid(NewGasPool(99)), paymentlane.ErrViolated,
 		"a bid that leaves less than the idle quota must be rejected")
 
 	ls.Budget.PaymentLaneUsed = 40
-	require.NoError(t, ls.VerifyPackedBid(60), "payment gas already booked shrinks the idle quota one for one")
+	require.NoError(t, ls.VerifyPackedBid(NewGasPool(60)), "payment gas already booked shrinks the idle quota one for one")
 }
 
 // TestPaymentLaneReportsAFailedReadAsLocal pins the error category, not the rejection: a failed
@@ -312,7 +315,7 @@ func TestPaymentLaneReportsAFailedReadAsLocal(t *testing.T) {
 		gasLimit:   laneTestGasLimit,
 	}
 
-	err := ls.Verify(params.TxGas)
+	err := ls.Verify(params.TxGas, NewGasPool(laneTestGasLimit))
 	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable, "a failed read is this node's fault, not the block's")
 	require.ErrorIs(t, err, broken, "the cause has to survive for whoever reads the log")
 	require.NotErrorIs(t, err, paymentlane.ErrViolated, "calling a good block invalid is what costs peers")
@@ -389,7 +392,7 @@ func TestRecordUsedFromIgnoresARolledBackPool(t *testing.T) {
 	snapshot := *gp
 	require.NoError(t, gp.CheckGasLegacy(100))
 	require.NoError(t, gp.ChargeGasLegacy(0, 100))
-	usedBefore := gp.Used()
+	usedBefore := gp.Snapshot()
 
 	require.NoError(t, gp.CheckGasLegacy(40))
 	require.NoError(t, gp.ChargeGasLegacy(0, 40))
@@ -397,7 +400,261 @@ func TestRecordUsedFromIgnoresARolledBackPool(t *testing.T) {
 	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed)
 
 	*gp = snapshot // back past usedBefore
-	require.Less(t, gp.Used(), usedBefore)
+	require.Less(t, gp.Used(), usedBefore.Used())
 	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, usedBefore)
 	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed, "a rolled-back pool books nothing rather than wrapping")
+}
+
+func TestPaymentLaneAmsterdamAccounting(t *testing.T) {
+	for name, paymentFirst := range map[string]bool{"payment-first": true, "general-first": false} {
+		t.Run(name, func(t *testing.T) {
+			ls := &LaneState{amsterdam: true, Budget: paymentlane.Budget{PaymentLaneQuota: 10}, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
+			gp := NewGasPool(100)
+			charge := func(lane paymentlane.LaneType, e, s uint64) {
+				before := gp.Snapshot()
+				require.NoError(t, gp.ChargeGasAmsterdam(e, s, 1))
+				ls.RecordUsedFrom(lane, gp, before)
+			}
+			if paymentFirst {
+				charge(paymentlane.PaymentLane, 3, 7)
+				charge(paymentlane.GeneralLane, 6, 0)
+			} else {
+				charge(paymentlane.GeneralLane, 6, 0)
+				charge(paymentlane.PaymentLane, 3, 7)
+			}
+			require.EqualValues(t, 3, ls.paymentExecution)
+			require.EqualValues(t, 7, ls.paymentState)
+			require.EqualValues(t, 7, ls.PaymentGasUsed())
+			e, s := ls.idle()
+			require.EqualValues(t, 7, e)
+			require.EqualValues(t, 3, s)
+			before := gp.Snapshot()
+			require.NoError(t, gp.ChargeGasAmsterdam(4, 2, 1))
+			gp.Set(before)
+			ls.RecordUsedFrom(paymentlane.PaymentLane, gp, before)
+			require.EqualValues(t, 3, ls.paymentExecution)
+			require.EqualValues(t, 7, ls.paymentState)
+			gp.Set(NewGasPool(100)) // Rewind past the snapshot as well.
+			ls.RecordUsedFrom(paymentlane.PaymentLane, gp, before)
+			require.EqualValues(t, 3, ls.paymentExecution)
+			require.EqualValues(t, 7, ls.paymentState)
+		})
+	}
+}
+
+func TestPaymentLaneAmsterdamAdmission(t *testing.T) {
+	const limit, quota = 55_000_000, 2_750_000
+	ls := &LaneState{amsterdam: true, Budget: paymentlane.Budget{PaymentLaneQuota: quota}, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil)}
+	gp := NewGasPool(limit)
+	require.NoError(t, gp.ChargeGasAmsterdam(38_000_000, quota, 0))
+	require.Greater(t, gp.Available(true), uint64(30_000_000))
+	require.False(t, ls.Admits(gp, paymentlane.GeneralLane, 30_000_000), "execution must retain its idle quota despite ample state budget")
+	require.True(t, ls.Admits(gp, paymentlane.PaymentLane, 30_000_000))
+	ls.paymentState = quota
+	require.False(t, ls.Admits(gp, paymentlane.GeneralLane, 30_000_000), "state payments cannot release execution quota")
+	ls.paymentState = 0
+	ls.paymentExecution = quota
+	require.True(t, ls.Admits(gp, paymentlane.GeneralLane, 30_000_000))
+	gp = NewGasPool(limit)
+	require.NoError(t, gp.ChargeGasAmsterdam(quota, 38_000_000, 0))
+	require.False(t, ls.Admits(gp, paymentlane.GeneralLane, 15_000_000), "execution payments cannot release state quota")
+	require.True(t, ls.Admits(gp, paymentlane.PaymentLane, 15_000_000))
+	ls.paymentState = quota
+	require.True(t, ls.Admits(gp, paymentlane.GeneralLane, 15_000_000))
+	for _, statePaid := range []uint64{0, math.MaxUint64} {
+		ls.Budget.PaymentLaneQuota = math.MaxUint64
+		ls.paymentExecution = 0
+		ls.paymentState = statePaid
+		require.False(t, ls.Admits(NewGasPool(math.MaxUint64), paymentlane.GeneralLane, 1), "each reservation addition must reject overflow")
+	}
+}
+
+func TestPaymentLaneAmsterdamVerify(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		e, s, pe, ps, system uint64
+		reject               bool
+	}{
+		{"empty", 0, 0, 0, 0, 0, false},
+		{"execution boundary", 90, 0, 0, 0, 0, false},
+		{"state boundary", 0, 90, 0, 0, 0, false},
+		{"one dimension cannot pay both quotas", 100, 100, 5, 5, 0, true},
+		{"both quotas paid", 100, 100, 10, 10, 0, false},
+		{"payments can exceed quota", 100, 100, 100, 100, 0, false},
+		{"execution system boundary", 85, 0, 0, 0, 5, false},
+		{"execution system overflow", 85, 0, 0, 0, 6, true},
+		{"state system boundary", 0, 85, 0, 0, 5, false},
+		{"state system overflow", 0, 85, 0, 0, 6, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ls := &LaneState{amsterdam: true, gasLimit: 100, Budget: paymentlane.Budget{PaymentLaneQuota: 10}, paymentExecution: tc.pe, paymentState: tc.ps, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
+			gp := NewGasPool(100)
+			require.NoError(t, gp.ChargeGasAmsterdam(tc.e, tc.s, 0))
+			err := ls.Verify(gp.Used()+tc.system, gp)
+			if tc.reject {
+				require.ErrorIs(t, err, paymentlane.ErrViolated)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+	ls := &LaneState{amsterdam: true, gasLimit: 100, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
+	gp := NewGasPool(100)
+	require.NoError(t, gp.ChargeGasAmsterdam(50, 0, 0))
+	require.ErrorIs(t, ls.Verify(49, gp), paymentlane.ErrViolated)
+	require.ErrorIs(t, ls.Verify(101, gp), paymentlane.ErrViolated)
+}
+
+func TestPaymentLaneAmsterdamPackedBid(t *testing.T) {
+	ls := &LaneState{amsterdam: true, Budget: paymentlane.Budget{PaymentLaneQuota: 20_000_000}, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil)}
+	gp := NewGasPool(400_000_000)
+	require.NoError(t, gp.ChargeGasAmsterdam(382_000_000, 20_000_000, 0))
+	require.EqualValues(t, 380_000_000, gp.Available(true))
+	require.ErrorIs(t, ls.VerifyPackedBid(gp), paymentlane.ErrViolated)
+	ls.paymentState = 20_000_000
+	require.ErrorIs(t, ls.VerifyPackedBid(gp), paymentlane.ErrViolated)
+	ls.paymentExecution = 2_000_000
+	require.NoError(t, ls.VerifyPackedBid(gp))
+	gp = NewGasPool(400_000_000)
+	require.NoError(t, gp.ChargeGasAmsterdam(20_000_000, 382_000_000, 0))
+	ls.paymentExecution = 20_000_000
+	ls.paymentState = 0
+	require.ErrorIs(t, ls.VerifyPackedBid(gp), paymentlane.ErrViolated)
+	ls.paymentState = 2_000_000
+	require.NoError(t, ls.VerifyPackedBid(gp))
+}
+
+// laneTestEngine omits PoW rewards from the BSC chain fixture.
+type laneTestEngine struct{ consensus.Engine }
+
+func (*laneTestEngine) Finalize(consensus.ChainHeaderReader, *types.Header, vm.StateDB, *types.Body, *[]*types.Receipt, *[]*types.Transaction, *uint64, *tracing.Hooks) error {
+	return nil
+}
+
+func TestPaymentLaneAmsterdamImport(t *testing.T) {
+	config, gspec, key := laneGenesis(t, laneTestGasLimit)
+	amsterdam := uint64(25)
+	config.AmsterdamTime = &amsterdam
+	require.NoError(t, config.CheckConfigForkOrder())
+	clear, revert, create, floor, refill := common.Address{0xc1}, common.Address{0xc2}, common.Address{0xc3}, common.Address{0xc4}, common.Address{0xc5}
+	gspec.Alloc[clear] = types.Account{Code: common.FromHex("0x600060005500"), Storage: map[common.Hash]common.Hash{{}: common.BigToHash(common.Big1)}, Balance: common.Big0}
+	gspec.Alloc[revert] = types.Account{Code: common.FromHex("0x600060005560006000fd"), Storage: map[common.Hash]common.Hash{{}: common.BigToHash(common.Big1)}, Balance: common.Big0}
+	gspec.Alloc[create] = types.Account{Code: common.FromHex("0x600160005500"), Balance: common.Big0}
+	gspec.Alloc[floor] = types.Account{Code: common.FromHex("0x600160005500"), Balance: common.Big0}
+	token := common.Address{0: 0xca, 1: 0x52, 19: 1}
+	gspec.Alloc[token] = types.Account{Code: vm.CAS20MarkerCode, Balance: common.Big0}
+	gspec.Alloc[refill] = types.Account{Code: common.FromHex("0x6001600055600060005500"), Balance: common.Big0}
+	contract := gspec.Alloc[paymentlane.ContractAddress]
+	contract.Storage = map[common.Hash]common.Hash{laneListedLenSlot: common.BigToHash(big.NewInt(6))}
+	for i, addr := range []common.Address{clear, revert, create, floor, refill, token} {
+		contract.Storage[enumerableSetSlot(laneListedLenSlot, uint64(i))] = common.BytesToHash(addr[:])
+	}
+	gspec.Alloc[paymentlane.ContractAddress] = contract
+	engine := &laneTestEngine{ethash.NewFullFaker()}
+	signer := types.LatestSigner(config)
+	approve := func(spender common.Address) []byte {
+		data := append(common.FromHex("0x095ea7b3"), common.LeftPadBytes(spender[:], 32)...)
+		return append(data, common.LeftPadBytes([]byte{1}, 32)...)
+	}
+	_, blocks, _ := GenerateChainWithGenesis(gspec, engine, 4, func(i int, b *BlockGen) {
+		if i == 1 {
+			require.True(t, config.IsJenner(b.header.Number, b.header.Time))
+			require.False(t, config.IsAmsterdam(b.header.Number, b.header.Time))
+			b.AddTx(key.sign(t, signer, 0, token, common.Big0, 400_000, approve(common.Address{0xcd})))
+			require.EqualValues(t, types.ReceiptStatusSuccessful, b.receipts[0].Status)
+			require.Zero(t, b.gasPool.CumulativeState())
+			return
+		}
+		if i != 2 {
+			return
+		}
+		require.True(t, b.lane.On())
+		require.True(t, b.lane.amsterdam)
+		b.SetCoinbase(common.Address{})
+		for n, addr := range []common.Address{clear, revert, create, floor, refill, token} {
+			before := b.gasPool.Snapshot()
+			var data []byte
+			if n == 3 {
+				data = make([]byte, 4096)
+			} else if n == 5 {
+				data = approve(common.Address{0xcc})
+			}
+			b.AddTx(key.sign(t, signer, uint64(n+1), addr, common.Big0, 400_000, data))
+			receipt := b.receipts[n]
+			execution := b.gasPool.CumulativeExecution() - before.CumulativeExecution()
+			switch n {
+			case 0:
+				require.Less(t, receipt.GasUsed, execution, "refund reduces fees, not the lane's execution contribution")
+			case 1:
+				require.EqualValues(t, types.ReceiptStatusFailed, receipt.Status)
+				require.Positive(t, execution)
+			case 2:
+				require.Positive(t, b.gasPool.CumulativeState()-before.CumulativeState())
+			case 3:
+				rules := config.Rules(b.header.Number, false, b.header.Time)
+				floorGas, err := FloorDataGas(rules, key.addr, &addr, new(uint256.Int), data, nil)
+				require.NoError(t, err)
+				require.Equal(t, floorGas, execution)
+				require.Positive(t, b.gasPool.CumulativeState()-before.CumulativeState())
+			case 4:
+				require.EqualValues(t, types.ReceiptStatusSuccessful, receipt.Status)
+				require.Zero(t, b.gasPool.CumulativeState()-before.CumulativeState(), "state refill reverses temporary creation, unlike a transaction refund")
+				require.Equal(t, common.Hash{}, b.statedb.GetState(addr, common.Hash{}))
+			case 5:
+				stateGas := b.gasPool.CumulativeState() - before.CumulativeState()
+				require.EqualValues(t, types.ReceiptStatusSuccessful, receipt.Status)
+				require.EqualValues(t, params.StorageCreationSize*params.CostPerStateByte, stateGas)
+				require.Equal(t, execution+stateGas, receipt.GasUsed)
+			}
+		}
+		require.Equal(t, b.gasPool.CumulativeExecution(), b.lane.paymentExecution)
+		require.Equal(t, b.gasPool.CumulativeState(), b.lane.paymentState)
+	})
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+	n, err := chain.InsertChain(blocks)
+	require.NoError(t, err, "block index %d", n)
+	require.Empty(t, blocks[3].Transactions())
+	require.Equal(t, blocks[3].Root(), chain.CurrentBlock().Root)
+	header := chain.CurrentBlock()
+	st, err := chain.StateAt(header.Root, header.Number, header.Time)
+	require.NoError(t, err)
+	evm := vm.NewEVM(NewEVMBlockContext(header, chain, nil), st, config, vm.Config{})
+	defer evm.Release()
+	for _, spender := range []common.Address{{0xcd}, {0xcc}} {
+		input := append(common.FromHex("0xdd62ed3e"), common.LeftPadBytes(key.addr[:], 32)...)
+		input = append(input, common.LeftPadBytes(spender[:], 32)...)
+		ret, _, err := evm.StaticCall(key.addr, token, input, vm.NewGasBudget(100_000, 0))
+		require.NoError(t, err)
+		require.Equal(t, common.Big1, new(big.Int).SetBytes(ret), "allowance must survive the fork")
+	}
+}
+
+func TestPaymentLaneAmsterdamRejectsStateOverflow(t *testing.T) {
+	const gasLimit = 2_000_000
+	config, gspec, key := laneGenesis(t, gasLimit)
+	amsterdam := uint64(25)
+	config.AmsterdamTime = &amsterdam
+	contract := common.Address{0xc1}
+	gspec.Alloc[contract] = types.Account{Code: common.FromHex("0x60016000355500"), Balance: common.Big0}
+	engine := &laneTestEngine{ethash.NewFullFaker()}
+	signer := types.LatestSigner(config)
+	_, blocks, _ := GenerateChainWithGenesis(gspec, engine, 3, func(i int, b *BlockGen) {
+		if i != 2 {
+			return
+		}
+		// Build a block that ignores the quota, but still obeys the ordinary gas limits.
+		b.lane = &LaneState{}
+		for n := uint64(0); n < 20; n++ {
+			b.AddTx(key.sign(t, signer, n, contract, common.Big0, 130_000, []byte{byte(n)}))
+		}
+	})
+	require.Greater(t, blocks[2].GasUsed(), gasLimit-paymentlane.Quota(500, gasLimit))
+	require.LessOrEqual(t, blocks[2].GasUsed(), uint64(gasLimit))
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+	_, err = chain.InsertChain(blocks)
+	require.ErrorIs(t, err, paymentlane.ErrViolated)
 }
