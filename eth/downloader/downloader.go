@@ -1590,10 +1590,9 @@ func (d *Downloader) processSnapSyncContent() error {
 	// pivot moves, so need to unblock the loop. These fields will accumulate
 	// the results in the meantime.
 	//
-	// Note, there's no issue with memory piling up since after 64 blocks the
-	// pivot will forcefully move so these accumulators will be dropped. The
-	// exception is snap/2 trie generation, where the pivot is frozen on
-	// purpose and results accumulate until the generation finishes.
+	// During state download, staleness moves the pivot forward. Once generation
+	// freezes it, stop draining results after buffering the pivot. The bounded
+	// result cache then applies backpressure instead of growing oldTail forever.
 	var (
 		oldPivot *fetchResult   // Locked in pivot block, might change eventually
 		oldTail  []*fetchResult // Downloaded content after the pivot
@@ -1602,13 +1601,39 @@ func (d *Downloader) processSnapSyncContent() error {
 	defer timer.Stop()
 
 	for {
+		// Finish a buffered pivot before draining the queue after generation.
+		// Otherwise the accumulated headers can immediately move it again and
+		// require BAL catch-up even though its state is ready to be committed.
+		if oldPivot != nil {
+			select {
+			case <-sync.done:
+				if err := sync.Wait(); err != nil {
+					return err
+				}
+				if oldPivot.Header.Hash() != sync.pivot.Hash() {
+					return errors.New("completed state sync does not match pivot block")
+				}
+				if err := d.commitPivotBlock(oldPivot); err != nil {
+					return err
+				}
+				if err := d.importBlockResults(oldTail); err != nil {
+					return err
+				}
+				oldPivot, oldTail = nil, nil
+				continue
+			default:
+			}
+		}
 		// Wait for the next batch of downloaded data to be available. If we have
 		// not yet reached the pivot point, wait blockingly as there's no need to
 		// spin-loop check for pivot moves. If we reached the pivot but have not
 		// yet processed it, check for results async, so we might notice pivot
 		// moves while state syncing. If the pivot was passed fully, block again
 		// as there's no more reason to check for pivot moves at all.
-		results := d.queue.Results(oldPivot == nil)
+		var results []*fetchResult
+		if oldPivot == nil || d.snapSyncer.FrozenPivot() == nil {
+			results = d.queue.Results(oldPivot == nil)
+		}
 		if len(results) == 0 {
 			// If pivot sync is done, stop
 			if d.committed.Load() {
@@ -1804,6 +1829,8 @@ func (d *Downloader) commitPivotBlock(result *fetchResult) error {
 		return err
 	}
 	d.pivotLock.Lock()
+	d.pivotHeader = block.Header()
+	rawdb.WriteLastPivotNumber(d.stateDB, block.NumberU64())
 	d.committed.Store(true)
 	d.pivotLock.Unlock()
 
