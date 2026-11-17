@@ -76,21 +76,32 @@ func TestAddNotifiesAfterUnlock(t *testing.T) {
 	added := make(chan []error, 1)
 	go func() { added <- pool.Add([]*types.Transaction{tx}, true) }()
 
-	// Let the adder reach Feed.Send. With the bug it is parked there holding p.lock.
-	time.Sleep(200 * time.Millisecond)
+	// Act as the announcer and look the transaction up until the pool reports it.
+	// Nobody drains ch yet, so the adder is parked in Feed.Send. With the fix the
+	// lock is released before that, and GetMetadata eventually sees the tx; with
+	// the bug the adder still holds p.lock and GetMetadata blocks. No sleeps are
+	// needed to line up the two goroutines.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		found := make(chan bool, 1)
+		go func() { found <- pool.GetMetadata(tx.Hash()) != nil }()
 
-	looked := make(chan struct{})
-	go func() {
-		pool.GetMetadata(tx.Hash()) // the announcer, before it returns to its channel
-		close(looked)
-	}()
-	select {
-	case <-looked:
-	case <-time.After(5 * time.Second):
-		<-ch // unblock the adder so the test can shut down instead of hanging
-		<-looked
-		<-added
-		t.Fatal("GetMetadata blocked while Add was delivering its tx event: p.lock is held across Feed.Send (go-ethereum#36106)")
+		var seen bool
+		select {
+		case seen = <-found:
+		case <-time.After(5 * time.Second):
+			<-ch // unblock the adder so the test can shut down instead of hanging
+			<-found
+			<-added
+			t.Fatal("GetMetadata blocked while Add was delivering its tx event: p.lock is held across Feed.Send (go-ethereum#36106)")
+		}
+		if seen {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("transaction never became visible in the pool")
+		}
+		time.Sleep(time.Millisecond)
 	}
 	select {
 	case ev := <-ch:
