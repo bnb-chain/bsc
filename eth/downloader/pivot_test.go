@@ -95,7 +95,7 @@ func newPivotHeaderDownloader(t *testing.T) (*Downloader, *pivotHeaderPeer, []*t
 }
 
 func TestResumeFrozenPivot(t *testing.T) {
-	for _, name := range []string{"same-chain", "reorg", "lagging-peer", "missing-header", "probe-limit"} {
+	for _, name := range []string{"same-chain", "reorg", "lagging-peer", "missing-header", "probe-limit", "expired-pivot"} {
 		t.Run(name, func(t *testing.T) {
 			d, p, headers := newPivotHeaderDownloader(t)
 			frozen, head, pivot := headers[1], headers[5], headers[4]
@@ -105,6 +105,11 @@ func TestResumeFrozenPivot(t *testing.T) {
 				frozen.Extra = []byte("orphan")
 			case "lagging-peer":
 				head = headers[0]
+			case "expired-pivot":
+				head = types.CopyHeader(head)
+				head.Number = new(big.Int).SetUint64(frozen.Number.Uint64() + params.FullImmutabilityThreshold + uint64(fsMinFullBlocks) + 1)
+				pivot = types.CopyHeader(pivot)
+				pivot.Number = new(big.Int).Sub(head.Number, big.NewInt(int64(fsMinFullBlocks)))
 			case "probe-limit":
 				head = types.CopyHeader(head)
 				head.Number = new(big.Int).SetUint64(frozen.Number.Uint64() + params.FullImmutabilityThreshold + uint64(fsMinFullBlocks) + 1)

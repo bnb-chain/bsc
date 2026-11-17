@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -51,6 +52,12 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 	}
 	if head.Number.Cmp(frozen.Number) < 0 {
 		return nil, fmt.Errorf("%w: peer head %d below pivot %d", errFrozenPivotUnavailable, head.Number, frozen.Number)
+	}
+	if snap.CatchUpExceedsRetention(frozen, pivot) {
+		// The state syncer will discard this expired checkpoint under the same
+		// policy. Selecting the fresh pivot avoids retrying an unbounded ancestry
+		// probe forever after a long shutdown; this is not a reorg conclusion.
+		return pivot, nil
 	}
 	// Bound the ancestry probe independently of BAL catch-up. Exceeding this
 	// bound is not proof of a reorg and must not discard a frozen checkpoint.

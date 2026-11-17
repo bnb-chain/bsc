@@ -57,7 +57,7 @@ const (
 	maxAccessListRequestCount = 28
 
 	// catchUpWindow is the number of blocks BAL catch-up fetches and applies at
-	// a time. The whole gap can span up to maxCatchUpBlocks, so fetching it in
+	// a time. The whole gap can span up to the retention limit, so fetching it in
 	// one shot would buffer every block's BAL (~100 KiB each) in memory before
 	// applying any. Processing the gap in bounded windows caps peak memory to a
 	// single window's worth of BALs.
@@ -76,16 +76,6 @@ const (
 // connected peer has been marked stateless for BAL requests and there
 // are still hashes left to fetch.
 var errAccessListPeersExhausted = errors.New("all peers exhausted for BAL requests")
-
-// maxCatchUpBlocks is the maximum gap (in blocks) that BAL catch-up is
-// allowed to span. BALs are only retained by peers for a limited window
-// (roughly two weeks, ~100k blocks at 12s block time). If the pivot has
-// moved further than this conservative bound, the BALs needed to roll the
-// flat state forward are likely no longer available, so we discard the
-// stale progress and restart the sync from scratch rather than attempting
-// a catch-up that is bound to fail partway through.
-// BSC exposes the retention threshold as a variable.
-var maxCatchUpBlocks = params.FullImmutabilityThreshold
 
 // errAccessListUnavailable is returned from the BAL catch-up when some gap
 // block's access list cannot be retrieved against the current peerset.
@@ -612,7 +602,7 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 		// If we resumed against a different pivot, decide whether the persisted
 		// progress is still usable. If yes, roll forward via BAL catch-up. If not,
 		// wipe everything and restart fresh.
-		exceedsRetention := catchUpExceedsRetention(prevPivot, target)
+		exceedsRetention := CatchUpExceedsRetention(prevPivot, target)
 		var reorged bool
 		if !exceedsRetention {
 			var err error
@@ -627,7 +617,7 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 			// lists required for catch-up are almost certainly unavailable from
 			// peers, so discard the stale progress and resync from scratch
 			// instead of starting a catch-up doomed to stall.
-			log.Warn("Catch-up gap exceeds BAL retention, restarting snap sync from scratch", "oldnumber", prevPivot.Number, "newnumber", target.Number, "gap", new(big.Int).Sub(target.Number, prevPivot.Number), "limit", maxCatchUpBlocks)
+			log.Warn("Catch-up gap exceeds BAL retention, restarting snap sync from scratch", "oldnumber", prevPivot.Number, "newnumber", target.Number, "gap", new(big.Int).Sub(target.Number, prevPivot.Number), "limit", params.FullImmutabilityThreshold)
 			s.resetSyncState()
 
 		case reorged:
@@ -651,7 +641,15 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 				log.Warn("Frozen pivot moved unexpectedly, rolling forward", "frozen", prevPivot.Number, "new", target.Number)
 			}
 			if err := s.catchUp(target, cancel); err != nil {
-				return err
+				if !errors.Is(err, errAccessListUnavailable) {
+					return err
+				}
+				// Peers explicitly lack a required BAL. Retrying the same gap
+				// cannot recover the state, but a fresh download at the current
+				// target can. Cancelled/invalid requests must keep their progress.
+				log.Warn("BAL catch-up unavailable, restarting state download", "number", target.Number, "err", err)
+				s.resetSyncState()
+				break
 			}
 			// A completed sync is rolled forward in full by the catch-up. There is
 			// nothing left to download or generate.
@@ -847,13 +845,17 @@ func (s *syncerV2) isPivotReorged(prev, curr *types.Header) (bool, error) {
 	return false, err
 }
 
-// catchUpExceedsRetention reports whether rolling the flat state forward from
+// CatchUpExceedsRetention reports whether rolling the flat state forward from
 // prev to curr would span more blocks than peers are expected to retain BALs
 // for. Beyond this bound the access lists needed for catch-up are likely gone,
-// so the caller should wipe and resync from scratch instead.
-func catchUpExceedsRetention(prev, curr *types.Header) bool {
+// so the caller should wipe and resync from scratch instead. The effective limit
+// follows params.FullImmutabilityThreshold, including CLI overrides.
+//
+// The downloader uses the same policy when a frozen checkpoint has aged beyond
+// the peer-driven ancestry probe, so a long-offline node can choose a fresh pivot.
+func CatchUpExceedsRetention(prev, curr *types.Header) bool {
 	gap := new(big.Int).Sub(curr.Number, prev.Number)
-	return gap.Cmp(new(big.Int).SetUint64(maxCatchUpBlocks)) > 0
+	return gap.Cmp(new(big.Int).SetUint64(params.FullImmutabilityThreshold)) > 0
 }
 
 // catchUp runs the BAL catch-up. When the pivot has moved, it fetches BALs
@@ -1028,6 +1030,21 @@ func (s *syncerV2) gapHeader(num uint64, hash common.Hash) (*types.Header, error
 // same order as the input hashes.
 func (s *syncerV2) fetchAccessLists(hashes []common.Hash, headers map[common.Hash]*types.Header, cancel chan struct{}) ([]rlp.RawValue, error) {
 	log.Debug("Fetching BALs for catch-up", "blocks", len(hashes))
+	// A catch-up may fall back to downloading state without ending Sync. Its
+	// delivery/revert goroutines must not remain blocked on this event loop.
+	requestCancel := make(chan struct{})
+	defer func() {
+		close(requestCancel)
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		for id, req := range s.accessListReqs {
+			req.timeout.Stop()
+			delete(s.accessListReqs, id)
+			if _, ok := s.peers[req.peer]; ok {
+				s.accessListIdlers[req.peer] = struct{}{}
+			}
+		}
+	}()
 
 	// Subscribe to peer events
 	peerJoin := make(chan string, 16)
@@ -1060,7 +1077,7 @@ func (s *syncerV2) fetchAccessLists(hashes []common.Hash, headers map[common.Has
 			return nil, err
 		}
 		// Assign BAL retrieval tasks to idle peers
-		s.assignAccessListTasks(pending, refused, accessListResps, accessListReqFails, cancel)
+		s.assignAccessListTasks(pending, refused, accessListResps, accessListReqFails, requestCancel)
 
 		// Periodic visibility while stalled with peers connected but idle.
 		if len(pending) > 0 && time.Since(lastStallLog) > 30*time.Second {
