@@ -45,6 +45,9 @@ func (d *Downloader) fetchHeadersByHash(p *peerConnection, hash common.Hash, amo
 	defer timeoutTimer.Stop()
 
 	select {
+	case <-d.cancelCh:
+		return nil, nil, errCanceled
+
 	case <-timeoutTimer.C:
 		// Header retrieval timed out, update the metrics
 		p.log.Debug("Header request timed out", "elapsed", ttl)

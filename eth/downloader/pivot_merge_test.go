@@ -3,8 +3,14 @@ package downloader
 import (
 	"errors"
 	"math/big"
+	"sync/atomic"
+
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -13,19 +19,22 @@ import (
 // Only state synchronization is exercised; peer packet methods are unused.
 type pivotMergeSyncer struct {
 	snap.Syncer
-	run func(*types.Header, chan struct{}) error
+	run    func(*types.Header, chan struct{}) error
+	frozen atomic.Pointer[types.Header]
 }
 
 func (s *pivotMergeSyncer) Sync(pivot *types.Header, cancel chan struct{}) error {
 	return s.run(pivot, cancel)
 }
 
-func (*pivotMergeSyncer) FrozenPivot() *types.Header { return nil }
+func (s *pivotMergeSyncer) FrozenPivot() *types.Header { return s.frozen.Load() }
 
 func newPivotMergeDownloader(t *testing.T, pivot *types.Header, syncer snap.Syncer) *Downloader {
 	t.Helper()
 	d := &Downloader{
 		queue:          newQueue(16, 16),
+		stateDB:        rawdb.NewMemoryDatabase(),
+		syncHeaders:    lru.NewCache[common.Hash, *types.Header](1024),
 		pivotHeader:    pivot,
 		snapSyncer:     syncer,
 		stateSyncStart: make(chan *stateSync),
@@ -43,6 +52,7 @@ func newPivotMergeDownloader(t *testing.T, pivot *types.Header, syncer snap.Sync
 		close(d.quitCh)
 		d.queue.Close()
 		<-stopped
+		d.stateDB.Close()
 	})
 	return d
 }
@@ -103,5 +113,45 @@ func TestSnapContentRetargetsStateSync(t *testing.T) {
 			d.queue.resultCache.Prepare(1)
 			checkPivotMergeError(t, d, want)
 		})
+	}
+}
+
+// Generation can start between the staleness decision and cancellation. The
+// final checkpoint must win over an ordinary move to a newer, same-chain pivot.
+func TestSnapContentFreezesDuringRetarget(t *testing.T) {
+	old := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(0)}
+	target := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), ParentHash: old.Hash()}
+	want := errors.New("resumed generation at frozen pivot")
+	var d *Downloader
+	var runs atomic.Int32
+	syncer := new(pivotMergeSyncer)
+	syncer.run = func(header *types.Header, cancel chan struct{}) error {
+		if runs.Add(1) == 2 {
+			if header.Hash() != old.Hash() {
+				return errors.New("generation was moved to the new pivot")
+			}
+			return want
+		}
+		d.pivotLock.Lock()
+		d.pivotHeader = target
+		d.pivotLock.Unlock()
+		d.queue.resultCache.lock.Lock()
+		d.queue.resultCache.items[0] = &fetchResult{Header: old}
+		d.queue.resultCache.items[1] = &fetchResult{Header: target}
+		d.queue.resultCache.lock.Unlock()
+		d.queue.Close()
+		<-cancel
+		syncer.frozen.Store(old)
+		return snap.ErrCancelled
+	}
+	d = newPivotMergeDownloader(t, old, syncer)
+	rawdb.WriteHeader(d.stateDB, old)
+	d.queue.resultCache.Prepare(1)
+	checkPivotMergeError(t, d, want)
+	if d.pivotHeader.Hash() != old.Hash() {
+		t.Fatal("downloader did not restore the frozen pivot")
+	}
+	if number := rawdb.ReadLastPivotNumber(d.stateDB); number == nil || *number != old.Number.Uint64() {
+		t.Fatal("rollback boundary did not follow the restored pivot")
 	}
 }

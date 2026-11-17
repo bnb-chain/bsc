@@ -28,6 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -153,6 +154,7 @@ type Downloader struct {
 
 	snapSyncer     snap.Syncer // snap/1 or snap/2 state syncer, selected at construction
 	stateSyncStart chan *stateSync
+	syncHeaders    *lru.Cache[common.Hash, *types.Header] // Hash-anchored, uncommitted ancestry
 
 	// Cancellation and termination
 	cancelPeer string         // Identifier of the peer currently being used as the master (cancel on drop)
@@ -275,12 +277,11 @@ func New(stateDb ethdb.Database, mode ethconfig.SyncMode, chain BlockChain, drop
 		quitCh:            make(chan struct{}),
 		stateSyncStart:    make(chan *stateSync),
 		syncStartBlock:    chain.CurrentSnapBlock().Number.Uint64(),
+		syncHeaders:       lru.NewCache[common.Hash, *types.Header](1024),
 	}
 	// Select the snap/1 or snap/2 state syncer based on the feature flag.
 	if snapV2 {
-		// TODO(BSC): Validate and resume frozen pivots against the peer-driven
-		// target chain after a restart or reorg before enabling snap/2 on BSC.
-		dl.snapSyncer = snap.NewV2Syncer(stateDb, chain.TrieDB().Scheme())
+		dl.snapSyncer = snap.NewV2Syncer(stateDb, chain.TrieDB().Scheme(), dl.syncHeader)
 	} else {
 		dl.snapSyncer = snap.NewV1Syncer(stateDb, chain.TrieDB().Scheme())
 	}
@@ -549,6 +550,12 @@ func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *bi
 	// nil panics on access.
 	if mode == ethconfig.SnapSync && pivot == nil {
 		pivot = d.blockchain.CurrentBlock()
+	}
+	if mode == ethconfig.SnapSync {
+		pivot, err = d.resumeFrozenPivot(remoteHeader, pivot)
+		if err != nil {
+			return err
+		}
 	}
 
 	// If the remote peer is lagging behind, no need to sync with it, drop the peer.
@@ -1064,15 +1071,17 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 		//   - Skeleton retrieval to permit concurrent header fetches
 		//   - Full header retrieval if we're near the chain head
 		var (
-			headers []*types.Header
-			hashes  []common.Hash
-			err     error
+			headers     []*types.Header
+			hashes      []common.Hash
+			err         error
+			pivotOrigin *types.Header
 		)
 		switch {
 		case pivoting:
 			d.pivotLock.RLock()
-			pivot := d.pivotHeader.Number.Uint64()
+			pivotOrigin = d.pivotHeader
 			d.pivotLock.RUnlock()
+			pivot := pivotOrigin.Number.Uint64()
 
 			p.log.Trace("Fetching next pivot header", "number", pivot+uint64(fsMinFullBlocks))
 			headers, hashes, err = d.fetchHeadersByNumber(p, pivot+uint64(fsMinFullBlocks), 2, fsMinFullBlocks-9, false) // move +64 when it's 2x64-8 deep
@@ -1121,26 +1130,18 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 		d.pivotLock.RUnlock()
 
 		if pivoting {
-			if len(headers) == 2 {
-				if have, want := headers[0].Number.Uint64(), pivot+uint64(fsMinFullBlocks); have != want {
+			if len(headers) == 2 && d.snapSyncer.FrozenPivot() == nil {
+				if have, want := headers[0].Number.Uint64(), pivotOrigin.Number.Uint64()+uint64(fsMinFullBlocks); have != want {
 					log.Warn("Peer sent invalid next pivot", "have", have, "want", want)
 					return fmt.Errorf("%w: next pivot number %d != requested %d", errInvalidChain, have, want)
 				}
-				if have, want := headers[1].Number.Uint64(), pivot+2*uint64(fsMinFullBlocks)-8; have != want {
+				if have, want := headers[1].Number.Uint64(), pivotOrigin.Number.Uint64()+2*uint64(fsMinFullBlocks)-8; have != want {
 					log.Warn("Peer sent invalid pivot confirmer", "have", have, "want", want)
 					return fmt.Errorf("%w: next pivot confirmer number %d != requested %d", errInvalidChain, have, want)
 				}
-				log.Warn("Pivot seemingly stale, moving", "old", pivot, "new", headers[0].Number)
-				pivot = headers[0].Number.Uint64()
-
-				d.pivotLock.Lock()
-				d.pivotHeader = headers[0]
-				d.pivotLock.Unlock()
-
-				// Write out the pivot into the database so a rollback beyond
-				// it will reenable snap sync and update the state root that
-				// the state syncer will be downloading.
-				rawdb.WriteLastPivotNumber(d.stateDB, pivot)
+				if d.movePivot(pivotOrigin, headers[0]) {
+					log.Warn("Pivot seemingly stale, moving", "old", pivotOrigin.Number, "new", headers[0].Number)
+				}
 			}
 			// Disable the pivot check and fetch the next batch of headers
 			pivoting = false
@@ -1251,7 +1252,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 		}
 		// If we're still skeleton filling snap sync, check pivot staleness
 		// before continuing to the next skeleton filling
-		if skeleton && pivot > 0 {
+		if skeleton && pivot > 0 && d.snapSyncer.FrozenPivot() == nil {
 			pivoting = true
 		}
 	}
@@ -1655,16 +1656,11 @@ func (d *Downloader) processSnapSyncContent() error {
 			// need to be taken into account, otherwise we're detecting the pivot move
 			// late and will drop peers due to unavailable state!!!
 			if height := latest.Number.Uint64(); height >= pivot.Number.Uint64()+2*uint64(fsMinFullBlocks)-uint64(reorgProtHeaderDelay) {
-				log.Warn("Pivot became stale, moving", "old", pivot.Number.Uint64(), "new", height-uint64(fsMinFullBlocks)+uint64(reorgProtHeaderDelay))
-				pivot = results[len(results)-1-fsMinFullBlocks+reorgProtHeaderDelay].Header // must exist as lower old pivot is uncommitted
-
-				d.pivotLock.Lock()
-				d.pivotHeader = pivot
-				d.pivotLock.Unlock()
-
-				// Write out the pivot into the database so a rollback beyond it will
-				// reenable snap sync
-				rawdb.WriteLastPivotNumber(d.stateDB, pivot.Number.Uint64())
+				next := results[len(results)-1-fsMinFullBlocks+reorgProtHeaderDelay].Header // must exist as lower old pivot is uncommitted
+				if d.movePivot(pivot, next) {
+					log.Warn("Pivot became stale, moving", "old", pivot.Number, "new", next.Number)
+					pivot = next
+				}
 			}
 		}
 		P, beforeP, afterP := splitAroundPivot(pivot.Number.Uint64(), results)
@@ -1678,6 +1674,19 @@ func (d *Downloader) processSnapSyncContent() error {
 			}
 			if target.Hash() != sync.pivot.Hash() {
 				sync.Cancel()
+				// The old cycle may have entered generation after the staleness
+				// check above. Its final journal now tells us whether it froze.
+				// Resume it if it still belongs to the target chain, rather than
+				// repeatedly interrupting generation on ordinary head growth.
+				target, err := d.resumeFrozenPivot(target, target)
+				if err != nil {
+					return err
+				}
+				d.pivotLock.Lock()
+				d.pivotHeader = target
+				rawdb.WriteLastPivotNumber(d.stateDB, target.Number.Uint64())
+				d.pivotLock.Unlock()
+				P, beforeP, afterP = splitAroundPivot(target.Number.Uint64(), results)
 				sync = d.syncState(target)
 				go closeOnErr(sync)
 				oldPivot, oldTail = nil, nil
@@ -1695,6 +1704,9 @@ func (d *Downloader) processSnapSyncContent() error {
 			case <-sync.done:
 				if sync.err != nil {
 					return sync.err
+				}
+				if P.Header.Hash() != sync.pivot.Hash() {
+					return errors.New("completed state sync does not match pivot block")
 				}
 				if err := d.commitPivotBlock(P); err != nil {
 					return err

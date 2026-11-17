@@ -77,8 +77,13 @@ func NewV1Syncer(db ethdb.Database, scheme string) Syncer {
 }
 
 // NewV2Syncer returns a Syncer backed by the snap/2 state syncer.
-func NewV2Syncer(db ethdb.Database, scheme string) Syncer {
-	return syncerV2Adapter{newSyncerV2(db, scheme)}
+//
+// getHeader supplies headers not yet committed by the block downloader. It must
+// resolve the requested hash and number, or return an error without changing state.
+func NewV2Syncer(db ethdb.Database, scheme string, getHeader func(common.Hash, uint64) (*types.Header, error)) Syncer {
+	s := newSyncerV2(db, scheme)
+	s.getHeader = getHeader
+	return syncerV2Adapter{s}
 }
 
 // syncerV1Adapter adapts the snap/1 *syncer to Syncer.

@@ -91,6 +91,8 @@ var maxCatchUpBlocks = params.FullImmutabilityThreshold
 // block's access list cannot be retrieved against the current peerset.
 var errAccessListUnavailable = errors.New("block access lists unavailable")
 
+var errPivotReorged = errors.New("catch-up target does not descend from previous pivot")
+
 // accountRequestV2 tracks a pending account range request to ensure responses are
 // to actual requests and to validate any security constraints.
 //
@@ -389,6 +391,8 @@ type syncerV2 struct {
 	tasks  []*accountTaskV2 // Current account task set being synced
 	update chan struct{}    // Notification channel for possible sync progression
 
+	getHeader func(common.Hash, uint64) (*types.Header, error) // Uncommitted catch-up headers
+
 	peerJoin *event.Feed       // Event feed to react to peers joining
 	peerDrop *event.Feed       // Event feed to react to peers dropping
 	rates    *msgrate.Trackers // Message throughput rates for peers
@@ -608,8 +612,17 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 		// If we resumed against a different pivot, decide whether the persisted
 		// progress is still usable. If yes, roll forward via BAL catch-up. If not,
 		// wipe everything and restart fresh.
+		exceedsRetention := catchUpExceedsRetention(prevPivot, target)
+		var reorged bool
+		if !exceedsRetention {
+			var err error
+			reorged, err = s.isPivotReorged(prevPivot, target)
+			if err != nil {
+				return err // Missing ancestry is not evidence of a reorg. Keep the checkpoint.
+			}
+		}
 		switch {
-		case catchUpExceedsRetention(prevPivot, target):
+		case exceedsRetention:
 			// The pivot moved further than the BAL retention window. The access
 			// lists required for catch-up are almost certainly unavailable from
 			// peers, so discard the stale progress and resync from scratch
@@ -617,7 +630,7 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 			log.Warn("Catch-up gap exceeds BAL retention, restarting snap sync from scratch", "oldnumber", prevPivot.Number, "newnumber", target.Number, "gap", new(big.Int).Sub(target.Number, prevPivot.Number), "limit", maxCatchUpBlocks)
 			s.resetSyncState()
 
-		case s.isPivotReorged(prevPivot, target):
+		case reorged:
 			log.Warn("Restarting snap sync from scratch", "oldnumber", prevPivot.Number, "oldHash", prevPivot.Hash())
 			s.resetSyncState()
 
@@ -817,17 +830,21 @@ func (s *syncerV2) downloadState(cancel chan struct{}) error {
 // isPivotReorged reports whether the previous pivot is no longer usable
 // as a starting point for forward catch-up. Either the new pivot doesn't
 // advance past it, or it is not an ancestor of the new pivot.
-func (s *syncerV2) isPivotReorged(prev, curr *types.Header) bool {
+// Unavailable ancestry is returned as an error, leaving the checkpoint usable.
+func (s *syncerV2) isPivotReorged(prev, curr *types.Header) (bool, error) {
 	// If the new pivot is at or below the old one, there's nothing for
 	// catchUp to roll forward.
 	if curr.Number.Cmp(prev.Number) <= 0 {
-		return true
+		return true, nil
 	}
 	// Walk the header chain back from the new pivot. The canonical index
 	// can't answer this, it only covers the blocks the downloader has
 	// committed so far, and those trail the pivot.
 	_, err := s.gapHashChain(prev, curr)
-	return err != nil
+	if errors.Is(err, errPivotReorged) {
+		return true, nil
+	}
+	return false, err
 }
 
 // catchUpExceedsRetention reports whether rolling the flat state forward from
@@ -883,15 +900,17 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 			winHashes = hashes[start-from : end-from+1]
 			headers   = make(map[common.Hash]*types.Header, len(winHashes))
 		)
-		for i, hash := range winHashes {
+		// Walk backwards, matching the ancestry reader's batched reverse queries.
+		for i := len(winHashes) - 1; i >= 0; i-- {
+			hash := winHashes[i]
 			num := start + uint64(i)
 			if num == to {
 				headers[hash] = target
 				continue
 			}
-			header := s.gapHeader(num, hash)
-			if header == nil {
-				return fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, hash)
+			header, err := s.gapHeader(num, hash)
+			if err != nil {
+				return err
 			}
 			headers[hash] = header
 		}
@@ -971,24 +990,35 @@ func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, erro
 	)
 	hashes[to-from] = target.Hash()
 	for num := to - 1; num >= from; num-- {
-		header := s.gapHeader(num, want)
-		if header == nil {
-			return nil, fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, want)
+		header, err := s.gapHeader(num, want)
+		if err != nil {
+			return nil, err
 		}
 		hashes[num-from] = want
 		want = header.ParentHash
 	}
 	if want != prev.Hash() {
-		return nil, fmt.Errorf("catch-up target %d (hash %v) does not descend from pivot %d (hash %v)", to, target.Hash(), prev.Number, prev.Hash())
+		return nil, fmt.Errorf("%w: target %d (hash %v), pivot %d (hash %v)", errPivotReorged, to, target.Hash(), prev.Number, prev.Hash())
 	}
 	return hashes, nil
 }
 
-// gapHeader reads the header of a gap block with the given number and
-// expected hash from the header database. Headers are persisted before their
-// bodies are imported by the legacy downloader.
-func (s *syncerV2) gapHeader(num uint64, hash common.Hash) *types.Header {
-	return rawdb.ReadHeader(s.db, hash, num)
+// gapHeader also resolves headers that the downloader has not committed yet.
+// Missing data must not be confused with a proven ancestry mismatch.
+func (s *syncerV2) gapHeader(num uint64, hash common.Hash) (*types.Header, error) {
+	if header := rawdb.ReadHeader(s.db, hash, num); header != nil {
+		return header, nil
+	}
+	if s.getHeader != nil {
+		header, err := s.getHeader(hash, num)
+		if err != nil {
+			return nil, err
+		}
+		if header != nil && header.Number != nil && header.Number.IsUint64() && header.Number.Uint64() == num && header.Hash() == hash {
+			return header, nil
+		}
+	}
+	return nil, fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, hash)
 }
 
 // fetchAccessLists fetches BALs for the given block hashes from
