@@ -278,8 +278,6 @@ func New(stateDb ethdb.Database, mode ethconfig.SyncMode, chain BlockChain, drop
 	}
 	// Select the snap/1 or snap/2 state syncer based on the feature flag.
 	if snapV2 {
-		// TODO(BSC): Validate and resume frozen pivots against the peer-driven
-		// target chain after a restart or reorg before enabling snap/2 on BSC.
 		dl.snapSyncer = snap.NewV2Syncer(stateDb, chain.TrieDB().Scheme())
 	} else {
 		dl.snapSyncer = snap.NewV1Syncer(stateDb, chain.TrieDB().Scheme())

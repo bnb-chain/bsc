@@ -239,10 +239,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO(BSC): Enable snap/2 after consensus BAL support and peer-driven
-	// frozen-pivot handling are integrated and tested for restart and reorgs.
-	if config.SnapV2 && chainConfig.IsInBSC() {
-		return nil, errors.New("snap/2 sync is not supported on BSC yet")
+	if config.SnapV2 && chainConfig.IsInBSC() && noTries {
+		return nil, errors.New("snap/2 on BSC requires local trie verification")
 	}
 	// Override the chain config with provided settings.
 	var overrides core.ChainOverrides
