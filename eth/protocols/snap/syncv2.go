@@ -641,15 +641,7 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 				log.Warn("Frozen pivot moved unexpectedly, rolling forward", "frozen", prevPivot.Number, "new", target.Number)
 			}
 			if err := s.catchUp(target, cancel); err != nil {
-				if !errors.Is(err, errAccessListUnavailable) {
-					return err
-				}
-				// Peers explicitly lack a required BAL. Retrying the same gap
-				// cannot recover the state, but a fresh download at the current
-				// target can. Cancelled/invalid requests must keep their progress.
-				log.Warn("BAL catch-up unavailable, restarting state download", "number", target.Number, "err", err)
-				s.resetSyncState()
-				break
+				return err
 			}
 			// A completed sync is rolled forward in full by the catch-up. There is
 			// nothing left to download or generate.
@@ -1035,21 +1027,6 @@ func (s *syncerV2) gapHeader(num uint64, hash common.Hash, cancel <-chan struct{
 // same order as the input hashes.
 func (s *syncerV2) fetchAccessLists(hashes []common.Hash, headers map[common.Hash]*types.Header, cancel chan struct{}) ([]rlp.RawValue, error) {
 	log.Debug("Fetching BALs for catch-up", "blocks", len(hashes))
-	// A catch-up may fall back to downloading state without ending Sync. Its
-	// delivery/revert goroutines must not remain blocked on this event loop.
-	requestCancel := make(chan struct{})
-	defer func() {
-		close(requestCancel)
-		s.lock.Lock()
-		defer s.lock.Unlock()
-		for id, req := range s.accessListReqs {
-			req.timeout.Stop()
-			delete(s.accessListReqs, id)
-			if _, ok := s.peers[req.peer]; ok {
-				s.accessListIdlers[req.peer] = struct{}{}
-			}
-		}
-	}()
 
 	// Subscribe to peer events
 	peerJoin := make(chan string, 16)
@@ -1082,7 +1059,7 @@ func (s *syncerV2) fetchAccessLists(hashes []common.Hash, headers map[common.Has
 			return nil, err
 		}
 		// Assign BAL retrieval tasks to idle peers
-		s.assignAccessListTasks(pending, refused, accessListResps, accessListReqFails, requestCancel)
+		s.assignAccessListTasks(pending, refused, accessListResps, accessListReqFails, cancel)
 
 		// Periodic visibility while stalled with peers connected but idle.
 		if len(pending) > 0 && time.Since(lastStallLog) > 30*time.Second {

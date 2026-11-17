@@ -19,6 +19,7 @@ package snap
 import (
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +28,60 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+// A failed catch-up must remain usable by the next state-sync cycle. Returning
+// an error and preserving a journal alone does not prove that retry can finish.
+func TestSyncV2RetriesAfterBALUnavailable(t *testing.T) {
+	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+		t.Run(scheme, func(t *testing.T) {
+			fix := seedCompletedSync(t, scheme)
+			defer fix.db.Close()
+			s := newSyncerV2(fix.db, scheme)
+			var available atomic.Bool
+			peer := newTestPeerV2("retry", t, func() {})
+			peer.accessLists = fix.bals
+			peer.accessListRequestHandler = func(p *testPeerV2, id uint64, hashes []common.Hash, max int) error {
+				if available.Load() {
+					return defaultAccessListRequestHandler(p, id, hashes, max)
+				}
+				var values rlp.RawList[rlp.RawValue]
+				for range hashes {
+					values.AppendRaw(rlp.EmptyString)
+				}
+				return p.remote.OnAccessLists(p, id, values)
+			}
+			peer.remote = s
+			if err := s.Register(peer); err != nil {
+				t.Fatal(err)
+			}
+			cancel := make(chan struct{})
+			err := s.Sync(fix.header102, cancel)
+			close(cancel) // The downloader ends the failed state-sync cycle.
+			if err != errAccessListUnavailable {
+				t.Fatalf("first cycle: got %v, want unavailable BAL", err)
+			}
+			progress := decodeJournal(t, fix.db)
+			if progress.Pivot == nil || progress.Pivot.Hash() != fix.pivotA.Hash() || progress.Phase != phaseComplete {
+				t.Fatal("failed catch-up lost the completed checkpoint")
+			}
+			available.Store(true)
+			cancel = make(chan struct{})
+			defer close(cancel)
+			if err := s.Sync(fix.header102, cancel); err != nil {
+				t.Fatalf("retry after BAL becomes available: %v", err)
+			}
+			if peer.nAccountRequests.Load() != 0 {
+				t.Fatal("retry downloaded accounts instead of resuming catch-up")
+			}
+			progress = decodeJournal(t, fix.db)
+			if progress.Pivot == nil || progress.Pivot.Hash() != fix.header102.Hash() || progress.Phase != phaseComplete {
+				t.Fatal("retry did not persist completion at the target")
+			}
+			assertAccountBalance(t, fix.db, fix.hashY, 2000)
+			verifyTrie(scheme, fix.db, fix.header102.Root, t)
+		})
+	}
+}
 
 // CLI overrides are applied after package initialization. Both the downloader
 // and state syncer must use the current value, rather than a captured copy.
@@ -45,7 +100,7 @@ func TestCatchUpRetentionPolicy(t *testing.T) {
 	}
 }
 
-func TestSyncV2FreshDownloadRecovery(t *testing.T) {
+func TestSyncV2CatchUpRecoveryPolicy(t *testing.T) {
 	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
 		for _, reason := range []string{"unavailable-bal", "expired-pivot"} {
 			t.Run(scheme+"/"+reason, func(t *testing.T) {
@@ -83,16 +138,28 @@ func TestSyncV2FreshDownloadRecovery(t *testing.T) {
 				if reason == "expired-pivot" {
 					target.Number = new(big.Int).SetUint64(from.Number.Uint64() + params.FullImmutabilityThreshold + 1)
 				}
-				if err := s.Sync(target, cancel); err != nil {
+				err := s.Sync(target, cancel)
+				if reason == "unavailable-bal" {
+					if err != errAccessListUnavailable {
+						t.Fatalf("error = %v, want unavailable BAL", err)
+					}
+					if peer.nAccessListRequests.Load() == 0 || peer.nAccountRequests.Load() != before {
+						t.Fatal("unavailable BAL must return an error without restarting state download")
+					}
+					loader := newSyncerV2(s.db, scheme)
+					loader.loadSyncStatus()
+					if loader.pivot == nil || loader.pivot.Hash() != from.Hash() || loader.getPhase() != phaseComplete {
+						t.Fatal("unavailable BAL discarded the previous checkpoint")
+					}
+					return
+				}
+				if err != nil {
 					t.Fatal(err)
 				}
 				if peer.nAccountRequests.Load() <= before {
 					t.Fatal("did not restart the account download")
 				}
-				if reason == "unavailable-bal" && peer.nAccessListRequests.Load() == 0 {
-					t.Fatal("did not attempt BAL catch-up before falling back")
-				}
-				if reason == "expired-pivot" && peer.nAccessListRequests.Load() != 0 {
+				if peer.nAccessListRequests.Load() != 0 {
 					t.Fatal("expired checkpoint requested BALs")
 				}
 				if s.getPhase() != phaseComplete || s.pivot.Hash() != target.Hash() {

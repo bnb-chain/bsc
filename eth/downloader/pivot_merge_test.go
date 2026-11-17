@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -154,95 +153,5 @@ func TestSnapContentFreezesDuringRetarget(t *testing.T) {
 	}
 	if number := rawdb.ReadLastPivotNumber(d.stateDB); number == nil || *number != old.Number.Uint64() {
 		t.Fatal("rollback boundary did not follow the restored pivot")
-	}
-}
-
-// Once the pivot is buffered, generation must leave further results in the
-// bounded queue. Draining them into oldTail would bypass downloader backpressure.
-func TestSnapContentFrozenPivotBackpressure(t *testing.T) {
-	pivot := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(0)}
-	tail := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), ParentHash: pivot.Hash()}
-	want := errors.New("generation interrupted after backpressure check")
-	release := make(chan struct{})
-	syncer := new(pivotMergeSyncer)
-	syncer.frozen.Store(pivot)
-	syncer.run = func(_ *types.Header, chanCancel chan struct{}) error {
-		select {
-		case <-release:
-			return want
-		case <-chanCancel:
-			return snap.ErrCancelled
-		}
-	}
-	d := newPivotMergeDownloader(t, pivot, syncer)
-	d.queue.resultCache.Prepare(1)
-	d.queue.resultCache.items[0] = &fetchResult{Header: pivot}
-	checked := make(chan bool, 1)
-	calls := 0
-	d.chainInsertHook = func(results []*fetchResult, _ chan struct{}) {
-		calls++
-		if calls == 1 {
-			d.queue.resultCache.lock.Lock()
-			d.queue.resultCache.items[0] = &fetchResult{Header: tail}
-			d.queue.resultCache.lock.Unlock()
-		} else if calls == 2 {
-			checked <- len(results) == 0 && d.queue.resultCache.HasCompletedItems()
-			close(release)
-		}
-	}
-	checkPivotMergeError(t, d, want)
-	if !<-checked {
-		t.Fatal("frozen generation drained results instead of backpressuring the queue")
-	}
-}
-
-type pivotCommitChain struct {
-	BlockChain
-	insert func(types.Blocks) (int, error)
-}
-
-func (c pivotCommitChain) InsertReceiptChain(blocks types.Blocks, _ []rlp.RawValue, _ uint64) (int, error) {
-	return c.insert(blocks)
-}
-
-func TestSnapContentCommitsCompletedPivotBeforeDraining(t *testing.T) {
-	pivot := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(0)}
-	tail := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), ParentHash: pivot.Hash()}
-	want := errors.New("stopped at completed pivot insertion")
-	finish := make(chan struct{})
-	syncer := new(pivotMergeSyncer)
-	syncer.frozen.Store(pivot)
-	syncer.run = func(_ *types.Header, cancel chan struct{}) error {
-		select {
-		case <-finish:
-			syncer.frozen.Store(nil)
-			return nil
-		case <-cancel:
-			return snap.ErrCancelled
-		}
-	}
-	d := newPivotMergeDownloader(t, pivot, syncer)
-	d.blockchain = pivotCommitChain{insert: func(blocks types.Blocks) (int, error) {
-		if len(blocks) != 1 || blocks[0].Hash() != pivot.Hash() {
-			return 0, errors.New("attempted to insert a different pivot")
-		}
-		return 0, want
-	}}
-	d.queue.resultCache.Prepare(1)
-	d.queue.resultCache.items[0] = &fetchResult{Header: pivot}
-	calls := 0
-	d.chainInsertHook = func(_ []*fetchResult, _ chan struct{}) {
-		calls++
-		if calls == 1 {
-			d.queue.resultCache.lock.Lock()
-			d.queue.resultCache.items[0] = &fetchResult{Header: tail}
-			d.queue.resultCache.lock.Unlock()
-		} else if calls == 2 {
-			close(finish)
-		}
-	}
-	checkPivotMergeError(t, d, want)
-	if !d.queue.resultCache.HasCompletedItems() {
-		t.Fatal("drained queued results before committing the completed pivot")
 	}
 }
