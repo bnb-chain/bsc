@@ -55,6 +55,7 @@ func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {
 
 	var tmHeaderValidateContract tmHeaderValidate
 	syncedConsensusStateBytes, err := tmHeaderValidateContract.Run(input)
+	checkBSCPrecompileCache(t, &tmHeaderValidateContract, params.Rules{IsInBSC: true, IsIstanbul: true}, 0x64, input)
 	require.NoError(t, err)
 	syncedConsensusState, err := v1.DecodeConsensusState(syncedConsensusStateBytes[32:])
 	require.NoError(t, err)
@@ -75,6 +76,7 @@ func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {
 	input = append(totalLengthPrefix, parameterInput...)
 
 	syncedAgainConsensusStateBytes, err := tmHeaderValidateContract.Run(input)
+	checkBSCPrecompileCache(t, &tmHeaderValidateContract, params.Rules{IsInBSC: true, IsIstanbul: true}, 0x64, input)
 	require.NoError(t, err)
 	syncedAgainConsensusState, err := v1.DecodeConsensusState(syncedAgainConsensusStateBytes[32:])
 	require.NoError(t, err)
@@ -107,6 +109,7 @@ func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {
 
 	iavlMerkleProofValidateContract := iavlMerkleProofValidate{}
 	success, err := iavlMerkleProofValidateContract.Run(input)
+	checkBSCPrecompileCache(t, &iavlMerkleProofValidateContract, params.Rules{IsInBSC: true, IsIstanbul: true}, 0x65, input)
 	require.NoError(t, err)
 	expectedResult := make([]byte, 32)
 	binary.BigEndian.PutUint64(expectedResult[24:], 0x01)
@@ -114,6 +117,7 @@ func TestTmHeaderValidateAndMerkleProofValidate(t *testing.T) {
 
 	moranValidateContract := iavlMerkleProofValidateMoran{}
 	success, err = moranValidateContract.Run(input)
+	checkBSCPrecompileCache(t, &moranValidateContract, params.Rules{IsMoran: true}, 0x65, input)
 	require.NoError(t, err)
 	expectedResult = make([]byte, 32)
 	binary.BigEndian.PutUint64(expectedResult[24:], 0x01)
@@ -151,6 +155,7 @@ func TestIcs23Proof(t *testing.T) {
 
 	validator := iavlMerkleProofValidatePlanck{}
 	success, err := validator.Run(input)
+	checkBSCPrecompileCache(t, &validator, params.Rules{IsPlanck: true}, 0x65, input)
 	require.NoError(t, err)
 	expectedResult := make([]byte, 32)
 	binary.BigEndian.PutUint64(expectedResult[24:], 0x01)
@@ -188,6 +193,7 @@ func TestIcs23ProofPlato(t *testing.T) {
 
 	validator := iavlMerkleProofValidatePlato{}
 	success, err := validator.Run(input)
+	checkBSCPrecompileCache(t, &validator, params.Rules{IsPlato: true}, 0x65, input)
 	require.NoError(t, err)
 	expectedResult := make([]byte, 32)
 	binary.BigEndian.PutUint64(expectedResult[24:], 0x01)
@@ -200,14 +206,18 @@ func TestMerkleProofValidateMoran(t *testing.T) {
 	// Bytest1 is the inputs of exploit tx 0xebf83628ba893d35b496121fb8201666b8e09f3cbadf0e269162baa72efe3b8b
 	bytest2, _ := hex.DecodeString("00000000000000000000000000000000000000000000000000000000000005086962630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e00000100380200000000010dd85c0000000000000000000000000000000000000000000000000000000000000093000000000000000000000000000000000000000000000000000000000000000000f870a0424e4200000000000000000000000000000000000000000000000000000000009400000000000000000000000000000000000000008ad3c21bcecceda100000094489a8756c18c0b8b24ec2a2b9ff3d4d447f79bec94489a8756c18c0b8b24ec2a2b9ff3d4d447f79bec846553f10072cda827a83531ca0fd7ac917a6b65649719aab0836722caafe0603147a523180a8d020a066961766c3a76120e00000100380200000000010dd85c1af201f0010aed010a2b0802100318b091c73422200c10f902d266c238a4ca9e26fa9bc36483cd3ebee4e263012f5e7f40c22ee4d20a4d0801100218b091c7342220e4fd47bffd1c06e67edad92b2bf9ca63631978676288a2aa99f95c459436ef632a20da657c1ffb86c684eb3e265361ef0fa4f9dfa670b45f9f91c5eb6ad84b21a4d112001a370a0e0000010038020000000000000002122011056c6919f02d966991c10721684a8d1542e44003f9ffb47032c18995d4ac7f18b091c7341a340a0e00000100380200000000010dd85c12202c3a561458f8527b002b5ec3cab2d308662798d6245d4588a4e6a80ebdfe30ac18010ad4050a0a6d756c746973746f726512036962631ac005be050abb050a110a066f7261636c6512070a0508b891c7340a0f0a046d61696e12070a0508b891c7340a350a08736c617368696e6712290a2708b891c7341220c8ccf341e6e695e7e1cb0ce4bf347eea0cc16947d8b4e934ec400b57c59d6f860a380a0b61746f6d69635f7377617012290a2708b891c734122042d4ecc9468f71a70288a95d46564bfcaf2c9f811051dcc5593dbef152976b010a110a0662726964676512070a0508b891c7340a300a0364657812290a2708b891c73412201773be443c27f61075cecdc050ce22eb4990c54679089e90afdc4e0e88182a230a2f0a02736312290a2708b891c7341220df7a0484b7244f76861b1642cfb7a61d923794bd2e076c8dbd05fc4ee29f3a670a330a06746f6b656e7312290a2708b891c734122064958c2f76fec1fa5d1828296e51264c259fa264f499724795a740f48fc4731b0a320a057374616b6512290a2708b891c734122015d2c302143bdf029d58fe381cc3b54cedf77ecb8834dfc5dc3e1555d68f19ab0a330a06706172616d7312290a2708b891c734122050abddcb7c115123a5a4247613ab39e6ba935a3d4f4b9123c4fedfa0895c040a0a300a0361636312290a2708b891c734122079fb5aecc4a9b87e56231103affa5e515a1bdf3d0366490a73e087980b7f1f260a0e0a0376616c12070a0508b891c7340a300a0369626312290a2708b891c7341220e09159530585455058cf1785f411ea44230f39334e6e0f6a3c54dbf069df2b620a300a03676f7612290a2708b891c7341220db85ddd37470983b14186e975a175dfb0bf301b43de685ced0aef18d28b4e0420a320a05706169727312290a2708b891c7341220a78b556bc9e73d86b4c63ceaf146db71b12ac80e4c10dd0ce6eb09c99b0c7cfe0a360a0974696d655f6c6f636b12290a2708b891c73412204775dbe01d41cab018c21ba5c2af94720e4d7119baf693670e70a40ba2a52143")
 
+	cache := NewPrecompileCache()
+	address := common.BytesToAddress([]byte{0x65})
 	for _, bytest := range [][]byte{bytest1, bytest2} {
 		validator := iavlMerkleProofValidate{}
-		res, err := validator.Run(bytest)
+		res, _, err := RunPrecompiledContract(nil, &validator, address, bytest, NewGasBudget(probeGasLimit, 0), nil, params.Rules{IsInBSC: true, IsIstanbul: true}, cache, BlockContext{})
 		assert.NoError(t, err)
 		assert.Equal(t, res[len(res)-1], uint8(1))
+		_, stored := cache.load(precompileCacheScope{&PrecompiledContractsIstanbulForBSC, address}, bytest)
+		require.True(t, stored)
 
 		moranValidator := iavlMerkleProofValidateMoran{}
-		res, err = moranValidator.Run(bytest)
+		res, _, err = RunPrecompiledContract(nil, &moranValidator, address, bytest, NewGasBudget(probeGasLimit, 0), nil, params.Rules{IsMoran: true}, cache, BlockContext{})
 		assert.Errorf(t, err, "invalid merkle proof")
 		assert.Nil(t, res)
 	}
@@ -361,6 +371,7 @@ func TestCometBFTLightBlockValidate(t *testing.T) {
 
 	contract := &cometBFTLightBlockValidate{}
 	res, err := contract.Run(input)
+	checkBSCPrecompileCache(t, contract, params.Rules{IsLuban: true}, 0x67, input)
 	require.NoError(t, err)
 	require.Equal(t, expectOutputStr, hex.EncodeToString(res))
 }
@@ -374,6 +385,8 @@ func TestCometBFTLightBlockValidateHertz(t *testing.T) {
 
 	contract := &cometBFTLightBlockValidateHertz{}
 	res, err := contract.Run(input)
+	checkBSCPrecompileCache(t, contract, params.Rules{IsHertz: true}, 0x67, input)
+	checkBSCPrecompileCache(t, &cometBFTLightBlockValidatePasteur{}, params.Rules{IsPasteur: true}, 0x67, input)
 	require.NoError(t, err)
 	require.Equal(t, expectOutputStr, hex.EncodeToString(res))
 }
@@ -411,6 +424,15 @@ func TestCometBFTLightBlockValidateRejectsDuplicateTrustedValidatorsAtPasteur(t 
 	legacyPrecompile := ActivePrecompiledContracts(params.Rules{IsOsaka: true, IsInBSC: true})[common.BytesToAddress([]byte{0x67})]
 	_, err = legacyPrecompile.Run(mutatedInput)
 	require.NoError(t, err)
+
+	cache := NewPrecompileCache()
+	address := common.BytesToAddress([]byte{0x67})
+	_, _, err = RunPrecompiledContract(nil, legacyPrecompile, address, mutatedInput, NewGasBudget(probeGasLimit, 0), nil, params.Rules{IsOsaka: true, IsInBSC: true}, cache, BlockContext{})
+	require.NoError(t, err)
+	_, stored := cache.load(precompileCacheScope{&PrecompiledContractsOsakaForBSC, address}, mutatedInput)
+	require.True(t, stored)
+	_, _, err = RunPrecompiledContract(nil, pasteurPrecompile, address, mutatedInput, NewGasBudget(probeGasLimit, 0), nil, params.Rules{IsPasteur: true}, cache, BlockContext{})
+	require.ErrorContains(t, err, "duplicate validator")
 }
 
 func TestSecp256k1SignatureRecover(t *testing.T) {
