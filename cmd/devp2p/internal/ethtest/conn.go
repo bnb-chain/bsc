@@ -66,15 +66,12 @@ func (s *Suite) dialAs(key *ecdsa.PrivateKey) (*Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	// TODO(BSC): Enable ETH/71 after adapting the handshake and block propagation
-	// handlers, and testing sync, v0 blob relay, unavailable BAL responses and
-	// ETH/70 and ETH/68 fallback. Update the node's ProtocolVersions, these caps
-	// and ourHighestProtoVersion together when enabling it.
 	conn.caps = []p2p.Cap{
+		{Name: "eth", Version: eth.ETH71},
 		{Name: "eth", Version: eth.ETH70},
 		{Name: "eth", Version: eth.ETH68},
 	}
-	conn.ourHighestProtoVersion = eth.ETH70
+	conn.ourHighestProtoVersion = eth.ETH71
 	return &conn, nil
 }
 

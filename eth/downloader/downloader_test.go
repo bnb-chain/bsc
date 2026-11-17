@@ -624,8 +624,10 @@ func assertOwnChain(t *testing.T, tester *downloadTester, length int) {
 	}
 }
 
-func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH70, FullSync, false) }
-func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH70, SnapSync, false) }
+func TestCanonicalSynchronisationFull(t *testing.T)   { testCanonSync(t, eth.ETH70, FullSync, false) }
+func TestCanonicalSynchronisationSnap(t *testing.T)   { testCanonSync(t, eth.ETH70, SnapSync, false) }
+func TestCanonicalSynchronisationFull71(t *testing.T) { testCanonSync(t, eth.ETH71, FullSync, false) }
+func TestCanonicalSynchronisationSnap71(t *testing.T) { testCanonSync(t, eth.ETH71, SnapSync, false) }
 
 func testCanonSync(t *testing.T, protocol uint, mode SyncMode, snapV2 bool) {
 	success := make(chan struct{})
