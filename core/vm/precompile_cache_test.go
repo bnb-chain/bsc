@@ -263,8 +263,14 @@ func TestPrecompileCacheNormalizationCollapsesPadding(t *testing.T) {
 // cannot be enrolled by accident before anyone has checked that its output is a
 // pure function of its input.
 func TestPrecompileCacheOptIn(t *testing.T) {
-	if _, ok := precompileCacheKey(&undeclaredPrecompile{}, nil); ok {
-		t.Fatal("a precompile that does not implement CacheablePrecompile is cacheable")
+	for _, p := range []PrecompiledContract{
+		&undeclaredPrecompile{}, &milliTimestamp{}, cas20Factory, cas20Asset,
+		cas20Stablecoin, cas20Policy, cas20Activation,
+		&tmHeaderValidateDeprecated{}, &iavlMerkleProofValidateDeprecated{},
+	} {
+		if _, ok := precompileCacheKey(p, nil); ok {
+			t.Fatalf("%s must not be cached", p.Name())
+		}
 	}
 }
 
@@ -299,6 +305,104 @@ func TestPrecompileCacheHit(t *testing.T) {
 	scope := precompileCacheScope{activePrecompiledContracts(rules), addr}
 	if _, ok := cache.load(scope, key); !ok {
 		t.Error("result was not stored under its key")
+	}
+}
+
+func TestBSCPrecompileCache(t *testing.T) {
+	blsTests, err := loadJson("blsSignatureVerify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtures := []struct {
+		addr            common.Address
+		input, expected []byte
+	}{
+		{common.HexToAddress("66"), common.Hex2Bytes(blsTests[0].Input), common.Hex2Bytes(blsTests[0].Expected)},
+		{common.HexToAddress("69"), common.Hex2Bytes(
+			"0278caa4d6321aa856d6341dd3e8bcdfe0b55901548871c63c3f5cec43c2ae88a9" +
+				"0cb78be0d8eaeab991907b06c61240c04f4ca83f54b7799ce77cf029b837988038c4b3b7f5df231695b0d14499b716e1fd6504860eb3c9244ecb4e569d44c062" +
+				"b6ac827edff4bbbf23579720782dbef40b65780af292cc66849e7e5944f1230f"), common.Hex2Bytes("fa3b227adff8ea1706098928715076d76959ae6c")},
+	}
+	cache := NewPrecompileCache()
+	for _, fork := range []struct {
+		name  string
+		rules params.Rules
+	}{
+		{"osaka", params.Rules{IsInBSC: true, IsOsaka: true}},
+		{"jenner", params.Rules{IsJenner: true}},
+	} {
+		set := activePrecompiledContracts(fork.rules)
+		for _, fixture := range fixtures {
+			p := (*set)[fixture.addr]
+			t.Run(fork.name+"/"+p.Name(), func(t *testing.T) {
+				output, err := p.Run(fixture.input)
+				if err != nil || !bytes.Equal(output, fixture.expected) {
+					t.Fatalf("invalid fixture: output %x, err %v", output, err)
+				}
+				invalid := bytes.Clone(fixture.input)
+				invalid[0] ^= 1
+				for _, input := range [][]byte{fixture.input, invalid, nil} {
+					gas := NewGasBudget(p.RequiredGas(input)+17, 0)
+					want, wantGas, wantErr := RunPrecompiledContract(nil, p, fixture.addr, input, gas, nil, fork.rules, nil, BlockContext{})
+					scope := precompileCacheScope{set, fixture.addr}
+					if _, ok := cache.load(scope, input); ok {
+						t.Fatal("result leaked from another fork")
+					}
+					for _, view := range []*PrecompileCache{cache.PrefetchView(), cache} {
+						got, gotGas, gotErr := RunPrecompiledContract(nil, p, fixture.addr, input, gas, nil, fork.rules, view, BlockContext{})
+						if !bytes.Equal(got, want) || gotGas != wantGas || !errEqual(gotErr, wantErr) {
+							t.Fatalf("cache changed execution: output %x / %x, gas %v / %v, err %v / %v", got, want, gotGas, wantGas, gotErr, wantErr)
+						}
+						if _, stored := cache.load(scope, input); stored != (wantErr == nil) {
+							t.Fatalf("unexpected cache admission for err %v", wantErr)
+						}
+					}
+				}
+				_, _, gasErr := RunPrecompiledContract(nil, p, fixture.addr, fixture.input, NewGasBudget(p.RequiredGas(fixture.input)-1, 0), nil, fork.rules, cache, BlockContext{})
+				if gasErr != ErrOutOfGas {
+					t.Fatalf("warm cache bypassed gas charge: %v", gasErr)
+				}
+			})
+		}
+	}
+}
+
+func checkBSCPrecompileCache(t *testing.T, p PrecompiledContract, rules params.Rules, addr byte, input []byte) {
+	t.Helper()
+	address := common.BytesToAddress([]byte{addr})
+	cache := NewPrecompileCache()
+	for _, in := range [][]byte{input, input[:len(input)/2]} {
+		gas := NewGasBudget(p.RequiredGas(in)+17, 0)
+		want, wantGas, wantErr := RunPrecompiledContract(nil, p, address, in, gas, nil, rules, nil, BlockContext{})
+		key, eligible := precompileCacheKey(p, in)
+		if len(in) <= maxCacheablePrecompileInput && !eligible {
+			t.Fatalf("%s did not opt into caching", p.Name())
+		}
+		for _, view := range []*PrecompileCache{cache.PrefetchView(), cache} {
+			got, gotGas, gotErr := RunPrecompiledContract(nil, p, address, in, gas, nil, rules, view, BlockContext{})
+			if !bytes.Equal(got, want) || gotGas != wantGas || !errEqual(gotErr, wantErr) {
+				t.Fatalf("%s cache changed output, gas or error", p.Name())
+			}
+			_, stored := cache.load(precompileCacheScope{activePrecompiledContracts(rules), address}, key)
+			if stored != (eligible && wantErr == nil && len(want) <= maxCacheablePrecompileOutput) {
+				t.Fatalf("%s cached an ineligible result or failed to store an eligible result", p.Name())
+			}
+		}
+	}
+	switch p.(type) {
+	case *iavlMerkleProofValidateMoran, *iavlMerkleProofValidatePlanck, *iavlMerkleProofValidatePlato:
+	default:
+		return
+	}
+	want, wantErr := p.Run(input)
+	for range 4 {
+		t.Run(p.Name()+"/concurrent", func(t *testing.T) {
+			t.Parallel()
+			got, gotErr := p.Run(input)
+			if !bytes.Equal(got, want) || !errEqual(gotErr, wantErr) {
+				t.Error("concurrent calls changed the result")
+			}
+		})
 	}
 }
 

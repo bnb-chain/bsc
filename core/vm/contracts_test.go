@@ -478,6 +478,9 @@ func TestDoubleSignSlash(t *testing.T) {
 	}
 
 	testPrecompiled("68", tc, t)
+	input := common.Hex2Bytes(tc.Input)
+	checkBSCPrecompileCache(t, &verifyDoubleSignEvidence{}, params.Rules{IsFeynman: true}, 0x68, input)
+	checkBSCPrecompileCache(t, &verifyDoubleSignEvidenceJenner{}, params.Rules{IsJenner: true}, 0x68, input)
 }
 
 func TestDoubleSignSlashFailure(t *testing.T) {

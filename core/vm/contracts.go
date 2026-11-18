@@ -2041,6 +2041,8 @@ func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
 }
 
+func (c *blsSignatureVerify) Cacheable() bool { return true }
+
 // kzgPointEvaluation implements the EIP-4844 point evaluation precompile.
 type kzgPointEvaluation struct{}
 
@@ -2270,3 +2272,5 @@ func (c *verifyDoubleSignEvidence) Run(input []byte) ([]byte, error) {
 func (c *verifyDoubleSignEvidence) Name() string {
 	return "VERIFY_DOUBLE_SIGN_EVIDENCE"
 }
+
+func (c *verifyDoubleSignEvidence) Cacheable() bool { return true }
