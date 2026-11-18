@@ -740,8 +740,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	prevEnv *environment, witness bool) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
-	// TODO: Use StateAtForkBoundary for UBT while retaining BSC's cached MPT
-	// state path before enabling UBT block production.
+	// TODO(BSC): Handle the MPT-to-UBT transition before enabling UBT.
 	state, err := w.chain.StateWithCacheAt(parent.Root)
 	if err != nil {
 		return nil, err
@@ -1146,13 +1145,17 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 	}
 	// Apply EIP-7843.
-	// TODO: Define BSC's slot mapping and supply slotNum from commitWork
-	// before enabling Amsterdam block production.
 	if w.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		if genParams.slotNum == nil {
-			return nil, errors.New("missing slot number")
+		if w.chainConfig.IsInBSC() {
+			// BSC uses block numbers instead of beacon slots.
+			slot := header.Number.Uint64()
+			header.SlotNumber = &slot
+		} else {
+			if genParams.slotNum == nil {
+				return nil, errors.New("missing slot number")
+			}
+			header.SlotNumber = genParams.slotNum
 		}
-		header.SlotNumber = genParams.slotNum
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
