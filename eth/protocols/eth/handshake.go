@@ -39,7 +39,7 @@ const (
 // network IDs, difficulties, head and genesis blocks.
 func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int, extension *UpgradeStatusExtension) error {
 	switch p.version {
-	case ETH70, ETH71:
+	case ETH70, ETH71, ETH72:
 		return p.handshake70(networkID, chain, rangeMsg, td)
 	case ETH68:
 		return p.handshake68(networkID, chain, td, extension)

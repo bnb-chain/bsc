@@ -2331,13 +2331,20 @@ func TestEncodeForNetworkV0(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored := encodeForPool(tx)
-	for _, version := range []uint{68, 70, 71} {
+	for _, version := range []uint{68, 70, 71, 72} {
 		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
 			got, err := encodeForNetwork(stored, version)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(got, want) {
+			expected := want
+			if version == 72 {
+				expected, err = rlp.EncodeToBytes(removeBlobs(tx))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !bytes.Equal(got, expected) {
 				t.Fatal("version-0 blob transaction changed during storage/network conversion")
 			}
 		})

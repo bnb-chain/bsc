@@ -47,6 +47,10 @@ type ValidationOptions struct {
 	MaxSize      uint64   // Maximum size of a transaction that the caller can meaningfully handle
 	MinTip       *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
 	MaxBlobCount int      // Maximum number of blobs allowed per transaction
+
+	// AllowMissingBlobs permits a sparse v0 wrapper only during network assembly.
+	// Pool admission must leave this false and verify the reconstructed blobs.
+	AllowMissingBlobs bool
 }
 
 // ValidationFunction is an method type which the pools use to perform the tx-validations which do not
@@ -199,7 +203,7 @@ func ValidateBlobTx(tx *types.Transaction, head *types.Header, opts *ValidationO
 		if len(hashes) > params.BlobTxMaxBlobs {
 			return fmt.Errorf("too many blobs in transaction: have %d, permitted %d", len(hashes), params.BlobTxMaxBlobs)
 		}
-		if len(sidecar.Blobs) != len(hashes) {
+		if len(sidecar.Blobs) != len(hashes) && !(opts != nil && opts.AllowMissingBlobs && len(sidecar.Blobs) == 0) {
 			return fmt.Errorf("invalid number of %d blobs compared to %d blob hashes", len(sidecar.Blobs), len(hashes))
 		}
 		if len(sidecar.Proofs) != len(hashes) {

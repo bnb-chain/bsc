@@ -1640,6 +1640,17 @@ func (p *BlobPool) SetGasTip(tip *big.Int) {
 // This check is meant as an early check which only needs to be performed once,
 // and does not require the pool mutex to be held.
 func (p *BlobPool) ValidateTxBasics(tx *types.Transaction) error {
+	return p.validateTxBasics(tx, false)
+}
+
+// ValidateTxWithoutBlobs checks the sparse network wrapper before cells arrive.
+// It does not admit the transaction to the pool. Reconstructed v0 blobs must
+// pass validation again before AddPooledTx.
+func (p *BlobPool) ValidateTxWithoutBlobs(tx *types.Transaction) error {
+	return p.validateTxBasics(tx, true)
+}
+
+func (p *BlobPool) validateTxBasics(tx *types.Transaction, allowMissingBlobs bool) error {
 	// Before the Osaka fork, reject the blob txs with cell proofs
 	if p.chain.Config().IsInBSC() {
 		if sidecar := tx.BlobTxSidecar(); sidecar != nil && sidecar.Version != types.BlobSidecarVersion0 {
@@ -1659,11 +1670,12 @@ func (p *BlobPool) ValidateTxBasics(tx *types.Transaction) error {
 	}
 
 	opts := &txpool.ValidationOptions{
-		Config:       p.chain.Config(),
-		Accept:       1 << types.BlobTxType,
-		MaxSize:      txMaxSize,
-		MinTip:       p.gasTip.Load().ToBig(),
-		MaxBlobCount: maxBlobsPerTx,
+		Config:            p.chain.Config(),
+		Accept:            1 << types.BlobTxType,
+		MaxSize:           txMaxSize,
+		MinTip:            p.gasTip.Load().ToBig(),
+		MaxBlobCount:      maxBlobsPerTx,
+		AllowMissingBlobs: allowMissingBlobs,
 	}
 	return txpool.ValidateTransaction(tx, p.head.Load(), p.signer, opts)
 }

@@ -278,7 +278,7 @@ func (p *testTxPool) FilterType(kind byte) bool {
 	return false
 }
 
-func (p *testTxPool) ValidateTxBasics(_ *types.Transaction) error {
+func (p *testTxPool) ValidateTxWithoutBlobs(_ *types.Transaction) error {
 	return nil
 }
 

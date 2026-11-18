@@ -577,6 +577,8 @@ func (f *TxFetcher) loop() {
 		})
 
 		select {
+		case <-f.buffer.Ready():
+			// Cells can finish after transaction delivery, while this loop is idle.
 		case ann := <-f.notify:
 			// Drop part of the new announcements if there are too many accumulated.
 			// Note, we could but do not filter already known transactions here as

@@ -2341,3 +2341,38 @@ func TestTransactionForgotten(t *testing.T) {
 		t.Errorf("wrong final underpriced cache size: got %d, want 1", size)
 	}
 }
+
+// Cells arrive independently of transaction replies. Completion must reach the
+// pool even if there are no subsequent peer messages or chain-head events.
+func TestCompletedCellsWakeFetcher(t *testing.T) {
+	tx := makeBlobTx(true)
+	f := newTestTxFetcher()
+	added := make(chan common.Hash, 1)
+	f.buffer = blobpool.NewBlobBuffer(blobpool.BlobBufferFunctions{
+		ValidateTx: func(*types.Transaction) error { return nil },
+		AddToPool:  func(ptx *blobpool.BlobTxForPool) error { added <- ptx.Tx.Hash(); return nil },
+		DropPeer:   func(peer string) { t.Errorf("unexpected drop: %s", peer) },
+	})
+	f.Start()
+	defer f.Stop()
+	sidecar := tx.BlobTxSidecar().Copy()
+	sidecar.Blobs = nil
+	if err := f.Enqueue("peer", eth.ETH72, []*types.Transaction{tx.WithBlobTxSidecar(sidecar)}, true); err != nil {
+		t.Fatal(err)
+	}
+	cells, err := kzg4844.ComputeCells(tx.BlobTxSidecar().Blobs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Let the transaction reply be processed before the independent cell delivery.
+	time.Sleep(10 * time.Millisecond)
+	f.buffer.AddCells(tx.Hash(), map[string]*blobpool.PeerDelivery{"peer": {Cells: cells, Indices: types.CustodyBitmapAll.Indices()}}, types.CustodyBitmapAll)
+	select {
+	case hash := <-added:
+		if hash != tx.Hash() {
+			t.Fatal("wrong completed transaction")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("completed blob waited for unrelated traffic")
+	}
+}

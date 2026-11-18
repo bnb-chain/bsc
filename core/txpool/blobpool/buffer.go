@@ -94,7 +94,8 @@ func cellsSize(delivery *PeerDelivery) uint64 {
 }
 
 type BlobBuffer struct {
-	mu sync.Mutex
+	ready chan struct{} // Completion notifications for the transaction fetcher
+	mu    sync.Mutex
 
 	txs   map[common.Hash]*txEntry
 	cells map[common.Hash]*cellEntry
@@ -118,12 +119,25 @@ type BlobBufferFunctions struct {
 
 func NewBlobBuffer(cb BlobBufferFunctions) *BlobBuffer {
 	return &BlobBuffer{
+		ready:        make(chan struct{}, 1),
 		txs:          make(map[common.Hash]*txEntry),
 		cells:        make(map[common.Hash]*cellEntry),
 		peerBytes:    make(map[string]uint64),
 		maxBytes:     maxBufferedBytes,
 		maxPeerBytes: maxBufferedPeerBytes,
 		cb:           cb,
+	}
+}
+
+// Ready signals that a completed transaction can be flushed without waiting
+// for an unrelated peer message or chain event.
+func (b *BlobBuffer) Ready() <-chan struct{} { return b.ready }
+
+func (b *BlobBuffer) notifyCompleted() {
+	b.completedCount.Add(1)
+	select {
+	case b.ready <- struct{}{}:
+	default:
 	}
 }
 
@@ -232,6 +246,10 @@ func (b *BlobBuffer) AddCells(hash common.Hash, deliveries map[string]*PeerDeliv
 // addition into the pool. The actual addition happens in Flush().
 func (b *BlobBuffer) storeCompleted(hash common.Hash, tx *types.Transaction, cells *cellEntry) {
 	sidecar := tx.BlobTxSidecar()
+	if sidecar.Version == types.BlobSidecarVersion0 {
+		b.storeCompletedV0(hash, tx, cells)
+		return
+	}
 
 	// Per-peer cell verification
 	if badPeers := b.verifyCells(cells, sidecar); len(badPeers) > 0 {
@@ -263,9 +281,48 @@ func (b *BlobBuffer) storeCompleted(hash common.Hash, tx *types.Transaction, cel
 	}
 
 	b.completed = append(b.completed, pooledTx)
-	b.completedCount.Add(1)
+	b.notifyCompleted()
 	b.removeCells(hash)
 	b.removeTx(hash)
+}
+
+// V0 has whole-blob proofs. Reconstruct and validate the complete transaction
+// before admitting it, then regenerate all cells for storage and legacy peers.
+func (b *BlobBuffer) storeCompletedV0(hash common.Hash, tx *types.Transaction, cells *cellEntry) {
+	defer b.removeCells(hash)
+	defer b.removeTx(hash)
+	count := len(tx.BlobHashes())
+	for _, d := range cells.deliveries {
+		if len(d.Cells) != count*len(d.Indices) {
+			return
+		}
+	}
+	sorted, custody, err := sortCells(cells, count)
+	if err != nil {
+		log.Debug("Invalid v0 cell delivery", "hash", hash, "err", err)
+		return
+	}
+	blobs, err := kzg4844.RecoverBlobs(sorted, custody.Indices())
+	if err != nil {
+		log.Debug("Could not reconstruct v0 blobs", "hash", hash, "err", err)
+		return
+	}
+	sidecar := tx.BlobTxSidecar().Copy()
+	sidecar.Blobs = blobs
+	full := tx.WithBlobTxSidecar(sidecar)
+	if err := b.cb.ValidateTx(full); err != nil {
+		// Without cell proofs, a failure cannot reliably be attributed to one
+		// delivery peer rather than the peer supplying the original blob proof.
+		log.Debug("Invalid reconstructed v0 transaction", "hash", hash, "err", err)
+		return
+	}
+	pooled, err := newBlobTxForPool(full)
+	if err != nil {
+		log.Debug("Could not convert reconstructed v0 transaction", "hash", hash, "err", err)
+		return
+	}
+	b.completed = append(b.completed, pooled)
+	b.notifyCompleted()
 }
 
 func (b *BlobBuffer) HasTx(hash common.Hash) bool {

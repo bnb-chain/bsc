@@ -135,7 +135,7 @@ type blobPool interface {
 	GetBlobCells(vhashes []common.Hash, mask types.CustodyBitmap) ([][]*kzg4844.Cell, [][]*kzg4844.Proof, error)
 	GetCustody(hash common.Hash) *types.CustodyBitmap
 	AddPooledTx(pooledTx *blobpool.BlobTxForPool) error
-	ValidateTxBasics(pooledTx *types.Transaction) error
+	ValidateTxWithoutBlobs(pooledTx *types.Transaction) error
 }
 
 // handlerConfig is the collection of initialization parameters to create a full
@@ -386,7 +386,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			if h.blobpool == nil {
 				return errors.New("blob pool unavailable")
 			}
-			return h.blobpool.ValidateTxBasics(tx)
+			return h.blobpool.ValidateTxWithoutBlobs(tx)
 		},
 		AddToPool: func(tx *blobpool.BlobTxForPool) error {
 			if h.blobpool == nil {
@@ -446,7 +446,14 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		},
 		DropPeer: h.removePeer,
 	}
-	h.blobFetcher = fetcher.NewBlobFetcher(blobCallbacks, types.CustodyBitmapAll, nil, config.FetchProbability)
+	// BSC v0 proofs authenticate complete blobs, not individual cells. Fetch
+	// complete payloads even from a single provider instead of waiting for the
+	// multiple-provider sampling threshold used by Ethereum's sparse pool.
+	fetchProbability := config.FetchProbability
+	if h.chain.Config().IsInBSC() {
+		fetchProbability = 100
+	}
+	h.blobFetcher = fetcher.NewBlobFetcher(blobCallbacks, types.CustodyBitmapAll, nil, fetchProbability)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }

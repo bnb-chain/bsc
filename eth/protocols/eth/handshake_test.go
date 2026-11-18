@@ -31,6 +31,7 @@ import (
 func TestHandshake68(t *testing.T) { testHandshake(t, ETH68) }
 func TestHandshake70(t *testing.T) { testHandshake(t, ETH70) }
 func TestHandshake71(t *testing.T) { testHandshake(t, ETH71) }
+func TestHandshake72(t *testing.T) { testHandshake(t, ETH72) }
 
 func testHandshake(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -129,7 +130,7 @@ func testHandshake(t *testing.T, protocol uint) {
 }
 
 func TestHandshakeSuccess(t *testing.T) {
-	for _, protocol := range []uint{ETH68, ETH70, ETH71} {
+	for _, protocol := range []uint{ETH68, ETH70, ETH71, ETH72} {
 		t.Run(fmt.Sprintf("eth/%d", protocol), func(t *testing.T) {
 			backend := newTestBackend(3)
 			defer backend.close()
