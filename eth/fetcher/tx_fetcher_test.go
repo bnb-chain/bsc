@@ -2346,6 +2346,10 @@ func TestTransactionForgotten(t *testing.T) {
 // pool even if there are no subsequent peer messages or chain-head events.
 func TestCompletedCellsWakeFetcher(t *testing.T) {
 	tx := makeBlobTx(true)
+	cells, err := kzg4844.ComputeCells(tx.BlobTxSidecar().Blobs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f := newTestTxFetcher()
 	added := make(chan common.Hash, 1)
 	f.buffer = blobpool.NewBlobBuffer(blobpool.BlobBufferFunctions{
@@ -2353,19 +2357,32 @@ func TestCompletedCellsWakeFetcher(t *testing.T) {
 		AddToPool:  func(ptx *blobpool.BlobTxForPool) error { added <- ptx.Tx.Hash(); return nil },
 		DropPeer:   func(peer string) { t.Errorf("unexpected drop: %s", peer) },
 	})
+	waiting := make(chan struct{})
+	f.beforeWait = func() {
+		select {
+		case waiting <- struct{}{}:
+		case <-f.quit:
+		}
+	}
+	waitForFlush := func() {
+		t.Helper()
+		select {
+		case <-waiting:
+		case <-time.After(5 * time.Second):
+			t.Fatal("fetcher did not finish Flush")
+		}
+	}
 	f.Start()
 	defer f.Stop()
+	waitForFlush()
 	sidecar := tx.BlobTxSidecar().Copy()
 	sidecar.Blobs = nil
 	if err := f.Enqueue("peer", eth.ETH72, []*types.Transaction{tx.WithBlobTxSidecar(sidecar)}, true); err != nil {
 		t.Fatal(err)
 	}
-	cells, err := kzg4844.ComputeCells(tx.BlobTxSidecar().Blobs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Let the transaction reply be processed before the independent cell delivery.
-	time.Sleep(10 * time.Millisecond)
+	// This barrier is after the reply's cleanup AND the following Flush. Cells
+	// cannot be picked up by that Flush, even if the fetcher is descheduled here.
+	waitForFlush()
 	f.buffer.AddCells(tx.Hash(), map[string]*blobpool.PeerDelivery{"peer": {Cells: cells, Indices: types.CustodyBitmapAll.Indices()}}, types.CustodyBitmapAll)
 	select {
 	case hash := <-added:

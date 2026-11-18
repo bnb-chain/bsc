@@ -446,14 +446,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		},
 		DropPeer: h.removePeer,
 	}
-	// BSC v0 proofs authenticate complete blobs, not individual cells. Fetch
-	// complete payloads even from a single provider instead of waiting for the
-	// multiple-provider sampling threshold used by Ethereum's sparse pool.
-	fetchProbability := config.FetchProbability
-	if h.chain.Config().IsInBSC() {
-		fetchProbability = 100
-	}
-	h.blobFetcher = fetcher.NewBlobFetcher(blobCallbacks, types.CustodyBitmapAll, nil, fetchProbability)
+	h.blobFetcher = fetcher.NewBlobFetcher(blobCallbacks, types.CustodyBitmapAll, nil, config.FetchProbability)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
