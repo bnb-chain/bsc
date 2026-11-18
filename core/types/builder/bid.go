@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -232,13 +233,21 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 	if sidecars == nil {
 		sidecars = types.BlobSidecars{}
 	}
+	var accessList *bal.BlockAccessList
+	if len(b.BidBlock.BlockAccessList) != 0 {
+		accessList = new(bal.BlockAccessList)
+		if err := rlp.DecodeBytes(b.BidBlock.BlockAccessList, accessList); err != nil {
+			return nil, fmt.Errorf("failed to decode block access list: %w", err)
+		}
+	}
 
 	return &DecodedBidBlock{
-		Builder:  builder,
-		Header:   types.CopyHeader(b.BidBlock.Header),
-		Txs:      txs,
-		Sidecars: sidecars,
-		bidHash:  b.BidBlock.Hash(),
+		Builder:         builder,
+		Header:          types.CopyHeader(b.BidBlock.Header),
+		Txs:             txs,
+		Sidecars:        sidecars,
+		BlockAccessList: accessList,
+		bidHash:         b.BidBlock.Hash(),
 	}, nil
 }
 
@@ -257,9 +266,10 @@ func (b *BidBlockArgs) DecodeTxs() ([]*types.Transaction, error) {
 
 // BidBlock is the builder-proposed block carried by BidBlockArgs.
 type BidBlock struct {
-	Header       *types.Header      `json:"header"`
-	Transactions []hexutil.Bytes    `json:"transactions"` // user txs first, unsigned system txs last
-	Sidecars     types.BlobSidecars `json:"sidecars,omitempty"`
+	Header          *types.Header      `json:"header"`
+	Transactions    []hexutil.Bytes    `json:"transactions"` // user txs first, unsigned system txs last
+	Sidecars        types.BlobSidecars `json:"sidecars,omitempty"`
+	BlockAccessList hexutil.Bytes      `json:"blockAccessList,omitempty" rlp:"optional"` // RLP-encoded BAL
 
 	hash atomic.Value
 }
@@ -280,12 +290,13 @@ func (b *BidBlock) Hash() common.Hash {
 
 // DecodedBidBlock is the validator-side decoded representation of a BidBlock.
 type DecodedBidBlock struct {
-	Builder       common.Address // recovered from BidBlockArgs.Signature
-	Header        *types.Header
-	Txs           types.Transactions
-	Sidecars      types.BlobSidecars
-	GasFee        *big.Int
-	SystemTxStart int // index in Txs where the unsigned trailing system-tx region begins; set during admission.
+	Builder         common.Address // recovered from BidBlockArgs.Signature
+	Header          *types.Header
+	Txs             types.Transactions
+	Sidecars        types.BlobSidecars
+	BlockAccessList *bal.BlockAccessList
+	GasFee          *big.Int
+	SystemTxStart   int // index in Txs where the unsigned trailing system-tx region begins; set during admission.
 
 	bidHash common.Hash
 }

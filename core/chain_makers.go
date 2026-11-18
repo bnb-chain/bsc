@@ -425,6 +425,10 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		b.lane = lane
 
 		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
+		if config.IsInBSC() && config.IsAmsterdam(b.header.Number, b.header.Time) {
+			rules := config.Rules(b.header.Number, b.header.Difficulty.Sign() == 0, b.header.Time)
+			b.bal.Merge(finaliseProtocolChanges(statedb, rules, 0))
+		}
 		if config.IsPrague(b.header.Number, b.header.Time) || config.IsUBT(b.header.Number, b.header.Time) {
 			// EIP-2935
 			blockContext := NewEVMBlockContext(b.header, cm, &b.header.Coinbase)
@@ -715,6 +719,9 @@ func (cm *chainMaker) GetHeaderByNumber(number uint64) *types.Header {
 }
 
 func (cm *chainMaker) GetHeaderByHash(hash common.Hash) *types.Header {
+	if cm.bottom != nil && cm.bottom.Hash() == hash {
+		return cm.bottom.Header()
+	}
 	b := cm.chainByHash[hash]
 	if b == nil {
 		return nil
