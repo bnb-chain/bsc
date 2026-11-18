@@ -338,6 +338,9 @@ func (b *BlockGen) ConsensusLayerRequests() [][]byte {
 }
 
 func (b *BlockGen) collectRequests(readonly bool) (requests [][]byte, bal *bal.ConstructionBlockAccessList) {
+	if b.cm.config.IsInBSC() {
+		return nil, nil
+	}
 	statedb := b.statedb
 	if readonly {
 		// The system contracts clear themselves on a system-initiated read.
