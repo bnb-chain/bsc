@@ -114,6 +114,9 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 	if err := core.NewBlockValidator(&config, chain).ValidateState(block, sdb, res, false); err != nil {
 		t.Fatalf("Parlia execution differs from the expected BAL and post-state: %v", err)
 	}
+	if _, _, err := core.AssembleBlock(engine, chain, types.CopyHeader(header), sdb, &types.Body{}, nil); err == nil {
+		t.Fatal("Amsterdam assembly accepted a missing BAL")
+	}
 	engine.Authorize(testAddr, nil, func(_ accounts.Account, tx *types.Transaction, _ *big.Int) (*types.Transaction, error) {
 		return types.SignTx(tx, engine.signer, testKey)
 	})
@@ -122,9 +125,6 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 			miningState, _ := state.New(parent.Root, state.NewDatabase(triedb, nil))
 			miningHeader := types.CopyHeader(header)
 			miningHeader.GasUsed, miningHeader.BlockAccessListHash = 0, nil
-			if _, _, err := core.AssembleBlock(engine, chain, miningHeader, miningState, &types.Body{}, nil); err == nil {
-				t.Fatal("Amsterdam assembly accepted a missing BAL")
-			}
 			evm := vm.NewEVM(core.NewEVMBlockContext(miningHeader, chain, nil), miningState, &config, vm.Config{})
 			defer evm.Release()
 			blockBAL := core.PreExecution(context.Background(), nil, parent, &config, evm, header.Number, header.Time)
