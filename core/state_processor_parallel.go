@@ -20,11 +20,14 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
@@ -75,6 +78,7 @@ func supportsParallelExecution(block *types.Block, config *params.ChainConfig, w
 type txExecResult struct {
 	receipt    *types.Receipt
 	accessList *bal.ConstructionBlockAccessList
+	laneType   paymentlane.LaneType
 
 	// execution and state are the EIP-8037 per-transaction
 	// gas contributions to the two block-inclusion dimensions.
@@ -154,6 +158,24 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		return nil, fmt.Errorf("parent header %x not found", block.ParentHash())
 	}
 	parentRoot := parent.Root
+	var systemTxs []*types.Transaction
+	if config.IsInBSC() {
+		if posa, ok := p.chain.Engine().(consensus.PoSA); ok {
+			for i, tx := range txs {
+				isSystem, err := posa.IsSystemTransaction(tx, header)
+				if err != nil {
+					return nil, err
+				}
+				if isSystem {
+					systemTxs = append(systemTxs, tx)
+				} else if len(systemTxs) != 0 {
+					return nil, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
+				}
+			}
+		}
+		// Finalize appends verified system transactions to this slice.
+		txs = slices.Clone(txs[:len(txs)-len(systemTxs)])
+	}
 
 	// The base reader: the underlying state reader wrapped with a shared
 	// cache and an access-list-hint prefetcher. This reader is shared by
@@ -197,6 +219,10 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	if err != nil {
 		return nil, err
 	}
+	lane, err := ResolveLaneState(config, p.chain.Engine(), parent, header, preState)
+	if err != nil {
+		return nil, laneReject(err)
+	}
 	preEVM := vm.NewEVM(context, preState, config, cfg)
 	if jumpDestCache != nil {
 		preEVM.SetJumpDestCache(jumpDestCache)
@@ -215,7 +241,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	// own ephemeral state instance, whose reads are served from the block-level
 	// access list overlaid on the parent state.
 	txStart := time.Now()
-	exec := p.executeTransactionsParallel(ctx, block, parentRoot, db, base, lookup, signer, jumpDestCache, precompileCache, cfg)
+	exec := p.executeTransactionsParallel(ctx, block, txs, parentRoot, db, base, lookup, signer, jumpDestCache, precompileCache, cfg, lane)
 	defer exec.abort()
 
 	// Gather the per-transaction results in block order and charge their gas into
@@ -224,7 +250,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	// it finish, because a receipt cannot be encoded until its cumulative gas is
 	// known.
 	var (
-		receipts = make(types.Receipts, 0, len(txs))
+		receipts = make([]*types.Receipt, 0, len(block.Transactions()))
 		allLogs  []*types.Log
 		gp       = NewGasPool(block.GasLimit())
 		logIndex uint
@@ -232,7 +258,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		// The receipts are digested on a pipeline of their own, fed by the
 		// gather as each transaction's turn comes up. Their blooms are hashed
 		// already, the workers do that as they execute.
-		pipeline = newDigestPipeline(len(txs), true)
+		pipeline = newDigestPipeline(len(block.Transactions()), true)
 	)
 	// Run out the pipeline on the paths that abandon the block half way through.
 	defer pipeline.abandon()
@@ -245,12 +271,14 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		receipt := res.receipt
 
 		gasLimit := txs[i].Gas()
+		usedBefore := gp.Used()
 		if err := gp.CheckGasAmsterdam(min(gasLimit, params.MaxTxGas), gasLimit); err != nil {
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, txs[i].Hash().Hex(), err)
 		}
 		if err := gp.ChargeGasAmsterdam(res.execution, res.state, receipt.GasUsed); err != nil {
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, txs[i].Hash().Hex(), err)
 		}
+		lane.RecordUsedFrom(res.laneType, gp, usedBefore)
 		// Correct the receipt object with block-level fields
 		receipt.CumulativeGasUsed = gp.CumulativeUsed()
 		for _, lg := range receipt.Logs {
@@ -271,10 +299,14 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	txExec = time.Since(txStart)
 	reportParallelReadStats(block, base)
 
-	// Post-execution system calls against an ephemeral access-list state at
-	// index n+1.
+	// Parlia finalization starts after the ordinary transactions and executes
+	// system transactions serially on its own mutable state.
 	postStart := time.Now()
-	postState, err := newAccessListState(db, parentRoot, base, lookup, int(postIndex))
+	stateIndex := int(postIndex)
+	if config.IsInBSC() {
+		stateIndex = len(txs) + 1
+	}
+	postState, err := newAccessListState(db, parentRoot, base, lookup, stateIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -285,19 +317,46 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	if precompileCache != nil {
 		postEVM.SetPrecompileCache(precompileCache)
 	}
+	gasUsed := gp.Used()
+	if config.IsInBSC() {
+		numUserReceipts := len(receipts)
+		body := &types.Body{Transactions: txs, Uncles: block.Uncles(), Withdrawals: block.Withdrawals()}
+		if err := p.chain.Engine().Finalize(p.chain, header, NewSystemTxStateDB(postState, blockAccessList), body, &receipts, &systemTxs, &gasUsed, cfg.Tracer); err != nil {
+			postEVM.Release()
+			return nil, err
+		}
+		if len(receipts) != len(block.Transactions()) {
+			postEVM.Release()
+			return nil, fmt.Errorf("receipt count mismatch: have %d, want %d", len(receipts), len(block.Transactions()))
+		}
+		for _, receipt := range receipts[numUserReceipts:] {
+			for _, lg := range receipt.Logs {
+				lg.Index = logIndex
+				logIndex++
+			}
+			pipeline.feedReceipt(receipt)
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+	}
 	requests, postBAL, err := PostExecution(ctx, config, header.Number, header.Time, allLogs, block.Withdrawals(), postEVM, postIndex)
 	postEVM.Release()
 	if err != nil {
 		return nil, err
 	}
 	blockAccessList.Merge(postBAL)
-	if err := p.chain.Engine().Finalize(p.chain, header, postState, block.Body(), nil, nil, nil, cfg.Tracer); err != nil {
-		return nil, err
+	if config.IsNotInBSC() {
+		if err := p.chain.Engine().Finalize(p.chain, header, postState, block.Body(), nil, nil, nil, cfg.Tracer); err != nil {
+			return nil, err
+		}
 	}
 	if err := postState.Error(); err != nil {
 		return nil, fmt.Errorf("database error in post-execution system calls: %w", err)
 	}
 	systemExec += time.Since(postStart)
+	if err := lane.Verify(gasUsed); err != nil {
+		return nil, laneReject(err)
+	}
+	lane.recordImported()
 
 	// The access list is final, let the pipeline encode it while the root
 	// computation is joined.
@@ -331,7 +390,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		Receipts: receipts,
 		Requests: requests,
 		Logs:     allLogs,
-		GasUsed:  gp.Used(),
+		GasUsed:  gasUsed,
 		pipeline: pipeline,
 	}, nil
 }
@@ -368,13 +427,12 @@ func (c *cumulativeGas) load() (uint64, uint64) {
 // access-list-backed state instances using a pool of workers. It returns once
 // the workers are running, the caller picks the results up in block order as
 // they land.
-func (p *StateProcessor) executeTransactionsParallel(ctx context.Context, block *types.Block, parentRoot common.Hash, db state.Database, base state.Reader, lookup *bal.Lookup, signer types.Signer, jumpDestCache vm.JumpDestCache, precompileCache *vm.PrecompileCache, cfg vm.Config) *parallelExecution {
+func (p *StateProcessor) executeTransactionsParallel(ctx context.Context, block *types.Block, txs types.Transactions, parentRoot common.Hash, db state.Database, base state.Reader, lookup *bal.Lookup, signer types.Signer, jumpDestCache vm.JumpDestCache, precompileCache *vm.PrecompileCache, cfg vm.Config, lane *LaneState) *parallelExecution {
 	var (
 		config      = p.chainConfig()
 		header      = block.Header()
 		blockHash   = block.Hash()
 		blockNumber = block.Number()
-		txs         = block.Transactions()
 		results     = make([]txExecResult, len(txs))
 		done        = make([]chan struct{}, len(txs))
 		gasLimit    = block.GasLimit()
@@ -440,6 +498,10 @@ func (p *StateProcessor) executeTransactionsParallel(ctx context.Context, block 
 				}
 				sdb.SetTxContext(tx.Hash(), i, uint32(i+1))
 				evm.SetStateDB(sdb)
+				laneType := paymentlane.GeneralLane
+				if lane.On() {
+					laneType = lane.classifier.ClassifyWithCode(tx, sdb)
+				}
 
 				// A transaction-local gas pool, sized to the block gas limit so
 				// that an oversized transaction is rejected before it runs.
@@ -454,6 +516,7 @@ func (p *StateProcessor) executeTransactionsParallel(ctx context.Context, block 
 				results[i] = txExecResult{
 					receipt:    receipt,
 					accessList: accessList,
+					laneType:   laneType,
 					execution:  gp.CumulativeExecution(),
 					state:      gp.CumulativeState(),
 					preimages:  sdb.Preimages(),

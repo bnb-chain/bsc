@@ -3,6 +3,7 @@ package parlia
 import (
 	"context"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -12,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -44,10 +46,11 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 	defer triedb.Close()
 	gspec := &core.Genesis{Config: &config, GasLimit: 30_000_000, Alloc: types.GenesisAlloc{
 		user:                         {Balance: big.NewInt(2)},
-		recipient:                    {Balance: big.NewInt(1)},
+		recipient:                    {Code: []byte{byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.LOG0), byte(vm.STOP)}, Balance: big.NewInt(1)},
 		consensus.SystemAddress:      {Balance: big.NewInt(100)},
 		validatorContract:            {Code: []byte{byte(vm.PUSH1), 1, byte(vm.PUSH1), 0, byte(vm.SSTORE), byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.LOG0), byte(vm.STOP)}, Nonce: 1},
 		params.HistoryStorageAddress: {Code: params.HistoryStorageCode, Nonce: 1},
+		common.HexToAddress(systemcontracts.PaymentLaneContract): {Code: common.FromHex(strings.TrimSpace(jenner.RialtoPaymentLaneContract))},
 	}}
 	genesis := gspec.MustCommit(db, triedb)
 	engine := New(&config, db, nil, genesis.Hash())
@@ -74,7 +77,7 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 	}
 	msg := engine.getSystemMessage(testAddr, validatorContract, data, big.NewInt(100))
 	tx := types.MustSignNewTx(testKey, engine.signer, &types.LegacyTx{To: &validatorContract, Gas: msg.GasLimit, GasPrice: common.Big0, Value: big.NewInt(100), Data: data})
-	userTx := types.MustSignNewTx(userKey, engine.signer, &types.LegacyTx{To: &recipient, Gas: params.TxGas, GasPrice: common.Big0, Value: common.Big1})
+	userTx := types.MustSignNewTx(userKey, engine.signer, &types.LegacyTx{To: &recipient, Gas: 30_000, GasPrice: common.Big0, Value: common.Big1})
 	body := types.Body{Transactions: []*types.Transaction{userTx, tx}}
 	block := types.NewBlockWithHeader(header).WithBody(body)
 	sdb, err := state.New(parent.Root, state.NewDatabase(triedb, nil))
@@ -117,6 +120,31 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 	if _, _, err := core.AssembleBlock(engine, chain, types.CopyHeader(header), sdb, &types.Body{}, nil); err == nil {
 		t.Fatal("Amsterdam assembly accepted a missing BAL")
 	}
+	t.Run("parallel", func(t *testing.T) {
+		statedb, _ := state.New(parent.Root, state.NewDatabase(triedb, nil))
+		block := block.WithAccessList(list)
+		result, err := core.NewStateProcessor(chain.HeaderChain()).Process(context.Background(), block, statedb, nil, nil, vm.Config{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := core.NewBlockValidator(&config, chain).ValidateState(block, statedb, result, false); err != nil {
+			t.Fatalf("parallel execution differs from serial BAL or state: %v", err)
+		}
+		if len(result.Logs) != len(res.Logs) || result.Receipts[1].TransactionIndex != 1 {
+			t.Fatal("parallel logs or receipt count/index differs from serial execution")
+		}
+		for i, lg := range result.Logs {
+			if lg.Index != uint(i) || lg.TxIndex != res.Logs[i].TxIndex {
+				t.Fatalf("log %d: unexpected indices %d/%d", i, lg.Index, lg.TxIndex)
+			}
+		}
+		invalid := types.MustSignNewTx(testKey, engine.signer, &types.LegacyTx{To: &validatorContract, Gas: msg.GasLimit, GasPrice: common.Big0, Value: big.NewInt(99), Data: data})
+		block = block.WithBody(types.Body{Transactions: []*types.Transaction{userTx, invalid}})
+		statedb, _ = state.New(parent.Root, state.NewDatabase(triedb, nil))
+		if _, err := core.NewStateProcessor(chain.HeaderChain()).Process(context.Background(), block, statedb, nil, nil, vm.Config{}, nil); err == nil || !strings.Contains(err.Error(), "expected tx hash") {
+			t.Fatalf("parallel execution bypassed Parlia system transaction validation: %v", err)
+		}
+	})
 	engine.Authorize(testAddr, nil, func(_ accounts.Account, tx *types.Transaction, _ *big.Int) (*types.Transaction, error) {
 		return types.SignTx(tx, engine.signer, testKey)
 	})
@@ -158,17 +186,25 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 		})
 	}
 	t.Run("chain-maker", func(t *testing.T) {
-		blocks, _ := core.GenerateChain(&config, types.NewBlockWithHeader(parent), engine, db, 1, func(_ int, b *core.BlockGen) {
+		blocks, _ := core.GenerateChain(&config, types.NewBlockWithHeader(parent), engine, db, 3, func(i int, b *core.BlockGen) {
 			b.SetCoinbase(testAddr)
-			b.AddTx(userTx)
+			if i == 1 {
+				b.AddTx(userTx)
+			}
 		})
-		statedb, _ := state.New(parent.Root, state.NewDatabase(triedb, nil))
-		result, err := core.NewStateProcessor(chain.HeaderChain()).Process(context.Background(), blocks[0], statedb, nil, nil, vm.Config{}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := core.NewBlockValidator(&config, chain).ValidateState(blocks[0], statedb, result, false); err != nil {
-			t.Fatalf("generated block differs from imported BAL or state: %v", err)
+		previous := parent
+		for _, block := range blocks {
+			engine.recentSnaps.Add(previous.Hash(), newSnapshot(config.Parlia, engine.signatures, previous.Number.Uint64(), previous.Hash(), []common.Address{testAddr}, nil, nil))
+			statedb, _ := state.New(previous.Root, state.NewDatabase(triedb, nil))
+			result, err := core.NewStateProcessor(chain.HeaderChain()).Process(context.Background(), block, statedb, nil, nil, vm.Config{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := core.NewBlockValidator(&config, chain).ValidateState(block, statedb, result, false); err != nil {
+				t.Fatalf("generated block differs from imported BAL or state: %v", err)
+			}
+			previous = block.Header()
+			rawdb.WriteHeader(db, previous)
 		}
 	})
 }
