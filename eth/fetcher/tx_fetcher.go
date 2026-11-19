@@ -220,8 +220,6 @@ type TxFetcher struct {
 	clock    mclock.Clock     // Monotonic clock or simulated clock for tests
 	realTime func() time.Time // Real system time or simulated time for tests
 	rand     *mrand.Rand      // Randomizer to use in tests instead of map range loops (soft-random)
-
-	beforeWait func() // Testing hook after Flush, before waiting for the next event
 }
 
 // NewTxFetcher creates a transaction fetcher to retrieve transaction
@@ -578,13 +576,7 @@ func (f *TxFetcher) loop() {
 			noCapacityMeter:  txReplyNoCapacityMeter,
 		})
 
-		if f.beforeWait != nil {
-			f.beforeWait()
-		}
-
 		select {
-		case <-f.buffer.Ready():
-			// Cells can finish after transaction delivery, while this loop is idle.
 		case ann := <-f.notify:
 			// Drop part of the new announcements if there are too many accumulated.
 			// Note, we could but do not filter already known transactions here as

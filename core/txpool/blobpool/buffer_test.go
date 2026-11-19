@@ -3,21 +3,14 @@ package blobpool
 import (
 	"crypto/ecdsa"
 	"errors"
-	"math"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/uint256"
 )
 
 // makeV1Tx creates a V1 blob transaction with cell proofs, then strips blobs
@@ -530,113 +523,5 @@ func TestOverlappingDeliveryReleasesAccounting(t *testing.T) {
 	}
 	if buf.buffered() != 0 || len(buf.peerBytes) != 0 {
 		t.Fatalf("after drop: %d bytes and %d peers still accounted", buf.buffered(), len(buf.peerBytes))
-	}
-}
-
-// Sparse v0 wrappers are network-only: ordinary pool admission still requires
-// blobs. Only complete, proof-checked reconstruction may enter persistent storage.
-func TestBSCV0SparseAssembly(t *testing.T) {
-	for _, scenario := range []string{"tx-first", "cells-first", "bad-proof", "bad-cells"} {
-		t.Run(scenario, func(t *testing.T) {
-			key, _ := crypto.GenerateKey()
-			db, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-			db.AddBalance(crypto.PubkeyToAddress(key.PublicKey), uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
-			db.Commit(params.Rules{IsEIP158: true}, 0)
-			config := *params.MainnetChainConfig
-			config.Parlia = &params.ParliaConfig{}
-			chain := &testBlockChain{config: &config, basefee: uint256.NewInt(1050), blobfee: uint256.NewInt(105), statedb: db}
-			pool := New(Config{Datadir: t.TempDir()}, chain, nil)
-			if err := pool.Init(1, chain.CurrentBlock(), newReserver()); err != nil {
-				t.Fatal(err)
-			}
-			defer pool.Close()
-			tx := makeMultiBlobTx(0, 1, 1000, 100, 2, 0, key)
-			sc := tx.BlobTxSidecar().Copy()
-			sc.Version = types.BlobSidecarVersion0
-			sc.Proofs = nil
-			for i := range sc.Blobs {
-				proof, err := kzg4844.ComputeBlobProof(&sc.Blobs[i], sc.Commitments[i])
-				if err != nil {
-					t.Fatal(err)
-				}
-				sc.Proofs = append(sc.Proofs, proof)
-			}
-			tx = tx.WithBlobTxSidecar(sc)
-			if err := pool.ValidateTxBasics(tx); err != nil {
-				t.Fatal(err)
-			}
-			sparse := removeBlobs(tx)
-			if err := pool.ValidateTxBasics(sparse); err == nil {
-				t.Fatal("pool admitted missing v0 payload")
-			}
-			if err := pool.ValidateTxWithoutBlobs(sparse); err != nil {
-				t.Fatalf("sparse wrapper: %v", err)
-			}
-			if scenario == "bad-proof" {
-				bad := sparse.BlobTxSidecar().Copy()
-				bad.Proofs[0][0] ^= 1
-				sparse = sparse.WithBlobTxSidecar(bad)
-			}
-			indices := make([]uint64, kzg4844.DataPerBlob)
-			for i := range indices {
-				indices[i] = uint64(i)
-				if scenario == "cells-first" {
-					indices[i] += kzg4844.DataPerBlob
-				}
-			}
-			delivery := makePeerDelivery(t, 0, 2, indices)
-			if scenario == "bad-cells" {
-				delivery.Cells[0][0] ^= 1
-			}
-			buf := NewBlobBuffer(BlobBufferFunctions{
-				ValidateTx: pool.ValidateTxWithoutBlobs, AddToPool: pool.AddPooledTx,
-				DropPeer: func(peer string) { t.Errorf("cannot attribute v0 failure to %s", peer) },
-			})
-			deliver := func() {
-				buf.AddCells(tx.Hash(), map[string]*PeerDelivery{"cells": delivery}, types.NewCustodyBitmap(indices))
-			}
-			if scenario == "cells-first" {
-				deliver()
-			}
-			if err := buf.AddTx([]*types.Transaction{sparse}, "tx")[0]; err != nil {
-				t.Fatal(err)
-			}
-			if scenario != "cells-first" {
-				deliver()
-			}
-			hashes, errs := buf.Flush()
-			if scenario == "bad-proof" || scenario == "bad-cells" {
-				if len(hashes) != 0 || pool.Has(tx.Hash()) {
-					t.Fatal("invalid v0 payload reached pool")
-				}
-				return
-			}
-			if len(hashes) != 1 || errs[0] != nil {
-				t.Fatalf("reconstructed transaction not admitted: %v %v", hashes, errs)
-			}
-			for _, version := range []uint{68, 70, 71, 72} {
-				raw := pool.GetRLP(tx.Hash(), version)
-				var got types.Transaction
-				if err := rlp.DecodeBytes(raw, &got); err != nil {
-					t.Fatal(err)
-				}
-				sidecar := got.BlobTxSidecar()
-				want := 2
-				if version == 72 {
-					want = 0
-				}
-				meta := pool.GetMetadata(tx.Hash())
-				advertised := meta.Size
-				if version == 72 {
-					advertised = meta.SizeWithoutBlob
-				}
-				if math.Abs(float64(advertised)-float64(got.Size())) > 8 {
-					t.Fatalf("eth/%d announced size %d differs from reply %d", version, advertised, got.Size())
-				}
-				if got.Hash() != tx.Hash() || sidecar == nil || sidecar.Version != types.BlobSidecarVersion0 || len(sidecar.Blobs) != want || !reflect.DeepEqual(sidecar.Proofs, sc.Proofs) {
-					t.Fatalf("wrong v0 reply on eth/%d", version)
-				}
-			}
-		})
 	}
 }

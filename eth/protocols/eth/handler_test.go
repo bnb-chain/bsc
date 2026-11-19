@@ -1288,7 +1288,7 @@ func TestBSCBlockPropagation(t *testing.T) {
 	defer backend.close()
 	block := backend.chain.GetBlockByNumber(1)
 	td := backend.chain.GetTd(block.Hash(), block.NumberU64())
-	for _, version := range []uint{ETH68, ETH70, ETH71, ETH72} {
+	for _, version := range []uint{ETH68, ETH70, ETH71} {
 		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
 			receiver := &blockPropagationBackend{testBackend: backend, packets: make(chan Packet, 1)}
 			peer, errc := newTestPeer("propagation", version, receiver)

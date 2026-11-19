@@ -135,7 +135,7 @@ type blobPool interface {
 	GetBlobCells(vhashes []common.Hash, mask types.CustodyBitmap) ([][]*kzg4844.Cell, [][]*kzg4844.Proof, error)
 	GetCustody(hash common.Hash) *types.CustodyBitmap
 	AddPooledTx(pooledTx *blobpool.BlobTxForPool) error
-	ValidateTxWithoutBlobs(pooledTx *types.Transaction) error
+	ValidateTxBasics(pooledTx *types.Transaction) error
 }
 
 // handlerConfig is the collection of initialization parameters to create a full
@@ -386,7 +386,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			if h.blobpool == nil {
 				return errors.New("blob pool unavailable")
 			}
-			return h.blobpool.ValidateTxWithoutBlobs(tx)
+			return h.blobpool.ValidateTxBasics(tx)
 		},
 		AddToPool: func(tx *blobpool.BlobTxForPool) error {
 			if h.blobpool == nil {
