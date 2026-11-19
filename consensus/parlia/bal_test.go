@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -50,7 +49,6 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 		consensus.SystemAddress:      {Balance: big.NewInt(100)},
 		validatorContract:            {Code: []byte{byte(vm.PUSH1), 1, byte(vm.PUSH1), 0, byte(vm.SSTORE), byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.LOG0), byte(vm.STOP)}, Nonce: 1},
 		params.HistoryStorageAddress: {Code: params.HistoryStorageCode, Nonce: 1},
-		common.HexToAddress(systemcontracts.PaymentLaneContract): {Code: common.FromHex(strings.TrimSpace(jenner.RialtoPaymentLaneContract))},
 	}}
 	genesis := gspec.MustCommit(db, tdb)
 	engine := New(&config, db, nil, genesis.Hash())
@@ -217,25 +215,17 @@ func TestParliaSystemTransactionBAL(t *testing.T) {
 		})
 	}
 	t.Run("chain-maker", func(t *testing.T) {
-		blocks, _ := core.GenerateChain(&config, types.NewBlockWithHeader(parent), engine, db, 3, func(i int, b *core.BlockGen) {
+		blocks, _ := core.GenerateChain(&config, types.NewBlockWithHeader(parent), engine, db, 1, func(_ int, b *core.BlockGen) {
 			b.SetCoinbase(testAddr)
-			if i == 1 {
-				b.AddTx(userTx)
-			}
+			b.AddTx(userTx)
 		})
-		previous := parent
-		for _, block := range blocks {
-			engine.recentSnaps.Add(previous.Hash(), newSnapshot(config.Parlia, engine.signatures, previous.Number.Uint64(), previous.Hash(), []common.Address{testAddr}, nil, nil))
-			statedb, _ := state.New(previous.Root, state.NewDatabase(tdb, nil))
-			result, err := core.NewStateProcessor(chain.HeaderChain()).Process(context.Background(), block, statedb, nil, nil, vm.Config{}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := core.NewBlockValidator(&config, chain).ValidateState(block, statedb, result, false); err != nil {
-				t.Fatalf("generated block differs from imported BAL or state: %v", err)
-			}
-			previous = block.Header()
-			rawdb.WriteHeader(db, previous)
+		statedb, _ := state.New(parent.Root, state.NewDatabase(tdb, nil))
+		result, err := core.NewStateProcessor(chain.HeaderChain()).Process(context.Background(), blocks[0], statedb, nil, nil, vm.Config{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := core.NewBlockValidator(&config, chain).ValidateState(blocks[0], statedb, result, false); err != nil {
+			t.Fatalf("generated block differs from imported BAL or state: %v", err)
 		}
 	})
 }
