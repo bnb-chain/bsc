@@ -43,6 +43,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
+    - name: Test Release Verification
+      run: bash build/release-test.sh
+
     - name: Test Build
       run: |
         go run build/ci.go check_generate

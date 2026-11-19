@@ -1,5 +1,17 @@
 # This file contains sha256 checksums of optional build dependencies.
 
+# https://musl.cc/SHA512SUMS
+# https://pub-c0627345c16f47ab858c9469133073a8.r2.dev/
+c5d410d9f82a4f24c549fe5d24f988f85b2679b452413a9f7e5f7b956f2fe7ea  x86_64-linux-musl-cross.tgz
+c909817856d6ceda86aa510894fa3527eac7989f0ef6e87b5721c58737a06c38  aarch64-linux-musl-cross.tgz
+
+# https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/
+73cf5d140491c937bc6361da0ab9e9ac4565741fa34e998c4bc0ebc0efc77f45  nancy-v1.0.52-linux-amd64
+
+# https://github.com/bnb-chain/bsc/releases/download/v1.8.2/
+522cb9902437df2368008b28bebb6b5c35ec026bf2ec41af40117ff507f53fa7  mainnet.zip
+0d9de8b7f1bafc36711eed80e97bf33f906fadc2ceb5457361645941d7ad19f7  testnet.zip
+
 # version:spec-tests v5.1.0
 # https://github.com/ethereum/execution-spec-tests/releases
 # https://github.com/ethereum/execution-spec-tests/releases/download/v5.1.0

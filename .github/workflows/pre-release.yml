@@ -6,6 +6,9 @@ on:
     tags:
       - 'pre-*'
 
+permissions:
+  contents: read
+
 env:
   CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
   CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
@@ -13,6 +16,10 @@ env:
 jobs:
   build:
     name: Build Release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       matrix:
         go-version: [1.25.x]
@@ -20,14 +27,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ matrix.go-version }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           # In order:
           # * Module download cache
@@ -51,7 +60,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          wget https://musl.cc/x86_64-linux-musl-cross.tgz
+          bash build/download-verified.sh https://musl.cc/x86_64-linux-musl-cross.tgz ./x86_64-linux-musl-cross.tgz
           tar -xvf ./x86_64-linux-musl-cross.tgz
           GIT_COMMIT=$(git rev-parse HEAD)
           GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
@@ -76,7 +85,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          wget https://musl.cc/aarch64-linux-musl-cross.tgz
+          bash build/download-verified.sh https://musl.cc/aarch64-linux-musl-cross.tgz ./aarch64-linux-musl-cross.tgz
           tar -xvf ./aarch64-linux-musl-cross.tgz
           GIT_COMMIT=$(git rev-parse HEAD)
           GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
@@ -86,29 +95,40 @@ jobs:
       #       Upload artifacts
       # ==============================
 
+      - name: Attest Build
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ matrix.os == 'windows-latest' && './build/bin/geth.exe' || './build/bin/geth' }}
+
+      - name: Attest ARM Build
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ./build/bin/geth-linux-arm64
+
       - name: Upload Linux Build
-        uses: actions/upload-artifact@v4.3.3
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         if: matrix.os == 'ubuntu-latest'
         with:
           name: linux
           path: ./build/bin/geth
 
       - name: Upload MacOS Build
-        uses: actions/upload-artifact@v4.3.3
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         if: matrix.os == 'macos-latest'
         with:
           name: macos
           path: ./build/bin/geth
       
       - name: Upload Windows Build
-        uses: actions/upload-artifact@v4.3.3
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         if: matrix.os == 'windows-latest'
         with:
           name: windows
           path: ./build/bin/geth.exe
 
       - name: Upload ARM-64 Build
-        uses: actions/upload-artifact@v4.3.3
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         if: matrix.os == 'ubuntu-latest'
         with:
           name: arm64
@@ -117,38 +137,44 @@ jobs:
   release:
     name: Release
     needs: build
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - name: Set Env
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> "$GITHUB_ENV"
 
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
       # ==============================
       #       Download artifacts
       # ==============================
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e
         with:
           name: linux
           path: ./linux
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e
         with:
           name: macos
           path: ./macos
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e
         with:
           name: windows
           path: ./windows
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e
         with:
           name: arm64
           path: ./arm64
@@ -158,8 +184,8 @@ jobs:
           . ./.github/release.env
           echo "mainnet.zip url: $MAINNET_FILE_URL"
           echo "testnet.zip url: $TESTNET_FILE_URL"
-          curl -L $MAINNET_FILE_URL -o ./mainnet.zip
-          curl -L $TESTNET_FILE_URL -o ./testnet.zip
+          bash build/download-verified.sh "$MAINNET_FILE_URL" ./mainnet.zip
+          bash build/download-verified.sh "$TESTNET_FILE_URL" ./testnet.zip
       # ==============================
       #       Create release
       # ==============================
@@ -170,19 +196,46 @@ jobs:
           mv ./macos/geth ./macos/geth_macos
           mv ./windows/geth.exe ./windows/geth_windows.exe
 
+      - name: Verify Build Attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for artifact in ./linux/geth_linux ./macos/geth_macos ./windows/geth_windows.exe ./arm64/geth-linux-arm64; do
+            gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/pre-release.yml" \
+              --source-ref "$GITHUB_REF" --source-digest "$GITHUB_SHA"
+          done
+
+      - name: Generate Release Checksums
+        run: bash build/release-checksums.sh > SHA256SUMS
+
+      - name: Attest Release Checksums
+        id: attest-release
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ./SHA256SUMS
+
+      - name: Save Release Attestation
+        env:
+          BUNDLE_PATH: ${{ steps.attest-release.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" SHA256SUMS.sigstore.json
+
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
           tag_name: ${{ env.RELEASE_VERSION}}
-          release_name: ${{ env.RELEASE_VERSION}}
+          name: ${{ env.RELEASE_VERSION}}
+          fail_on_unmatched_files: true
           body: |
             versing: ${{ env.RELEASE_VERSION}}
             git commit: ${{ github.sha }}
           draft: true
           prerelease: true
           files: |
+            ./SHA256SUMS
+            ./SHA256SUMS.sigstore.json
             ./mainnet.zip
             ./testnet.zip
             ./linux/geth_linux
