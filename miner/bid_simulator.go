@@ -478,11 +478,16 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			// Pre-check before simulation for fast feedback to the builder;
-			// simulation would reject these txs anyway via state_transition preCheck.
-			if errCap := b.checkIfBidExceedsTxGasLimit(newBid.bid); errCap != nil {
+			// Builders cannot produce the Amsterdam activation block, so parent rules suffice here.
+			parent := b.chain.GetHeaderByHash(newBid.bid.ParentHash)
+			if parent == nil {
+				err = consensus.ErrUnknownAncestor
+			} else {
+				err = b.checkIfBidExceedsTxGasLimit(newBid.bid, parent)
+			}
+			if err != nil {
 				if newBid.feedback != nil {
-					newBid.feedback <- errCap
+					newBid.feedback <- err
 				}
 				continue
 			}
@@ -577,22 +582,25 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 	return blockInterval
 }
 
-// checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
-func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *buildertypes.Bid) error {
-	currentHeader := b.chain.CurrentBlock()
-	if !b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
+// checkIfBidExceedsTxGasLimit checks the total gas limit of each transaction in the bid.
+func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *buildertypes.Bid, parent *types.Header) error {
+	cap := params.MaxTxGas
+	if b.chainConfig.IsAmsterdam(parent.Number, parent.Time) {
+		// Amsterdam activates EIP-8037's higher total gas cap; the execution cap stays unchanged.
+		cap = params.MaxTxTotalGas
+	} else if !b.chainConfig.IsOsaka(parent.Number, parent.Time) {
 		return nil
 	}
 	for _, tx := range bid.Txs {
-		if tx.Gas() > params.MaxTxGas {
+		if tx.Gas() > cap {
 			log.Debug("discard bid due to per-tx gas limit",
 				"block", bid.BlockNumber,
 				"bidHash", bid.Hash().TerminalString(),
 				"txHash", tx.Hash().TerminalString(),
 				"txGas", tx.Gas(),
-				"txGasLimit", params.MaxTxGas,
+				"txGasLimit", cap,
 			)
-			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
+			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, cap, tx.Gas())
 		}
 	}
 	return nil
@@ -764,9 +772,14 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlo
 	}
 
 	// Per-tx gas cap over user txs only, mirroring SendBid.
+	cap := params.MaxTxGas
+	if b.chainConfig.IsAmsterdam(header.Number, header.Time) {
+		// Amsterdam activates EIP-8037's higher total gas cap; the execution cap stays unchanged.
+		cap = params.MaxTxTotalGas
+	}
 	for _, tx := range decoded.Txs[:decoded.SystemTxStart] {
-		if tx.Gas() > params.MaxTxGas {
-			return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
+		if tx.Gas() > cap {
+			return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, cap, tx.Gas())
 		}
 	}
 
@@ -1048,6 +1061,16 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay == nil || *delay <= 0 {
 		err = errNoTimeLeft
+		return
+	}
+
+	parent := b.chain.GetHeaderByHash(bidRuntime.env.header.ParentHash)
+	if parent == nil {
+		err = consensus.ErrUnknownAncestor
+		return
+	}
+	if b.chainConfig.IsOnAmsterdam(bidRuntime.env.header.Number, parent.Time, bidRuntime.env.header.Time) {
+		err = errors.New("builder bids disabled on Amsterdam activation block")
 		return
 	}
 

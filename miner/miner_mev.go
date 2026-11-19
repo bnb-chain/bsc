@@ -114,6 +114,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
 	}
 
+	if miner.worker.chainConfig.IsOnAmsterdam(bb.Header.Number, parent.Time, bb.Header.Time) {
+		return common.Hash{}, buildertypes.NewInvalidBidError("builder bids disabled on Amsterdam activation block")
+	}
 	// Security: validators must self-produce hard-fork activation blocks.
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
 		miner.worker.chainConfig.IsOnJenner(bb.Header.Number, parent.Time, bb.Header.Time) {
