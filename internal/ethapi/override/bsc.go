@@ -63,8 +63,15 @@ func (o *BlockOverrides) ApplyBSC(blockCtx *vm.BlockContext) error {
 
 // ApplyFor applies BSC-specific block overrides only on BSC chains.
 func (o *BlockOverrides) ApplyFor(cfg *params.ChainConfig, blockCtx *vm.BlockContext) error {
-	if cfg != nil && cfg.IsInBSC() {
-		return o.ApplyBSC(blockCtx)
+	if cfg != nil && cfg.IsInBSC() && o != nil {
+		if err := o.ApplyBSC(blockCtx); err != nil {
+			return err
+		}
+		blockCtx.SlotNum = 0
+		if cfg.IsAmsterdam(blockCtx.BlockNumber, blockCtx.Time) {
+			blockCtx.SlotNum = blockCtx.BlockNumber.Uint64()
+		}
+		return nil
 	}
 	return o.Apply(blockCtx)
 }
@@ -80,8 +87,14 @@ func (o *BlockOverrides) MakeHeaderBSC(header *types.Header) *types.Header {
 
 // MakeHeaderFor applies BSC-specific header overrides only on BSC chains.
 func (o *BlockOverrides) MakeHeaderFor(cfg *params.ChainConfig, header *types.Header) *types.Header {
-	if cfg != nil && cfg.IsInBSC() {
-		return o.MakeHeaderBSC(header)
+	if cfg != nil && cfg.IsInBSC() && o != nil {
+		h := o.MakeHeaderBSC(header)
+		h.SlotNumber = nil
+		if cfg.IsAmsterdam(h.Number, h.Time) {
+			slot := h.Number.Uint64()
+			h.SlotNumber = &slot
+		}
+		return h
 	}
 	return o.MakeHeader(header)
 }
