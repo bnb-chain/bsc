@@ -14,12 +14,14 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -324,6 +326,15 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 		_, err = processor.Process(context.Background(), block, statedb, nil, nil, vm.Config{DisableParallelExecution: disableParallel}, nil)
 		require.ErrorIs(t, err, paymentlane.ErrViolated)
 	}
+	tdbConfig := *triedb.HashDefaults
+	tdbConfig.NoTries = true
+	fastTries := triedb.NewDatabase(chain.db, &tdbConfig)
+	defer fastTries.Close()
+	fastState, err := state.New(parent.Root, state.NewMPTDatabase(fastTries, nil).WithSnapshot(chain.Snapshots()))
+	require.NoError(t, err)
+	fastState.SetExpectedStateRoot(block.Root())
+	_, err = processor.Process(context.Background(), block, fastState, nil, nil, vm.Config{}, nil)
+	require.NoError(t, err, "NoTries must continue to skip the payment-lane verdict")
 }
 
 // The bid path's only lane verdict on a re-executed environment: whatever the quota still holds

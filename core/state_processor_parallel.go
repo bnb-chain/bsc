@@ -219,9 +219,11 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 	if err != nil {
 		return nil, err
 	}
-	lane, err := ResolveLaneState(config, p.chain.Engine(), parent, header, preState)
-	if err != nil {
-		return nil, laneReject(err)
+	lane := &LaneState{}
+	if !statedb.NoTries() {
+		if lane, err = ResolveLaneState(config, p.chain.Engine(), parent, header, preState); err != nil {
+			return nil, laneReject(err)
+		}
 	}
 	preEVM := vm.NewEVM(context, preState, config, cfg)
 	if jumpDestCache != nil {
