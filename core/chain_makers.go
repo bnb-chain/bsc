@@ -125,7 +125,7 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
 	laneType := b.lane.Classify(tx)
-	usedBefore := b.gasPool.Used()
+	usedBefore := b.gasPool.Snapshot()
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs), uint32(len(b.txs)+1))
 	receipt, bal, err := ApplyTransaction(context.Background(), evm, b.gasPool, b.statedb, b.header, tx)
 	if err != nil {
@@ -481,8 +481,13 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
 
+		// Empty generated blocks have no transaction gas pool.
+		if b.gasPool == nil {
+			b.gasPool = NewGasPool(b.header.GasLimit)
+		}
+
 		// The same self-check the miner runs.
-		if err := b.lane.Verify(block.GasUsed()); err != nil {
+		if err := b.lane.Verify(block.GasUsed(), b.gasPool); err != nil {
 			panic(fmt.Sprintf("payment lane check failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {

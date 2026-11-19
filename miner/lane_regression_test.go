@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
@@ -118,4 +119,40 @@ func TestBidCommitTransactionBooksNothingForAFailedTransaction(t *testing.T) {
 	require.ErrorIs(t, r.commitTransaction(w.chain, config, tx, false), core.ErrIntrinsicGas)
 	require.NotZero(t, env.gasPool.Used(), "buyGas must have drawn from the pool, or the test proves nothing")
 	require.Zero(t, env.lane.Budget.PaymentLaneUsed, "a failed transaction must not book lane gas")
+}
+
+func TestPaymentLaneLogContext(t *testing.T) {
+	b := paymentlane.Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 3, PaymentExecutionUsed: 4, PaymentStateUsed: 12}
+	require.Equal(t, []any{
+		"paymentLaneQuota", uint64(10), "paymentGasUsed", uint64(3), "paymentLaneIdle", uint64(7),
+	}, paymentLaneLogContext(b, false))
+	require.Equal(t, []any{
+		"paymentLaneQuota", uint64(10),
+		"paymentExecutionUsed", uint64(4), "paymentStateUsed", uint64(12),
+		"paymentExecutionIdle", uint64(6), "paymentStateIdle", uint64(0),
+	}, paymentLaneLogContext(b, true))
+}
+
+func TestPaymentLaneMetrics(t *testing.T) {
+	names := []string{"paymentLaneQuota", "paymentGasUsed", "paymentLaneIdle",
+		"paymentExecutionUsed", "paymentStateUsed", "paymentExecutionIdle", "paymentStateIdle"}
+	for _, tc := range []struct {
+		name      string
+		amsterdam bool
+		budget    paymentlane.Budget
+		want      []int64
+	}{
+		{"Amsterdam", true, paymentlane.Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 9, PaymentExecutionUsed: 4, PaymentStateUsed: 12}, []int64{10, 12, 6, 4, 12, 6, 0}},
+		{"legacy reorg", false, paymentlane.Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 3, PaymentExecutionUsed: 4, PaymentStateUsed: 12}, []int64{10, 3, 7, 0, 0, 0, 0}},
+		{"Amsterdam again", true, paymentlane.Budget{PaymentLaneQuota: 10, PaymentExecutionUsed: 12, PaymentStateUsed: 4}, []int64{10, 12, 6, 12, 4, 0, 6}},
+		{"lane disabled", true, paymentlane.Budget{}, []int64{0, 0, 0, 0, 0, 0, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recordPaymentLaneMetrics(tc.budget, tc.amsterdam)
+			for i, name := range names {
+				gauge := metrics.DefaultRegistry.Get("paymentlane/" + name).(*metrics.Gauge)
+				require.Equal(t, tc.want[i], gauge.Snapshot().Value(), name)
+			}
+		})
+	}
 }
