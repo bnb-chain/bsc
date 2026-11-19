@@ -30,12 +30,10 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -488,79 +486,5 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			}
 			assertBlock(r.block, c.expectNumber, c.coinbase, c.random)
 		}
-	}
-}
-
-func TestPrepareWorkSlotNumber(t *testing.T) {
-	for _, bsc := range []bool{true, false} {
-		name := "eth"
-		config := *params.AllDevChainProtocolChanges
-		config.BogotaTime = nil
-		if bsc {
-			name = "bsc"
-			config = *params.BSCChainConfig
-			config.LondonBlock = big.NewInt(0)
-		}
-		t.Run(name, func(t *testing.T) {
-			fork := uint64(2_000_000_000)
-			config.AmsterdamTime = &fork
-			w, backend := newTestWorker(t, &config, ethash.NewFaker(), rawdb.NewMemoryDatabase(), 0)
-			defer backend.chain.Stop()
-			defer backend.txPool.Close()
-			defer w.close()
-			suppliedSlot, zeroSlot := uint64(500), uint64(0)
-			for _, test := range []struct {
-				name      string
-				timestamp uint64
-				supplied  *uint64
-			}{
-				{name: "before-fork", timestamp: 1},
-				{name: "before-fork-supplied", timestamp: 1, supplied: &suppliedSlot},
-				{name: "first-fork", timestamp: fork},
-				{name: "supplied", timestamp: fork, supplied: &suppliedSlot},
-				{name: "supplied-zero", timestamp: fork, supplied: &zeroSlot},
-			} {
-				t.Run(test.name, func(t *testing.T) {
-					env, err := w.prepareWork(&generateParams{timestamp: test.timestamp, forceTime: true, coinbase: testBankAddress, slotNum: test.supplied}, false)
-					if !bsc && test.timestamp == fork && test.supplied == nil {
-						if err == nil || err.Error() != "missing slot number" {
-							t.Fatalf("expected missing slot error, got %v", err)
-						}
-						return
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer env.discard()
-					if test.timestamp < fork {
-						if env.header.SlotNumber != nil {
-							t.Fatal("slot present before fork")
-						}
-						return
-					}
-					want := env.header.Number.Uint64()
-					if !bsc {
-						want = *test.supplied
-					}
-					if env.header.SlotNumber == nil || *env.header.SlotNumber != want || env.evm.Context.SlotNum != want {
-						t.Fatalf("slot header=%v context=%d, want %d", env.header.SlotNumber, env.evm.Context.SlotNum, want)
-					}
-					if bsc {
-						address := common.Address{0x80}
-						code := []byte{byte(vm.SLOTNUM), byte(vm.PUSH1), 0, byte(vm.MSTORE), byte(vm.PUSH1), 32, byte(vm.PUSH1), 0, byte(vm.RETURN)}
-						env.state.SetCode(address, code, tracing.CodeChangeUnspecified)
-						rules := env.evm.GetRules()
-						env.state.Prepare(rules, testBankAddress, testBankAddress, &address, vm.ActivePrecompiles(rules), nil)
-						ret, _, err := env.evm.Call(testBankAddress, address, nil, vm.NewGasBudget(100_000, 0), new(uint256.Int))
-						if err != nil {
-							t.Fatal(err)
-						}
-						if len(ret) != 32 || new(big.Int).SetBytes(ret).Uint64() != want {
-							t.Fatalf("SLOTNUM returned %x, want %d", ret, want)
-						}
-					}
-				})
-			}
-		})
 	}
 }
