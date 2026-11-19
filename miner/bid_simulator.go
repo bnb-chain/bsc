@@ -1051,27 +1051,22 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// TODO: Adapt this reservation to both gas dimensions before enabling
-	// Amsterdam on BSC.
-	// Reserve gas for the payBidTx appended at the end of the block so the
-	// admission check and greedy merge leave room for it; returned right before
-	// it is committed.
-	if err = bidRuntime.env.gasPool.CheckGasLegacy(params.PayBidTxGasLimit); err != nil {
+	amsterdam := bidRuntime.env.evm.GetRules().IsAmsterdam
+	// Reserve capacity for the payment appended after greedy merge.
+	if amsterdam {
+		err = bidRuntime.env.gasPool.ReserveGasAmsterdam(min(payBidTx.Gas(), params.MaxTxGas), payBidTx.Gas())
+	} else {
+		err = bidRuntime.env.gasPool.CheckGasLegacy(params.PayBidTxGasLimit)
+	}
+	if err != nil {
 		return
 	}
-
-	// error log:
-	// 	simulation failed blockNumber=47630147 parentHash=0x2476bcc93db4c924a2c8079c6d5d783441a72d6ff70c5850b1afd778102e175e builder=0x48a5Ed9abC1a8FBe86ceC4900483f43a7f2dBB48
-	// 	gasUsed=136807406 gasLimit=137816878 err="gas used exceeds gas limit"
-	// error tracing:
-	// 	left: b.RawBid.GasUsed + b.PayBidTxGasUsed => (136782406 + 25000 = 136807406)
-	// 	right: headerGasLimit - b.PayBidTxGasLimit - systemGasReserved => (137816878 - 25000 - 1000000 = 136791878)
-	// 	cause: 136807406 > 136791878 => true
-	// error reason:
-	//	left should not be added with PayBidTxGasUsed, Or right should be not be subtracted with PayBidTxGasLimit
-	// error fix:
-	//	136782406 > 136791878 => false, Or 136807406 > 136816878 => false
-	if bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Available(bidRuntime.env.evm.GetRules().IsAmsterdam) {
+	// Legacy regression (#2967): ToBid must exclude PayBidTxGasUsed from bid.GasUsed,
+	// since the pool already reserves payment gas. With a 137816878 block limit,
+	// 1000000 system reserve and 25000 payment reserve, a 136782406 bid fits the
+	// remaining 136791878; adding payment gas again would incorrectly reject it.
+	// Amsterdam checks capacity per transaction in both dimensions instead.
+	if !amsterdam && bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Available(false) {
 		err = errors.New("gas used exceeds gas limit")
 		return
 	}
@@ -1205,7 +1200,14 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// commit payBidTx at the end of the block
-	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
+	if amsterdam {
+		err = bidRuntime.env.gasPool.ReleaseGasAmsterdam(min(payBidTx.Gas(), params.MaxTxGas), payBidTx.Gas())
+	} else {
+		err = bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
+	}
+	if err != nil {
+		return
+	}
 	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx, true)
 	if err != nil {
 		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
