@@ -9,6 +9,15 @@ ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 RUN make geth
 RUN mv /bsc/build/bin/geth /usr/local/bin/geth
 
+ARG BSC_USER_UID=1000
+ARG BSC_USER_GID=1000
+ENV HOME=/home/bsc
+RUN addgroup -g ${BSC_USER_GID} bsc \
+    && adduser -u ${BSC_USER_UID} -G bsc -h ${HOME} -D bsc
+
+USER ${BSC_USER_UID}:${BSC_USER_GID}
+RUN mkdir -p -m 0700 "${HOME}/.ethereum"
+
 EXPOSE 8545 8547 30303 30303/udp
 ENTRYPOINT [ "/usr/local/bin/geth" ]
 
@@ -19,10 +28,20 @@ FROM node:22-alpine3.21@sha256:af8023ec879993821f6d5b21382ed915622a1b0f1cc03dbeb
 RUN if [ "$(node -p 'process.arch')" != "x64" ]; then echo "bsc-genesis requires linux/amd64 for solc 0.6.4" >&2; exit 1; fi \
     && apk add --no-cache ca-certificates bash alpine-sdk expect
 
+ARG BSC_USER_UID=1000
+ARG BSC_USER_GID=1000
+ENV HOME=/home/bsc
+RUN deluser node \
+    && addgroup -g ${BSC_USER_GID} bsc \
+    && adduser -u ${BSC_USER_UID} -G bsc -h ${HOME} -D bsc
+
 COPY --from=solc /usr/local/bin/solc /usr/local/bin/solc
 
-RUN git clone https://github.com/bnb-chain/bsc-genesis-contract.git /root/genesis \
-    && cd /root/genesis \
+USER ${BSC_USER_UID}:${BSC_USER_GID}
+WORKDIR ${HOME}
+
+RUN git clone https://github.com/bnb-chain/bsc-genesis-contract.git ${HOME}/genesis \
+    && cd ${HOME}/genesis \
     && git checkout --detach 84641812a013eda1593e058aeed4dc116c7746eb \
     && npm ci --ignore-scripts --no-audit
 #RUN curl -L https://foundry.paradigm.xyz | bash

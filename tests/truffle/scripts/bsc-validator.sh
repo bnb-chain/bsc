@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source /scripts/utils.sh
 
-DATA_DIR=/root/.ethereum
+DATA_DIR=${HOME}/.ethereum
 
 wait_for_host_port ${BOOTSTRAP_HOST} ${BOOTSTRAP_TCP_PORT}
 BOOTSTRAP_IP=$(get_host_ip $BOOTSTRAP_HOST)

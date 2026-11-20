@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-DATA_DIR=/root/.ethereum
+DATA_DIR=${HOME}/.ethereum
 
 account_cnt=$(ls ${DATA_DIR}/keystore | wc -l)
 i=1

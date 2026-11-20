@@ -40,9 +40,9 @@ test: all
 truffle-test:
 	rm -rf ./tests/truffle/storage/bsc-validator1
 	rm -rf ./tests/truffle/storage/bsc-rpc
-	docker build . -f ./docker/Dockerfile --target bsc -t bsc
-	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
-	docker build . -f ./docker/Dockerfile.truffle -t truffle-test
+	docker build . -f ./docker/Dockerfile --target bsc --build-arg BSC_USER_UID=$(shell id -u) -t bsc
+	docker build . -f ./docker/Dockerfile --target bsc-genesis --build-arg BSC_USER_UID=$(shell id -u) -t bsc-genesis
+	docker build . -f ./docker/Dockerfile.truffle --build-arg BSC_USER_UID=$(shell id -u) -t truffle-test
 	docker compose -f ./tests/truffle/docker-compose.yml up genesis
 	docker compose -f ./tests/truffle/docker-compose.yml up -d bsc-rpc bsc-validator1
 	sleep 60
