@@ -1145,8 +1145,8 @@ func (s *Suite) TestBlobViolations(t *utesting.T) {
 					break
 				}
 				switch code {
-				case protoOffset(ethProto) + eth.NewPooledTransactionHashesMsg,
-					protoOffset(ethProto) + eth.GetCellsMsg:
+				case conn.protoOffset(ethProto) + eth.NewPooledTransactionHashesMsg,
+					conn.protoOffset(ethProto) + eth.GetCellsMsg:
 					continue
 				default:
 					t.Fatalf("expected disconnect on blob violation, got msg code: %d", code)
