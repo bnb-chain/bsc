@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -74,7 +75,7 @@ type laneRecord struct {
 	quota, paymentGas uint64
 }
 
-// recordLanes wraps a generator so every block's lane state is captured by block number.
+// recordLanes captures scalar payment usage for the Jenner regression tests.
 func recordLanes(into map[uint64]laneRecord, gen func(int, *BlockGen)) func(int, *BlockGen) {
 	return func(i int, b *BlockGen) {
 		if gen != nil {
@@ -291,12 +292,13 @@ func TestPaymentLaneVerifyPackedBidChecksTheIdleQuota(t *testing.T) {
 	ls := &LaneState{classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
 
 	ls.Budget.PaymentLaneQuota = 100
-	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
-	require.ErrorIs(t, ls.VerifyPackedBid(99), paymentlane.ErrViolated,
+	require.NoError(t, ls.VerifyPackedBid(NewGasPool(100)), "a quota that exactly fits is the accepting case")
+	require.ErrorIs(t, ls.VerifyPackedBid(NewGasPool(99)), paymentlane.ErrViolated,
 		"a bid that leaves less than the idle quota must be rejected")
 
 	ls.Budget.PaymentLaneUsed = 40
-	require.NoError(t, ls.VerifyPackedBid(60), "payment gas already booked shrinks the idle quota one for one")
+	ls.Budget.RecordUsedAmsterdam(paymentlane.PaymentLane, 100, 100)
+	require.NoError(t, ls.VerifyPackedBid(NewGasPool(60)), "payment gas already booked shrinks the idle quota one for one")
 }
 
 // TestPaymentLaneReportsAFailedReadAsLocal pins the error category, not the rejection: a failed
@@ -312,7 +314,7 @@ func TestPaymentLaneReportsAFailedReadAsLocal(t *testing.T) {
 		gasLimit:   laneTestGasLimit,
 	}
 
-	err := ls.Verify(params.TxGas)
+	err := ls.Verify(params.TxGas, NewGasPool(laneTestGasLimit))
 	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable, "a failed read is this node's fault, not the block's")
 	require.ErrorIs(t, err, broken, "the cause has to survive for whoever reads the log")
 	require.NotErrorIs(t, err, paymentlane.ErrViolated, "calling a good block invalid is what costs peers")
@@ -389,7 +391,7 @@ func TestRecordUsedFromIgnoresARolledBackPool(t *testing.T) {
 	snapshot := *gp
 	require.NoError(t, gp.CheckGasLegacy(100))
 	require.NoError(t, gp.ChargeGasLegacy(0, 100))
-	usedBefore := gp.Used()
+	usedBefore := gp.Snapshot()
 
 	require.NoError(t, gp.CheckGasLegacy(40))
 	require.NoError(t, gp.ChargeGasLegacy(0, 40))
@@ -397,7 +399,105 @@ func TestRecordUsedFromIgnoresARolledBackPool(t *testing.T) {
 	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed)
 
 	*gp = snapshot // back past usedBefore
-	require.Less(t, gp.Used(), usedBefore)
+	require.Less(t, gp.Used(), usedBefore.Used())
 	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, usedBefore)
 	require.EqualValues(t, 40, ls.Budget.PaymentLaneUsed, "a rolled-back pool books nothing rather than wrapping")
+}
+
+func TestPaymentLaneAmsterdamAccounting(t *testing.T) {
+	// Legacy usage must not affect Amsterdam accounting or idle quota.
+	ls := &LaneState{amsterdam: true, Budget: paymentlane.Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 10}, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
+	gp := NewGasPool(100)
+	require.NoError(t, gp.ChargeGasAmsterdam(60, 0, 60))
+	before := gp.Snapshot()
+	require.NoError(t, gp.ChargeGasAmsterdam(0, 40, 40))
+	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, before)
+	require.EqualValues(t, 0, ls.Budget.PaymentExecutionUsed)
+	require.EqualValues(t, 40, ls.Budget.PaymentStateUsed)
+	executionIdle, stateIdle := ls.Budget.IdleLaneAmsterdam()
+	require.EqualValues(t, 10, executionIdle, "state payments do not release execution quota")
+	require.Zero(t, stateIdle)
+	before = gp.Snapshot()
+	require.NoError(t, gp.ChargeGasAmsterdam(5, 2, 7))
+	gp.Set(before)
+	ls.RecordUsedFrom(paymentlane.PaymentLane, gp, before)
+	require.EqualValues(t, 0, ls.Budget.PaymentExecutionUsed)
+	require.EqualValues(t, 40, ls.Budget.PaymentStateUsed)
+	require.EqualValues(t, 10, ls.Budget.PaymentLaneUsed)
+}
+
+func TestPaymentLaneImportedMetricsReset(t *testing.T) {
+	ls := &LaneState{classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil)}
+	names := []string{"paymentLaneQuota", "paymentGasUsed", "paymentLaneIdle",
+		"paymentExecutionUsed", "paymentStateUsed", "paymentExecutionIdle", "paymentStateIdle"}
+	for _, tc := range []struct {
+		name      string
+		amsterdam bool
+		budget    paymentlane.Budget
+		want      []int64
+	}{
+		{"Amsterdam", true, paymentlane.Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 9, PaymentExecutionUsed: 4, PaymentStateUsed: 12}, []int64{10, 12, 6, 4, 12, 6, 0}},
+		{"legacy reorg", false, paymentlane.Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 3, PaymentExecutionUsed: 4, PaymentStateUsed: 12}, []int64{10, 3, 7, 0, 0, 0, 0}},
+		{"Amsterdam again", true, paymentlane.Budget{PaymentLaneQuota: 10, PaymentExecutionUsed: 12, PaymentStateUsed: 4}, []int64{10, 12, 6, 12, 4, 0, 6}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ls.Budget, ls.amsterdam = tc.budget, tc.amsterdam
+			ls.recordImported()
+			for i, name := range names {
+				gauge := metrics.DefaultRegistry.Get("paymentlane/imported/" + name).(*metrics.Gauge)
+				require.Equal(t, tc.want[i], gauge.Snapshot().Value(), name)
+			}
+		})
+	}
+	ls.classifier = nil
+	ls.recordImported()
+	for _, name := range names {
+		gauge := metrics.DefaultRegistry.Get("paymentlane/imported/" + name).(*metrics.Gauge)
+		require.Zero(t, gauge.Snapshot().Value(), name)
+	}
+}
+
+func TestPaymentLaneAmsterdamAdmission(t *testing.T) {
+	ls := &LaneState{amsterdam: true, Budget: paymentlane.Budget{PaymentLaneQuota: 2_750_000}, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil)}
+	gp := NewGasPool(55_000_000)
+	require.NoError(t, gp.ChargeGasAmsterdam(38_000_000, 2_750_000, 0))
+	require.False(t, ls.Admits(gp, paymentlane.GeneralLane, 30_000_000))
+	require.True(t, ls.Admits(gp, paymentlane.PaymentLane, 30_000_000))
+	ls.Budget.PaymentExecutionUsed = ls.Budget.PaymentLaneQuota
+	require.True(t, ls.Admits(gp, paymentlane.GeneralLane, 30_000_000))
+	require.NoError(t, gp.ReserveGasAmsterdam(250_000, 250_000))
+	require.False(t, ls.Admits(gp, paymentlane.PaymentLane, 30_000_000))
+	require.NoError(t, gp.ReleaseGasAmsterdam(250_000, 250_000))
+	require.True(t, ls.Admits(gp, paymentlane.PaymentLane, 30_000_000))
+}
+
+func TestPaymentLaneAmsterdamVerify(t *testing.T) {
+	for _, tc := range []struct {
+		name                                                     string
+		execution, state, paymentExecution, paymentState, system uint64
+		invalid                                                  bool
+	}{
+		{"empty", 0, 0, 0, 0, 0, false},
+		{"execution quota", 100, 90, 0, 10, 0, true},
+		{"state quota", 90, 100, 10, 0, 0, true},
+		{"both quotas filled", 100, 100, 10, 10, 0, false},
+		{"system boundary", 85, 85, 0, 0, 5, false},
+		{"system overflow", 85, 85, 0, 0, 6, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ls := &LaneState{amsterdam: true, gasLimit: 100, Budget: paymentlane.Budget{PaymentLaneQuota: 10, PaymentExecutionUsed: tc.paymentExecution, PaymentStateUsed: tc.paymentState}, classifier: paymentlane.NewClassifier(paymentlane.NoSystemTxs, liveState{}, nil), state: liveState{}}
+			gp := NewGasPool(100)
+			require.NoError(t, gp.ChargeGasAmsterdam(tc.execution, tc.state, 0))
+			packedErr := ls.VerifyPackedBid(gp)
+			finalErr := ls.Verify(gp.Used()+tc.system, gp)
+			if tc.invalid {
+				require.ErrorIs(t, finalErr, paymentlane.ErrViolated)
+			} else {
+				require.NoError(t, finalErr)
+			}
+			if tc.system == 0 {
+				require.Equal(t, tc.invalid, errors.Is(packedErr, paymentlane.ErrViolated))
+			}
+		})
+	}
 }

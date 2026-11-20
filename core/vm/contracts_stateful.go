@@ -108,13 +108,16 @@ func (ctx *PrecompileContext) traceAccountRead(addr common.Address) {
 	}
 }
 
-// chargeGas is where every CAS20 charge arrives. False means stop before the
-// operation the charge pays for, as the interpreter checks gas before an opcode.
 func (ctx *PrecompileContext) chargeGas(cost uint64) bool {
+	return ctx.chargeCosts(GasCosts{ExecutionGas: cost})
+}
+
+// chargeCosts stops the frame before an operation whose cost it cannot cover.
+func (ctx *PrecompileContext) chargeCosts(cost GasCosts) bool {
 	if ctx.OutOfGas() {
 		return false
 	}
-	if !ctx.UseGas(GasCosts{ExecutionGas: cost}) {
+	if !ctx.UseGas(cost) {
 		ctx.markOutOfGas()
 		return false
 	}
