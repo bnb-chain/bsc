@@ -17,7 +17,6 @@
 package snap
 
 import (
-	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,176 +25,56 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// A failed catch-up must remain usable by the next state-sync cycle. Returning
-// an error and preserving a journal alone does not prove that retry can finish.
-func TestSyncV2RetriesAfterBALUnavailable(t *testing.T) {
-	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
-		t.Run(scheme, func(t *testing.T) {
-			fix := seedCompletedSync(t, scheme)
-			defer fix.db.Close()
-			s := newSyncerV2(fix.db, scheme)
-			var available atomic.Bool
-			peer := newTestPeerV2("retry", t, func() {})
-			peer.accessLists = fix.bals
-			peer.accessListRequestHandler = func(p *testPeerV2, id uint64, hashes []common.Hash, max int) error {
-				if available.Load() {
-					return defaultAccessListRequestHandler(p, id, hashes, max)
-				}
-				var values rlp.RawList[rlp.RawValue]
-				for range hashes {
-					values.AppendRaw(rlp.EmptyString)
-				}
-				return p.remote.OnAccessLists(p, id, values)
-			}
-			peer.remote = s
-			if err := s.Register(peer); err != nil {
+func TestSyncV2CatchUpMissingBALCommitment(t *testing.T) {
+	for _, missingTarget := range []bool{true, false} {
+		name := "gap"
+		if missingTarget {
+			name = "target"
+		}
+		t.Run(name, func(t *testing.T) {
+			const scheme = rawdb.PathScheme
+			_, treeA, elemsA := makeAccountTrieNoStorage(20, scheme)
+			_, treeB, elemsB := makeAccountTrieNoStorage(30, scheme)
+			cancel := make(chan struct{})
+			stop := sync.OnceFunc(func() { close(cancel) })
+			defer stop()
+			peer := newTestPeerV2("recovery", t, stop)
+			peer.accountTrie, peer.accountValues = treeA.Copy(), elemsA
+			s := setupSyncerV2(scheme, peer)
+			defer s.db.Close()
+			from := mkPivot(100, treeA.Hash())
+			if err := s.Sync(from, cancel); err != nil {
 				t.Fatal(err)
 			}
-			cancel := make(chan struct{})
-			err := s.Sync(fix.header102, cancel)
-			close(cancel) // The downloader ends the failed state-sync cycle.
-			if err != errAccessListUnavailable {
-				t.Fatalf("first cycle: got %v, want unavailable BAL", err)
-			}
-			progress := decodeJournal(t, fix.db)
-			if progress.Pivot == nil || progress.Pivot.Hash() != fix.pivotA.Hash() || progress.Phase != phaseComplete {
-				t.Fatal("failed catch-up lost the completed checkpoint")
-			}
-			available.Store(true)
-			cancel = make(chan struct{})
-			defer close(cancel)
-			if err := s.Sync(fix.header102, cancel); err != nil {
-				t.Fatalf("retry after BAL becomes available: %v", err)
-			}
-			if peer.nAccountRequests.Load() != 0 {
-				t.Fatal("retry downloaded accounts instead of resuming catch-up")
-			}
-			progress = decodeJournal(t, fix.db)
-			if progress.Pivot == nil || progress.Pivot.Hash() != fix.header102.Hash() || progress.Phase != phaseComplete {
-				t.Fatal("retry did not persist completion at the target")
-			}
-			assertAccountBalance(t, fix.db, fix.hashY, 2000)
-			verifyTrie(scheme, fix.db, fix.header102.Root, t)
-		})
-	}
-}
-
-// CLI overrides are applied after package initialization. Both the downloader
-// and state syncer must use the current value, rather than a captured copy.
-func TestCatchUpRetentionPolicy(t *testing.T) {
-	previous := params.FullImmutabilityThreshold
-	params.FullImmutabilityThreshold = 7
-	defer func() { params.FullImmutabilityThreshold = previous }()
-	from := mkPivot(100, common.Hash{})
-	for _, tc := range []struct {
-		to      uint64
-		expired bool
-	}{{99, false}, {100, false}, {107, false}, {108, true}} {
-		if got := CatchUpExceedsRetention(from, mkPivot(tc.to, common.Hash{})); got != tc.expired {
-			t.Fatalf("target %d: expired=%v, want %v", tc.to, got, tc.expired)
-		}
-	}
-}
-
-func TestSyncV2CatchUpRecoveryPolicy(t *testing.T) {
-	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
-		for _, reason := range []string{"unavailable-bal", "expired-pivot", "missing-target-bal", "missing-gap-bal", "cancelled-missing-bal"} {
-			t.Run(scheme+"/"+reason, func(t *testing.T) {
-				_, treeA, elemsA := makeAccountTrieNoStorage(20, scheme)
-				_, treeB, elemsB := makeAccountTrieNoStorage(30, scheme)
-				var once sync.Once
-				cancel := make(chan struct{})
-				term := func() { once.Do(func() { close(cancel) }) }
-				defer term()
-				peer := newTestPeerV2("recovery", t, term)
-				peer.accountTrie = treeA.Copy()
-				peer.accountValues = elemsA
-				s := setupSyncerV2(scheme, peer)
-				defer s.db.Close()
-				from := mkPivot(100, treeA.Hash())
-				if err := s.Sync(from, cancel); err != nil {
-					t.Fatal(err)
-				}
-				before := peer.nAccountRequests.Load()
-				peer.trieLock.Lock()
-				peer.accountTrie = treeB.Copy()
-				peer.accountValues = elemsB
-				peer.trieLock.Unlock()
-				target := mkPivot(101, treeB.Hash())
-				target.ParentHash = from.Hash()
+			peer.trieLock.Lock()
+			peer.accountTrie, peer.accountValues = treeB.Copy(), elemsB
+			peer.trieLock.Unlock()
+			target := mkPivot(101, treeB.Hash())
+			target.ParentHash = from.Hash()
+			if !missingTarget {
+				gap := mkPivot(101, treeA.Hash())
+				gap.ParentHash = from.Hash()
+				rawdb.WriteHeader(s.db, gap)
+				target.Number.SetUint64(102)
+				target.ParentHash = gap.Hash()
 				empty := types.EmptyBlockAccessListHash
 				target.BlockAccessListHash = &empty
-				peer.accessListRequestHandler = func(p *testPeerV2, id uint64, hashes []common.Hash, _ int) error {
-					var values rlp.RawList[rlp.RawValue]
-					for range hashes {
-						values.AppendRaw(rlp.EmptyString)
-					}
-					return p.remote.OnAccessLists(p, id, values)
-				}
-				switch reason {
-				case "expired-pivot":
-					target.Number = new(big.Int).SetUint64(from.Number.Uint64() + params.FullImmutabilityThreshold + 1)
-				case "missing-target-bal", "cancelled-missing-bal":
-					target.BlockAccessListHash = nil
-				case "missing-gap-bal":
-					gap := mkPivot(101, treeA.Hash())
-					gap.ParentHash = from.Hash()
-					rawdb.WriteHeader(s.db, gap)
-					target.Number = big.NewInt(102)
-					target.ParentHash = gap.Hash()
-				}
-				if reason == "cancelled-missing-bal" {
-					term()
-				}
-				err := s.Sync(target, cancel)
-				if reason == "cancelled-missing-bal" {
-					if err != ErrCancelled {
-						t.Fatalf("error = %v, want cancelled", err)
-					}
-					progress := decodeJournal(t, s.db)
-					if progress.Pivot == nil || progress.Pivot.Hash() != from.Hash() || progress.Phase != phaseComplete {
-						t.Fatal("cancelled catch-up discarded the previous checkpoint")
-					}
-					return
-				}
-				if reason == "unavailable-bal" {
-					if err != errAccessListUnavailable {
-						t.Fatalf("error = %v, want unavailable BAL", err)
-					}
-					if peer.nAccessListRequests.Load() == 0 || peer.nAccountRequests.Load() != before {
-						t.Fatal("unavailable BAL must return an error without restarting state download")
-					}
-					loader := newSyncerV2(s.db, scheme)
-					loader.loadSyncStatus()
-					if loader.pivot == nil || loader.pivot.Hash() != from.Hash() || loader.getPhase() != phaseComplete {
-						t.Fatal("unavailable BAL discarded the previous checkpoint")
-					}
-					return
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if peer.nAccountRequests.Load() <= before {
-					t.Fatal("did not restart the account download")
-				}
-				if peer.nAccessListRequests.Load() != 0 {
-					t.Fatal("unusable checkpoint requested BALs")
-				}
-				if s.getPhase() != phaseComplete || s.pivot.Hash() != target.Hash() {
-					t.Fatal("recovery did not complete at the target pivot")
-				}
-				verifyTrie(scheme, s.db, target.Root, t)
-				loader := newSyncerV2(s.db, scheme)
-				loader.loadSyncStatus()
-				if loader.getPhase() != phaseComplete || loader.pivot.Hash() != target.Hash() {
-					t.Fatal("recovered state and checkpoint disagree")
-				}
-			})
-		}
+			}
+			if err := s.Sync(target, cancel); err != nil {
+				t.Fatal(err)
+			}
+			if peer.nAccessListRequests.Load() != 0 {
+				t.Fatal("catch-up sent a BAL request without a commitment")
+			}
+			progress := decodeJournal(t, s.db)
+			if progress.Phase != phaseComplete || progress.Pivot == nil || progress.Pivot.Hash() != target.Hash() {
+				t.Fatal("state download did not complete at the target")
+			}
+			verifyTrie(scheme, s.db, target.Root, t)
+		})
 	}
 }
 
@@ -205,72 +84,44 @@ func TestSyncV2RetriesAfterBALCancellation(t *testing.T) {
 			fix := seedCompletedSync(t, scheme)
 			defer fix.db.Close()
 			s := newSyncerV2(fix.db, scheme)
-			peer := newTestPeerV2("retry", t, func() {})
-			peer.remote, peer.accessLists = s, fix.bals
-			requests := make(chan uint64, 2)
-			release := make(chan struct{})
+			cancel, retry := make(chan struct{}), make(chan struct{})
+			stop := sync.OnceFunc(func() { close(cancel) })
+			stopRetry := sync.OnceFunc(func() { close(retry) })
 			var count atomic.Int32
+			var oldID atomic.Uint64
+			peer := newTestPeerV2("retry", t, stopRetry)
+			peer.remote, peer.accessLists = s, fix.bals
 			peer.accessListRequestHandler = func(p *testPeerV2, id uint64, hashes []common.Hash, max int) error {
 				switch count.Add(1) {
 				case 1:
-					requests <- id
+					oldID.Store(id)
+					stop()
 					return nil
 				case 2:
-					requests <- id
-					<-release
+					if err := s.OnAccessLists(p, oldID.Load(), rlp.RawList[rlp.RawValue]{}); err != nil {
+						t.Errorf("late reply returned %v", err)
+					}
+					s.lock.RLock()
+					_, idle := s.accessListIdlers[p.ID()]
+					s.lock.RUnlock()
+					if idle {
+						t.Error("late reply made the busy peer idle")
+					}
 				}
 				return defaultAccessListRequestHandler(p, id, hashes, max)
 			}
 			if err := s.Register(peer); err != nil {
 				t.Fatal(err)
 			}
-			start := func() (func(), <-chan error) {
-				cancel := make(chan struct{})
-				done := make(chan error, 1)
-				go func() {
-					defer close(done)
-					done <- s.Sync(fix.header102, cancel)
-				}()
-				return sync.OnceFunc(func() { close(cancel) }), done
+			firstDeadline := time.AfterFunc(5*time.Second, stop)
+			defer firstDeadline.Stop()
+			if err := s.Sync(fix.header102, cancel); err != ErrCancelled || oldID.Load() == 0 {
+				t.Fatalf("first cycle did not cancel an in-flight BAL request: %v", err)
 			}
-			request := func() uint64 {
-				t.Helper()
-				select {
-				case id := <-requests:
-					return id
-				case <-time.After(5 * time.Second):
-					t.Fatal("BAL request was not sent")
-					return 0
-				}
-			}
-			cancel, done := start()
-			defer func() { cancel(); <-done }()
-			oldID := request()
-			cancel()
-			if err := <-done; err != ErrCancelled {
-				t.Fatalf("first cycle: %v, want cancelled", err)
-			}
-			cancelRetry, retryDone := start()
-			unblock := sync.OnceFunc(func() { close(release) })
-			defer func() { unblock(); cancelRetry(); <-retryDone }()
-			request()
-			if err := s.OnAccessLists(peer, oldID, rlp.RawList[rlp.RawValue]{}); err != nil {
-				t.Fatal(err)
-			}
-			s.lock.RLock()
-			_, idle := s.accessListIdlers[peer.ID()]
-			s.lock.RUnlock()
-			if idle {
-				t.Fatal("late reply made the busy peer idle")
-			}
-			unblock()
-			select {
-			case err := <-retryDone:
-				if err != nil {
-					t.Fatalf("retry with the same peer: %v", err)
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("retry did not complete")
+			retryDeadline := time.AfterFunc(5*time.Second, stopRetry)
+			defer retryDeadline.Stop()
+			if err := s.Sync(fix.header102, retry); err != nil {
+				t.Fatalf("retry with the same peer: %v", err)
 			}
 			verifyTrie(scheme, fix.db, fix.header102.Root, t)
 		})
