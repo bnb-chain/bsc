@@ -1,0 +1,8 @@
+{
+  "name": "bsc-truffle-toolchain",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "truffle": "5.1.14"
+  }
+}
