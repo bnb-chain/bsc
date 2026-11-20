@@ -4,7 +4,7 @@ ARG VERSION=""
 ARG BUILDNUM=""
 
 # Build Geth in a stock Go builder container
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS builder
 
 RUN apk add --no-cache gcc musl-dev linux-headers git
 
@@ -22,7 +22,7 @@ ENV CGO_CFLAGS_ALLOW="-O -D__BLST_PORTABLE__"
 RUN cd /go-ethereum && go run build/ci.go install -static ./cmd/geth
 
 # Pull Geth into a second stage deploy alpine container
-FROM alpine:3.21
+FROM alpine:3.21@sha256:bc21487101ae47172509130ee1092cc273a831968d64b617776d1f69c81e42ab
 
 ARG BSC_USER=bsc
 ARG BSC_USER_UID=1000

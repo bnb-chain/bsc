@@ -50,9 +50,9 @@ function prepareBLSWallet(){
      geth bls account new --datadir ${workspace}/storage/${node_id} --blspassword ${workspace}/storage/${node_id}/blspassword.txt
 
      sed -i -e 's/DataDir/BLSPasswordFile = \"{{BLSPasswordFile}}\"\nBLSWalletDir = \"{{BLSWalletDir}}\"\nDataDir/g' ${workspace}/storage/${node_id}/config.toml
-     PassWordPath="/root/.ethereum/blspassword.txt"
+     PassWordPath="${HOME}/.ethereum/blspassword.txt"
      sed -i -e "s:{{BLSPasswordFile}}:${PassWordPath}:g" ${workspace}/storage/${node_id}/config.toml
-     WalletPath="/root/.ethereum/bls/wallet"
+     WalletPath="${HOME}/.ethereum/bls/wallet"
      sed -i -e "s:{{BLSWalletDir}}:${WalletPath}:g" ${workspace}/storage/${node_id}/config.toml
 }
 

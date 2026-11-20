@@ -5,11 +5,11 @@ services:
     environment:
       NUMS_OF_VALIDATOR: 1
     volumes:
-      - ./storage:/root/storage
-      - ./scripts:/root/scripts
-      - ./config:/root/config
-      - ./init-holders:/root/init-holders
-    command: /root/scripts/bootstrap.sh
+      - ./storage:/home/bsc/storage
+      - ./scripts:/home/bsc/scripts:ro
+      - ./config:/home/bsc/config:ro
+      - ./init-holders:/home/bsc/init-holders:ro
+    command: /home/bsc/scripts/bootstrap.sh
   
   bsc-rpc:
     image: bsc
@@ -22,9 +22,9 @@ services:
     environment:
       NODE_ID: bsc-rpc
     volumes:
-      - ./storage/bsc-rpc:/root/.ethereum
-      - ./scripts:/scripts
-      - ./config:/config
+      - ./storage/bsc-rpc:/home/bsc/.ethereum
+      - ./scripts:/scripts:ro
+      - ./config:/config:ro
     entrypoint: [ "sh", "-c", "/scripts/bsc-rpc.sh" ]
     networks:
       default:
@@ -37,8 +37,8 @@ services:
       NODE_ID: bsc-validator1
       BOOTSTRAP_HOST: bsc-rpc
     volumes:
-      - ./storage/bsc-validator1:/root/.ethereum
-      - ./scripts:/scripts
+      - ./storage/bsc-validator1:/home/bsc/.ethereum
+      - ./scripts:/scripts:ro
     entrypoint: [ "sh", "-c", "/scripts/bsc-validator.sh" ]
     networks:
       default:
@@ -52,7 +52,7 @@ services:
       RPC_HOST: bsc-rpc
       RPC_PORT: 8545
     volumes:
-      - ./scripts:/scripts
+      - ./scripts:/scripts:ro
     depends_on:
       bsc-rpc:
         condition: service_healthy

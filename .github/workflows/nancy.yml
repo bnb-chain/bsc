@@ -1,5 +1,8 @@
 name: Go Nancy
 
+permissions:
+  contents: read
+
 on:
     # Scan changed files in PRs from same repository only:
     pull_request:
@@ -20,16 +23,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
 
     - name: Set up Go 1.x in order to write go.list file
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
       with:
         go-version: ${{ matrix.go-version }}
     
     - name: Install Nancy
       run: |
-        curl -sSL -o nancy https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/nancy-v1.0.52-linux-amd64
+        bash build/download-verified.sh https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/nancy-v1.0.52-linux-amd64 nancy
         chmod +x nancy
         sudo mv nancy /usr/local/bin/
         file /usr/local/bin/nancy
