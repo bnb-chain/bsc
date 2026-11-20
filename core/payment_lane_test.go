@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
@@ -13,10 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/jenner"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -245,7 +249,7 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 
 	const (
 		burnerInitCode = "0x635b6000566000526004601cf3"
-		burnGas        = 1_000_000
+		burnGas        = 5_000_000
 	)
 	created := crypto.CreateAddress(key.addr, 0)
 
@@ -255,7 +259,7 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 		switch i + 1 {
 		case 3:
 			deploy, err := types.SignNewTx(key.priv, signer, &types.LegacyTx{
-				Nonce: nonce, Value: common.Big0, Gas: 100_000,
+				Nonce: nonce, Value: common.Big0, Gas: 300_000,
 				GasPrice: big.NewInt(params.GWei), Data: common.FromHex(burnerInitCode),
 			})
 			require.NoError(t, err)
@@ -283,6 +287,47 @@ func TestPaymentLaneClassifiesAgainstTheLiveState(t *testing.T) {
 	defer chain.Stop()
 	_, err = chain.InsertChain(blocks)
 	require.NoError(t, err)
+
+	// Re-execute the deployment under Amsterdam, including a transfer whose
+	// destination code exists only in the preceding transaction's BAL changes.
+	parallelConfig := *config
+	parallelConfig.AmsterdamTime = config.JennerTime
+	hc, err := NewHeaderChain(chain.db, &parallelConfig, chain.engine, func() bool { return false })
+	require.NoError(t, err)
+	processor := NewStateProcessor(hc)
+	parent, block := blocks[1].Header(), blocks[2]
+	serialState, err := chain.StateAt(parent.Root, parent.Number, parent.Time)
+	require.NoError(t, err)
+	serial, err := processor.Process(context.Background(), block, serialState, nil, nil, vm.Config{DisableParallelExecution: true}, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, types.ReceiptStatusSuccessful, serial.Receipts[0].Status)
+	list, _ := serial.encodedAccessList()
+	block = block.WithAccessList(list)
+	parallelState, err := chain.StateAt(parent.Root, parent.Number, parent.Time)
+	require.NoError(t, err)
+	_, err = processor.Process(context.Background(), block, parallelState, nil, nil, vm.Config{}, nil)
+	require.NoError(t, err)
+
+	// Leave less room than the idle quota. Misclassifying the burner as a
+	// payment would incorrectly allow this block.
+	header := block.Header()
+	header.GasLimit = serial.GasUsed + 10*params.TxGas
+	block = block.WithSeal(header)
+	for _, disableParallel := range []bool{true, false} {
+		statedb, err := chain.StateAt(parent.Root, parent.Number, parent.Time)
+		require.NoError(t, err)
+		_, err = processor.Process(context.Background(), block, statedb, nil, nil, vm.Config{DisableParallelExecution: disableParallel}, nil)
+		require.ErrorIs(t, err, paymentlane.ErrViolated)
+	}
+	tdbConfig := *triedb.HashDefaults
+	tdbConfig.NoTries = true
+	fastTries := triedb.NewDatabase(chain.db, &tdbConfig)
+	defer fastTries.Close()
+	fastState, err := state.New(parent.Root, state.NewMPTDatabase(fastTries, nil).WithSnapshot(chain.Snapshots()))
+	require.NoError(t, err)
+	fastState.SetExpectedStateRoot(block.Root())
+	_, err = processor.Process(context.Background(), block, fastState, nil, nil, vm.Config{}, nil)
+	require.NoError(t, err, "NoTries must continue to skip the payment-lane verdict")
 }
 
 // The bid path's only lane verdict on a re-executed environment: whatever the quota still holds

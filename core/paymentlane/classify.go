@@ -33,6 +33,11 @@ func NewClassifier(isSystemTx SystemTxOracle, code CodeReader, listed map[common
 
 // Classify runs BEP-703 section 3.2's gates in order.
 func (c *Classifier) Classify(tx *types.Transaction) LaneType {
+	return c.ClassifyWithCode(tx, c.code)
+}
+
+// ClassifyWithCode uses the transaction's pre-state code with the parent-pinned listed set.
+func (c *Classifier) ClassifyWithCode(tx *types.Transaction, code CodeReader) LaneType {
 	if c.isSystemTx(tx) {
 		return GeneralLane
 	}
@@ -51,7 +56,7 @@ func (c *Classifier) Classify(tx *types.Transaction) LaneType {
 	if tx.Value().Sign() == 0 {
 		return GeneralLane
 	}
-	if hasCode(c.code.GetCodeHash(*to)) {
+	if hasCode(code.GetCodeHash(*to)) {
 		return GeneralLane
 	}
 	return PaymentLane
