@@ -17,6 +17,7 @@
 package ethtest
 
 import (
+	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -32,7 +33,6 @@ const (
 // Unexported devp2p protocol lengths from p2p package.
 const (
 	baseProtoLen = 16
-	ethProtoLen  = 22
 	// snapProtoLen accommodates snap/2 (EIP-8189) which extends snap/1 with two
 	// additional message codes (GetBlockAccessLists=0x08, BlockAccessLists=0x09).
 	// Using 10 is safe for snap/1 connections because the extra codes are simply
@@ -63,13 +63,14 @@ const (
 
 // getProto returns the protocol a certain message code is associated with
 // (assuming the negotiated capabilities are exactly {eth,snap})
-func getProto(code uint64) Proto {
+func (c *Conn) getProto(code uint64) Proto {
+	snapOffset := c.protoOffset(snapProto)
 	switch {
 	case code < baseProtoLen:
 		return baseProto
-	case code < baseProtoLen+ethProtoLen:
+	case code < snapOffset:
 		return ethProto
-	case code < baseProtoLen+ethProtoLen+snapProtoLen:
+	case code < snapOffset+snapProtoLen:
 		return snapProto
 	default:
 		panic("unhandled msg code beyond last protocol")
@@ -78,14 +79,27 @@ func getProto(code uint64) Proto {
 
 // protoOffset will return the offset at which the specified protocol's messages
 // begin.
-func protoOffset(proto Proto) uint64 {
+func (c *Conn) protoOffset(proto Proto) uint64 {
 	switch proto {
 	case baseProto:
 		return 0
 	case ethProto:
 		return baseProtoLen
 	case snapProto:
-		return baseProtoLen + ethProtoLen
+		// The snap namespace starts immediately after the negotiated eth
+		// namespace. Count up to the last message in each wire version.
+		switch c.negotiatedProtoVersion {
+		case eth.ETH68:
+			return baseProtoLen + eth.ReceiptsMsg + 1
+		case eth.ETH70:
+			return baseProtoLen + eth.BlockRangeUpdateMsg + 1
+		case eth.ETH71:
+			return baseProtoLen + eth.BlockAccessListsMsg + 1
+		case eth.ETH72:
+			return baseProtoLen + eth.CellsMsg + 1
+		default:
+			panic("unhandled negotiated eth version")
+		}
 	default:
 		panic("unhandled protocol")
 	}
