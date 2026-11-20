@@ -1637,17 +1637,17 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 	}
 
+	var allLogs []*types.Log
+	for _, receipt := range receipts {
+		allLogs = append(allLogs, receipt.Logs...)
+	}
+	evm := vm.NewEVM(core.NewEVMBlockContext(header, cx, nil), state, p.chainConfig, vm.Config{Tracer: tracer})
+	_, postBAL, err := core.PostExecution(context.Background(), p.chainConfig, header.Number, header.Time, allLogs, body.Withdrawals, evm, uint32(len(body.Transactions)+1))
+	evm.Release()
+	if err != nil {
+		return nil, nil, err
+	}
 	if p.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		var allLogs []*types.Log
-		for _, receipt := range receipts {
-			allLogs = append(allLogs, receipt.Logs...)
-		}
-		evm := vm.NewEVM(core.NewEVMBlockContext(header, cx, nil), state, p.chainConfig, vm.Config{Tracer: tracer})
-		_, postBAL, err := core.PostExecution(context.Background(), p.chainConfig, header.Number, header.Time, allLogs, body.Withdrawals, evm, uint32(len(body.Transactions)+1))
-		evm.Release()
-		if err != nil {
-			return nil, nil, err
-		}
 		blockAccessList.Merge(postBAL)
 		accessList = blockAccessList.ToEncodingObj()
 		hash := accessList.Hash()
