@@ -717,6 +717,12 @@ func EncodeSigHeader(w io.Writer, header *Header, chainId *big.Int) {
 			toEncode = append(toEncode, header.RequestsHash)
 		}
 	}
+	if header.BlockAccessListHash != nil {
+		toEncode = append(toEncode, header.BlockAccessListHash)
+	}
+	if header.SlotNumber != nil {
+		toEncode = append(toEncode, header.SlotNumber)
+	}
 	err := rlp.Encode(w, toEncode)
 	if err != nil {
 		panic("can't encode: " + err.Error())
