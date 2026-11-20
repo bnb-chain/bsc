@@ -4100,7 +4100,7 @@ func TestAncestryCycleCancellation(t *testing.T) {
 				rawdb.WriteHeader(db, second)
 				close(cancel)
 			}
-			if _, err := s.gapHashChain(prev, target, cancel); err != ErrCancelled {
+			if _, _, err := s.gapHashChain(prev, target, cancel); err != ErrCancelled {
 				t.Fatalf("ancestry cancellation = %v", err)
 			}
 			wantCalls := 1

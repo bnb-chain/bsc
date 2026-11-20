@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -102,7 +103,7 @@ func TestCatchUpRetentionPolicy(t *testing.T) {
 
 func TestSyncV2CatchUpRecoveryPolicy(t *testing.T) {
 	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
-		for _, reason := range []string{"unavailable-bal", "expired-pivot"} {
+		for _, reason := range []string{"unavailable-bal", "expired-pivot", "missing-target-bal", "missing-gap-bal", "cancelled-missing-bal"} {
 			t.Run(scheme+"/"+reason, func(t *testing.T) {
 				_, treeA, elemsA := makeAccountTrieNoStorage(20, scheme)
 				_, treeB, elemsB := makeAccountTrieNoStorage(30, scheme)
@@ -135,10 +136,32 @@ func TestSyncV2CatchUpRecoveryPolicy(t *testing.T) {
 					}
 					return p.remote.OnAccessLists(p, id, values)
 				}
-				if reason == "expired-pivot" {
+				switch reason {
+				case "expired-pivot":
 					target.Number = new(big.Int).SetUint64(from.Number.Uint64() + params.FullImmutabilityThreshold + 1)
+				case "missing-target-bal", "cancelled-missing-bal":
+					target.BlockAccessListHash = nil
+				case "missing-gap-bal":
+					gap := mkPivot(101, treeA.Hash())
+					gap.ParentHash = from.Hash()
+					rawdb.WriteHeader(s.db, gap)
+					target.Number = big.NewInt(102)
+					target.ParentHash = gap.Hash()
+				}
+				if reason == "cancelled-missing-bal" {
+					term()
 				}
 				err := s.Sync(target, cancel)
+				if reason == "cancelled-missing-bal" {
+					if err != ErrCancelled {
+						t.Fatalf("error = %v, want cancelled", err)
+					}
+					progress := decodeJournal(t, s.db)
+					if progress.Pivot == nil || progress.Pivot.Hash() != from.Hash() || progress.Phase != phaseComplete {
+						t.Fatal("cancelled catch-up discarded the previous checkpoint")
+					}
+					return
+				}
 				if reason == "unavailable-bal" {
 					if err != errAccessListUnavailable {
 						t.Fatalf("error = %v, want unavailable BAL", err)
@@ -160,7 +183,7 @@ func TestSyncV2CatchUpRecoveryPolicy(t *testing.T) {
 					t.Fatal("did not restart the account download")
 				}
 				if peer.nAccessListRequests.Load() != 0 {
-					t.Fatal("expired checkpoint requested BALs")
+					t.Fatal("unusable checkpoint requested BALs")
 				}
 				if s.getPhase() != phaseComplete || s.pivot.Hash() != target.Hash() {
 					t.Fatal("recovery did not complete at the target pivot")
@@ -173,5 +196,83 @@ func TestSyncV2CatchUpRecoveryPolicy(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestSyncV2RetriesAfterBALCancellation(t *testing.T) {
+	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+		t.Run(scheme, func(t *testing.T) {
+			fix := seedCompletedSync(t, scheme)
+			defer fix.db.Close()
+			s := newSyncerV2(fix.db, scheme)
+			peer := newTestPeerV2("retry", t, func() {})
+			peer.remote, peer.accessLists = s, fix.bals
+			requests := make(chan uint64, 2)
+			release := make(chan struct{})
+			var count atomic.Int32
+			peer.accessListRequestHandler = func(p *testPeerV2, id uint64, hashes []common.Hash, max int) error {
+				switch count.Add(1) {
+				case 1:
+					requests <- id
+					return nil
+				case 2:
+					requests <- id
+					<-release
+				}
+				return defaultAccessListRequestHandler(p, id, hashes, max)
+			}
+			if err := s.Register(peer); err != nil {
+				t.Fatal(err)
+			}
+			start := func() (func(), <-chan error) {
+				cancel := make(chan struct{})
+				done := make(chan error, 1)
+				go func() {
+					defer close(done)
+					done <- s.Sync(fix.header102, cancel)
+				}()
+				return sync.OnceFunc(func() { close(cancel) }), done
+			}
+			request := func() uint64 {
+				t.Helper()
+				select {
+				case id := <-requests:
+					return id
+				case <-time.After(5 * time.Second):
+					t.Fatal("BAL request was not sent")
+					return 0
+				}
+			}
+			cancel, done := start()
+			defer func() { cancel(); <-done }()
+			oldID := request()
+			cancel()
+			if err := <-done; err != ErrCancelled {
+				t.Fatalf("first cycle: %v, want cancelled", err)
+			}
+			cancelRetry, retryDone := start()
+			unblock := sync.OnceFunc(func() { close(release) })
+			defer func() { unblock(); cancelRetry(); <-retryDone }()
+			request()
+			if err := s.OnAccessLists(peer, oldID, rlp.RawList[rlp.RawValue]{}); err != nil {
+				t.Fatal(err)
+			}
+			s.lock.RLock()
+			_, idle := s.accessListIdlers[peer.ID()]
+			s.lock.RUnlock()
+			if idle {
+				t.Fatal("late reply made the busy peer idle")
+			}
+			unblock()
+			select {
+			case err := <-retryDone:
+				if err != nil {
+					t.Fatalf("retry with the same peer: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("retry did not complete")
+			}
+			verifyTrie(scheme, fix.db, fix.header102.Root, t)
+		})
 	}
 }

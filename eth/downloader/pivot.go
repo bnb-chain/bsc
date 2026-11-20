@@ -1,4 +1,3 @@
-// Copyright 2026 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -67,7 +66,7 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 	header := head
 	for header.Number.Cmp(frozen.Number) > 0 {
 		var err error
-		header, err = d.syncHeader(header.ParentHash, header.Number.Uint64()-1, nil)
+		header, err = d.queryHeader(header.ParentHash, header.Number.Uint64()-1, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -78,10 +77,10 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 	return frozen, nil
 }
 
-// syncHeader resolves a header by hash, including headers not yet persisted by
+// queryHeader resolves a header by hash, including headers not yet persisted by
 // InsertReceiptChain. Reverse batches amortize ancestry walks; the bounded cache
 // is content-addressed and never changes canonical indices or on-disk progress.
-func (d *Downloader) syncHeader(hash common.Hash, number uint64, cancel <-chan struct{}) (*types.Header, error) {
+func (d *Downloader) queryHeader(hash common.Hash, number uint64, cancel <-chan struct{}) (*types.Header, error) {
 	select {
 	case <-cancel:
 		return nil, snap.ErrCancelled
@@ -92,7 +91,7 @@ func (d *Downloader) syncHeader(hash common.Hash, number uint64, cancel <-chan s
 	if header := rawdb.ReadHeader(d.stateDB, hash, number); header != nil {
 		return header, nil
 	}
-	if header, ok := d.syncHeaders.Get(hash); ok && header.Number.Uint64() == number {
+	if header, ok := d.headerCache.Get(hash); ok && header.Number.Uint64() == number {
 		return header, nil
 	}
 	peer := d.peers.Peer(d.cancelPeer)
@@ -118,10 +117,13 @@ func (d *Downloader) syncHeader(hash common.Hash, number uint64, cancel <-chan s
 		if header == nil || header.Number == nil || !header.Number.IsUint64() || header.Number.Uint64() != number-uint64(i) || header.Hash() != want {
 			return nil, fmt.Errorf("%w: invalid sync ancestry at header %d", errBadPeer, i)
 		}
+		if err := header.SanityCheck(); err != nil {
+			return nil, fmt.Errorf("%w: invalid sync header: %v", errBadPeer, err)
+		}
 		want = header.ParentHash
 	}
 	for _, header := range headers {
-		d.syncHeaders.Add(header.Hash(), header)
+		d.headerCache.Add(header.Hash(), header)
 	}
 	return headers[0], nil
 }

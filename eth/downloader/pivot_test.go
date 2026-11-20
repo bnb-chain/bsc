@@ -87,7 +87,7 @@ func newPivotHeaderDownloader(t *testing.T) (*Downloader, *pivotHeaderPeer, []*t
 		headers[i] = h
 		p.headers[h.Hash()] = h
 	}
-	d := &Downloader{stateDB: db, peers: newPeerSet(), cancelPeer: "pivot", cancelCh: make(chan struct{}), syncHeaders: lru.NewCache[common.Hash, *types.Header](1024)}
+	d := &Downloader{stateDB: db, peers: newPeerSet(), cancelPeer: "pivot", cancelCh: make(chan struct{}), headerCache: lru.NewCache[common.Hash, *types.Header](1024)}
 	if err := d.peers.Register(newPeerConnection("pivot", eth.ETH70, p, log.New())); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestResumeFrozenPivot(t *testing.T) {
 			}
 			journal := append([]byte{2}, progress...)
 			rawdb.WriteSnapshotSyncStatus(d.stateDB, journal)
-			d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.syncHeader)
+			d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.queryHeader)
 			got, err := d.resumeFrozenPivot(head, pivot)
 			if name == "lagging-peer" || name == "missing-header" || name == "probe-limit" {
 				if err == nil {
@@ -156,7 +156,7 @@ func TestSyncHeaderBatchAndValidation(t *testing.T) {
 	t.Run("batch-cache", func(t *testing.T) {
 		d, p, headers := newPivotHeaderDownloader(t)
 		for i := len(headers) - 1; i >= 0; i-- {
-			got, err := d.syncHeader(headers[i].Hash(), headers[i].Number.Uint64(), nil)
+			got, err := d.queryHeader(headers[i].Hash(), headers[i].Number.Uint64(), nil)
 			if err != nil || got.Hash() != headers[i].Hash() {
 				t.Fatalf("header %d: %v", i, err)
 			}
@@ -168,14 +168,26 @@ func TestSyncHeaderBatchAndValidation(t *testing.T) {
 			t.Fatalf("requests = %d, want one reverse batch", p.requests.Load())
 		}
 	})
+	t.Run("invalid-header", func(t *testing.T) {
+		d, p, headers := newPivotHeaderDownloader(t)
+		header := types.CopyHeader(headers[0])
+		header.BaseFee = new(big.Int).Lsh(big.NewInt(1), 256)
+		p.headers[header.Hash()] = header
+		if _, err := d.queryHeader(header.Hash(), header.Number.Uint64(), nil); !errors.Is(err, errBadPeer) {
+			t.Fatalf("error = %v, want bad peer", err)
+		}
+		if d.headerCache.Len() != 0 {
+			t.Fatal("invalid header polluted ancestry cache")
+		}
+	})
 	t.Run("malformed-chain", func(t *testing.T) {
 		d, p, headers := newPivotHeaderDownloader(t)
 		p.malformed = true
-		_, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), nil)
+		_, err := d.queryHeader(headers[5].Hash(), headers[5].Number.Uint64(), nil)
 		if !errors.Is(err, errBadPeer) {
 			t.Fatalf("error = %v, want bad peer", err)
 		}
-		if d.syncHeaders.Len() != 0 {
+		if d.headerCache.Len() != 0 {
 			t.Fatal("malformed batch polluted ancestry cache")
 		}
 	})
@@ -186,7 +198,7 @@ func TestSyncHeaderCancellation(t *testing.T) {
 	p.stall = true
 	p.requested = make(chan struct{})
 	result := make(chan error, 1)
-	go func() { _, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), nil); result <- err }()
+	go func() { _, err := d.queryHeader(headers[5].Hash(), headers[5].Number.Uint64(), nil); result <- err }()
 	<-p.requested
 	close(d.cancelCh)
 	select {
@@ -251,7 +263,7 @@ func TestStateCycleHeaderCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	rawdb.WriteSnapshotSyncStatus(d.stateDB, append([]byte{2}, progress...))
-	d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.syncHeader)
+	d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.queryHeader)
 	s := newStateSync(d, headers[5])
 	go s.run()
 	defer func() {
@@ -295,13 +307,13 @@ func TestStateCycleHeaderCancellation(t *testing.T) {
 	// The same downloader must remain usable for the next cycle's ancestry.
 	p.stall = false
 	p.requested = nil
-	got, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), make(chan struct{}))
+	got, err := d.queryHeader(headers[5].Hash(), headers[5].Number.Uint64(), make(chan struct{}))
 	if err != nil || got == nil || got.Hash() != headers[5].Hash() {
 		t.Fatalf("next cycle header request failed: %v", err)
 	}
 	cancel := make(chan struct{})
 	close(cancel)
-	if _, err := d.syncHeader(headers[5].Hash(), headers[5].Number.Uint64(), cancel); err != snap.ErrCancelled {
+	if _, err := d.queryHeader(headers[5].Hash(), headers[5].Number.Uint64(), cancel); err != snap.ErrCancelled {
 		t.Fatalf("cached header ignored cancellation: %v", err)
 	}
 	if p.requests.Load() != 2 {

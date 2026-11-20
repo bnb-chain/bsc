@@ -34,7 +34,7 @@ func newPivotMergeDownloader(t *testing.T, pivot *types.Header, syncer snap.Sync
 	d := &Downloader{
 		queue:          newQueue(16, 16),
 		stateDB:        rawdb.NewMemoryDatabase(),
-		syncHeaders:    lru.NewCache[common.Hash, *types.Header](1024),
+		headerCache:    lru.NewCache[common.Hash, *types.Header](1024),
 		pivotHeader:    pivot,
 		snapSyncer:     syncer,
 		stateSyncStart: make(chan *stateSync),

@@ -154,7 +154,7 @@ type Downloader struct {
 
 	snapSyncer     snap.Syncer // snap/1 or snap/2 state syncer, selected at construction
 	stateSyncStart chan *stateSync
-	syncHeaders    *lru.Cache[common.Hash, *types.Header] // Hash-anchored, uncommitted ancestry
+	headerCache    *lru.Cache[common.Hash, *types.Header] // Hash-anchored, uncommitted ancestry
 
 	// Cancellation and termination
 	cancelPeer string         // Identifier of the peer currently being used as the master (cancel on drop)
@@ -277,11 +277,11 @@ func New(stateDb ethdb.Database, mode ethconfig.SyncMode, chain BlockChain, drop
 		quitCh:            make(chan struct{}),
 		stateSyncStart:    make(chan *stateSync),
 		syncStartBlock:    chain.CurrentSnapBlock().Number.Uint64(),
-		syncHeaders:       lru.NewCache[common.Hash, *types.Header](1024),
+		headerCache:       lru.NewCache[common.Hash, *types.Header](1024),
 	}
 	// Select the snap/1 or snap/2 state syncer based on the feature flag.
 	if snapV2 {
-		dl.snapSyncer = snap.NewV2Syncer(stateDb, chain.TrieDB().Scheme(), dl.syncHeader)
+		dl.snapSyncer = snap.NewV2Syncer(stateDb, chain.TrieDB().Scheme(), dl.queryHeader)
 	} else {
 		dl.snapSyncer = snap.NewV1Syncer(stateDb, chain.TrieDB().Scheme())
 	}
