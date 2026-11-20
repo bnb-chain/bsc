@@ -664,14 +664,9 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 		}
 	}
 
-	// BlockAccessListHash (EIP-7928) and SlotNumber (EIP-7843) are trailing
-	// rlp:"optional" fields that the block seal does not commit to. Before
-	// Amsterdam they must be absent: honest blocks never set them, so without
-	// this check an unprivileged peer could append a crafted value to a
-	// validator-signed block, changing its block hash while leaving the seal
-	// valid. From Amsterdam they are required; their content is then bound by
-	// state validation (BlockAccessListHash is recomputed from execution) and
-	// the slot rules, not by the seal.
+	// BlockAccessListHash (EIP-7928) and SlotNumber (EIP-7843) are required
+	// after Amsterdam and forbidden before it. Their presence selects the
+	// seal-signing encoding; the BAL is also checked against execution.
 	amsterdam := chain.Config().IsAmsterdam(header.Number, header.Time)
 	if !amsterdam {
 		if header.BlockAccessListHash != nil {
