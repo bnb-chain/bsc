@@ -31,8 +31,22 @@ var (
 	// serveTimeHistName is the prefix of the per-request serving time histograms.
 	serveTimeHistName = "rpc/duration"
 
-	RpcServingTimer = metrics.NewRegisteredTimer("rpc/duration/all", nil)
+	RpcServingTimer = newRpcServingTimer()
 )
+
+// newRpcServingTimer builds the RPC serving-time timer consulted by eth_health.
+// Its histogram uses an always-on sample so that the health check reflects
+// actual serving latency even when optional metrics collection (--metrics) is
+// disabled; with the default gated sample the timer never recorded anything
+// and eth_health always reported healthy.
+func newRpcServingTimer() *metrics.Timer {
+	t := metrics.NewCustomTimer(
+		metrics.NewHistogram(metrics.NewAlwaysOnExpDecaySample(1028, 0.015)),
+		metrics.NewMeter(),
+	)
+	_ = metrics.Register("rpc/duration/all", t)
+	return t
+}
 
 // updateServeTimeHistogram tracks the serving time of a remote RPC call.
 func updateServeTimeHistogram(method string, success bool, elapsed time.Duration) {

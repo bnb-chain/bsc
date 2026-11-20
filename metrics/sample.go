@@ -22,6 +22,7 @@ var (
 	_ Sample = (*ExpDecaySample)(nil)
 	_ Sample = (*UniformSample)(nil)
 	_ Sample = (*resettingSample)(nil)
+	_ Sample = (*alwaysOnExpDecaySample)(nil)
 )
 
 // sampleSnapshot is a read-only copy of a Sample.
@@ -234,6 +235,26 @@ func (s *ExpDecaySample) update(t time.Time, v int64) {
 			s.values.Push(v)
 		}
 	}
+}
+
+// alwaysOnExpDecaySample is an exponentially-decaying sample that records
+// values regardless of the global metrics-enabled flag. It is intended for
+// latency measurements that feed health checks (e.g. the RPC serving time
+// behind eth_health), which must keep working even when optional metrics
+// collection is disabled.
+type alwaysOnExpDecaySample struct {
+	*ExpDecaySample
+}
+
+// NewAlwaysOnExpDecaySample constructs an exponentially-decaying sample whose
+// Update is not gated by the global metrics-enabled flag.
+func NewAlwaysOnExpDecaySample(reservoirSize int, alpha float64) Sample {
+	return &alwaysOnExpDecaySample{NewExpDecaySample(reservoirSize, alpha).(*ExpDecaySample)}
+}
+
+// Update samples a new value even when metrics collection is disabled.
+func (s *alwaysOnExpDecaySample) Update(v int64) {
+	s.update(time.Now(), v)
 }
 
 // SamplePercentile returns an arbitrary percentile of the slice of int64.
