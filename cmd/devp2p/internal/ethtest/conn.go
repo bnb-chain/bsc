@@ -66,15 +66,12 @@ func (s *Suite) dialAs(key *ecdsa.PrivateKey) (*Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	// TODO(BSC): Enable ETH/71 after adapting the handshake and block propagation
-	// handlers, and testing sync, v0 blob relay, unavailable BAL responses and
-	// ETH/70 and ETH/68 fallback. Update the node's ProtocolVersions, these caps
-	// and ourHighestProtoVersion together when enabling it.
 	conn.caps = []p2p.Cap{
+		{Name: "eth", Version: eth.ETH71},
 		{Name: "eth", Version: eth.ETH70},
 		{Name: "eth", Version: eth.ETH68},
 	}
-	conn.ourHighestProtoVersion = eth.ETH70
+	conn.ourHighestProtoVersion = eth.ETH71
 	return &conn, nil
 }
 
@@ -148,7 +145,7 @@ func (c *Conn) ReadMsg(proto Proto, code uint64, msg any) error {
 		if err != nil {
 			return err
 		}
-		if protoOffset(proto)+code == got {
+		if c.protoOffset(proto)+code == got {
 			return rlp.DecodeBytes(data, msg)
 		}
 	}
@@ -161,7 +158,7 @@ func (c *Conn) Write(proto Proto, code uint64, msg any) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.Conn.Write(protoOffset(proto)+code, payload)
+	_, err = c.Conn.Write(c.protoOffset(proto)+code, payload)
 	return err
 }
 
@@ -192,7 +189,7 @@ func (c *Conn) ReadEth() (any, error) {
 			c.Write(baseProto, pongMsg, []byte{})
 			continue
 		}
-		if getProto(code) != ethProto {
+		if c.getProto(code) != ethProto {
 			// Read until eth message.
 			continue
 		}
@@ -253,11 +250,11 @@ func (c *Conn) ReadSnap() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if getProto(code) != snapProto {
+		if c.getProto(code) != snapProto {
 			// Read until snap message.
 			continue
 		}
-		code -= protoOffset(snapProto)
+		code -= c.protoOffset(snapProto)
 
 		var msg any
 		switch int(code) {
@@ -405,7 +402,7 @@ func (c *Conn) statusExchange(chain *Chain, status *eth.StatusPacket) error {
 			return fmt.Errorf("failed to read from connection: %w", err)
 		}
 		switch code {
-		case eth.StatusMsg + protoOffset(ethProto):
+		case eth.StatusMsg + c.protoOffset(ethProto):
 			if c.negotiatedProtoVersion == 0 {
 				return errors.New("eth protocol version must be set in Conn")
 			}
