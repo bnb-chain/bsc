@@ -12,6 +12,8 @@ import (
 const (
 	Bsc1 = 1
 	Bsc2 = 2
+	// Versions 3 and 4 were used for legacy, non-consensus BAL formats.
+	Bsc5 = 5
 )
 
 // ProtocolName is the official short name of the `bsc` protocol used during

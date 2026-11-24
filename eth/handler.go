@@ -870,6 +870,9 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
+		balPayload := sync.OnceValues(func() ([]byte, error) {
+			return eth.EncodeNewBlockWithBAL(block, td)
+		})
 
 		// Broadcast the block to peers based on broadcast strategy.
 		totalPeers := len(peers)
@@ -888,7 +891,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 				"hash", hash, "peer", peer.ID(),
 				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 			)
-			peer.AsyncSendNewBlock(block, td)
+			peer.AsyncSendNewBlock(block, td, balPayload)
 		}
 
 		// Step 3: Handle proxyed peers.
@@ -900,7 +903,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 					)
-					peer.AsyncSendNewBlock(block, td)
+					peer.AsyncSendNewBlock(block, td, balPayload)
 					proxyedPeersCnt++
 				}
 			}
@@ -915,7 +918,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 					)
-					peer.AsyncSendNewBlock(block, td)
+					peer.AsyncSendNewBlock(block, td, balPayload)
 					evnPeersCnt++
 				}
 			}

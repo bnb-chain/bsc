@@ -407,6 +407,20 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
+	if len(ann.BlockAccessList) != 0 {
+		if !peer.SupportsBAL() || !backend.Chain().Config().IsAmsterdam(ann.Block.Number(), ann.Block.Time()) {
+			return fmt.Errorf("unexpected block access list attachment")
+		}
+		block, err := ann.Block.WithAccessListRLP(ann.BlockAccessList)
+		if err != nil {
+			return err
+		}
+		ann.Block = block
+	} else if peer.SupportsBAL() && backend.Chain().Config().IsAmsterdam(ann.Block.Number(), ann.Block.Time()) {
+		// Reject the incomplete message before marking or enqueuing the block;
+		// the same hash can still arrive later with its committed BAL.
+		return nil
+	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
 

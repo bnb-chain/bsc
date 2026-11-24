@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -931,10 +932,20 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 			block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 		}
 
-		defer func() { f.done <- hash }()
+		defer func() {
+			select {
+			case f.done <- hash:
+			case <-f.quit:
+			}
+		}()
 		// Quickly validate the header and propagate the block if it passes
 		switch err := f.verifyHeader(block.Header()); err {
 		case nil:
+			// Only an empty BAL can be attached without waiting on the network.
+			if hash := block.BlockAccessListHash(); block.AccessList() == nil && hash != nil && *hash == types.EmptyBlockAccessListHash {
+				block = block.WithAccessListUnsafe(new(bal.BlockAccessList))
+				block.ReceivedAt, block.ReceivedFrom = op.block.ReceivedAt, op.block.ReceivedFrom
+			}
 			// All ok, quickly propagate to our peers
 			blockBroadcastOutTimer.UpdateSince(block.ReceivedAt)
 			go f.broadcastBlock(peer, block, true)
