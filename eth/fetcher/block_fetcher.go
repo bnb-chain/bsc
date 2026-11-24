@@ -18,6 +18,7 @@
 package fetcher
 
 import (
+	"errors"
 	"math/rand"
 	"time"
 
@@ -359,10 +360,16 @@ func (f *BlockFetcher) asyncFetchRangeBlocks(announce *blockAnnounce) {
 		}
 		log.Debug("Quick block fetching", "peer", announce.origin, "hash", announce.hash)
 		blocks, err := f.fetchRangeBlocks(announce.origin, announce.number, announce.hash, 1)
-		f.quickBlockFetchingCh <- &BlockFetchingEntry{
+		if err == nil && (len(blocks) != 1 || blocks[0] == nil || blocks[0].Hash() != announce.hash) {
+			err = errors.New("range response does not contain the announced block")
+		}
+		select {
+		case f.quickBlockFetchingCh <- &BlockFetchingEntry{
 			announce: announce,
 			blocks:   blocks,
 			err:      err,
+		}:
+		case <-f.quit:
 		}
 	}()
 }

@@ -345,8 +345,15 @@ func newHandler(config *handlerConfig) (*handler, error) {
 
 		blocks := make([]*types.Block, len(res))
 		for i, item := range res {
-			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
-			block = block.WithSidecars(item.Sidecars)
+			block, err := item.ToBlock()
+			if err != nil {
+				h.removePeer(peer)
+				return nil, err
+			}
+			if block.AccessList() != nil && !h.chain.Config().IsAmsterdam(block.Number(), block.Time()) {
+				h.removePeer(peer)
+				return nil, errors.New("block access list before Amsterdam")
+			}
 			block.ReceivedAt = time.Now()
 			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
