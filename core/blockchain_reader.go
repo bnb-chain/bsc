@@ -359,6 +359,18 @@ func (bc *BlockChain) GetAccessListRLP(hash common.Hash) rlp.RawValue {
 	return rawdb.ReadAccessListRLP(bc.db, hash, number)
 }
 
+// GetAccessListRLPForBlock retrieves the BAL for an already loaded block.
+func (bc *BlockChain) GetAccessListRLPForBlock(block *types.Block) rlp.RawValue {
+	number := block.NumberU64()
+	// Skip a repeat lookup if loading the block yielded no BAL below the BAL tail.
+	if block.AccessList() == nil {
+		if tail, err := bc.db.Tail(rawdb.ChainFreezerBALGroup); err == nil && number < tail {
+			return nil
+		}
+	}
+	return rawdb.ReadAccessListRLP(bc.db, block.Hash(), number)
+}
+
 // GetUnclesInChain retrieves all the uncles from a given block backwards until
 // a specific distance is reached.
 func (bc *BlockChain) GetUnclesInChain(block *types.Block, length int) []*types.Header {
