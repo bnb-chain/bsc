@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"errors"
 	"math/big"
 	"time"
 
@@ -248,6 +249,9 @@ func (h *handler) doSync(op *chainSyncOp) error {
 	// Run the sync cycle, and disable snap sync if we're past the pivot block
 	err := h.downloader.LegacySync(op.peer.ID(), op.head, op.peer.Name(), op.td, h.chain.Config().TerminalTotalDifficulty, op.mode)
 	if err != nil {
+		if errors.Is(err, downloader.ErrPivotBehind) {
+			op.peer.MarkLaggingIfHead(op.head, time.Now().Add(forceSyncCycle))
+		}
 		return err
 	}
 	h.enableSyncedFeatures()

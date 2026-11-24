@@ -147,6 +147,13 @@ func (syncerV1Adapter) FrozenPivot() *types.Header { return nil }
 // (different return type) and OnTrieNodes (absent) need wrapping.
 type syncerV2Adapter struct{ *syncerV2 }
 
+// CheckpointPivot returns the pivot associated with the current snap/2 progress.
+func (s syncerV2Adapter) CheckpointPivot() *types.Header {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.pivot
+}
+
 func (s syncerV2Adapter) Progress() Progress {
 	progress := s.syncerV2.Progress()
 	return Progress{

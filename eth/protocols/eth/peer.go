@@ -83,9 +83,10 @@ type Peer struct {
 	lastRange       atomic.Pointer[BlockRangeUpdatePacket]
 	statusExtension *UpgradeStatusExtension
 
-	lagging bool        // lagging peer is still connected, but won't be used to sync.
-	head    common.Hash // Latest advertised head block hash
-	td      *big.Int    // Latest advertised head block total difficulty
+	lagging      bool        // lagging peer is still connected, but won't be used to sync.
+	laggingUntil time.Time   // Temporary exclusion for a peer below the snap checkpoint.
+	head         common.Hash // Latest advertised head block hash
+	td           *big.Int    // Latest advertised head block total difficulty
 
 	knownBlocks     *knownCache            // Set of block hashes known to be known by this peer
 	queuedBlocks    chan *blockPropagation // Queue of blocks to broadcast to the peer
@@ -183,11 +184,24 @@ func (p *Peer) Version() uint {
 }
 
 func (p *Peer) Lagging() bool {
-	return p.lagging
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	return p.lagging || time.Now().Before(p.laggingUntil)
 }
 
 func (p *Peer) MarkLagging() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	p.lagging = true
+}
+
+// MarkLaggingIfHead temporarily excludes a peer that still advertises head.
+func (p *Peer) MarkLaggingIfHead(head common.Hash, until time.Time) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.head == head {
+		p.laggingUntil = until
+	}
 }
 
 // Head retrieves the current head hash and total difficulty of the peer.
@@ -204,6 +218,7 @@ func (p *Peer) SetHead(hash common.Hash, td *big.Int) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.lagging = false
+	p.laggingUntil = time.Time{}
 	copy(p.head[:], hash[:])
 	p.td.Set(td)
 }

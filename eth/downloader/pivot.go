@@ -18,6 +18,7 @@ package downloader
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -27,6 +28,49 @@ import (
 )
 
 var errFrozenPivotUnavailable = errors.New("cannot establish frozen pivot ancestry")
+
+// ErrPivotBehind signals that the selected target is below the snap checkpoint.
+var ErrPivotBehind = errors.New("snap sync target is behind the persisted pivot")
+
+const (
+	checkpointRetryTargets = 3
+	checkpointRetryDelay   = 10 * time.Minute
+)
+
+type checkpointRetry struct {
+	hash    common.Hash
+	since   time.Time
+	targets map[common.Hash]struct{}
+}
+
+// selectSnapPivot runs before starting a state sync cycle. Only the downloader
+// decides when a peer-driven target may replace a higher snap checkpoint.
+func (d *Downloader) selectSnapPivot(head, candidate *types.Header, now time.Time) (*types.Header, error) {
+	pivot, err := d.resumeFrozenPivot(head, candidate)
+	if err != nil {
+		return nil, err
+	}
+	syncer, ok := d.snapSyncer.(interface{ CheckpointPivot() *types.Header })
+	if !ok {
+		return pivot, nil // snap/1 has no checkpoint pivot.
+	}
+	checkpoint := syncer.CheckpointPivot()
+	if checkpoint == nil || pivot.Number.Cmp(checkpoint.Number) >= 0 {
+		d.pivotRetry = checkpointRetry{}
+		return pivot, nil
+	}
+	retry := &d.pivotRetry
+	if hash := checkpoint.Hash(); retry.targets == nil || retry.hash != hash {
+		*retry = checkpointRetry{hash: hash, since: now, targets: make(map[common.Hash]struct{})}
+	}
+	if len(retry.targets) < checkpointRetryTargets {
+		retry.targets[pivot.Hash()] = struct{}{}
+	}
+	if len(retry.targets) < checkpointRetryTargets || now.Sub(retry.since) < checkpointRetryDelay {
+		return nil, fmt.Errorf("%w: target %d, checkpoint %d", ErrPivotBehind, pivot.Number, checkpoint.Number)
+	}
+	return pivot, nil
+}
 
 // movePivot is shared by both staleness paths. A delayed header response must
 // not overwrite a newer choice made by the content processor, or a frozen pivot.
@@ -50,7 +94,7 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 		return pivot, nil
 	}
 	if head.Number.Cmp(frozen.Number) < 0 {
-		return nil, fmt.Errorf("%w: peer head %d below pivot %d", errFrozenPivotUnavailable, head.Number, frozen.Number)
+		return pivot, nil
 	}
 	if snap.CatchUpExceedsRetention(frozen, pivot) {
 		// The state syncer will discard this expired checkpoint under the same
