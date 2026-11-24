@@ -1590,10 +1590,8 @@ func (d *Downloader) processSnapSyncContent() error {
 	// pivot moves, so need to unblock the loop. These fields will accumulate
 	// the results in the meantime.
 	//
-	// Note, there's no issue with memory piling up since after 64 blocks the
-	// pivot will forcefully move so these accumulators will be dropped. The
-	// exception is snap/2 trie generation, where the pivot is frozen on
-	// purpose and results accumulate until the generation finishes.
+	// A moving pivot limits the size of oldTail. Once we buffer a frozen
+	// pivot, wait for generation so the result queue can throttle downloads.
 	var (
 		oldPivot *fetchResult   // Locked in pivot block, might change eventually
 		oldTail  []*fetchResult // Downloaded content after the pivot
@@ -1698,9 +1696,16 @@ func (d *Downloader) processSnapSyncContent() error {
 		if P != nil {
 			oldPivot = P
 
-			// Wait for completion, occasionally checking for pivot staleness
-			timer.Reset(time.Second)
+			// Once generation freezes this pivot, leave subsequent results in the
+			// bounded queue and commit the buffered pivot as soon as sync completes.
+			var checkStaleness <-chan time.Time
+			if frozen := d.snapSyncer.FrozenPivot(); frozen == nil || frozen.Hash() != P.Header.Hash() {
+				timer.Reset(time.Second)
+				checkStaleness = timer.C
+			}
 			select {
+			case <-d.cancelCh:
+				return errCanceled
 			case <-sync.done:
 				if sync.err != nil {
 					return sync.err
@@ -1711,9 +1716,9 @@ func (d *Downloader) processSnapSyncContent() error {
 				if err := d.commitPivotBlock(P); err != nil {
 					return err
 				}
-				oldPivot = nil
+				oldPivot, oldTail = nil, nil
 
-			case <-timer.C:
+			case <-checkStaleness:
 				oldTail = afterP
 				continue
 			}

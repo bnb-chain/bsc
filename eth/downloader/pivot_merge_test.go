@@ -11,23 +11,32 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // Only state synchronization is exercised; peer packet methods are unused.
 type pivotMergeSyncer struct {
 	snap.Syncer
-	run    func(*types.Header, chan struct{}) error
-	frozen atomic.Pointer[types.Header]
+	run           func(*types.Header, chan struct{}) error
+	frozen        atomic.Pointer[types.Header]
+	onFrozenCheck func()
 }
 
 func (s *pivotMergeSyncer) Sync(pivot *types.Header, cancel chan struct{}) error {
 	return s.run(pivot, cancel)
 }
 
-func (s *pivotMergeSyncer) FrozenPivot() *types.Header { return s.frozen.Load() }
+func (s *pivotMergeSyncer) FrozenPivot() *types.Header {
+	header := s.frozen.Load()
+	if s.onFrozenCheck != nil {
+		s.onFrozenCheck()
+	}
+	return header
+}
+
+func (*pivotMergeSyncer) Version() uint { return snap.SNAP2 }
 
 func newPivotMergeDownloader(t *testing.T, pivot *types.Header, syncer snap.Syncer) *Downloader {
 	t.Helper()
@@ -153,5 +162,82 @@ func TestSnapContentFreezesDuringRetarget(t *testing.T) {
 	}
 	if number := rawdb.ReadLastPivotNumber(d.stateDB); number == nil || *number != old.Number.Uint64() {
 		t.Fatal("rollback boundary did not follow the restored pivot")
+	}
+}
+
+type pivotCommitChain struct {
+	BlockChain
+	complete func(common.Hash) error
+	insert   func(types.Blocks) error
+}
+
+func (c pivotCommitChain) InsertReceiptChain(types.Blocks, []rlp.RawValue, uint64) (int, error) {
+	return 0, nil
+}
+
+func (c pivotCommitChain) SnapSyncComplete(hash common.Hash, _ bool) error {
+	return c.complete(hash)
+}
+
+func (c pivotCommitChain) InsertChain(blocks types.Blocks) (int, error) {
+	return 0, c.insert(blocks)
+}
+
+func TestSnapContentFrozenPivotBackpressure(t *testing.T) {
+	pivot := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(0)}
+	tail := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), ParentHash: pivot.Hash()}
+	finish := make(chan struct{})
+	syncer := new(pivotMergeSyncer)
+	syncer.frozen.Store(pivot)
+	syncer.run = func(_ *types.Header, cancel chan struct{}) error {
+		select {
+		case <-finish:
+			syncer.frozen.Store(nil)
+			return nil
+		case <-cancel:
+			return snap.ErrCancelled
+		}
+	}
+	var checks int
+	syncer.onFrozenCheck = func() {
+		checks++
+		// The first call checks pivot movement. Release generation when the
+		// processor next consults the freeze, which must precede another dequeue.
+		if checks == 2 {
+			close(finish)
+		}
+	}
+
+	d := newPivotMergeDownloader(t, pivot, syncer)
+	d.moder = new(syncModer)
+	d.queue.resultCache.Prepare(1)
+	d.queue.resultCache.items[0] = &fetchResult{Header: pivot}
+	d.chainInsertHook = func(results []*fetchResult, _ chan struct{}) {
+		if len(results) == 1 && results[0].Header.Hash() == pivot.Hash() {
+			d.queue.resultCache.lock.Lock()
+			d.queue.resultCache.items[0] = &fetchResult{Header: tail}
+			d.queue.resultCache.lock.Unlock()
+			d.queue.Close()
+		}
+	}
+	var imported bool
+	d.blockchain = pivotCommitChain{
+		complete: func(hash common.Hash) error {
+			if hash != pivot.Hash() || d.queue.resultCache.Offset() != tail.Number.Uint64() {
+				return errors.New("pivot must commit before dequeuing its tail")
+			}
+			return nil
+		},
+		insert: func(blocks types.Blocks) error {
+			if !d.committed.Load() || len(blocks) != 1 || blocks[0].Hash() != tail.Hash() {
+				return errors.New("tail must be imported after the pivot commits")
+			}
+			imported = true
+			return nil
+		},
+	}
+	checkPivotMergeError(t, d, nil)
+	if !imported {
+		t.Fatal("queued tail was not imported")
 	}
 }
