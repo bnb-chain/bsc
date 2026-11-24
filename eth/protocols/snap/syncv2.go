@@ -57,7 +57,7 @@ const (
 	maxAccessListRequestCount = 28
 
 	// catchUpWindow is the number of blocks BAL catch-up fetches and applies at
-	// a time. The whole gap can span up to maxCatchUpBlocks, so fetching it in
+	// a time. The whole gap can span up to the retention limit, so fetching it in
 	// one shot would buffer every block's BAL (~100 KiB each) in memory before
 	// applying any. Processing the gap in bounded windows caps peak memory to a
 	// single window's worth of BALs.
@@ -77,19 +77,13 @@ const (
 // are still hashes left to fetch.
 var errAccessListPeersExhausted = errors.New("all peers exhausted for BAL requests")
 
-// maxCatchUpBlocks is the maximum gap (in blocks) that BAL catch-up is
-// allowed to span. BALs are only retained by peers for a limited window
-// (roughly two weeks, ~100k blocks at 12s block time). If the pivot has
-// moved further than this conservative bound, the BALs needed to roll the
-// flat state forward are likely no longer available, so we discard the
-// stale progress and restart the sync from scratch rather than attempting
-// a catch-up that is bound to fail partway through.
-// BSC exposes the retention threshold as a variable.
-var maxCatchUpBlocks = params.FullImmutabilityThreshold
-
 // errAccessListUnavailable is returned from the BAL catch-up when some gap
 // block's access list cannot be retrieved against the current peerset.
 var errAccessListUnavailable = errors.New("block access lists unavailable")
+
+var errMissingBALCommitment = errors.New("catch-up header has no BAL commitment")
+
+var errPivotReorged = errors.New("catch-up target does not descend from previous pivot")
 
 // accountRequestV2 tracks a pending account range request to ensure responses are
 // to actual requests and to validate any security constraints.
@@ -389,6 +383,8 @@ type syncerV2 struct {
 	tasks  []*accountTaskV2 // Current account task set being synced
 	update chan struct{}    // Notification channel for possible sync progression
 
+	getHeader func(common.Hash, uint64, <-chan struct{}) (*types.Header, error) // Uncommitted catch-up headers
+
 	peerJoin *event.Feed       // Event feed to react to peers joining
 	peerDrop *event.Feed       // Event feed to react to peers dropping
 	rates    *msgrate.Trackers // Message throughput rates for peers
@@ -577,7 +573,6 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 		s.accountReqs = make(map[uint64]*accountRequestV2)
 		s.storageReqs = make(map[uint64]*storageRequestV2)
 		s.bytecodeReqs = make(map[uint64]*bytecodeRequestV2)
-		s.accessListReqs = make(map[uint64]*accessListRequest)
 		s.lock.Unlock()
 
 		// Persist final task state.
@@ -608,16 +603,25 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 		// If we resumed against a different pivot, decide whether the persisted
 		// progress is still usable. If yes, roll forward via BAL catch-up. If not,
 		// wipe everything and restart fresh.
+		exceedsRetention := CatchUpExceedsRetention(prevPivot, target)
+		var reorged bool
+		if !exceedsRetention {
+			var err error
+			reorged, err = s.isPivotReorged(prevPivot, target, cancel)
+			if err != nil {
+				return err // Missing ancestry is not evidence of a reorg. Keep the checkpoint.
+			}
+		}
 		switch {
-		case catchUpExceedsRetention(prevPivot, target):
+		case exceedsRetention:
 			// The pivot moved further than the BAL retention window. The access
 			// lists required for catch-up are almost certainly unavailable from
 			// peers, so discard the stale progress and resync from scratch
 			// instead of starting a catch-up doomed to stall.
-			log.Warn("Catch-up gap exceeds BAL retention, restarting snap sync from scratch", "oldnumber", prevPivot.Number, "newnumber", target.Number, "gap", new(big.Int).Sub(target.Number, prevPivot.Number), "limit", maxCatchUpBlocks)
+			log.Warn("Catch-up gap exceeds BAL retention, restarting snap sync from scratch", "oldnumber", prevPivot.Number, "newnumber", target.Number, "gap", new(big.Int).Sub(target.Number, prevPivot.Number), "limit", params.FullImmutabilityThreshold)
 			s.resetSyncState()
 
-		case s.isPivotReorged(prevPivot, target):
+		case reorged:
 			log.Warn("Restarting snap sync from scratch", "oldnumber", prevPivot.Number, "oldHash", prevPivot.Hash())
 			s.resetSyncState()
 
@@ -638,7 +642,18 @@ func (s *syncerV2) Sync(target *types.Header, cancel chan struct{}) error {
 				log.Warn("Frozen pivot moved unexpectedly, rolling forward", "frozen", prevPivot.Number, "new", target.Number)
 			}
 			if err := s.catchUp(target, cancel); err != nil {
-				return err
+				if !errors.Is(err, errMissingBALCommitment) {
+					return err
+				}
+				select {
+				case <-cancel:
+					return ErrCancelled
+				default:
+				}
+				// No peer can supply a verifiable BAL for this interval.
+				log.Warn("Restarting snap sync from scratch", "err", err)
+				s.resetSyncState()
+				break
 			}
 			// A completed sync is rolled forward in full by the catch-up. There is
 			// nothing left to download or generate.
@@ -817,26 +832,34 @@ func (s *syncerV2) downloadState(cancel chan struct{}) error {
 // isPivotReorged reports whether the previous pivot is no longer usable
 // as a starting point for forward catch-up. Either the new pivot doesn't
 // advance past it, or it is not an ancestor of the new pivot.
-func (s *syncerV2) isPivotReorged(prev, curr *types.Header) bool {
+// Unavailable ancestry is returned as an error, leaving the checkpoint usable.
+func (s *syncerV2) isPivotReorged(prev, curr *types.Header, cancel <-chan struct{}) (bool, error) {
 	// If the new pivot is at or below the old one, there's nothing for
 	// catchUp to roll forward.
 	if curr.Number.Cmp(prev.Number) <= 0 {
-		return true
+		return true, nil
 	}
 	// Walk the header chain back from the new pivot. The canonical index
 	// can't answer this, it only covers the blocks the downloader has
 	// committed so far, and those trail the pivot.
-	_, err := s.gapHashChain(prev, curr)
-	return err != nil
+	_, _, err := s.gapHashChain(prev, curr, cancel)
+	if errors.Is(err, errPivotReorged) {
+		return true, nil
+	}
+	return false, err
 }
 
-// catchUpExceedsRetention reports whether rolling the flat state forward from
+// CatchUpExceedsRetention reports whether rolling the flat state forward from
 // prev to curr would span more blocks than peers are expected to retain BALs
 // for. Beyond this bound the access lists needed for catch-up are likely gone,
-// so the caller should wipe and resync from scratch instead.
-func catchUpExceedsRetention(prev, curr *types.Header) bool {
+// so the caller should wipe and resync from scratch instead. The effective limit
+// follows params.FullImmutabilityThreshold, including CLI overrides.
+//
+// The downloader uses the same policy when a frozen checkpoint has aged beyond
+// the peer-driven ancestry probe, so a long-offline node can choose a fresh pivot.
+func CatchUpExceedsRetention(prev, curr *types.Header) bool {
 	gap := new(big.Int).Sub(curr.Number, prev.Number)
-	return gap.Cmp(new(big.Int).SetUint64(maxCatchUpBlocks)) > 0
+	return gap.Cmp(new(big.Int).SetUint64(params.FullImmutabilityThreshold)) > 0
 }
 
 // catchUp runs the BAL catch-up. When the pivot has moved, it fetches BALs
@@ -857,9 +880,12 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 
 	// Resolve the hash chain of the whole gap upfront by walking the parent
 	// hashes backward from the trusted target header.
-	hashes, err := s.gapHashChain(prev, target)
+	hashes, missingBAL, err := s.gapHashChain(prev, target, cancel)
 	if err != nil {
 		return err
+	}
+	if missingBAL != nil {
+		return fmt.Errorf("%w at block %d (%s)", errMissingBALCommitment, missingBAL.Number, missingBAL.Hash())
 	}
 
 	s.lock.Lock()
@@ -883,15 +909,17 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 			winHashes = hashes[start-from : end-from+1]
 			headers   = make(map[common.Hash]*types.Header, len(winHashes))
 		)
-		for i, hash := range winHashes {
+		// Walk backwards, matching the ancestry reader's batched reverse queries.
+		for i := len(winHashes) - 1; i >= 0; i-- {
+			hash := winHashes[i]
 			num := start + uint64(i)
 			if num == to {
 				headers[hash] = target
 				continue
 			}
-			header := s.gapHeader(num, hash)
-			if header == nil {
-				return fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, hash)
+			header, err := s.gapHeader(num, hash, cancel)
+			if err != nil {
+				return err
 			}
 			headers[hash] = header
 		}
@@ -961,8 +989,8 @@ func (s *syncerV2) catchUp(target *types.Header, cancel chan struct{}) error {
 
 // gapHashChain resolves the hashes of the catch-up gap (prev, target] by
 // walking the parent hashes backward from the trusted target header.
-// Out-of-memory is not expected as only the 32 bytes hashes are kept.
-func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, error) {
+// It also reports a header in the gap that has no BAL commitment, if any.
+func (s *syncerV2) gapHashChain(prev, target *types.Header, cancel <-chan struct{}) ([]common.Hash, *types.Header, error) {
 	var (
 		from   = prev.Number.Uint64() + 1
 		to     = target.Number.Uint64()
@@ -970,25 +998,48 @@ func (s *syncerV2) gapHashChain(prev, target *types.Header) ([]common.Hash, erro
 		want   = target.ParentHash
 	)
 	hashes[to-from] = target.Hash()
+	var missingBAL *types.Header
+	if target.BlockAccessListHash == nil {
+		missingBAL = target
+	}
 	for num := to - 1; num >= from; num-- {
-		header := s.gapHeader(num, want)
-		if header == nil {
-			return nil, fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, want)
+		header, err := s.gapHeader(num, want, cancel)
+		if err != nil {
+			return nil, nil, err
+		}
+		if missingBAL == nil && header.BlockAccessListHash == nil {
+			missingBAL = header
 		}
 		hashes[num-from] = want
 		want = header.ParentHash
 	}
 	if want != prev.Hash() {
-		return nil, fmt.Errorf("catch-up target %d (hash %v) does not descend from pivot %d (hash %v)", to, target.Hash(), prev.Number, prev.Hash())
+		return nil, nil, fmt.Errorf("%w: target %d (hash %v), pivot %d (hash %v)", errPivotReorged, to, target.Hash(), prev.Number, prev.Hash())
 	}
-	return hashes, nil
+	return hashes, missingBAL, nil
 }
 
-// gapHeader reads the header of a gap block with the given number and
-// expected hash from the header database. Headers are persisted before their
-// bodies are imported by the legacy downloader.
-func (s *syncerV2) gapHeader(num uint64, hash common.Hash) *types.Header {
-	return rawdb.ReadHeader(s.db, hash, num)
+// gapHeader also resolves headers that the downloader has not committed yet.
+// Missing data must not be confused with a proven ancestry mismatch.
+func (s *syncerV2) gapHeader(num uint64, hash common.Hash, cancel <-chan struct{}) (*types.Header, error) {
+	select {
+	case <-cancel:
+		return nil, ErrCancelled
+	default:
+	}
+	if header := rawdb.ReadHeader(s.db, hash, num); header != nil {
+		return header, nil
+	}
+	if s.getHeader != nil {
+		header, err := s.getHeader(hash, num, cancel)
+		if err != nil {
+			return nil, err
+		}
+		if header != nil && header.Number != nil && header.Number.IsUint64() && header.Number.Uint64() == num && header.Hash() == hash {
+			return header, nil
+		}
+	}
+	return nil, fmt.Errorf("missing header for block %d (hash %v) during catch-up", num, hash)
 }
 
 // fetchAccessLists fetches BALs for the given block hashes from
@@ -998,6 +1049,20 @@ func (s *syncerV2) gapHeader(num uint64, hash common.Hash) *types.Header {
 // same order as the input hashes.
 func (s *syncerV2) fetchAccessLists(hashes []common.Hash, headers map[common.Hash]*types.Header, cancel chan struct{}) ([]rlp.RawValue, error) {
 	log.Debug("Fetching BALs for catch-up", "blocks", len(hashes))
+	// Release in-flight requests when this fetch exits. The same peers may
+	// already be connected when the next sync cycle starts.
+	defer func() {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		for id, req := range s.accessListReqs {
+			req.timeout.Stop()
+			close(req.stale)
+			delete(s.accessListReqs, id)
+			if _, ok := s.peers[req.peer]; ok {
+				s.accessListIdlers[req.peer] = struct{}{}
+			}
+		}
+	}()
 
 	// Subscribe to peer events
 	peerJoin := make(chan string, 16)
@@ -2863,48 +2928,25 @@ func (s *syncerV2) OnAccessLists(peer SyncPeerV2, id uint64, accessLists rlp.Raw
 	logger := peer.Log().New("reqid", id)
 	logger.Trace("Delivering set of BALs", "count", len(bals), "bytes", size)
 
-	// Whether or not the response is valid, we can mark the peer as idle and
-	// notify the scheduler to assign a new task. If the response is invalid,
-	// we'll drop the peer in a bit.
-	defer func() {
-		s.lock.Lock()
-		defer s.lock.Unlock()
-		if _, ok := s.peers[peer.ID()]; ok {
-			s.accessListIdlers[peer.ID()] = struct{}{}
-		}
-		select {
-		case s.update <- struct{}{}:
-		default:
-		}
-	}()
 	s.lock.Lock()
-
-	// Ensure the response is for a valid request
 	req, ok := s.accessListReqs[id]
-	if !ok {
-		// Request stale, perhaps the peer timed out but came through in the end
+	if !ok || req.peer != peer.ID() {
+		// A late response must not make a peer with a newer request idle.
 		logger.Warn("Unexpected BAL packet")
 		s.lock.Unlock()
 		return nil
 	}
-	delete(s.accessListReqs, id)
-	s.rates.Update(peer.ID(), AccessListsMsg, time.Since(req.time), len(bals))
-
-	// Clean up the request timeout timer
 	if !req.timeout.Stop() {
-		// The timeout is already triggered, and this request will be reverted+rescheduled
+		// Let the timeout event revert the tracked request and free the peer.
 		s.lock.Unlock()
 		return nil
 	}
+	s.rates.Update(peer.ID(), AccessListsMsg, time.Since(req.time), len(bals))
 
-	// Response is valid, but check if peer is signalling that it does not have
-	// the requested data.
 	if len(bals) == 0 {
 		logger.Debug("Peer rejected BAL request")
 		s.statelessPeers[peer.ID()] = struct{}{}
 		s.lock.Unlock()
-
-		// Signal this request as failed, and ready for rescheduling
 		s.scheduleRevertAccessListRequest(req)
 		return nil
 	}
@@ -2913,6 +2955,10 @@ func (s *syncerV2) OnAccessLists(peer SyncPeerV2, id uint64, accessLists rlp.Raw
 		s.scheduleRevertAccessListRequest(req)
 		logger.Warn("Peer sent more BALs than requested", "count", len(bals), "requested", len(req.hashes))
 		return errors.New("more BALs than requested")
+	}
+	delete(s.accessListReqs, id)
+	if _, ok := s.peers[peer.ID()]; ok {
+		s.accessListIdlers[peer.ID()] = struct{}{}
 	}
 	s.lock.Unlock()
 

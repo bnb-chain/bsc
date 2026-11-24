@@ -1505,7 +1505,7 @@ func TestIsPivotReorged(t *testing.T) {
 	// The new pivot is at or below the old one, nothing to roll forward.
 	t.Run("NonAdvancingPivot", func(t *testing.T) {
 		s := newSyncerV2(rawdb.NewMemoryDatabase(), rawdb.HashScheme)
-		if !s.isPivotReorged(prev, mkPivot(95, common.HexToHash("0xcccc"))) {
+		if reorged, err := s.isPivotReorged(prev, mkPivot(95, common.HexToHash("0xcccc")), nil); err != nil || !reorged {
 			t.Fatal("expected reorg detection when new pivot is at or below the old one")
 		}
 	})
@@ -1519,7 +1519,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if !s.isPivotReorged(prev, headers[4]) {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err != nil || !reorged {
 			t.Fatal("expected reorg detection when the new pivot descends from another block")
 		}
 	})
@@ -1532,8 +1532,8 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if !s.isPivotReorged(prev, headers[4]) {
-			t.Fatal("expected reorg detection when the header chain is broken")
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err == nil || reorged {
+			t.Fatal("missing ancestry must return an error without declaring a reorg")
 		}
 	})
 
@@ -1547,7 +1547,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if s.isPivotReorged(prev, headers[4]) {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err != nil || reorged {
 			t.Fatal("should not detect reorg when the old pivot is an unindexed ancestor")
 		}
 	})
@@ -1565,7 +1565,7 @@ func TestIsPivotReorged(t *testing.T) {
 			rawdb.WriteHeader(db, h)
 		}
 		s := newSyncerV2(db, rawdb.HashScheme)
-		if s.isPivotReorged(prev, headers[4]) {
+		if reorged, err := s.isPivotReorged(prev, headers[4], nil); err != nil || reorged {
 			t.Fatal("should not detect reorg when the old pivot is an ancestor")
 		}
 	})
