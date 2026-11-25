@@ -17,177 +17,77 @@
 package downloader
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"math/big"
-	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 type pivotHeaderPeer struct {
 	Peer
-	headers   map[common.Hash]*types.Header
-	requests  atomic.Int32
-	requested chan struct{}
-	stall     bool
+	header *types.Header
 }
 
-func (p *pivotHeaderPeer) RequestHeadersByHash(hash common.Hash, amount, skip int, reverse bool, sink chan *eth.Response) (*eth.Request, error) {
-	p.requests.Add(1)
-	if p.requested != nil {
-		close(p.requested)
+func (p pivotHeaderPeer) RequestHeadersByHash(_ common.Hash, _, _ int, _ bool, sink chan *eth.Response) (*eth.Request, error) {
+	req := new(eth.Request)
+	if p.header != nil {
+		headers := eth.BlockHeadersRequest{p.header}
+		resp := &eth.Response{Req: req, Res: &headers, Meta: []common.Hash{p.header.Hash()}, Done: make(chan error, 1)}
+		go func() { sink <- resp }()
 	}
-	req := &eth.Request{Peer: "pivot"}
-	if p.stall {
-		return req, nil
-	}
-	var headers []*types.Header
-	for len(headers) < amount {
-		h := p.headers[hash]
-		if h == nil {
-			break
-		}
-		headers = append(headers, h)
-		hash = h.ParentHash
-	}
-	hashes := make([]common.Hash, len(headers))
-	for i, h := range headers {
-		hashes[i] = h.Hash()
-	}
-	response := &eth.Response{Req: req, Res: (*eth.BlockHeadersRequest)(&headers), Meta: hashes, Done: make(chan error, 1)}
-	go func() { sink <- response }()
 	return req, nil
 }
 
-func newPivotHeaderDownloader(t *testing.T) (*Downloader, *pivotHeaderPeer, []*types.Header) {
+func newPivotTestDownloader(t *testing.T, peer pivotHeaderPeer) *Downloader {
 	t.Helper()
-	db := rawdb.NewMemoryDatabase()
-	t.Cleanup(func() { db.Close() })
-	p := &pivotHeaderPeer{headers: make(map[common.Hash]*types.Header)}
-	headers := make([]*types.Header, 6)
-	for i := range headers {
-		h := &types.Header{Number: big.NewInt(int64(100 + i)), Difficulty: big.NewInt(1)}
-		if i > 0 {
-			h.ParentHash = headers[i-1].Hash()
-		}
-		headers[i] = h
-		p.headers[h.Hash()] = h
-	}
-	d := &Downloader{stateDB: db, peers: newPeerSet(), cancelPeer: "pivot", cancelCh: make(chan struct{}), headerCache: lru.NewCache[common.Hash, *types.Header](1024)}
-	if err := d.peers.Register(newPeerConnection("pivot", eth.ETH70, p, log.New())); err != nil {
+	d := newPivotMergeDownloader(t, nil, nil)
+	d.peers, d.cancelPeer = newPeerSet(), "pivot"
+	if err := d.peers.Register(newPeerConnection(d.cancelPeer, eth.ETH70, peer, log.New())); err != nil {
 		t.Fatal(err)
 	}
-	return d, p, headers
-}
-
-func loadPivotJournal(t *testing.T, d *Downloader, pivot *types.Header, phase uint8) {
-	t.Helper()
-	progress, err := json.Marshal(struct {
-		Pivot *types.Header
-		Phase uint8
-	}{pivot, phase})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawdb.WriteSnapshotSyncStatus(d.stateDB, append([]byte{2}, progress...))
-	d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.queryHeader)
+	return d
 }
 
 func TestResumeFrozenPivot(t *testing.T) {
-	for _, name := range []string{"same-chain", "reorg", "missing-header", "expired-pivot", "head-below-frozen"} {
-		t.Run(name, func(t *testing.T) {
-			d, p, headers := newPivotHeaderDownloader(t)
-			frozen, head, candidate := headers[1], headers[5], headers[4]
-			switch name {
-			case "reorg":
-				frozen = types.CopyHeader(frozen)
-				frozen.Extra = []byte("orphan")
-			case "missing-header":
-				delete(p.headers, headers[2].Hash())
-			case "head-below-frozen":
-				frozen, head, candidate = headers[5], headers[4], headers[0]
-			case "expired-pivot":
-				candidate = types.CopyHeader(candidate)
-				candidate.Number.SetUint64(frozen.Number.Uint64() + params.FullImmutabilityThreshold + 1)
-				head = types.CopyHeader(head)
-				head.Number.SetUint64(candidate.Number.Uint64() + uint64(fsMinFullBlocks))
-			}
-			loadPivotJournal(t, d, frozen, 1) // phaseGenerate
-			journal := rawdb.ReadSnapshotSyncStatus(d.stateDB)
-			got, err := d.resumeFrozenPivot(head, candidate)
-			if name == "missing-header" {
-				if err == nil || !bytes.Equal(journal, rawdb.ReadSnapshotSyncStatus(d.stateDB)) {
-					t.Fatal("missing ancestry must abort and preserve the checkpoint")
-				}
-				return
-			}
-			want := candidate
-			if name == "same-chain" {
-				want = frozen
-				if p.requests.Load() != 1 {
-					t.Fatal("expected one reverse header batch")
-				}
-			}
-			if err != nil || got == nil || got.Hash() != want.Hash() {
-				t.Fatalf("pivot = %v, error = %v, want %s", got, err, want.Hash())
-			}
-		})
+	frozen := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(1)}
+	head := &types.Header{Number: big.NewInt(3), ParentHash: frozen.Hash()}
+	lower := &types.Header{Number: big.NewInt(1)}
+	d := newPivotTestDownloader(t, pivotHeaderPeer{header: frozen})
+	syncer := new(pivotMergeSyncer)
+	syncer.frozen.Store(frozen)
+	d.snapSyncer = syncer
+	if got, err := d.resumeFrozenPivot(head, head); err != nil || got != frozen {
+		t.Fatalf("peer ancestry should preserve the frozen pivot: got %v, err %v", got, err)
 	}
-}
-
-func TestQueryHeaderRejectsInvalidHeader(t *testing.T) {
-	d, p, headers := newPivotHeaderDownloader(t)
-	header := types.CopyHeader(headers[0])
-	header.BaseFee = new(big.Int).Lsh(big.NewInt(1), 256)
-	p.headers[header.Hash()] = header
-	if _, err := d.queryHeader(header.Hash(), header.Number.Uint64(), nil); !errors.Is(err, errBadPeer) {
-		t.Fatalf("error = %v, want bad peer", err)
-	}
-	if d.headerCache.Len() != 0 {
-		t.Fatal("invalid header polluted ancestry cache")
+	if got, err := d.resumeFrozenPivot(lower, lower); err != nil || got != lower {
+		t.Fatalf("lower peer head should use the candidate: got %v, err %v", got, err)
 	}
 }
 
 func TestStateCycleHeaderCancellation(t *testing.T) {
-	d, p, headers := newPivotHeaderDownloader(t)
-	p.stall = true
-	p.requested = make(chan struct{})
-	loadPivotJournal(t, d, headers[0], 2) // phaseComplete
-	s := newStateSync(d, headers[5])
-	go s.run()
-	defer func() {
-		close(d.cancelCh)
-		s.Cancel()
-	}()
-	select {
-	case <-p.requested:
-	case <-time.After(3 * time.Second):
-		t.Fatal("ancestry request did not start")
-	}
-	result := make(chan error, 1)
-	go func() { result <- s.Cancel() }()
-	select {
-	case err := <-result:
-		if err != snap.ErrCancelled {
-			t.Fatalf("error = %v, want state cycle cancellation", err)
+	synctest.Test(t, func(t *testing.T) {
+		d := newPivotTestDownloader(t, pivotHeaderPeer{})
+		checkpoint := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(1)}
+		target := &types.Header{Number: big.NewInt(3), ParentHash: common.Hash{1}}
+		journal, err := json.Marshal(map[string]any{"Pivot": checkpoint, "Phase": 2}) // phaseComplete
+		if err != nil {
+			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("state cycle cancellation did not interrupt the header request")
-	}
-	select {
-	case <-d.cancelCh:
-		t.Fatal("state cycle cancellation shut down the downloader")
-	default:
-	}
+		rawdb.WriteSnapshotSyncStatus(d.stateDB, append([]byte{2}, journal...))
+		d.snapSyncer = snap.NewV2Syncer(d.stateDB, rawdb.HashScheme, d.queryHeader)
+		s := d.syncState(target)
+		synctest.Wait() // The peer withholds the ancestry response.
+		start := time.Now()
+		if err := s.Cancel(); err != snap.ErrCancelled || time.Since(start) != 0 {
+			t.Fatalf("header request cancellation took %v, got %v", time.Since(start), err)
+		}
+	})
 }

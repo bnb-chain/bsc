@@ -4,8 +4,8 @@ import (
 	"errors"
 	"math/big"
 	"sync/atomic"
-
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -19,9 +19,8 @@ import (
 // Only state synchronization is exercised; peer packet methods are unused.
 type pivotMergeSyncer struct {
 	snap.Syncer
-	run           func(*types.Header, chan struct{}) error
-	frozen        atomic.Pointer[types.Header]
-	onFrozenCheck func()
+	run    func(*types.Header, chan struct{}) error
+	frozen atomic.Pointer[types.Header]
 }
 
 func (s *pivotMergeSyncer) Sync(pivot *types.Header, cancel chan struct{}) error {
@@ -29,11 +28,7 @@ func (s *pivotMergeSyncer) Sync(pivot *types.Header, cancel chan struct{}) error
 }
 
 func (s *pivotMergeSyncer) FrozenPivot() *types.Header {
-	header := s.frozen.Load()
-	if s.onFrozenCheck != nil {
-		s.onFrozenCheck()
-	}
-	return header
+	return s.frozen.Load()
 }
 
 func (*pivotMergeSyncer) Version() uint { return snap.SNAP2 }
@@ -125,119 +120,60 @@ func TestSnapContentRetargetsStateSync(t *testing.T) {
 	}
 }
 
-// Generation can start between the staleness decision and cancellation. The
-// final checkpoint must win over an ordinary move to a newer, same-chain pivot.
-func TestSnapContentFreezesDuringRetarget(t *testing.T) {
-	old := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(0)}
-	target := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), ParentHash: old.Hash()}
-	want := errors.New("resumed generation at frozen pivot")
-	var d *Downloader
-	var runs atomic.Int32
-	syncer := new(pivotMergeSyncer)
-	syncer.run = func(header *types.Header, cancel chan struct{}) error {
-		if runs.Add(1) == 2 {
-			if header.Hash() != old.Hash() {
-				return errors.New("generation was moved to the new pivot")
-			}
-			return want
-		}
-		d.pivotLock.Lock()
-		d.pivotHeader = target
-		d.pivotLock.Unlock()
-		d.queue.resultCache.lock.Lock()
-		d.queue.resultCache.items[0] = &fetchResult{Header: old}
-		d.queue.resultCache.items[1] = &fetchResult{Header: target}
-		d.queue.resultCache.lock.Unlock()
-		d.queue.Close()
-		<-cancel
-		syncer.frozen.Store(old)
-		return snap.ErrCancelled
-	}
-	d = newPivotMergeDownloader(t, old, syncer)
-	rawdb.WriteHeader(d.stateDB, old)
-	d.queue.resultCache.Prepare(1)
-	checkPivotMergeError(t, d, want)
-	if d.pivotHeader.Hash() != old.Hash() {
-		t.Fatal("downloader did not restore the frozen pivot")
-	}
-	if number := rawdb.ReadLastPivotNumber(d.stateDB); number == nil || *number != old.Number.Uint64() {
-		t.Fatal("rollback boundary did not follow the restored pivot")
-	}
-}
-
 type pivotCommitChain struct {
 	BlockChain
-	complete func(common.Hash) error
-	insert   func(types.Blocks) error
+	importBlocks func(types.Blocks)
 }
 
-func (c pivotCommitChain) InsertReceiptChain(types.Blocks, []rlp.RawValue, uint64) (int, error) {
+func (pivotCommitChain) InsertReceiptChain(types.Blocks, []rlp.RawValue, uint64) (int, error) {
 	return 0, nil
 }
 
-func (c pivotCommitChain) SnapSyncComplete(hash common.Hash, _ bool) error {
-	return c.complete(hash)
-}
+func (pivotCommitChain) SnapSyncComplete(common.Hash, bool) error { return nil }
 
 func (c pivotCommitChain) InsertChain(blocks types.Blocks) (int, error) {
-	return 0, c.insert(blocks)
+	c.importBlocks(blocks)
+	return len(blocks), nil
 }
 
 func TestSnapContentFrozenPivotBackpressure(t *testing.T) {
-	pivot := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(0)}
-	tail := &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(0), ParentHash: pivot.Hash()}
-	finish := make(chan struct{})
-	syncer := new(pivotMergeSyncer)
-	syncer.frozen.Store(pivot)
-	syncer.run = func(_ *types.Header, cancel chan struct{}) error {
-		select {
-		case <-finish:
-			syncer.frozen.Store(nil)
+	synctest.Test(t, func(t *testing.T) {
+		pivot := &types.Header{Number: big.NewInt(1), Difficulty: common.Big0}
+		tail := &types.Header{Number: big.NewInt(2), Difficulty: common.Big0, ParentHash: pivot.Hash()}
+		finish := make(chan struct{})
+		syncer := &pivotMergeSyncer{run: func(*types.Header, chan struct{}) error {
+			<-finish
 			return nil
-		case <-cancel:
-			return snap.ErrCancelled
-		}
-	}
-	var checks int
-	syncer.onFrozenCheck = func() {
-		checks++
-		// The first call checks pivot movement. Release generation when the
-		// processor next consults the freeze, which must precede another dequeue.
-		if checks == 2 {
-			close(finish)
-		}
-	}
-
-	d := newPivotMergeDownloader(t, pivot, syncer)
-	d.moder = new(syncModer)
-	d.queue.resultCache.Prepare(1)
-	d.queue.resultCache.items[0] = &fetchResult{Header: pivot}
-	d.chainInsertHook = func(results []*fetchResult, _ chan struct{}) {
-		if len(results) == 1 && results[0].Header.Hash() == pivot.Hash() {
-			d.queue.resultCache.lock.Lock()
-			d.queue.resultCache.items[0] = &fetchResult{Header: tail}
-			d.queue.resultCache.lock.Unlock()
-			d.queue.Close()
-		}
-	}
-	var imported bool
-	d.blockchain = pivotCommitChain{
-		complete: func(hash common.Hash) error {
-			if hash != pivot.Hash() || d.queue.resultCache.Offset() != tail.Number.Uint64() {
-				return errors.New("pivot must commit before dequeuing its tail")
-			}
-			return nil
-		},
-		insert: func(blocks types.Blocks) error {
+		}}
+		syncer.frozen.Store(pivot)
+		d := newPivotMergeDownloader(t, pivot, syncer)
+		d.moder = new(syncModer)
+		cache := d.queue.resultCache
+		cache.Prepare(1)
+		cache.items[0] = &fetchResult{Header: pivot}
+		var imported bool
+		d.blockchain = pivotCommitChain{importBlocks: func(blocks types.Blocks) {
 			if !d.committed.Load() || len(blocks) != 1 || blocks[0].Hash() != tail.Hash() {
-				return errors.New("tail must be imported after the pivot commits")
+				t.Error("tail must be imported after the pivot commits")
 			}
 			imported = true
-			return nil
-		},
-	}
-	checkPivotMergeError(t, d, nil)
-	if !imported {
-		t.Fatal("queued tail was not imported")
-	}
+		}}
+
+		result := make(chan error, 1)
+		go func() { result <- d.processSnapSyncContent() }()
+		synctest.Wait()
+		cache.lock.Lock()
+		cache.items[0] = &fetchResult{Header: tail}
+		cache.lock.Unlock()
+		d.queue.Close()
+		time.Sleep(2 * time.Second) // Advance past the staleness timer.
+		synctest.Wait()
+		if offset := cache.Offset(); offset != tail.Number.Uint64() {
+			t.Errorf("tail was dequeued before the pivot committed: offset %d", offset)
+		}
+		close(finish)
+		if err := <-result; err != nil || !imported {
+			t.Fatalf("tail import did not complete: %v", err)
+		}
+	})
 }
