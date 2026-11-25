@@ -39,11 +39,6 @@ const prefetchTxNumber = 50
 // uint256BitLen is the bit width of uint256; a value wider than this cannot fit a tx value.
 const uint256BitLen = 256
 
-// Open admission must not let arbitrary keys grow lifetime telemetry forever.
-const maxTrackedBidBlockBuilders = 4096
-
-const maxTrackedBidErrorBuilders = 4096
-
 var (
 	bidPreCheckTimer     = metrics.NewRegisteredTimer("bid/preCheck", nil)
 	bidTryInterruptTimer = metrics.NewRegisteredTimer("bid/sim/tryInterrupt", nil)
@@ -53,13 +48,12 @@ var (
 	simulateSpeedGauge = metrics.NewRegisteredGauge("bid/sim/simulateSpeed", nil) // mgasps
 
 	bidSimTimeoutCounter = metrics.NewRegisteredCounter("bid/sim/simTimeout", nil)
-	bidErrors            = bidErrorMetrics{registry: metrics.DefaultRegistry}
 
 	// greedyMergeOnchainCounter counts bids that went through greedy merge and were finally chosen as BUILDER BLOCK.
 	greedyMergeOnchainCounter = metrics.NewRegisteredCounter("bid/greedyMerge/onchain", nil)
 
-	// bidBlockBuildersGauge tracks distinct builders since node start, saturated
-	// at maxTrackedBidBlockBuilders (in-memory, resets on restart).
+	// bidBlockBuildersGauge tracks the distinct registered builders that have
+	// sent BidBlock since node start (cumulative, in-memory, resets on restart).
 	bidBlockBuildersGauge = metrics.NewRegisteredGauge("bidblock/sendBidBlock/builders", nil)
 
 	// bidBlockPreCheckTimer measures SendBidBlock admission time from RPC receive
@@ -184,7 +178,7 @@ type bidSimulator struct {
 	bestBidBlock   map[common.Hash]*buildertypes.DecodedBidBlock // parentHash -> best bid block
 	newBidBlockCh  chan newBidBlockPackage                       // channel for incoming bid blocks
 
-	// Bounded set of distinct builders that have sent BidBlock since node start.
+	// distinct registered builders that have sent BidBlock since node start
 	bidBlockBuildersMu sync.Mutex
 	bidBlockBuilders   map[common.Address]struct{}
 }
@@ -763,14 +757,15 @@ func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *buildertypes.Dec
 	return b.bestBidBlock[parentHash]
 }
 
-// recordBidBlockBuilder publishes a bounded cumulative distinct builder count.
+// recordBidBlockBuilder adds builder to the cumulative set of registered
+// builders that have sent BidBlock and publishes the distinct count.
+// The set is kept in memory and resets on restart.
 func (b *bidSimulator) recordBidBlockBuilder(builder common.Address) {
 	b.bidBlockBuildersMu.Lock()
-	defer b.bidBlockBuildersMu.Unlock()
-	if len(b.bidBlockBuilders) < maxTrackedBidBlockBuilders {
-		b.bidBlockBuilders[builder] = struct{}{}
-	}
-	bidBlockBuildersGauge.Update(int64(len(b.bidBlockBuilders)))
+	b.bidBlockBuilders[builder] = struct{}{}
+	count := len(b.bidBlockBuilders)
+	b.bidBlockBuildersMu.Unlock()
+	bidBlockBuildersGauge.Update(int64(count))
 }
 
 // preSealVerifyBidBlock validates a BidBlock before admission.
@@ -1319,32 +1314,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 }
 
-// bidErrorMetrics retains the per-address metric names while bounding the number
-// of registered counters across simulator instances for the lifetime of the node.
-type bidErrorMetrics struct {
-	mu       sync.Mutex
-	builders map[common.Address]struct{}
-	registry metrics.Registry
-}
-
-func (m *bidErrorMetrics) record(builder common.Address) {
-	metric := "bid/err/overflow"
-	m.mu.Lock()
-	_, tracked := m.builders[builder]
-	if tracked || len(m.builders) < maxTrackedBidErrorBuilders {
-		if m.builders == nil {
-			m.builders = make(map[common.Address]struct{})
-		}
-		m.builders[builder] = struct{}{}
-		metric = fmt.Sprintf("bid/err/%v", builder)
-	}
-	m.mu.Unlock()
-	metrics.GetOrRegisterCounter(metric, m.registry).Inc(1)
-}
-
 // reportIssue reports the issue to the mev-sentry
 func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
-	bidErrors.record(bidRuntime.bid.Builder)
+	metrics.GetOrRegisterCounter(fmt.Sprintf("bid/err/%v", bidRuntime.bid.Builder), nil).Inc(1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), builderRegistryTimeout)
 	defer cancel()
