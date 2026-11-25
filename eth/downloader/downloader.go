@@ -155,7 +155,6 @@ type Downloader struct {
 	snapSyncer     snap.Syncer // snap/1 or snap/2 state syncer, selected at construction
 	stateSyncStart chan *stateSync
 	headerCache    *lru.Cache[common.Hash, *types.Header] // Hash-anchored, uncommitted ancestry
-	pivotRetry     checkpointRetry                        // Serialized by the active download cycle
 
 	// Cancellation and termination
 	cancelPeer string         // Identifier of the peer currently being used as the master (cancel on drop)
@@ -553,7 +552,7 @@ func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *bi
 		pivot = d.blockchain.CurrentBlock()
 	}
 	if mode == ethconfig.SnapSync {
-		pivot, err = d.selectSnapPivot(remoteHeader, pivot, time.Now())
+		pivot, err = d.resumeFrozenPivot(remoteHeader, pivot)
 		if err != nil {
 			return err
 		}
@@ -1677,7 +1676,7 @@ func (d *Downloader) processSnapSyncContent() error {
 				// check above. Its final journal now tells us whether it froze.
 				// Resume it if it still belongs to the target chain, rather than
 				// repeatedly interrupting generation on ordinary head growth.
-				target, err := d.selectSnapPivot(target, target, time.Now())
+				target, err := d.resumeFrozenPivot(target, target)
 				if err != nil {
 					return err
 				}

@@ -105,7 +105,7 @@ func loadPivotJournal(t *testing.T, d *Downloader, pivot *types.Header, phase ui
 }
 
 func TestResumeFrozenPivot(t *testing.T) {
-	for _, name := range []string{"same-chain", "reorg", "missing-header", "expired-pivot"} {
+	for _, name := range []string{"same-chain", "reorg", "missing-header", "expired-pivot", "head-below-frozen"} {
 		t.Run(name, func(t *testing.T) {
 			d, p, headers := newPivotHeaderDownloader(t)
 			frozen, head, candidate := headers[1], headers[5], headers[4]
@@ -115,6 +115,8 @@ func TestResumeFrozenPivot(t *testing.T) {
 				frozen.Extra = []byte("orphan")
 			case "missing-header":
 				delete(p.headers, headers[2].Hash())
+			case "head-below-frozen":
+				frozen, head, candidate = headers[5], headers[4], headers[0]
 			case "expired-pivot":
 				candidate = types.CopyHeader(candidate)
 				candidate.Number.SetUint64(frozen.Number.Uint64() + params.FullImmutabilityThreshold + 1)
@@ -139,46 +141,6 @@ func TestResumeFrozenPivot(t *testing.T) {
 			}
 			if err != nil || got == nil || got.Hash() != want.Hash() {
 				t.Fatalf("pivot = %v, error = %v, want %s", got, err, want.Hash())
-			}
-		})
-	}
-}
-
-func TestSnapCheckpointLowerTargetPolicy(t *testing.T) {
-	for _, phase := range []struct {
-		name string
-		id   uint8
-	}{{"download", 0}, {"frozen", 1}} {
-		t.Run(phase.name, func(t *testing.T) {
-			d, peer, headers := newPivotHeaderDownloader(t)
-			checkpoint, head := headers[5], headers[4]
-			loadPivotJournal(t, d, checkpoint, phase.id)
-			journal := rawdb.ReadSnapshotSyncStatus(d.stateDB)
-			start := time.Unix(1, 0)
-			check := func(head, target, want *types.Header, elapsed time.Duration) {
-				t.Helper()
-				got, err := d.selectSnapPivot(head, target, start.Add(elapsed))
-				if want == nil {
-					if got != nil || !errors.Is(err, ErrPivotBehind) {
-						t.Fatalf("pivot = %v, error = %v, want %v", got, err, ErrPivotBehind)
-					}
-				} else if err != nil || got == nil || got.Hash() != want.Hash() {
-					t.Fatalf("pivot = %v, error = %v, want %s", got, err, want.Hash())
-				}
-				if !bytes.Equal(rawdb.ReadSnapshotSyncStatus(d.stateDB), journal) {
-					t.Fatal("selecting a pivot must preserve the snap journal")
-				}
-			}
-			check(head, headers[0], nil, 0)
-			check(head, headers[1], nil, time.Minute)
-			check(head, headers[2], nil, 2*time.Minute) // Three targets alone are insufficient.
-			check(checkpoint, checkpoint, checkpoint, 3*time.Minute)
-			check(head, headers[0], nil, 4*time.Minute)  // A compatible round ended the streak.
-			check(head, headers[0], nil, 14*time.Minute) // A duplicate target cannot count twice.
-			check(head, headers[1], nil, 14*time.Minute)
-			check(head, headers[2], headers[2], 14*time.Minute)
-			if peer.requests.Load() != 0 {
-				t.Fatal("a peer head below the frozen pivot must not start an ancestry walk")
 			}
 		})
 	}
