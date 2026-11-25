@@ -890,6 +890,14 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	return protos
 }
 
+// CallContract runs a read-only contract call against local chain state for the miner.
+func (s *Ethereum) CallContract(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error) {
+	input, gasLimit := hexutil.Bytes(data), hexutil.Uint64(gas)
+	return ethapi.NewBlockChainAPI(s.APIBackend).Call(ctx, ethapi.TransactionArgs{
+		To: &to, Data: &input, Gas: &gasLimit,
+	}, &block, nil, nil)
+}
+
 // Start implements node.Lifecycle, starting all internal goroutines needed by the
 // Ethereum protocol implementation.
 func (s *Ethereum) Start() error {

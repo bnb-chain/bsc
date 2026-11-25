@@ -229,7 +229,7 @@ func newBidSimulator(
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
 	if config.BuilderRegistry.Enabled {
-		caller, _ := engine.(registryCaller)
+		caller, _ := eth.(registryCaller)
 		b.registry = newBuilderRegistry(config.BuilderRegistry, config.Builders, b.chain, caller)
 		ctx, cancel := context.WithCancel(context.Background())
 		b.registryCancel = cancel

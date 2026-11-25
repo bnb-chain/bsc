@@ -138,7 +138,7 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if r.caller == nil {
-		return "", errors.New("consensus engine does not support registry calls")
+		return "", errors.New("mining backend does not support registry calls")
 	}
 	header := r.chain.CurrentFinalBlock()
 	if header == nil || header.Number == nil || !header.Number.IsUint64() {
