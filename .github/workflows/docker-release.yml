@@ -48,7 +48,7 @@ jobs:
             org.opencontainers.image.licenses=LGPL-3.0,GPL-3.0
             org.opencontainers.image.revision=4bd1c73016e31038a0ce9fdadce24d19d7128e25
           tags: |
-            type=raw,value=tmp-master-4bd1c730-20261117
+            type=raw,value=v1.8.2-td-enhancement
           flavor: latest=false
 
       - name: Set up Docker Buildx
@@ -114,7 +114,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_IMAGE }}
           tags: |
-            type=raw,value=tmp-master-4bd1c730-20261117
+            type=raw,value=v1.8.2-td-enhancement
           flavor: latest=false
 
       - name: Create manifest list and push
