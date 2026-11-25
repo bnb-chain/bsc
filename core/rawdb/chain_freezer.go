@@ -582,27 +582,21 @@ func (f *chainFreezer) tryPruneBALs(db ethdb.Reader, config *params.ChainConfig)
 	if !ok || floor == 0 {
 		return
 	}
-	head, err := f.Ancients()
-	if err != nil {
-		log.Warn("Failed to read freezer head for BAL pruning", "err", err)
-		return
-	}
-	target := min(head, floor)
 	tail, err := f.Tail(ChainFreezerBALGroup)
 	if err != nil {
 		log.Warn("Failed to read BAL freezer tail", "err", err)
 		return
 	}
-	if target <= tail || ReadCanonicalHash(db, finalizedNumber) != finalizedHash {
+	if floor <= tail || ReadCanonicalHash(db, finalizedNumber) != finalizedHash {
 		return
 	}
 	finalized := ReadHeader(db, finalizedHash, finalizedNumber)
 	if finalized == nil || !config.IsAmsterdam(finalized.Number, finalized.Time) {
 		return
 	}
-	oldTail, err := f.TruncateTail(ChainFreezerBALGroup, target)
+	oldTail, err := f.TruncateTail(ChainFreezerBALGroup, floor)
 	if err != nil {
-		log.Warn("Failed to prune BAL history", "target", target, "err", err)
+		log.Warn("Failed to prune BAL history", "target", floor, "err", err)
 		return
 	}
 	if tail, err := f.Tail(ChainFreezerBALGroup); err == nil && tail > oldTail {
