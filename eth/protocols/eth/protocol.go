@@ -255,7 +255,7 @@ type NewBlockPacket struct {
 	Block           *types.Block
 	TD              *big.Int
 	Sidecars        types.BlobSidecars `rlp:"optional"`
-	BlockAccessList []byte             `rlp:"optional"` // RLP-encoded BAL, negotiated via bsc/5
+	BlockAccessList []byte             `rlp:"optional"` // RLP-encoded BAL after Amsterdam
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection

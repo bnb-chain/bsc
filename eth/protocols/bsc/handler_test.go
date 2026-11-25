@@ -105,6 +105,7 @@ func TestHandleGetBlocksByRange(t *testing.T) {
 	parent := chain.Genesis()
 	header := parent.Header()
 	header.Number = big.NewInt(1)
+	header.Time = parent.Time() + 1
 	header.ParentHash = parent.Hash()
 	child := types.NewBlockWithHeader(header).WithAccessListUnsafe(new(bal.BlockAccessList))
 	rawdb.WriteBlock(db, child)
@@ -112,12 +113,14 @@ func TestHandleGetBlocksByRange(t *testing.T) {
 
 	backend := &mockBackend{chain: chain}
 	peer := newMockPeer().Peer
-	peer.version = Bsc5
+	peer.version = Bsc2
 	req := &mockMsg{data: &GetBlocksByRangePacket{RequestId: 1, Count: 2, StartBlockHash: child.Hash()}}
 	for _, tc := range []struct {
 		finalized uint64
+		amsterdam uint64
 		want      int
-	}{{0, 1}, {1_344_000, 1}, {1_344_001, 2}} {
+	}{{0, 0, 1}, {1_344_000, 0, 1}, {1_344_001, 0, 2}, {1_344_000, child.Time(), 2}} {
+		chain.Config().AmsterdamTime = &tc.amsterdam
 		if tc.finalized != 0 {
 			chain.SetFinalized(&types.Header{Number: new(big.Int).SetUint64(tc.finalized)})
 		}
@@ -131,7 +134,11 @@ func TestHandleGetBlocksByRange(t *testing.T) {
 			t.Fatalf("unexpected range response for finalized height %d: %v", tc.finalized, blocks)
 		}
 		if tc.want == 2 && (blocks[1].Header.Hash() != parent.Hash() || len(blocks[1].BlockAccessList) != 0) {
-			t.Fatal("expected parent without its expired BAL")
+			t.Fatal("expected parent without a BAL attachment")
+		}
+		if tc.finalized == 0 {
+			// Later requests can only serve the child's BAL from the cached block.
+			rawdb.DeleteAccessList(db, child.Hash(), child.NumberU64())
 		}
 	}
 	if err := handleGetBlocksByRange(backend, &mockMsg{data: &GetBlocksByRangePacket{}}, peer); err == nil {

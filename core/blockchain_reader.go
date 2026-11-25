@@ -360,15 +360,28 @@ func (bc *BlockChain) GetAccessListRLP(hash common.Hash) rlp.RawValue {
 }
 
 // GetAccessListRLPForBlock retrieves the BAL for an already loaded block.
+// It returns nil if the BAL is unavailable and 0xc0 for an encoded empty BAL.
 func (bc *BlockChain) GetAccessListRLPForBlock(block *types.Block) rlp.RawValue {
 	number := block.NumberU64()
+	accessList := block.AccessList()
 	// Skip a repeat lookup if loading the block yielded no BAL below the BAL tail.
-	if block.AccessList() == nil {
+	if accessList == nil {
 		if tail, err := bc.db.Tail(rawdb.ChainFreezerBALGroup); err == nil && number < tail {
 			return nil
 		}
 	}
-	return rawdb.ReadAccessListRLP(bc.db, block.Hash(), number)
+	if encoded := rawdb.ReadAccessListRLP(bc.db, block.Hash(), number); len(encoded) > 0 {
+		return encoded
+	}
+	if accessList == nil {
+		return nil
+	}
+	encoded, err := rlp.EncodeToBytes(accessList)
+	if err != nil {
+		log.Error("Failed to encode block access list", "hash", block.Hash(), "err", err)
+		return nil
+	}
+	return encoded
 }
 
 // GetUnclesInChain retrieves all the uncles from a given block backwards until

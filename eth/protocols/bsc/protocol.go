@@ -12,8 +12,6 @@ import (
 const (
 	Bsc1 = 1
 	Bsc2 = 2
-	// Versions 3 and 4 were used for legacy, non-consensus BAL formats.
-	Bsc5 = 5
 )
 
 // ProtocolName is the official short name of the `bsc` protocol used during
@@ -22,11 +20,11 @@ const ProtocolName = "bsc"
 
 // ProtocolVersions are the supported versions of the `bsc` protocol (first
 // is primary).
-var ProtocolVersions = []uint{Bsc5, Bsc2, Bsc1}
+var ProtocolVersions = []uint{Bsc1, Bsc2}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4, Bsc5: 4}
+var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -86,7 +84,7 @@ type BlockData struct {
 	Uncles          []*types.Header
 	Withdrawals     []*types.Withdrawal `rlp:"optional"`
 	Sidecars        types.BlobSidecars  `rlp:"optional"`
-	BlockAccessList []byte              `rlp:"optional"` // RLP-encoded BAL, bsc/5 only
+	BlockAccessList []byte              `rlp:"optional"` // RLP-encoded BAL after Amsterdam
 }
 
 // NewBlockData creates a new BlockData object from a block
@@ -102,12 +100,11 @@ func NewBlockData(block *types.Block) *BlockData {
 
 // ToBlock reconstructs a range response entry, checking any attached BAL before use.
 func (data *BlockData) ToBlock() (*types.Block, error) {
-	block := types.NewBlockWithHeader(data.Header).WithBody(types.Body{
+	return types.NewBlockWithHeader(data.Header).WithBody(types.Body{
 		Transactions: data.Txs,
 		Uncles:       data.Uncles,
 		Withdrawals:  data.Withdrawals,
-	}).WithSidecars(data.Sidecars)
-	return block.WithAccessListRLP(data.BlockAccessList)
+	}).WithSidecars(data.Sidecars).WithAccessListRLP(data.BlockAccessList)
 }
 
 type BlocksByRangePacket struct {

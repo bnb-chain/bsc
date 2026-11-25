@@ -221,7 +221,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 			}
 		}
 		data := NewBlockData(block)
-		if peer.Version() >= Bsc5 && backend.Chain().Config().IsAmsterdam(data.Header.Number, data.Header.Time) {
+		if backend.Chain().Config().IsAmsterdam(data.Header.Number, data.Header.Time) {
 			if data.Header.BlockAccessListHash == nil {
 				break
 			}
@@ -301,13 +301,6 @@ func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	res := new(BlocksByRangePacket)
 	if err := msg.Decode(res); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
-	}
-	if peer.Version() < Bsc5 {
-		for _, block := range res.Blocks {
-			if len(block.BlockAccessList) != 0 {
-				return fmt.Errorf("block access list received without bsc/5")
-			}
-		}
 	}
 
 	err := peer.dispatcher.DispatchResponse(&Response{

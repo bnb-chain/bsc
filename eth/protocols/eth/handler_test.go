@@ -1101,11 +1101,9 @@ func TestHandleNewBlockBALRetry(t *testing.T) {
 	header.RequestsHash = &types.EmptyRequestsHash
 	block := types.NewBlockWithHeader(header)
 	td := big.NewInt(1)
-	protos := []p2p.Protocol{{Name: bsc.ProtocolName, Version: bsc.Bsc5}}
-	caps := []p2p.Cap{{Name: bsc.ProtocolName, Version: bsc.Bsc5}}
 	app, net := p2p.MsgPipe()
 	defer app.Close()
-	peer := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), net, nil, nil, backend.chain.Config())
+	peer := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "", nil), net, nil, nil, backend.chain.Config())
 	defer peer.Close()
 	peer.AsyncSendNewBlock(block, td, func() ([]byte, error) {
 		return EncodeNewBlockWithBAL(block, td)
@@ -1114,18 +1112,22 @@ func TestHandleNewBlockBALRetry(t *testing.T) {
 		t.Fatal("a block without its BAL must remain eligible for announcement after import")
 	}
 	for _, tc := range []struct {
+		amsterdam  uint64
 		attachment []byte
 		known      bool
+		wantErr    bool
 	}{
-		{nil, false},
-		{rlp.EmptyList, true},
+		{block.Time() + 1, rlp.EmptyList, false, true},
+		{block.Time(), nil, false, false},
+		{block.Time(), rlp.EmptyList, true, false},
 	} {
+		backend.chain.Config().AmsterdamTime = &tc.amsterdam
 		size, payload, err := rlp.EncodeToReader(&NewBlockPacket{Block: block, TD: td, BlockAccessList: tc.attachment})
 		if err != nil {
 			t.Fatal(err)
 		}
 		err = handleNewBlock(backend, p2p.Msg{Size: uint32(size), Payload: payload}, peer)
-		if err != nil || peer.KnownBlock(block.Hash()) != tc.known {
+		if (err != nil) != tc.wantErr || peer.KnownBlock(block.Hash()) != tc.known {
 			t.Fatalf("attachment %x: error %v, known %t", tc.attachment, err, peer.KnownBlock(block.Hash()))
 		}
 	}

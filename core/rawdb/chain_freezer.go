@@ -39,7 +39,8 @@ const (
 	// storage.
 	freezerRecheckInterval = time.Minute
 
-	// balRetentionBlocks covers seven days at a 450 ms block interval.
+	// balRetentionBlocks is the finalized-height window for BAL pruning and range
+	// serving, sized for seven days at BSC's 450 ms block interval.
 	balRetentionBlocks = 1_344_000
 
 	// For BSC, freezing 30,000 blocks at once will seriously affect performance near the chain head.
@@ -332,7 +333,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			f.tryPruneBlobAncientTable(env, number)
 		}
 		f.tryPruneHistoryBlock(number)
-		if env != nil && env.ChainCfg != nil && env.ChainCfg.IsInBSC() && env.ChainCfg.IsAmsterdam(head.Number, head.Time) {
+		if isAmsterdam(env, head.Number, head.Time) {
 			f.tryPruneBALs(chainDB, env.ChainCfg)
 		}
 
@@ -585,17 +586,17 @@ func (f *chainFreezer) tryPruneBALs(db ethdb.Reader, config *params.ChainConfig)
 	if !ok || floor == 0 {
 		return
 	}
-	tail, err := f.Tail(ChainFreezerBALGroup)
-	if err != nil {
-		log.Warn("Failed to read BAL freezer tail", "err", err)
-		return
-	}
 	head, err := f.Ancients()
 	if err != nil {
 		log.Warn("Failed to read freezer head for BAL pruning", "err", err)
 		return
 	}
 	target := min(head, floor)
+	tail, err := f.Tail(ChainFreezerBALGroup)
+	if err != nil {
+		log.Warn("Failed to read BAL freezer tail", "err", err)
+		return
+	}
 	if target <= tail || ReadCanonicalHash(db, finalizedNumber) != finalizedHash {
 		return
 	}
@@ -616,6 +617,13 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 	}
 
 	return env.ChainCfg.IsCancun(num, time)
+}
+
+func isAmsterdam(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
+	if env == nil || env.ChainCfg == nil {
+		return false
+	}
+	return env.ChainCfg.IsAmsterdam(num, time)
 }
 
 func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {

@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
@@ -351,9 +351,13 @@ func (p *Peer) AsyncSendNewBlockHash(block *types.Block) {
 	}
 }
 
+func (p *Peer) isAmsterdamBlock(block *types.Block) bool {
+	return p.chainConfig != nil && p.chainConfig.IsAmsterdam(block.Number(), block.Time())
+}
+
 // SendNewBlock propagates an entire block to a remote peer.
 func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
-	if p.SupportsBAL() && block.BlockAccessListHash() != nil {
+	if p.isAmsterdamBlock(block) {
 		payload, err := EncodeNewBlockWithBAL(block, td)
 		if err != nil || payload == nil {
 			return err
@@ -363,10 +367,10 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	return p.sendNewBlock(block, td, nil)
 }
 
-// EncodeNewBlockWithBAL prepares a broadcast shared by the BAL-capable peers.
+// EncodeNewBlockWithBAL prepares a shared post-Amsterdam block broadcast.
 // A nil payload means the block should be announced once it can be served.
 func EncodeNewBlockWithBAL(block *types.Block, td *big.Int) ([]byte, error) {
-	if block.AccessList() == nil {
+	if block.BlockAccessListHash() == nil || block.AccessList() == nil {
 		return nil, nil
 	}
 	bal, err := rlp.EncodeToBytes(block.AccessList())
@@ -374,8 +378,12 @@ func EncodeNewBlockWithBAL(block *types.Block, td *big.Int) ([]byte, error) {
 		return nil, err
 	}
 	payload, err := rlp.EncodeToBytes(&NewBlockPacket{Block: block, TD: td, Sidecars: block.Sidecars(), BlockAccessList: bal})
-	if err != nil || len(payload) > maxMessageSize {
+	if err != nil {
 		return nil, err
+	}
+	if len(payload) > maxMessageSize {
+		log.Debug("Skipping oversized NewBlock broadcast with BAL", "hash", block.Hash(), "size", len(payload), "limit", maxMessageSize)
+		return nil, nil
 	}
 	return payload, nil
 }
@@ -388,16 +396,11 @@ func (p *Peer) sendNewBlock(block *types.Block, td *big.Int, balPayload []byte) 
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{Block: block, TD: td, Sidecars: block.Sidecars()})
 }
 
-// SupportsBAL reports whether BAL attachments were negotiated independently of eth.
-func (p *Peer) SupportsBAL() bool {
-	return p.Peer != nil && p.RunningCap(bsc.ProtocolName, []uint{bsc.Bsc5})
-}
-
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
 func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int, encodeBALPayload func() ([]byte, error)) {
 	var payload []byte
-	if p.SupportsBAL() && block.BlockAccessListHash() != nil {
+	if p.isAmsterdamBlock(block) {
 		var err error
 		payload, err = encodeBALPayload()
 		if err != nil {
