@@ -45,9 +45,8 @@ type registryChain interface {
 	CurrentFinalBlock() *types.Header
 }
 
-type registryCaller interface {
-	CallContract(context.Context, rpc.BlockNumberOrHash, common.Address, []byte, uint64) ([]byte, error)
-}
+// RegistryCallFunc reads the builder registry from local state at the specified block.
+type RegistryCallFunc func(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error)
 
 // builderRegistrySnapshot is immutable after publication.
 type builderRegistrySnapshot struct {
@@ -57,18 +56,18 @@ type builderRegistrySnapshot struct {
 }
 
 type builderRegistry struct {
-	config   minerconfig.BuilderRegistryConfig
-	chain    registryChain
-	caller   registryCaller
-	fallback map[common.Address]string
-	snapshot atomic.Pointer[builderRegistrySnapshot]
+	config       minerconfig.BuilderRegistryConfig
+	chain        registryChain
+	readRegistry RegistryCallFunc
+	fallback     map[common.Address]string
+	snapshot     atomic.Pointer[builderRegistrySnapshot]
 }
 
-func newBuilderRegistry(config minerconfig.BuilderRegistryConfig, builders []minerconfig.BuilderConfig, chain registryChain, caller registryCaller) *builderRegistry {
+func newBuilderRegistry(config minerconfig.BuilderRegistryConfig, builders []minerconfig.BuilderConfig, chain registryChain, readRegistry RegistryCallFunc) *builderRegistry {
 	if config.PollInterval == 0 {
 		config.PollInterval = minerconfig.RegistryDuration(minerconfig.DefaultBuilderRegistryPollInterval)
 	}
-	r := &builderRegistry{config: config, chain: chain, caller: caller, fallback: make(map[common.Address]string)}
+	r := &builderRegistry{config: config, chain: chain, readRegistry: readRegistry, fallback: make(map[common.Address]string)}
 	for _, builder := range builders {
 		r.fallback[builder.Address] = builder.URL
 	}
@@ -137,7 +136,7 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 	if err := r.config.Validate(); err != nil {
 		return "", err
 	}
-	if r.caller == nil {
+	if r.readRegistry == nil {
 		return "", errors.New("mining backend does not support registry calls")
 	}
 	header := r.chain.CurrentFinalBlock()
@@ -160,7 +159,7 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 	}
 	// Pin the call to the finalized hash and require canonical local state. Bound
 	// gas as well as wall time: the registry is an upgradeable external contract.
-	output, err := r.caller.CallContract(ctx, rpc.BlockNumberOrHashWithHash(hash, true), r.config.ContractAddress, data, 10_000_000)
+	output, err := r.readRegistry(ctx, rpc.BlockNumberOrHashWithHash(hash, true), r.config.ContractAddress, data, 10_000_000)
 	if err != nil {
 		return "", fmt.Errorf("getBuilders: %w", err)
 	}

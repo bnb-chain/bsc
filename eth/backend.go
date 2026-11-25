@@ -491,7 +491,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	eth.dropper = newDropper(eth.p2pServer.MaxDialedConns(), eth.p2pServer.MaxInboundConns())
 
-	eth.miner = miner.New(eth, &config.Miner, eth.handler.eventMux, eth.engine)
+	readRegistry := func(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error) {
+		input, gasLimit := hexutil.Bytes(data), hexutil.Uint64(gas)
+		return ethAPI.Call(ctx, ethapi.TransactionArgs{To: &to, Data: &input, Gas: &gasLimit}, &block, nil, nil)
+	}
+	eth.miner = miner.New(eth, &config.Miner, eth.handler.eventMux, eth.engine, readRegistry)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 	eth.miner.SetPrioAddresses(config.TxPool.Locals)
 
@@ -888,14 +892,6 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler))...)
 
 	return protos
-}
-
-// CallContract runs a read-only contract call against local chain state for the miner.
-func (s *Ethereum) CallContract(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error) {
-	input, gasLimit := hexutil.Bytes(data), hexutil.Uint64(gas)
-	return ethapi.NewBlockChainAPI(s.APIBackend).Call(ctx, ethapi.TransactionArgs{
-		To: &to, Data: &input, Gas: &gasLimit,
-	}, &block, nil, nil)
 }
 
 // Start implements node.Lifecycle, starting all internal goroutines needed by the

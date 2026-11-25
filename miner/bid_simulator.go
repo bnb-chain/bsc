@@ -197,6 +197,7 @@ func newBidSimulator(
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
 	bidWorker bidWorker,
+	readRegistry RegistryCallFunc,
 ) *bidSimulator {
 	b := &bidSimulator{
 		config:           config,
@@ -229,8 +230,7 @@ func newBidSimulator(
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
 	if config.BuilderRegistry.Enabled {
-		caller, _ := eth.(registryCaller)
-		b.registry = newBuilderRegistry(config.BuilderRegistry, config.Builders, b.chain, caller)
+		b.registry = newBuilderRegistry(config.BuilderRegistry, config.Builders, b.chain, readRegistry)
 		ctx, cancel := context.WithCancel(context.Background())
 		b.registryCancel = cancel
 		b.registryDone = make(chan struct{})

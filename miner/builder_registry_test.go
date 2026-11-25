@@ -20,12 +20,6 @@ type registryTestChain struct{ header *types.Header }
 
 func (c *registryTestChain) CurrentFinalBlock() *types.Header { return c.header }
 
-type registryTestCaller func(context.Context, rpc.BlockNumberOrHash, common.Address, []byte, uint64) ([]byte, error)
-
-func (f registryTestCaller) CallContract(ctx context.Context, block rpc.BlockNumberOrHash, contract common.Address, input []byte, gas uint64) ([]byte, error) {
-	return f(ctx, block, contract, input, gas)
-}
-
 type registryTestBuilder struct {
 	Addr common.Address
 	Url  string
@@ -49,7 +43,7 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 	var output []byte
 	var callErr error
 	var calls int
-	caller := registryTestCaller(func(ctx context.Context, block rpc.BlockNumberOrHash, contract common.Address, input []byte, gas uint64) ([]byte, error) {
+	caller := func(ctx context.Context, block rpc.BlockNumberOrHash, contract common.Address, input []byte, gas uint64) ([]byte, error) {
 		if block.BlockHash == nil || *block.BlockHash != chain.header.Hash() || !block.RequireCanonical || block.BlockNumber != nil {
 			t.Fatalf("call is not pinned to canonical finalized hash: %+v", block)
 		}
@@ -64,7 +58,7 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 		}
 		calls++
 		return output, callErr
-	})
+	}
 	r := newBuilderRegistry(config, []minerconfig.BuilderConfig{{Address: oldKey, URL: "http://old"}}, chain, caller)
 	if !r.allowed(oldKey) || r.allowed(newKey) {
 		t.Fatal("initial policy must use static builders")
