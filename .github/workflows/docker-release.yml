@@ -2,9 +2,8 @@ name: Docker
 
 on:
   push:
-    # Publish `v1.2.3` tags as releases.
-    tags:
-      - v*
+    branches:
+      - build-tmp-master-4bd1c730-image
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ${{ github.repository }}
@@ -26,6 +25,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: 4bd1c73016e31038a0ce9fdadce24d19d7128e25
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
@@ -45,6 +46,10 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.REGISTRY_IMAGE }}
           labels: |
             org.opencontainers.image.licenses=LGPL-3.0,GPL-3.0
+            org.opencontainers.image.revision=4bd1c73016e31038a0ce9fdadce24d19d7128e25
+          tags: |
+            type=raw,value=tmp-master-4bd1c730-20261117
+          flavor: latest=false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -60,6 +65,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
+          context: .
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           tags: ${{ env.REGISTRY }}/${{ env.REGISTRY_IMAGE }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -108,7 +114,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_IMAGE }}
           tags: |
-            type=semver,pattern={{version}}
+            type=raw,value=tmp-master-4bd1c730-20261117
+          flavor: latest=false
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
