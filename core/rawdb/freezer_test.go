@@ -1024,6 +1024,10 @@ func TestTruncateHeadBelowGroupTail(t *testing.T) {
 	if _, err := f.TruncateHead(50); err != nil {
 		t.Fatalf("truncating head below the BAL tail: %v", err)
 	}
+	// A BAL prune target calculated before the rewind must respect the new head.
+	if _, err := f.TruncateTail(ChainFreezerBALGroup, 90); err != nil {
+		t.Fatalf("pruning BAL after the rewind: %v", err)
+	}
 	if head, _ := f.Ancients(); head != 50 {
 		t.Fatalf("head = %d, want 50", head)
 	}

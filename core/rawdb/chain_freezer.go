@@ -75,7 +75,6 @@ type chainFreezer struct {
 	freezeEnv    atomic.Value
 	blockHistory atomic.Uint64
 	waitEnvTimes int
-	pruneMu      sync.Mutex // keeps the BAL pruning boundary stable across head truncation
 }
 
 // newChainFreezer initializes the freezer for ancient chain segment.
@@ -574,9 +573,6 @@ func BALRetentionFloor(finalized uint64) uint64 {
 }
 
 func (f *chainFreezer) tryPruneBALs(db ethdb.Reader, config *params.ChainConfig) {
-	f.pruneMu.Lock()
-	defer f.pruneMu.Unlock()
-
 	finalizedHash := ReadFinalizedBlockHash(db)
 	if finalizedHash == (common.Hash{}) {
 		return
@@ -604,11 +600,14 @@ func (f *chainFreezer) tryPruneBALs(db ethdb.Reader, config *params.ChainConfig)
 	if finalized == nil || !config.IsAmsterdam(finalized.Number, finalized.Time) {
 		return
 	}
-	if _, err := f.TruncateTail(ChainFreezerBALGroup, target); err != nil {
-		log.Warn("Failed to prune BAL history", "tail", target, "err", err)
+	oldTail, err := f.TruncateTail(ChainFreezerBALGroup, target)
+	if err != nil {
+		log.Warn("Failed to prune BAL history", "target", target, "err", err)
 		return
 	}
-	log.Debug("Pruned BAL history", "oldtail", tail, "tail", target, "finalized", finalizedNumber)
+	if tail, err := f.Tail(ChainFreezerBALGroup); err == nil && tail > oldTail {
+		log.Debug("Pruned BAL history", "oldtail", oldTail, "tail", tail, "finalized", finalizedNumber)
+	}
 }
 
 func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
@@ -709,8 +708,6 @@ func (f *chainFreezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (int6
 }
 
 func (f *chainFreezer) TruncateHead(items uint64) (uint64, error) {
-	f.pruneMu.Lock()
-	defer f.pruneMu.Unlock()
 	return f.ancients.TruncateHead(items)
 }
 
