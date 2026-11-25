@@ -21,13 +21,17 @@ const (
 	maxBlobTxPerBlock     = 6
 )
 
-// StartBuilderRegistry starts polling after the Ethereum backend and consensus
-// engine are fully initialized (in particular, Parlia's vote pool).
-func (miner *Miner) StartBuilderRegistry() {
-	b := miner.bidSimulator
-	if b.registry != nil {
-		b.registryStartOnce.Do(func() { close(b.registryStart) })
+// ReplaceRegistryBuilders publishes a validated registry list, including an empty one.
+// This in-process update is separate from the manual builder management RPCs.
+func (miner *Miner) ReplaceRegistryBuilders(builders map[common.Address]string) {
+	next := make(map[common.Address]builderEndpoint, len(builders))
+	for address, url := range builders {
+		next[address] = builderEndpoint{url: url}
 	}
+	b := miner.bidSimulator
+	b.buildersMu.Lock()
+	b.builders = next
+	b.buildersMu.Unlock()
 }
 
 // MevRunning return true if mev is running.

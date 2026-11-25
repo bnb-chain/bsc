@@ -1,4 +1,4 @@
-package miner
+package eth
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -45,8 +44,7 @@ type registryChain interface {
 	CurrentFinalBlock() *types.Header
 }
 
-// RegistryCallFunc reads the builder registry from local state at the specified block.
-type RegistryCallFunc func(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error)
+type registryCallFunc func(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error)
 
 // builderRegistrySnapshot is immutable after publication.
 type builderRegistrySnapshot struct {
@@ -58,42 +56,37 @@ type builderRegistrySnapshot struct {
 type builderRegistry struct {
 	config       minerconfig.BuilderRegistryConfig
 	chain        registryChain
-	readRegistry RegistryCallFunc
-	fallback     map[common.Address]string
-	snapshot     atomic.Pointer[builderRegistrySnapshot]
+	readRegistry registryCallFunc
+	apply        func(map[common.Address]string)
+	last         *builderRegistrySnapshot // accessed only by the polling goroutine
+	cancel       context.CancelFunc
+	done         chan struct{}
 }
 
-func newBuilderRegistry(config minerconfig.BuilderRegistryConfig, builders []minerconfig.BuilderConfig, chain registryChain, readRegistry RegistryCallFunc) *builderRegistry {
-	if config.PollInterval == 0 {
-		config.PollInterval = minerconfig.RegistryDuration(minerconfig.DefaultBuilderRegistryPollInterval)
-	}
-	r := &builderRegistry{config: config, chain: chain, readRegistry: readRegistry, fallback: make(map[common.Address]string)}
-	for _, builder := range builders {
-		r.fallback[builder.Address] = builder.URL
-	}
-	return r
+func (r *builderRegistry) start() {
+	ctx, cancel := context.WithCancel(context.Background())
+	r.cancel = cancel
+	r.done = make(chan struct{})
+	go func() {
+		defer close(r.done)
+		r.run(ctx)
+	}()
 }
 
-func (r *builderRegistry) allowed(builder common.Address) bool {
-	if snap := r.snapshot.Load(); snap != nil {
-		_, listed := snap.builders[builder]
-		return listed
+func (r *builderRegistry) stop() {
+	if r.cancel != nil {
+		r.cancel()
+		<-r.done
 	}
-	_, listed := r.fallback[builder]
-	return listed
-}
-
-func (r *builderRegistry) reportURL(builder common.Address) string {
-	if snap := r.snapshot.Load(); snap != nil {
-		return snap.builders[builder]
-	}
-	return r.fallback[builder]
 }
 
 func (r *builderRegistry) run(ctx context.Context) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	interval := time.Duration(r.config.PollInterval)
+	if interval == 0 {
+		interval = minerconfig.DefaultBuilderRegistryPollInterval
+	}
 	retry := min(2*time.Second, interval)
 	for {
 		select {
@@ -136,9 +129,6 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 	if err := r.config.Validate(); err != nil {
 		return "", err
 	}
-	if r.readRegistry == nil {
-		return "", errors.New("mining backend does not support registry calls")
-	}
 	header := r.chain.CurrentFinalBlock()
 	if header == nil || header.Number == nil || !header.Number.IsUint64() {
 		return "", errors.New("finalized block unavailable")
@@ -149,7 +139,7 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("builder registry finalized block is too old: age %s", age)
 	}
 	number, hash := header.Number.Uint64(), header.Hash()
-	previous := r.snapshot.Load()
+	previous := r.last
 	if previous != nil && (number < previous.blockNumber || (number == previous.blockNumber && hash != previous.blockHash)) {
 		return "", errors.New("builder registry finalized snapshot regressed or conflicted")
 	}
@@ -197,9 +187,10 @@ func (r *builderRegistry) refresh(ctx context.Context) (string, error) {
 	if previous != nil && maps.Equal(previous.builders, snap.builders) {
 		result = "unchanged"
 	} else {
+		r.apply(snap.builders)
 		log.Info("Builder registry allowlist applied", "block", number, "hash", hash, "builders", len(builders))
 	}
-	r.snapshot.Store(snap)
+	r.last = snap
 	registrySyncedBlock.Update(int64(number))
 	registryBuilderCount.Update(int64(len(builders)))
 	registryLastSuccess.Update(time.Now().Unix())

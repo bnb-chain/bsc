@@ -61,7 +61,7 @@ type Miner struct {
 	wg sync.WaitGroup
 }
 
-func New(eth Backend, config *minerconfig.Config, eventMux *event.TypeMux, engine consensus.Engine, readRegistry RegistryCallFunc) *Miner {
+func New(eth Backend, config *minerconfig.Config, eventMux *event.TypeMux, engine consensus.Engine) *Miner {
 	bidBlockPermMgr := NewBidBlockPermissionManager(config.BidBlockRevokesJournal)
 	miner := &Miner{
 		mux:     eventMux,
@@ -73,7 +73,7 @@ func New(eth Backend, config *minerconfig.Config, eventMux *event.TypeMux, engin
 		worker:  newWorker(config, engine, eth, eventMux, bidBlockPermMgr),
 	}
 
-	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker, readRegistry)
+	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
 
 	miner.wg.Add(1)
