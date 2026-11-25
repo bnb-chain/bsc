@@ -243,7 +243,8 @@ func newBidSimulator(
 				b.registry.run(ctx)
 			}
 		}()
-	} else if config.SentryURL != "" {
+	}
+	if config.SentryURL != "" {
 		log.Warn("Builder admission delegated to sentry; restrict MEV RPC access to trusted sentries")
 	}
 
@@ -371,16 +372,15 @@ func (b *bidSimulator) ExistBuilder(builder common.Address) bool {
 	return ok
 }
 
-// builderAllowed is shared by both bid entry points and mev_hasBuilder. A
-// configured sentry delegates admission only when local registry sync is off;
-// without either, the manually maintained static builder list remains active.
+// builderAllowed selects the allowlist for both bid entry points and mev_hasBuilder.
+// With a sentry configured, the operator delegates the check to the upstream sentry.
 func (b *bidSimulator) builderAllowed(builder common.Address) bool {
 	if b.config != nil {
-		if b.config.BuilderRegistry.Enabled {
-			return b.registry != nil && b.registry.allowed(builder)
-		}
 		if b.config.SentryURL != "" {
 			return true
+		}
+		if b.config.BuilderRegistry.Enabled {
+			return b.registry != nil && b.registry.allowed(builder)
 		}
 	}
 	return b.ExistBuilder(builder)

@@ -130,11 +130,10 @@ func (d *RegistryDuration) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// BuilderRegistryConfig selects the optional on-chain builder allowlist. When
-// disabled, admission is delegated to a configured sentry or uses static Builders
-// if no sentry is configured. When enabled, Builders remains the fallback until
-// the first successful read. A successfully decoded empty registry permits every
-// builder; failed reads keep the last successful policy.
+// BuilderRegistryConfig controls local syncing of the on-chain builder list.
+// Without a sentry, enabling sync makes this list authoritative after the first
+// successful read. Until then, static Builders apply. A successful empty read
+// clears the list. Failed reads keep the current list.
 type BuilderRegistryConfig struct {
 	Enabled         bool
 	ContractAddress common.Address
@@ -161,7 +160,7 @@ type MevConfig struct {
 	BidBlockEnabled       *bool           `toml:",omitempty"` // Whether to accept SendBidBlock RPC (BEP-675); coexists with legacy SendBid
 	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
 	BuilderFeeCeil        *string         `toml:",omitempty"` // The maximum builder fee of a bid
-	SentryURL             string          // MEV sentry URL; delegates builder admission when BuilderRegistry is disabled
+	SentryURL             string          // MEV sentry URL. When set, the sentry enforces the builder allowlist.
 	Builders              []BuilderConfig // Static builders and report endpoints; startup fallback when BuilderRegistry is enabled
 	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`

@@ -44,12 +44,11 @@ func encodeRegistryBuilders(t *testing.T, builders ...registryTestBuilder) []byt
 func TestBuilderRegistryTransitions(t *testing.T) {
 	oldKey, newKey, unknown := common.HexToAddress("0x1"), common.HexToAddress("0x2"), common.HexToAddress("0x3")
 	now := uint64(time.Now().Unix())
-	chain := &registryTestChain{header: &types.Header{Number: big.NewInt(100), Time: now}}
+	chain := &registryTestChain{header: &types.Header{Number: big.NewInt(99), Time: now}}
 	config := minerconfig.BuilderRegistryConfig{Enabled: true, ContractAddress: common.HexToAddress("0x1234")}
 	var output []byte
 	var callErr error
-	capOutput := common.LeftPadBytes([]byte{4}, 32)
-	var capErr error
+	var calls int
 	caller := registryTestCaller(func(ctx context.Context, block rpc.BlockNumberOrHash, contract common.Address, input []byte, gas uint64) ([]byte, error) {
 		if block.BlockHash == nil || *block.BlockHash != chain.header.Hash() || !block.RequireCanonical || block.BlockNumber != nil {
 			t.Fatalf("call is not pinned to canonical finalized hash: %+v", block)
@@ -60,40 +59,16 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 		if _, ok := ctx.Deadline(); !ok {
 			t.Fatal("registry call has no timeout")
 		}
-		switch {
-		case bytes.Equal(input, crypto.Keccak256([]byte("getBuilders()"))[:4]):
-			return output, callErr
-		case bytes.Equal(input, crypto.Keccak256([]byte("defaultMaxKeys()"))[:4]):
-			return capOutput, capErr
-		default:
-			t.Fatal("unexpected registry method")
-			return nil, nil
+		if !bytes.Equal(input, crypto.Keccak256([]byte("getBuilders()"))[:4]) {
+			t.Fatalf("unexpected registry call: %x", input)
 		}
+		calls++
+		return output, callErr
 	})
 	r := newBuilderRegistry(config, []minerconfig.BuilderConfig{{Address: oldKey, URL: "http://old"}}, chain, caller)
 	if !r.allowed(oldKey) || r.allowed(newKey) {
 		t.Fatal("initial policy must use static builders")
 	}
-	checkInitialization := func() {
-		t.Helper()
-		previous := r.snapshot.Load()
-		output = encodeRegistryBuilders(t)
-		for _, invalid := range []struct {
-			output []byte
-			err    error
-		}{
-			{nil, errors.New("state pruned")},
-			{nil, nil}, {[]byte{1}, nil}, {make([]byte, 32), nil}, {make([]byte, 64), nil},
-		} {
-			capOutput, capErr = invalid.output, invalid.err
-			if result := r.sync(context.Background()); result != "error" || r.snapshot.Load() != previous || r.allowed(unknown) {
-				t.Fatal("failed initialization check changed policy or allowed an unknown builder")
-			}
-		}
-		capOutput, capErr = common.LeftPadBytes([]byte{4}, 32), nil
-	}
-	checkInitialization()
-	// Invalid contract output must not be confused with an empty allow-all list.
 	for _, invalid := range [][]byte{
 		nil, {0}, make([]byte, 64),
 		encodeRegistryBuilders(t, registryTestBuilder{}),
@@ -104,9 +79,18 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 			t.Fatal("invalid output replaced fallback")
 		}
 	}
+	output = encodeRegistryBuilders(t)
+	calls = 0
+	if result := r.sync(context.Background()); result != "applied" || calls != 1 {
+		t.Fatalf("first empty registry sync: result=%s calls=%d", result, calls)
+	}
+	if r.allowed(oldKey) || r.allowed(unknown) || r.reportURL(oldKey) != "" {
+		t.Fatal("first successful empty registry must replace the static builders")
+	}
+	chain.header = &types.Header{Number: big.NewInt(100), Time: now}
 	output = encodeRegistryBuilders(t, registryTestBuilder{Addr: newKey, Url: "http://new", Name: "builder"})
 	if result := r.sync(context.Background()); result != "applied" {
-		t.Fatalf("first sync: %s", result)
+		t.Fatalf("non-empty sync: %s", result)
 	}
 	if r.allowed(oldKey) || !r.allowed(newKey) || r.allowed(unknown) || r.reportURL(newKey) != "http://new" {
 		t.Fatal("registry must replace static membership and URLs")
@@ -132,14 +116,17 @@ func TestBuilderRegistryTransitions(t *testing.T) {
 		}
 	}
 	chain.header = &types.Header{Number: big.NewInt(101), Time: now}
-	checkInitialization()
 	output = encodeRegistryBuilders(t)
-	if result := r.sync(context.Background()); result != "empty" || !r.allowed(unknown) || r.reportURL(newKey) != "http://new" {
-		t.Fatal("empty registry must allow all and retain last reporting URLs")
+	if result := r.sync(context.Background()); result != "applied" || r.allowed(oldKey) || r.allowed(newKey) || r.allowed(unknown) || r.reportURL(newKey) != "" {
+		t.Fatal("empty registry must clear all builder addresses and reporting URLs")
 	}
+	if result := r.sync(context.Background()); result != "unchanged" {
+		t.Fatalf("repeated empty sync: %s", result)
+	}
+	previous = r.snapshot.Load()
 	callErr = errors.New("unavailable")
-	if result := r.sync(context.Background()); result != "error" || !r.allowed(unknown) {
-		t.Fatal("failure must retain allow-all mode")
+	if result := r.sync(context.Background()); result != "error" || r.snapshot.Load() != previous {
+		t.Fatal("read failure replaced the empty snapshot")
 	}
 	callErr = nil
 	chain.header = &types.Header{Number: big.NewInt(102), Time: now}
@@ -160,13 +147,17 @@ func TestBuilderAdmissionPolicy(t *testing.T) {
 			b := &bidSimulator{config: cfg, builders: map[common.Address]*builderclient.Client{listed: nil}}
 			b.registry = newBuilderRegistry(cfg.BuilderRegistry, []minerconfig.BuilderConfig{{Address: listed}}, nil, nil)
 			m := &Miner{bidSimulator: b}
-			if !m.HasBuilder(listed) || m.HasBuilder(unknown) != (!enabled && sentry != "") {
+			if !m.HasBuilder(listed) || m.HasBuilder(unknown) != (sentry != "") {
 				t.Fatalf("wrong startup policy: registry=%v sentry=%q", enabled, sentry)
 			}
 			if enabled {
 				b.registry.snapshot.Store(&builderRegistrySnapshot{builders: map[common.Address]string{unknown: ""}})
-				if m.HasBuilder(listed) || !m.HasBuilder(unknown) {
-					t.Fatal("sentry or static list overrode registry")
+				if m.HasBuilder(listed) != (sentry != "") || !m.HasBuilder(unknown) {
+					t.Fatalf("wrong policy after registry sync: sentry=%q", sentry)
+				}
+				b.registry.snapshot.Store(&builderRegistrySnapshot{})
+				if m.HasBuilder(listed) != (sentry != "") || m.HasBuilder(unknown) != (sentry != "") {
+					t.Fatalf("wrong policy after empty registry sync: sentry=%q", sentry)
 				}
 				if m.AddBuilder(listed, "") == nil || m.RemoveBuilder(unknown) == nil {
 					t.Fatal("admin mutation must not silently override registry ownership")
@@ -203,13 +194,12 @@ func TestBuilderRegistryPolling(t *testing.T) {
 			t.Fatalf("retry = %v, want %v", got, want)
 		}
 	}
-	if registryNextDelay("empty", 10*time.Minute, &retry) != 3*time.Second || retry != 2*time.Second {
-		t.Fatal("empty polling did not reset backoff")
+	for _, result := range []string{"applied", "unchanged"} {
+		if registryNextDelay(result, 10*time.Minute, &retry) != 10*time.Minute || retry != 2*time.Second {
+			t.Fatalf("%s did not resume normal polling and reset backoff", result)
+		}
 	}
-	if registryNextDelay("applied", 10*time.Minute, &retry) != 10*time.Minute {
-		t.Fatal("non-empty polling interval incorrect")
-	}
-	for _, result := range []string{"error", "empty", "unchanged"} {
+	for _, result := range []string{"error", "applied", "unchanged"} {
 		retry = time.Second
 		if registryNextDelay(result, time.Second, &retry) != time.Second {
 			t.Fatal("delay exceeded PollInterval")
