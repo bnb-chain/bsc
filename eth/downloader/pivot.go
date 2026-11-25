@@ -1,32 +1,13 @@
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 package downloader
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/params"
 )
-
-var errFrozenPivotUnavailable = errors.New("cannot establish frozen pivot ancestry")
 
 // movePivot is shared by both staleness paths. A delayed header response must
 // not overwrite a newer choice made by the content processor, or a frozen pivot.
@@ -44,26 +25,19 @@ func (d *Downloader) movePivot(from, to *types.Header) bool {
 // resumeFrozenPivot checks the frozen header against the selected peer's hash
 // chain. Local canonical indices can trail the pivot and cannot decide this.
 // Missing ancestry aborts the attempt without discarding the sync checkpoint.
-func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header, error) {
+func (d *Downloader) resumeFrozenPivot(remoteHead, remotePivot *types.Header) (*types.Header, error) {
 	frozen := d.snapSyncer.FrozenPivot()
 	if frozen == nil {
-		return pivot, nil
+		return remotePivot, nil
 	}
-	if head.Number.Cmp(frozen.Number) < 0 {
-		return pivot, nil
+	if remoteHead.Number.Cmp(frozen.Number) < 0 {
+		return remotePivot, nil
 	}
-	if snap.CatchUpExceedsRetention(frozen, pivot) {
-		// The state syncer will discard this expired checkpoint under the same
-		// policy. Selecting the fresh pivot avoids retrying an unbounded ancestry
-		// probe forever after a long shutdown; this is not a reorg conclusion.
-		return pivot, nil
+	if snap.CatchUpExceedsRetention(frozen, remotePivot) {
+		// Let the state syncer restart at the new pivot when the checkpoint expires.
+		return remotePivot, nil
 	}
-	// Bound the ancestry probe independently of BAL catch-up. Exceeding this
-	// bound is not proof of a reorg and must not discard a frozen checkpoint.
-	if head.Number.Uint64()-frozen.Number.Uint64() > params.FullImmutabilityThreshold+uint64(fsMinFullBlocks) {
-		return nil, fmt.Errorf("%w: head %d too far above pivot %d", errFrozenPivotUnavailable, head.Number, frozen.Number)
-	}
-	header := head
+	header := remoteHead
 	for header.Number.Cmp(frozen.Number) > 0 {
 		var err error
 		header, err = d.queryHeader(header.ParentHash, header.Number.Uint64()-1, nil)
@@ -72,7 +46,7 @@ func (d *Downloader) resumeFrozenPivot(head, pivot *types.Header) (*types.Header
 		}
 	}
 	if header.Hash() != frozen.Hash() {
-		return pivot, nil // A complete ancestry walk confirmed a different fork.
+		return remotePivot, nil // A complete ancestry walk confirmed a different fork.
 	}
 	return frozen, nil
 }
