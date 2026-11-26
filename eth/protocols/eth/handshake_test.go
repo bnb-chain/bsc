@@ -30,6 +30,7 @@ import (
 // Tests that handshake failures are detected and reported correctly.
 func TestHandshake68(t *testing.T) { testHandshake(t, ETH68) }
 func TestHandshake70(t *testing.T) { testHandshake(t, ETH70) }
+func TestHandshake71(t *testing.T) { testHandshake(t, ETH71) }
 
 func testHandshake(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -128,7 +129,7 @@ func testHandshake(t *testing.T, protocol uint) {
 }
 
 func TestHandshakeSuccess(t *testing.T) {
-	for _, protocol := range []uint{ETH68, ETH70} {
+	for _, protocol := range []uint{ETH68, ETH70, ETH71} {
 		t.Run(fmt.Sprintf("eth/%d", protocol), func(t *testing.T) {
 			backend := newTestBackend(3)
 			defer backend.close()
@@ -144,9 +145,9 @@ func TestHandshakeSuccess(t *testing.T) {
 			defer app.Close()
 			defer net.Close()
 
-			peerA := NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "peer-a", nil), app, nil, backend.chain.Config())
+			peerA := NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "peer-a", nil), app, nil, nil, backend.chain.Config())
 			defer peerA.Close()
-			peerB := NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "peer-b", nil), net, nil, backend.chain.Config())
+			peerB := NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "peer-b", nil), net, nil, nil, backend.chain.Config())
 			defer peerB.Close()
 
 			extension := &UpgradeStatusExtension{DisablePeerTxBroadcast: true}
@@ -163,9 +164,9 @@ func TestHandshakeSuccess(t *testing.T) {
 				if gotHead != head.Hash() || gotTD.Cmp(td) != 0 {
 					t.Fatalf("peer head mismatch: have (%s, %s), want (%s, %s)", gotHead, gotTD, head.Hash(), td)
 				}
-				if protocol == ETH70 {
+				if protocol >= ETH70 {
 					if peer.statusExtension != nil {
-						t.Fatal("eth/70 negotiated an upgrade status extension")
+						t.Fatalf("eth/%d negotiated an upgrade status extension", protocol)
 					}
 					if got := peer.BlockRange(); got == nil || *got != blockRange {
 						t.Fatalf("peer block range mismatch: have %+v, want %+v", got, blockRange)

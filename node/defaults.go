@@ -81,17 +81,13 @@ var DefaultConfig = Config{
 		DiscoveryV5:   true,
 	},
 	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
-<<<<<<< HEAD
 	Instance: 1,
 	LogConfig: &LogConfig{
 		TimeFormat: &DefaultTimeFormat,
 	},
-||||||| 117e067f0f
-=======
 	OpenTelemetry: OpenTelemetryConfig{
 		SampleRatio: 1.0,
 	},
->>>>>>> geth-v1.17.9
 }
 
 // DefaultDataDir is the default data directory to use for the databases and other

@@ -221,3 +221,26 @@ func TestVerifyFailureTriggers(t *testing.T) {
 		}
 	}
 }
+
+func TestBudgetAmsterdam(t *testing.T) {
+	b := Budget{PaymentLaneQuota: 10, PaymentLaneUsed: 9}
+	b.RecordUsedAmsterdam(GeneralLane, 100, 100)
+	execution, state := b.IdleLaneAmsterdam()
+	require.EqualValues(t, 10, execution)
+	require.EqualValues(t, 10, state)
+
+	b.RecordUsedAmsterdam(PaymentLane, 4, 12)
+	require.EqualValues(t, 9, b.PaymentLaneUsed)
+	b.RecordUsed(PaymentLane, 1)
+	require.EqualValues(t, 4, b.PaymentExecutionUsed)
+	require.EqualValues(t, 12, b.PaymentStateUsed)
+	execution, state = b.IdleLaneAmsterdam()
+	require.EqualValues(t, 6, execution)
+	require.Zero(t, state)
+	require.Zero(t, b.IdleLane())
+
+	require.NoError(t, b.Verify(100, 100))
+	require.NoError(t, b.VerifyAmsterdam(100, 94, 100))
+	require.ErrorIs(t, b.VerifyAmsterdam(100, 95, 100), ErrViolated)
+	require.ErrorIs(t, b.VerifyAmsterdam(100, 94, 101), ErrViolated)
+}

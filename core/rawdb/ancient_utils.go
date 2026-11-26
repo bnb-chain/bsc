@@ -74,6 +74,10 @@ func inspect(name string, order map[string]freezerTableConfig, reader ethdb.Anci
 		}
 		groupTails[cfg.tailGroup] = t
 	}
+	counts, err := inspectTableCounts(reader)
+	if err != nil {
+		return freezerInfo{}, err
+	}
 	for t, cfg := range order {
 		size, err := reader.AncientSize(t)
 		if err != nil {
@@ -84,9 +88,42 @@ func inspect(name string, order map[string]freezerTableConfig, reader ethdb.Anci
 			tail := groupTails[cfg.tailGroup] // 0 for non-prunable tables
 			count = ancients - tail
 		}
+		if actual, ok := counts[t]; ok {
+			count = actual
+		}
 		info.tables = append(info.tables, tableInfo{name: t, size: common.StorageSize(size), count: count})
 	}
 	return info, nil
+}
+
+// inspectTableCounts accounts for BSC's legacy pruned tails and uninitialized blob table.
+func inspectTableCounts(reader ethdb.AncientReader) (map[string]uint64, error) {
+	var counts map[string]uint64
+	err := reader.ReadAncients(func(op ethdb.AncientReaderOp) error {
+		if chain, ok := op.(*chainFreezer); ok {
+			// The chain wrapper already holds the disk freezer lock.
+			if _, ok := chain.ancients.(*Freezer); !ok {
+				var err error
+				counts, err = inspectTableCounts(chain.ancients)
+				return err
+			}
+			op = chain.ancients
+		}
+		switch f := op.(type) {
+		case *Freezer:
+			counts = make(map[string]uint64, len(f.tables))
+			for name, table := range f.tables {
+				counts[name] = table.items.Load() - table.itemHidden.Load()
+			}
+		case *MemoryFreezer:
+			counts = make(map[string]uint64, len(f.tables))
+			for name, table := range f.tables {
+				counts[name] = table.items - table.offset
+			}
+		}
+		return nil
+	})
+	return counts, err
 }
 
 // inspectFreezers inspects all freezers registered in the system.

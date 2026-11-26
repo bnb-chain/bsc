@@ -23,7 +23,7 @@ func TestCAS20ExhaustedBudgetStopsWork(t *testing.T) {
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x0c9"), creator,
 			[][]byte{cas20Call(selGrantRole, roleMint, addrKey(creator))}),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestCAS20ExhaustedBudgetStopsWork(t *testing.T) {
 			sdb := statedb.Copy()
 			e := NewEVM(cas20BlockContext(1), sdb, cas20TestChainConfig(), Config{})
 			start := time.Now()
-			_, _, err := e.Call(creator, token, input, NewGasBudget(budget), uint256.NewInt(0))
+			_, _, err := e.Call(creator, token, input, NewGasBudget(budget, 0), uint256.NewInt(0))
 			if d := time.Since(start); d < out {
 				out = d
 			}
@@ -85,7 +85,7 @@ func TestCAS20BootstrapStopsOnExhaustion(t *testing.T) {
 		for rep := 0; rep < 5; rep++ {
 			_, e := newCAS20EVM(t)
 			start := time.Now()
-			_, _, err := e.Call(creator, CAS20FactoryAddress, input, NewGasBudget(budget), uint256.NewInt(0))
+			_, _, err := e.Call(creator, CAS20FactoryAddress, input, NewGasBudget(budget, 0), uint256.NewInt(0))
 			if d := time.Since(start); d < out {
 				out = d
 			}
@@ -114,7 +114,7 @@ func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xta11"), creator,
 			[][]byte{cas20Call(selGrantRole, roleMetadata, addrKey(creator))}),
-		NewGasBudget(9_000_000), uint256.NewInt(0))
+		NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 
 	long := strings.Repeat("N", 40_000)
 	if _, _, err := evm.Call(creator, token, encodeStringCall(selUpdateName, long),
-		NewGasBudget(500_000_000), uint256.NewInt(0)); err != nil {
+		NewGasBudget(500_000_000, 0), uint256.NewInt(0)); err != nil {
 		t.Fatalf("storing the long name: %v", err)
 	}
 	chunks := newUnmeteredCAS20Storage(statedb, token).stringChunks(slotAt(cas20SlotName))
@@ -138,7 +138,7 @@ func TestCAS20OldTailReleaseStopsOnExhaustion(t *testing.T) {
 			sdb := statedb.Copy()
 			e := NewEVM(cas20BlockContext(1), sdb, cas20TestChainConfig(), Config{})
 			start := time.Now()
-			_, _, err := e.Call(creator, token, short, NewGasBudget(budget), uint256.NewInt(0))
+			_, _, err := e.Call(creator, token, short, NewGasBudget(budget, 0), uint256.NewInt(0))
 			if d := time.Since(start); d < out {
 				out = d
 			}
@@ -177,7 +177,7 @@ func TestCAS20UnaffordableCallDoesNoWork(t *testing.T) {
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0x006"), creator, [][]byte{
 			cas20Call(selGrantRole, roleMint, addrKey(creator)),
 			cas20Call(selMint, addrKey(cas20Alice), u256hash(100)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -196,15 +196,15 @@ func TestCAS20UnaffordableCallDoesNoWork(t *testing.T) {
 	}
 	input := cas20Call(selBalanceOf, addrKey(cas20Carol))
 	out, left, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
-		creator, token, input, NewGasBudget(1), false, true, uint256.NewInt(0))
+		creator, token, input, NewGasBudget(1, 0), false, true, uint256.NewInt(0))
 	if !errors.Is(err, ErrOutOfGas) {
 		t.Errorf("an unaffordable call err = %v, want ErrOutOfGas", err)
 	}
 	if len(out) != 0 {
 		t.Errorf("returndata = %x, want empty", out)
 	}
-	if left.RegularGas != 0 {
-		t.Errorf("gas left = %d, want 0", left.RegularGas)
+	if left.ExecutionGas != 0 {
+		t.Errorf("gas left = %d, want 0", left.ExecutionGas)
 	}
 	if warmed(statedb, token, slot) {
 		t.Error("the handler read state it could not pay for: carol's slot is warm after a " +
@@ -219,11 +219,11 @@ func TestCAS20CalldataGasMatchesTheBEP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		gas := NewGasBudget(10_000_000)
+		gas := NewGasBudget(10_000_000, 0)
 		ctx := &PrecompileContext{StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 1), gas: &gas}
-		before := gas.RegularGas
+		before := gas.ExecutionGas
 		ctx.chargeCalldata(make([]byte, words*32))
-		return before - gas.RegularGas
+		return before - gas.ExecutionGas
 	}
 	for _, words := range []int{0, 1, 2, 10, 1000} {
 		want := uint64(words) * (params.CopyGas + params.MemoryGas)
@@ -247,7 +247,7 @@ func TestCAS20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 	ret, _, err := evm.Call(admin, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xaa11"), admin, [][]byte{
 			cas20Call(selGrantRole, roleOperator, addrKey(admin)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestCAS20AnnounceStopsAtTheUnpaidRead(t *testing.T) {
 		before := len(statedb.Logs())
 		_, _, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
 			admin, token, encodeAnnounceWith(nil, fmt.Sprintf("announcement-%d", g), long, long),
-			NewGasBudget(g), false, true, uint256.NewInt(0))
+			NewGasBudget(g, 0), false, true, uint256.NewInt(0))
 		added := statedb.Logs()[before:]
 		probes++
 		if err == nil {
@@ -306,7 +306,7 @@ func TestCAS20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
 	ret, _, err := evm.Call(admin, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xbb22"), admin, [][]byte{
 			cas20Call(selGrantRole, roleOperator, addrKey(admin)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestCAS20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
 
 	const id = "disclosure-1"
 	if _, _, err := evm.Call(admin, token, encodeAnnounceWith(nil, id, "d", "u"),
-		NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
+		NewGasBudget(1_000_000, 0), uint256.NewInt(0)); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
 
@@ -326,7 +326,7 @@ func TestCAS20AnnouncementViewNeverAnswersFromAnUnpaidRead(t *testing.T) {
 	answered, refused := 0, 0
 	for g := uint64(20); g <= 2_000; g += 20 {
 		out, _, err := runStatefulPrecompiledContract(evm, p.(StatefulPrecompiledContract),
-			admin, token, input, NewGasBudget(g), true, true, uint256.NewInt(0))
+			admin, token, input, NewGasBudget(g, 0), true, true, uint256.NewInt(0))
 		if err != nil {
 			if !errors.Is(err, ErrOutOfGas) {
 				t.Fatalf("budget %d: err = %v, want ErrOutOfGas", g, err)
@@ -356,7 +356,7 @@ func TestCAS20InternalDispatchIsCharged(t *testing.T) {
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xd15"), creator, [][]byte{
 			cas20Call(selGrantRole, roleOperator, addrKey(creator)),
-		}), NewGasBudget(9_000_000), uint256.NewInt(0))
+		}), NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -369,12 +369,12 @@ func TestCAS20InternalDispatchIsCharged(t *testing.T) {
 		for i := range calls {
 			calls[i] = cas20Call(selWadPrecision)
 		}
-		gas := NewGasBudget(5_000_000)
+		gas := NewGasBudget(5_000_000, 0)
 		_, left, err := evm.Call(creator, token, encodeAnnounce(calls, id), gas, uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("announce with %d calls: %v", n, err)
 		}
-		return gas.RegularGas - left.RegularGas
+		return gas.ExecutionGas - left.ExecutionGas
 	}
 	one, two := used(1, "id-1"), used(2, "id-2")
 	// The second announce also carries three more words of outer calldata: the
@@ -394,10 +394,10 @@ func TestCAS20InternalDispatchIsCharged(t *testing.T) {
 	}
 	perEntry := params.WarmStorageReadCostEIP2929 + cas20CalldataWordGas + 3*cas20CalldataWordGas
 	enough := one + 199*perEntry
-	if _, _, err := evm.Call(creator, token, encodeAnnounce(many, "id-200"), NewGasBudget(enough), uint256.NewInt(0)); err != nil {
+	if _, _, err := evm.Call(creator, token, encodeAnnounce(many, "id-200"), NewGasBudget(enough, 0), uint256.NewInt(0)); err != nil {
 		t.Fatalf("200 dispatches on their exact price: %v", err)
 	}
-	if _, _, err := evm.Call(creator, token, encodeAnnounce(many, "id-200-short"), NewGasBudget(enough-100*perEntry), uint256.NewInt(0)); !errors.Is(err, ErrOutOfGas) {
+	if _, _, err := evm.Call(creator, token, encodeAnnounce(many, "id-200-short"), NewGasBudget(enough-100*perEntry, 0), uint256.NewInt(0)); !errors.Is(err, ErrOutOfGas) {
 		t.Errorf("200 dispatches short of the last hundred: err = %v, want out of gas", err)
 	}
 }

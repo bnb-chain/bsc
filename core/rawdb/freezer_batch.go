@@ -80,8 +80,9 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 	// Check that count agrees on all batches.
 	item = uint64(math.MaxUint64)
 	for name, tb := range batch.tables {
-		// skip empty addition tables
-		if slices.Contains(additionTables, name) && EmptyTable(tb.t) {
+		// A rewind before Cancun can leave an empty blob table with a nonzero head,
+		// which must still be checked when pre-Cancun batches omit blob entries.
+		if slices.Contains(additionTables, name) && tb.curItem == 0 {
 			continue
 		}
 		if item < math.MaxUint64 && tb.curItem != item {

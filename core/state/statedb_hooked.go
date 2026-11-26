@@ -154,10 +154,6 @@ func (s *hookedStateDB) Prepare(rules params.Rules, sender, coinbase common.Addr
 	s.inner.Prepare(rules, sender, coinbase, dest, precompiles, txAccesses)
 }
 
-func (s *hookedStateDB) SetTxContext(thash common.Hash, ti int) {
-	s.inner.SetTxContext(thash, ti)
-}
-
 func (s *hookedStateDB) TxIndex() int {
 	return s.inner.TxIndex()
 }
@@ -253,25 +249,11 @@ func (s *hookedStateDB) AddLog(log *types.Log) {
 	}
 }
 
-<<<<<<< HEAD
 func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log {
 	return s.inner.GetLogs(hash, blockNumber, blockHash, blockTime)
 }
 
-func (s *hookedStateDB) LogsForBurnAccounts() []*types.Log {
-	return s.inner.LogsForBurnAccounts()
-}
-
-func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) *bal.StateAccessList {
-||||||| 117e067f0f
-func (s *hookedStateDB) LogsForBurnAccounts() []*types.Log {
-	return s.inner.LogsForBurnAccounts()
-}
-
-func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) *bal.StateAccessList {
-=======
 func (s *hookedStateDB) Finalise(rules params.Rules) *bal.ConstructionBlockAccessList {
->>>>>>> geth-v1.17.9
 	if s.hooks.OnBalanceChange == nil && s.hooks.OnNonceChangeV2 == nil && s.hooks.OnNonceChange == nil && s.hooks.OnCodeChangeV2 == nil && s.hooks.OnCodeChange == nil {
 		// Short circuit if no relevant hooks are set.
 		return s.inner.Finalise(rules)
@@ -336,6 +318,6 @@ func (s *hookedStateDB) SetTxContext(thash common.Hash, ti int, blockAccessIndex
 	s.inner.SetTxContext(thash, ti, blockAccessIndex)
 }
 
-func (s *hookedStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
-	return s.inner.IntermediateRoot(deleteEmptyObjects)
+func (s *hookedStateDB) IntermediateRoot(rules params.Rules) common.Hash {
+	return s.inner.IntermediateRoot(rules)
 }

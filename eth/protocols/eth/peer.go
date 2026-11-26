@@ -17,6 +17,7 @@
 package eth
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
@@ -119,7 +121,6 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, blo
 	cap := p2p.Cap{Name: ProtocolName, Version: version}
 	id := p.ID().String()
 	peer := &Peer{
-<<<<<<< HEAD
 		id:              id,
 		Peer:            p,
 		rw:              rw,
@@ -140,41 +141,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, blo
 		receiptBuffer:   make(map[uint64]*receiptRequest),
 		term:            make(chan struct{}),
 		txTerm:          make(chan struct{}),
-||||||| 117e067f0f
-		id:            p.ID().String(),
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		knownTxs:      newKnownCache(maxKnownTxs),
-		txBroadcast:   make(chan []common.Hash),
-		txAnnounce:    make(chan []common.Hash),
-		tracker:       tracker.New(cap, id, 5*time.Minute),
-		reqDispatch:   make(chan *request),
-		reqCancel:     make(chan *cancel),
-		resDispatch:   make(chan *response),
-		txpool:        txpool,
-		chainConfig:   chainConfig,
-		receiptBuffer: make(map[uint64]*receiptRequest),
-		term:          make(chan struct{}),
-=======
-		id:            id,
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		knownTxs:      newKnownCache(maxKnownTxs),
-		txBroadcast:   make(chan []common.Hash),
-		txAnnounce:    make(chan []common.Hash),
-		tracker:       tracker.New(cap, id, 5*time.Minute),
-		reqDispatch:   make(chan *request),
-		reqCancel:     make(chan *cancel),
-		reqResend:     make(chan *resend),
-		resDispatch:   make(chan *response),
-		txpool:        txpool,
-		blobpool:      blobpool,
-		chainConfig:   chainConfig,
-		receiptBuffer: make(map[uint64]*receiptRequest),
-		term:          make(chan struct{}),
->>>>>>> geth-v1.17.9
+		blobpool:        blobpool,
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()
@@ -384,23 +351,69 @@ func (p *Peer) AsyncSendNewBlockHash(block *types.Block) {
 	}
 }
 
+func (p *Peer) isAmsterdamBlock(block *types.Block) bool {
+	return p.chainConfig != nil && p.chainConfig.IsAmsterdam(block.Number(), block.Time())
+}
+
 // SendNewBlock propagates an entire block to a remote peer.
 func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
-	// Mark all the block hash as known, but ensure we don't overflow our limits
-	p.knownBlocks.Add(block.Hash())
+	if p.isAmsterdamBlock(block) {
+		payload, err := EncodeNewBlockWithBAL(block, td)
+		if err != nil || payload == nil {
+			return err
+		}
+		return p.sendNewBlock(block, td, payload)
+	}
+	return p.sendNewBlock(block, td, nil)
+}
 
-	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
-		Block:    block,
-		TD:       td,
-		Sidecars: block.Sidecars(),
-	})
+// EncodeNewBlockWithBAL prepares a shared post-Amsterdam block broadcast.
+// A nil payload means the block should be announced once it can be served.
+func EncodeNewBlockWithBAL(block *types.Block, td *big.Int) ([]byte, error) {
+	if block.BlockAccessListHash() == nil || block.AccessList() == nil {
+		return nil, nil
+	}
+	bal, err := rlp.EncodeToBytes(block.AccessList())
+	if err != nil {
+		return nil, err
+	}
+	payload, err := rlp.EncodeToBytes(&NewBlockPacket{Block: block, TD: td, Sidecars: block.Sidecars(), BlockAccessList: bal})
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > maxMessageSize {
+		log.Debug("Skipping oversized NewBlock broadcast with BAL", "hash", block.Hash(), "size", len(payload), "limit", maxMessageSize)
+		return nil, nil
+	}
+	return payload, nil
+}
+
+func (p *Peer) sendNewBlock(block *types.Block, td *big.Int, balPayload []byte) error {
+	p.knownBlocks.Add(block.Hash())
+	if balPayload != nil {
+		return p.rw.WriteMsg(p2p.Msg{Code: NewBlockMsg, Size: uint32(len(balPayload)), Payload: bytes.NewReader(balPayload)})
+	}
+	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{Block: block, TD: td, Sidecars: block.Sidecars()})
 }
 
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If
 // the peer's broadcast queue is full, the event is silently dropped.
-func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int) {
+func (p *Peer) AsyncSendNewBlock(block *types.Block, td *big.Int, encodeBALPayload func() ([]byte, error)) {
+	var payload []byte
+	if p.isAmsterdamBlock(block) {
+		var err error
+		payload, err = encodeBALPayload()
+		if err != nil {
+			p.Log().Debug("Failed to encode block propagation", "hash", block.Hash(), "err", err)
+			return
+		}
+		// Leave the peer eligible for the announcement after import.
+		if payload == nil {
+			return
+		}
+	}
 	select {
-	case p.queuedBlocks <- &blockPropagation{block: block, td: td}:
+	case p.queuedBlocks <- &blockPropagation{block: block, td: td, balPayload: payload}:
 		// Mark all the block hash as known, but ensure we don't overflow our limits
 		p.knownBlocks.Add(block.Hash())
 	default:

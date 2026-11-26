@@ -19,6 +19,7 @@ package eth
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 
@@ -407,6 +408,19 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
+	if peer.isAmsterdamBlock(ann.Block) {
+		if len(ann.BlockAccessList) == 0 {
+			// Leave the block eligible for a later broadcast with its BAL.
+			return nil
+		}
+		block, err := ann.Block.WithAccessListRLP(ann.BlockAccessList)
+		if err != nil {
+			return err
+		}
+		ann.Block = block
+	} else if len(ann.BlockAccessList) != 0 {
+		return errors.New("block access list before Amsterdam")
+	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
 
@@ -611,7 +625,6 @@ func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) er
 	if err != nil {
 		return fmt.Errorf("Receipts: %w", err)
 	}
-<<<<<<< HEAD
 	buffers := new(receiptListBuffers)
 	for i := range receiptLists {
 		receiptLists[i].setBuffers(buffers)
@@ -638,15 +651,6 @@ func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) er
 		code: ReceiptsMsg,
 		Res:  &enc,
 	}, metadata)
-||||||| 117e067f0f
-
-	return dispatchReceipts(res.RequestId, receiptLists, peer)
-=======
-	if err := checkReceiptItemCounts(receiptLists); err != nil {
-		return fmt.Errorf("Receipts: %w", err)
-	}
-	return dispatchReceipts(res.RequestId, receiptLists, peer)
->>>>>>> geth-v1.17.9
 }
 
 func handleReceipts70(backend Backend, msg Decoder, peer *Peer) error {

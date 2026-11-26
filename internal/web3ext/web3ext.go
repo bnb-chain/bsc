@@ -144,21 +144,17 @@ web3._extend({
 			name: 'stopWS',
 			call: 'admin_stopWS'
 		}),
-<<<<<<< HEAD
+		new web3._extend.Method({
+			name: 'clearTxpool',
+			call: 'debug_clearTxpool',
+			params: 0
+		}),
 		new web3._extend.Method({
 			name: 'setBidBlockPermission',
 			call: 'admin_setBidBlockPermission',
 			params: 2,
 			inputFormatter: [web3._extend.formatters.inputAddressFormatter, null]
 		}),
-||||||| 117e067f0f
-=======
-		new web3._extend.Method({
-			name: 'clearTxpool',
-			call: 'debug_clearTxpool',
-			params: 0
-		}),
->>>>>>> geth-v1.17.9
 	],
 	properties: [
 		new web3._extend.Property({

@@ -65,7 +65,6 @@ func (h *ethHandler) AcceptTxs() bool {
 func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	// Consume any broadcasts and announces, forwarding the rest to the downloader
 	switch packet := packet.(type) {
-<<<<<<< HEAD
 	case *eth.NewBlockHashesPacket:
 		hashes, numbers := packet.Unpack()
 		return h.handleBlockAnnounces(peer, hashes, numbers)
@@ -73,12 +72,6 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.NewBlockPacket:
 		return h.handleBlockBroadcast(peer, packet)
 
-	case *eth.NewPooledTransactionHashesPacket:
-		return h.txFetcher.Notify(peer.ID(), packet.Types, packet.Sizes, packet.Hashes)
-||||||| 117e067f0f
-	case *eth.NewPooledTransactionHashesPacket:
-		return h.txFetcher.Notify(peer.ID(), packet.Types, packet.Sizes, packet.Hashes)
-=======
 	case *eth.NewPooledTransactionHashesPacket72:
 		hashes, err := h.txFetcher.Notify(peer.ID(), peer.Version(), packet.Types, packet.Sizes, packet.Hashes)
 		if err != nil {
@@ -92,7 +85,6 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.NewPooledTransactionHashesPacket71:
 		_, err := h.txFetcher.Notify(peer.ID(), peer.Version(), packet.Types, packet.Sizes, packet.Hashes)
 		return err
->>>>>>> geth-v1.17.9
 
 	case *eth.TransactionsPacket:
 		txs, err := packet.Items()

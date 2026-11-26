@@ -17,6 +17,7 @@
 package miner
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -35,18 +36,14 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/txorder"
 	"github.com/ethereum/go-ethereum/core/types"
-<<<<<<< HEAD
-	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
-||||||| 117e067f0f
-=======
 	"github.com/ethereum/go-ethereum/core/types/bal"
->>>>>>> geth-v1.17.9
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -81,7 +78,6 @@ const (
 )
 
 var (
-<<<<<<< HEAD
 	bidExistGauge        = metrics.NewRegisteredGauge("worker/bidExist", nil)
 	bidWinGauge          = metrics.NewRegisteredGauge("worker/bidWin", nil)
 	inturnBlocksGauge    = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
@@ -101,10 +97,15 @@ var (
 	bidBlockEvidenceRevokeCounter = metrics.NewRegisteredCounter("worker/bidBlockEvidenceRevoke", nil)
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
-	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
-	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
-	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
-	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
+	paymentLaneQuotaGauge         = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)
+	paymentLaneGasUsedGauge       = metrics.NewRegisteredGauge("paymentlane/paymentGasUsed", nil)
+	paymentLaneIdleGauge          = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)
+	paymentLaneExecutionUsedGauge = metrics.NewRegisteredGauge("paymentlane/paymentExecutionUsed", nil)
+	paymentLaneStateUsedGauge     = metrics.NewRegisteredGauge("paymentlane/paymentStateUsed", nil)
+	paymentLaneExecutionIdleGauge = metrics.NewRegisteredGauge("paymentlane/paymentExecutionIdle", nil)
+	paymentLaneStateIdleGauge     = metrics.NewRegisteredGauge("paymentlane/paymentStateIdle", nil)
+	generalLaneYieldedCounter     = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter     = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -116,36 +117,15 @@ var (
 	errBlockInterruptedByTimeout   = errors.New("timeout while building block")
 	errBlockInterruptedByOutOfGas  = errors.New("out of gas while building block")
 	errBlockInterruptedByBetterBid = errors.New("better bid arrived while building block")
-||||||| 117e067f0f
-	errBlockInterruptedByNewHead  = errors.New("new head arrived while building block")
-	errBlockInterruptedByRecommit = errors.New("recommit interrupt while building block")
-	errBlockInterruptedByTimeout  = errors.New("timeout while building block")
-=======
-	errBlockInterruptedByNewHead  = errors.New("new head arrived while building block")
-	errBlockInterruptedByRecommit = errors.New("recommit interrupt while building block")
-	errBlockInterruptedByTimeout  = errors.New("timeout while building block")
-	errStateReadFailure           = errors.New("state read failed while building block")
->>>>>>> geth-v1.17.9
+	errStateReadFailure            = errors.New("state read failed while building block")
 )
 
 // maxBlobsPerBlock returns the maximum number of blobs per block.
 // Users can specify the maximum number of blobs per block if necessary.
-<<<<<<< HEAD
 func (w *worker) maxBlobsPerBlock(time uint64) int {
 	maxBlobs := eip4844.MaxBlobsPerBlock(w.chainConfig, time)
 	if w.config.MaxBlobsPerBlock != 0 && w.config.MaxBlobsPerBlock < maxBlobs {
 		maxBlobs = w.config.MaxBlobsPerBlock
-||||||| 117e067f0f
-func (miner *Miner) maxBlobsPerBlock(time uint64) int {
-	maxBlobs := eip4844.MaxBlobsPerBlock(miner.chainConfig, time)
-	if miner.config.MaxBlobsPerBlock != 0 {
-		maxBlobs = miner.config.MaxBlobsPerBlock
-=======
-func (miner *Miner) maxBlobsPerBlock(time uint64) int {
-	maxBlobs := eip4844.MaxBlobsPerBlock(miner.chainConfig, time)
-	if configured := miner.config.MaxBlobsPerBlock; configured != 0 && configured < maxBlobs {
-		maxBlobs = configured
->>>>>>> geth-v1.17.9
 	}
 	return maxBlobs
 }
@@ -256,100 +236,17 @@ type newPayloadResult struct {
 	revertedIdx []uint32
 }
 
-<<<<<<< HEAD
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
 type getWorkReq struct {
 	params *generateParams
 	result chan *newPayloadResult // non-blocking channel
-||||||| 117e067f0f
-// generateParams wraps various settings for generating sealing task.
-type generateParams struct {
-	timestamp   uint64            // The timestamp for sealing task
-	forceTime   bool              // Flag whether the given timestamp is immutable or not
-	parentHash  common.Hash       // Parent block hash, empty means the latest chain head
-	coinbase    common.Address    // The fee recipient address for including transaction
-	random      common.Hash       // The randomness generated by beacon chain, empty before the merge
-	withdrawals types.Withdrawals // List of withdrawals to include in block (shanghai field)
-	beaconRoot  *common.Hash      // The beacon root (cancun field).
-	slotNum     *uint64           // The slot number (amsterdam field).
-	noTxs       bool              // Flag whether an empty block without any transaction is expected
-
-	forceOverrides    bool // Flag whether we should overwrite extraData and transactions
-	overrideExtraData []byte
-	overrideTxs       []*types.Transaction
-=======
-// generateParams wraps various settings for generating sealing task.
-type generateParams struct {
-	timestamp      uint64            // The timestamp for sealing task
-	forceTime      bool              // Flag whether the given timestamp is immutable or not
-	parentHash     common.Hash       // Parent block hash, empty means the latest chain head
-	coinbase       common.Address    // The fee recipient address for including transaction
-	random         common.Hash       // The randomness generated by beacon chain, empty before the merge
-	withdrawals    types.Withdrawals // List of withdrawals to include in block (shanghai field)
-	beaconRoot     *common.Hash      // The beacon root (cancun field).
-	slotNum        *uint64           // The slot number (amsterdam field).
-	targetGasLimit *uint64           // The target gas limit requested by the CL (amsterdam field).
-	noTxs          bool              // Flag whether an empty block without any transaction is expected
-
-	forceOverrides    bool // Flag whether we should overwrite extraData and transactions
-	overrideExtraData []byte
-	overrideTxs       []*types.Transaction
->>>>>>> geth-v1.17.9
 }
 
-<<<<<<< HEAD
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
 	GetBestBidBlock(parentHash common.Hash) *buildertypes.DecodedBidBlock
 }
-||||||| 117e067f0f
-// generateWork generates a sealing block based on the given parameters.
-func (miner *Miner) generateWork(ctx context.Context, genParam *generateParams, witness bool) (result *newPayloadResult) {
-	ctx, span, spanEnd := telemetry.StartSpan(ctx, "miner.generateWork")
-	defer func() {
-		if result != nil && result.err == nil {
-			span.SetAttributes(
-				telemetry.Int64Attribute("txs.count", int64(len(result.block.Transactions()))),
-				telemetry.Int64Attribute("gas.used", int64(result.block.GasUsed())),
-				telemetry.StringAttribute("fees", result.fees.String()),
-			)
-		}
-		if result != nil {
-			spanEnd(&result.err)
-		} else {
-			spanEnd(nil)
-		}
-	}()
-	work, err := miner.prepareWork(ctx, genParam, witness)
-	if err != nil {
-		return &newPayloadResult{err: err}
-	}
-	defer work.discard()
-=======
-// generateWork generates a sealing block based on the given parameters.
-func (miner *Miner) generateWork(ctx context.Context, genParam *generateParams, witness bool) (result *newPayloadResult) {
-	ctx, span, spanEnd := telemetry.StartSpan(ctx, "miner.generateWork")
-	defer func() {
-		if result != nil && result.err == nil {
-			span.SetAttributes(
-				telemetry.IntAttribute("txs.count", len(result.block.Transactions())),
-				telemetry.Int64Attribute("gas.used", int64(result.block.GasUsed())),
-				telemetry.StringAttribute("fees", result.fees.String()),
-			)
-		}
-		if result != nil {
-			spanEnd(&result.err)
-		} else {
-			spanEnd(nil)
-		}
-	}()
-	work, err := miner.prepareWork(ctx, genParam, witness)
-	if err != nil {
-		return &newPayloadResult{err: err}
-	}
-	defer work.discard()
->>>>>>> geth-v1.17.9
 
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
@@ -364,7 +261,6 @@ type worker struct {
 	prio        []common.Address // A list of senders to prioritize
 	chain       *core.BlockChain
 
-<<<<<<< HEAD
 	// Subscriptions
 	mux            *event.TypeMux
 	chainHeadCh    chan core.ChainHeadEvent
@@ -624,27 +520,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					timer.Reset(recommit)
 					log.Info("Signed recently, must wait")
 					continue
-||||||| 117e067f0f
-	if !genParam.noTxs {
-		// If forceOverrides is true and overrideTxs is not empty, commit the override transactions
-		// otherwise, fill the block with the current transactions from the txpool
-		if genParam.forceOverrides && len(genParam.overrideTxs) > 0 {
-			for _, tx := range genParam.overrideTxs {
-				work.state.SetTxContext(tx.Hash(), work.tcount)
-				if err := miner.commitTransaction(ctx, work, tx); err != nil {
-					// all passed transactions HAVE to be valid at this point
-					return &newPayloadResult{err: err}
-=======
-	if !genParam.noTxs {
-		// If forceOverrides is true and overrideTxs is not empty, commit the override transactions
-		// otherwise, fill the block with the current transactions from the txpool
-		if genParam.forceOverrides && len(genParam.overrideTxs) > 0 {
-			for _, tx := range genParam.overrideTxs {
-				work.state.SetTxContext(tx.Hash(), work.tcount, uint32(work.tcount+1))
-				if err := miner.commitTransaction(ctx, work, tx); err != nil {
-					// all passed transactions HAVE to be valid at this point
-					return &newPayloadResult{err: err}
->>>>>>> geth-v1.17.9
 				}
 			}
 			commit(commitInterruptNewHead)
@@ -667,87 +542,13 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			log.Info("Miner recommit interval update", "from", minRecommit, "to", interval)
 			minRecommit, recommit = interval, interval
 
-<<<<<<< HEAD
 			if w.resubmitHook != nil {
 				w.resubmitHook(minRecommit, recommit)
 			}
-||||||| 117e067f0f
-	// Collect consensus-layer requests if Prague is enabled.
-	var requests [][]byte
-	if miner.chainConfig.IsPrague(work.header.Number, work.header.Time) {
-		requests = [][]byte{}
-		// EIP-6110 deposits
-		if err := core.ParseDepositLogs(&requests, allLogs, miner.chainConfig); err != nil {
-			return &newPayloadResult{err: err}
-		}
-		// EIP-7002
-		if err := core.ProcessWithdrawalQueue(&requests, work.evm); err != nil {
-			return &newPayloadResult{err: err}
-		}
-		// EIP-7251 consolidations
-		if err := core.ProcessConsolidationQueue(&requests, work.evm); err != nil {
-			return &newPayloadResult{err: err}
-		}
-	}
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
-	}
-	// Assemble the block for delivery.
-	_, _, assembleSpanEnd := telemetry.StartSpan(ctx, "miner.AssembleBlock")
-	block := core.AssembleBlock(miner.engine, miner.chain, work.header, work.state, &body, work.receipts)
-	assembleSpanEnd(nil)
-=======
-	// Collect consensus-layer requests if Prague is enabled.
-	requests, bal, err := core.PostExecution(ctx, miner.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
-	if err != nil {
-		return &newPayloadResult{err: err}
-	}
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
-	}
-	work.bal.Merge(bal)
 
-	// Apply the consensus-specific post-transaction changes
-	miner.engine.Finalize(miner.chain, work.header, work.state, &body)
-
-	// Assemble the block for delivery.
-	_, _, assembleSpanEnd := telemetry.StartSpan(ctx, "miner.AssembleBlock")
-	block := core.AssembleBlock(miner.chain, work.header, work.state, &body, work.receipts, work.bal)
-	assembleSpanEnd(nil)
->>>>>>> geth-v1.17.9
-
-<<<<<<< HEAD
 		case <-w.exitCh:
 			return
 		}
-||||||| 117e067f0f
-	return &newPayloadResult{
-		block:    block,
-		fees:     totalFees(block, work.receipts),
-		sidecars: work.sidecars,
-		stateDB:  work.state,
-		receipts: work.receipts,
-		requests: requests,
-		witness:  work.witness,
-=======
-	// Check for db errors. If anything happened during the mining or IntermediateRoot, such as a
-	// weird flush or a trie node missing, we need to bail out and not create a block.
-	if dbErr := work.state.Error(); dbErr != nil {
-		return &newPayloadResult{err: fmt.Errorf("%w: %v", errStateReadFailure, dbErr)}
-	}
-	return &newPayloadResult{
-		block:       block,
-		fees:        totalFees(block, work.receipts),
-		sidecars:    work.sidecars,
-		stateDB:     work.state,
-		receipts:    work.receipts,
-		requests:    requests,
-		witness:     work.witness,
-		revertedTxs: work.revertedTxs,
-		revertedIdx: work.revertedIdx,
->>>>>>> geth-v1.17.9
 	}
 }
 
@@ -763,7 +564,6 @@ func (w *worker) mainLoop() {
 		}
 	}()
 
-<<<<<<< HEAD
 	for {
 		select {
 		case req := <-w.newWorkCh:
@@ -777,101 +577,6 @@ func (w *worker) mainLoop() {
 			return
 		case <-w.chainHeadSub.Err():
 			return
-||||||| 117e067f0f
-	// Find the parent block for sealing task
-	parent := miner.chain.CurrentBlock()
-	if genParams.parentHash != (common.Hash{}) {
-		block := miner.chain.GetBlockByHash(genParams.parentHash)
-		if block == nil {
-			return nil, errors.New("missing parent")
-		}
-		parent = block.Header()
-	}
-	// Sanity check the timestamp correctness, recap the timestamp
-	// to parent+1 if the mutation is allowed.
-	timestamp := genParams.timestamp
-	if parent.Time >= timestamp {
-		if genParams.forceTime {
-			return nil, fmt.Errorf("invalid timestamp, parent %d given %d", parent.Time, timestamp)
-		}
-		timestamp = parent.Time + 1
-	}
-	// Construct the sealing block header.
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.config.GasCeil),
-		Time:       timestamp,
-		Coinbase:   genParams.coinbase,
-	}
-	// Set the extra field.
-	if len(miner.config.ExtraData) != 0 {
-		header.Extra = miner.config.ExtraData
-	}
-	if genParams.forceOverrides {
-		header.Extra = genParams.overrideExtraData
-	}
-	// Set the randomness field from the beacon chain if it's available.
-	if genParams.random != (common.Hash{}) {
-		header.MixDigest = genParams.random
-	}
-	// Set baseFee and GasLimit if we are on an EIP-1559 chain
-	if miner.chainConfig.IsLondon(header.Number) {
-		header.BaseFee = eip1559.CalcBaseFee(miner.chainConfig, parent)
-		if !miner.chainConfig.IsLondon(parent.Number) {
-			parentGasLimit := parent.GasLimit * miner.chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, miner.config.GasCeil)
-=======
-	// Find the parent block for sealing task
-	parent := miner.chain.CurrentBlock()
-	if genParams.parentHash != (common.Hash{}) {
-		block := miner.chain.GetBlockByHash(genParams.parentHash)
-		if block == nil {
-			return nil, errors.New("missing parent")
-		}
-		parent = block.Header()
-	}
-	// Sanity check the timestamp correctness, recap the timestamp
-	// to parent+1 if the mutation is allowed.
-	timestamp := genParams.timestamp
-	if parent.Time >= timestamp {
-		if genParams.forceTime {
-			return nil, fmt.Errorf("invalid timestamp, parent %d given %d", parent.Time, timestamp)
-		}
-		timestamp = parent.Time + 1
-	}
-	// Post-Amsterdam use TargetGasLimit provided by CL
-	number := new(big.Int).Add(parent.Number, common.Big1)
-	gasCeil := miner.config.GasCeil
-	if miner.chainConfig.IsAmsterdam(number, timestamp) && genParams.targetGasLimit != nil {
-		gasCeil = *genParams.targetGasLimit
-	}
-	// Construct the sealing block header.
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     number,
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, gasCeil),
-		Time:       timestamp,
-		Coinbase:   genParams.coinbase,
-	}
-	// Set the extra field.
-	if len(miner.config.ExtraData) != 0 {
-		header.Extra = miner.config.ExtraData
-	}
-	if genParams.forceOverrides {
-		header.Extra = genParams.overrideExtraData
-	}
-	// Set the randomness field from the beacon chain if it's available.
-	if genParams.random != (common.Hash{}) {
-		header.MixDigest = genParams.random
-	}
-	// Set baseFee and GasLimit if we are on an EIP-1559 chain
-	if miner.chainConfig.IsLondon(header.Number) {
-		header.BaseFee = eip1559.CalcBaseFee(miner.chainConfig, parent)
-		if !miner.chainConfig.IsLondon(parent.Number) {
-			parentGasLimit := parent.GasLimit * miner.chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, miner.config.GasCeil)
->>>>>>> geth-v1.17.9
 		}
 	}
 }
@@ -1014,7 +719,6 @@ func (w *worker) resultLoop() {
 			return
 		}
 	}
-<<<<<<< HEAD
 }
 
 // recordMinedBlock records the mined parent for this height and rejects repeat signing.
@@ -1035,19 +739,6 @@ func (w *worker) recordMinedBlock(block *types.Block) bool {
 		w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 	}
 	return true
-||||||| 117e067f0f
-	if header.ParentBeaconRoot != nil {
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
-	}
-	if miner.chainConfig.IsPrague(header.Number, header.Time) {
-		core.ProcessParentBlockHash(header.ParentHash, env.evm)
-	}
-	return env, nil
-=======
-	// Run pre-execution system calls
-	env.bal.Merge(core.PreExecution(ctx, header.ParentBeaconRoot, parent, miner.chainConfig, env.evm, header.Number, header.Time))
-	return env, nil
->>>>>>> geth-v1.17.9
 }
 
 // makeEnv creates a new environment for the sealing block.
@@ -1055,6 +746,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	prevEnv *environment, witness bool) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
+	// TODO(BSC): Handle the MPT-to-UBT transition before enabling UBT.
 	state, err := w.chain.StateWithCacheAt(parent.Root)
 	if err != nil {
 		return nil, err
@@ -1067,7 +759,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 	}
 	state.StartPrefetcher("miner", bundle)
-<<<<<<< HEAD
 	lane, err := core.ResolveLaneState(w.chainConfig, w.engine, parent, header, state)
 	if err != nil {
 		state.StopPrefetcher()
@@ -1091,13 +782,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 		log.Debug("makeEnv", "number", header.Number.Uint64(), "time", header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
 	}
-||||||| 117e067f0f
-=======
-	evm := vm.NewEVM(core.NewEVMBlockContext(header, miner.chain, &coinbase), state, miner.chainConfig, vm.Config{})
-	evm.SetJumpDestCache(miner.chain.JumpDestCache())
-	evm.SetPrecompileCache(miner.chain.PrecompileCache())
-
->>>>>>> geth-v1.17.9
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
 		lane:     lane,
@@ -1109,49 +793,21 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		header:   header,
 		bal:      bal.NewConstructionBlockAccessList(),
 		witness:  state.Witness(),
-<<<<<<< HEAD
 		evm:      vm.NewEVM(core.NewEVMBlockContext(header, w.chain, &coinbase), state, w.chainConfig, vm.Config{}),
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
+	env.evm.SetJumpDestCache(w.chain.JumpDestCache())
+	env.evm.SetPrecompileCache(w.chain.PrecompileCache())
 	return env, nil
-||||||| 117e067f0f
-		evm:      vm.NewEVM(core.NewEVMBlockContext(header, miner.chain, &coinbase), state, miner.chainConfig, vm.Config{}),
-	}, nil
-=======
-		evm:      evm,
-	}, nil
->>>>>>> geth-v1.17.9
 }
 
-<<<<<<< HEAD
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
-||||||| 117e067f0f
-func (miner *Miner) commitTransaction(ctx context.Context, env *environment, tx *types.Transaction) (err error) {
-	_, _, spanEnd := telemetry.StartSpan(ctx, "miner.commitTransaction")
-	defer spanEnd(&err)
-=======
-func (miner *Miner) commitTransaction(ctx context.Context, env *environment, tx *types.Transaction) (err error) {
-	ctx, _, spanEnd := telemetry.StartSpan(ctx, "miner.commitTransaction")
-	defer spanEnd(&err)
->>>>>>> geth-v1.17.9
 	if tx.Type() == types.BlobTxType {
-<<<<<<< HEAD
 		return w.commitBlobTransaction(env, tx, receiptProcessors...)
-||||||| 117e067f0f
-		return miner.commitBlobTransaction(env, tx)
-=======
-		return miner.commitBlobTransaction(ctx, env, tx)
->>>>>>> geth-v1.17.9
 	}
-<<<<<<< HEAD
 
 	receipt, err := w.applyTransaction(env, tx, receiptProcessors...)
-||||||| 117e067f0f
-	receipt, err := miner.applyTransaction(env, tx)
-=======
-	receipt, bal, err := miner.applyTransaction(ctx, env, tx)
->>>>>>> geth-v1.17.9
 	if err != nil {
 		return nil, err
 	}
@@ -1159,26 +815,11 @@ func (miner *Miner) commitTransaction(ctx context.Context, env *environment, tx 
 	env.receipts = append(env.receipts, receipt)
 	env.size += tx.Size()
 	env.tcount++
-<<<<<<< HEAD
 	return receipt.Logs, nil
-||||||| 117e067f0f
-	return nil
-=======
-	env.bal.Merge(bal)
-	return nil
->>>>>>> geth-v1.17.9
 }
 
-<<<<<<< HEAD
 func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
 	sc := types.NewBlobSidecarFromTx(tx)
-||||||| 117e067f0f
-func (miner *Miner) commitBlobTransaction(env *environment, tx *types.Transaction) error {
-	sc := tx.BlobTxSidecar()
-=======
-func (miner *Miner) commitBlobTransaction(ctx context.Context, env *environment, tx *types.Transaction) error {
-	sc := tx.BlobTxSidecar()
->>>>>>> geth-v1.17.9
 	if sc == nil {
 		panic("blob transaction without blobs in miner")
 	}
@@ -1190,14 +831,8 @@ func (miner *Miner) commitBlobTransaction(ctx context.Context, env *environment,
 	if env.blobs+len(sc.Blobs) > maxBlobs {
 		return nil, errors.New("max data blobs reached")
 	}
-<<<<<<< HEAD
 
 	receipt, err := w.applyTransaction(env, tx, receiptProcessors...)
-||||||| 117e067f0f
-	receipt, err := miner.applyTransaction(env, tx)
-=======
-	receipt, bal, err := miner.applyTransaction(ctx, env, tx)
->>>>>>> geth-v1.17.9
 	if err != nil {
 		return nil, err
 	}
@@ -1209,78 +844,72 @@ func (miner *Miner) commitBlobTransaction(ctx context.Context, env *environment,
 	env.blobs += len(sc.Blobs)
 	env.size += txNoBlob.Size()
 	env.tcount++
-<<<<<<< HEAD
 	*env.header.BlobGasUsed += receipt.BlobGasUsed
 	return receipt.Logs, nil
-||||||| 117e067f0f
-	return nil
-=======
-	env.bal.Merge(bal)
-	return nil
->>>>>>> geth-v1.17.9
 }
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
-<<<<<<< HEAD
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
 	laneType := env.lane.Classify(tx)
-||||||| 117e067f0f
-func (miner *Miner) applyTransaction(env *environment, tx *types.Transaction) (*types.Receipt, error) {
-=======
-func (miner *Miner) applyTransaction(ctx context.Context, env *environment, tx *types.Transaction) (*types.Receipt, *bal.ConstructionBlockAccessList, error) {
->>>>>>> geth-v1.17.9
 	var (
-		snap       = env.state.Snapshot()
-		gp         = env.gasPool.Snapshot()
-		usedBefore = env.gasPool.Used()
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Snapshot()
 	)
-<<<<<<< HEAD
 
-	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, receiptProcessors...)
-||||||| 117e067f0f
-	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx)
-=======
-	receipt, bal, err := core.ApplyTransaction(ctx, env.evm, env.gasPool, env.state, env.header, tx)
->>>>>>> geth-v1.17.9
+	receipt, txBAL, err := core.ApplyTransaction(context.Background(), env.evm, env.gasPool, env.state, env.header, tx)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.Set(gp)
-<<<<<<< HEAD
-||||||| 117e067f0f
-		return nil, err
-=======
-
 		env.revertedTxs = append(env.revertedTxs, tx.WithoutBlobTxSidecar())
 		env.revertedIdx = append(env.revertedIdx, uint32(env.tcount))
-		return nil, nil, err
->>>>>>> geth-v1.17.9
+	} else {
+		env.bal.Merge(txBAL)
+		for _, processor := range receiptProcessors {
+			processor.Apply(receipt)
+		}
 	}
 	env.header.GasUsed = env.gasPool.Used()
-<<<<<<< HEAD
-	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, gp)
 	return receipt, err
-||||||| 117e067f0f
-	return receipt, nil
-=======
-	return receipt, bal, nil
->>>>>>> geth-v1.17.9
 }
 
-<<<<<<< HEAD
-func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce,
+func recordPaymentLaneMetrics(b paymentlane.Budget, amsterdam bool) {
+	used, idle := b.PaymentLaneUsed, b.IdleLane()
+	var executionUsed, stateUsed, executionIdle, stateIdle uint64
+	if amsterdam {
+		executionUsed, stateUsed = b.PaymentExecutionUsed, b.PaymentStateUsed
+		executionIdle, stateIdle = b.IdleLaneAmsterdam()
+		used, idle = max(executionUsed, stateUsed), max(executionIdle, stateIdle)
+	}
+	paymentLaneQuotaGauge.Update(int64(b.PaymentLaneQuota))
+	paymentLaneGasUsedGauge.Update(int64(used))
+	paymentLaneIdleGauge.Update(int64(idle))
+	paymentLaneExecutionUsedGauge.Update(int64(executionUsed))
+	paymentLaneStateUsedGauge.Update(int64(stateUsed))
+	paymentLaneExecutionIdleGauge.Update(int64(executionIdle))
+	paymentLaneStateIdleGauge.Update(int64(stateIdle))
+}
+
+func paymentLaneLogContext(b paymentlane.Budget, amsterdam bool) []any {
+	attrs := []any{"paymentLaneQuota", b.PaymentLaneQuota}
+	if !amsterdam {
+		return append(attrs, "paymentGasUsed", b.PaymentLaneUsed, "paymentLaneIdle", b.IdleLane())
+	}
+	executionIdle, stateIdle := b.IdleLaneAmsterdam()
+	return append(attrs,
+		"paymentExecutionUsed", b.PaymentExecutionUsed, "paymentStateUsed", b.PaymentStateUsed,
+		"paymentExecutionIdle", executionIdle, "paymentStateIdle", stateIdle)
+}
+
+func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *txorder.TransactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
 	isCancun := w.chainConfig.IsCancun(env.header.Number, env.header.Time)
-||||||| 117e067f0f
-func (miner *Miner) commitTransactions(ctx context.Context, env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce, interrupt *atomic.Int32) error {
-	ctx, _, spanEnd := telemetry.StartSpan(ctx, "miner.commitTransactions")
-	defer spanEnd(nil)
-=======
-func (miner *Miner) commitTransactions(ctx context.Context, env *environment, plainTxs, blobTxs *txorder.TransactionsByPriceAndNonce, interrupt *atomic.Int32) error {
-	ctx, _, spanEnd := telemetry.StartSpan(ctx, "miner.commitTransactions")
-	defer spanEnd(nil)
->>>>>>> geth-v1.17.9
+	isAmsterdam := w.chainConfig.IsAmsterdam(env.header.Number, env.header.Time)
+	minTxGas := params.TxGas
+	if isAmsterdam {
+		minTxGas = params.TxBaseCost2780
+	}
 
-<<<<<<< HEAD
 	// initialize bloom processors
 	processorCapacity := 100
 	if plainTxs.CurrentSize() < processorCapacity {
@@ -1298,25 +927,11 @@ func (miner *Miner) commitTransactions(ctx context.Context, env *environment, pl
 	var prefetchCurr atomic.Pointer[types.Transaction]
 	if prefetchHead := txsPrefetch.PeekWithUnwrap(); prefetchHead != nil {
 		prefetchCurr.Store(prefetchHead)
-		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.StateForPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, &prefetchCurr)
+		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Available(env.evm.GetRules().IsAmsterdam), env.state.StateForPrefetch(), w.chain.JumpDestCache(), w.chain.PrecompileCache().PrefetchView(), *w.chain.GetVMConfig(), stopPrefetchCh, &prefetchCurr)
 	}
 
 	signal := commitInterruptNone
 LOOP:
-||||||| 117e067f0f
-	isCancun := miner.chainConfig.IsCancun(env.header.Number, env.header.Time)
-=======
-	var (
-		isCancun    = miner.chainConfig.IsCancun(env.header.Number, env.header.Time)
-		isAmsterdam = miner.chainConfig.IsAmsterdam(env.header.Number, env.header.Time)
-	)
-	// The smallest gas limit a transaction may carry, EIP-2780 lowers
-	// the intrinsic floor after Amsterdam.
-	minTxGas := params.TxGas
-	if isAmsterdam {
-		minTxGas = params.TxBaseCost2780
-	}
->>>>>>> geth-v1.17.9
 	for {
 		// In the following three cases, we will interrupt the execution of the transaction.
 		// (1) new head block event arrival, the reason is 1
@@ -1336,17 +951,9 @@ LOOP:
 			}
 		}
 		// If we don't have enough gas for any further transactions then we're done.
-<<<<<<< HEAD
-		if env.gasPool.Gas() < params.TxGas {
-			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
-			signal = commitInterruptOutOfGas
-||||||| 117e067f0f
-		if env.gasPool.Gas() < params.TxGas {
-			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
-=======
 		if env.gasPool.Available(isAmsterdam) < minTxGas {
 			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", minTxGas)
->>>>>>> geth-v1.17.9
+			signal = commitInterruptOutOfGas
 			break
 		}
 		if stopTimer != nil {
@@ -1420,10 +1027,12 @@ LOOP:
 		prefetchCurr.Store(tx)
 
 		laneType := env.lane.Classify(tx)
-		if !env.lane.Admits(env.gasPool.Gas(), laneType, tx.Gas()) {
+		if !env.lane.Admits(env.gasPool, laneType, tx.Gas()) {
 			generalLaneYieldedCounter.Inc(1)
 			env.generalLaneYielded++
-			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			logContext := []any{"hash", ltx.Hash, "left", env.gasPool.Available(isAmsterdam)}
+			logContext = append(logContext, paymentLaneLogContext(env.lane.Budget, isAmsterdam)...)
+			log.Trace("Yielding idle payment lane", logContext...)
 			txs.Pop()
 			continue
 		}
@@ -1479,8 +1088,9 @@ type generateParams struct {
 	withdrawals       types.Withdrawals // List of withdrawals to include in block.
 	prevWork          *environment
 	beaconRoot        *common.Hash // The beacon root (cancun field).
-	slotNum           *uint64      // The slot number (amsterdam field).
-	noTxs             bool         // Flag whether an empty block without any transaction is expected
+	targetGasLimit    *uint64
+	slotNum           *uint64 // The slot number (amsterdam field).
+	noTxs             bool    // Flag whether an empty block without any transaction is expected
 	forceOverrides    bool
 	overrideExtraData []byte
 	overrideTxs       []*types.Transaction
@@ -1512,10 +1122,15 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		timestamp = parent.Time + 1
 	}
 	// Construct the sealing block header.
+	number := new(big.Int).Add(parent.Number, common.Big1)
+	gasCeil := w.config.GasCeil
+	if w.chainConfig.IsAmsterdam(number, timestamp) && genParams.targetGasLimit != nil {
+		gasCeil = *genParams.targetGasLimit
+	}
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, w.config.GasCeil),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, gasCeil),
 		Time:       timestamp,
 		Coinbase:   genParams.coinbase,
 	}
@@ -1566,8 +1181,16 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	}
 	// Apply EIP-7843.
 	if w.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		uint64SlotNum := header.Number.Uint64()
-		header.SlotNumber = &uint64SlotNum
+		if w.chainConfig.IsInBSC() {
+			// BSC uses block numbers instead of beacon slots.
+			slot := header.Number.Uint64()
+			header.SlotNumber = &slot
+		} else {
+			if genParams.slotNum == nil {
+				return nil, errors.New("missing slot number")
+			}
+			header.SlotNumber = genParams.slotNum
+		}
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
@@ -1578,16 +1201,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		return nil, err
 	}
 
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
-
-	if header.ParentBeaconRoot != nil {
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
-	}
-
-	if w.chainConfig.IsPrague(header.Number, header.Time) {
-		core.ProcessParentBlockHash(header.ParentHash, env.evm)
-	}
+	env.bal.Merge(core.PreExecution(context.Background(), header.ParentBeaconRoot, parent, w.chainConfig, env.evm, header.Number, header.Time))
 	return env, nil
 }
 
@@ -1620,9 +1234,12 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
 	var pendingBlobTxs map[common.Address][]*txpool.LazyTransaction
-	if env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
+	if w.chainConfig.IsNotInBSC() || env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
 		filter.BlobTxs = true
 		filter.BlobVersion = types.BlobSidecarVersion0
+		if w.chainConfig.IsNotInBSC() && w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+			filter.BlobVersion = types.BlobSidecarVersion1
+		}
 
 		blobTxsStart := time.Now()
 		pendingBlobTxs, _ = w.eth.TxPool().Pending(filter)
@@ -1650,20 +1267,6 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 		filterBidTxs(pendingPlainTxs)
 		filterBidTxs(pendingBlobTxs)
 	}
-<<<<<<< HEAD
-||||||| 117e067f0f
-	pendingBlobTxs, blobTxCount := miner.txpool.Pending(filter)
-	span.SetAttributes(
-		telemetry.Int64Attribute("pending.plain.count", int64(plainTxCount)),
-		telemetry.Int64Attribute("pending.blob.count", int64(blobTxCount)),
-	)
-=======
-	pendingBlobTxs, blobTxCount := miner.txpool.Pending(filter)
-	span.SetAttributes(
-		telemetry.IntAttribute("pending.plain.count", plainTxCount),
-		telemetry.IntAttribute("pending.blob.count", blobTxCount),
-	)
->>>>>>> geth-v1.17.9
 
 	// Split the pending transactions into locals and remotes.
 	prioPlainTxs, normalPlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
@@ -1722,19 +1325,16 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if !genParam.noTxs {
 		if genParam.forceOverrides && len(genParam.overrideTxs) > 0 {
 			for _, tx := range genParam.overrideTxs {
-				work.state.SetTxContext(tx.Hash(), work.tcount)
+				work.state.SetTxContext(tx.Hash(), work.tcount, uint32(work.tcount+1))
 				if _, err := w.commitTransaction(work, tx); err != nil {
 					return &newPayloadResult{err: err}
 				}
 			}
 		} else {
-			interrupt := new(atomic.Int32)
-			timer := time.AfterFunc(*w.config.Recommit, func() {
-				interrupt.Store(commitInterruptTimeout)
-			})
+			timer := time.NewTimer(*w.config.Recommit)
 			defer timer.Stop()
 
-			err := w.fillTransactions(nil, work, nil, nil)
+			err := w.fillTransactions(nil, work, timer, nil)
 			if errors.Is(err, errBlockInterruptedByTimeout) {
 				log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 			}
@@ -1752,51 +1352,48 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 			}
 		}
 	}
-	allLogs := make([]*types.Log, 0)
-	for _, r := range work.receipts {
-		allLogs = append(allLogs, r.Logs...)
-	}
-	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && w.chainConfig.IsNotInBSC() {
-		requests = [][]byte{}
-		// EIP-6110 deposits
-		if err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig); err != nil {
+	if w.chainConfig.IsNotInBSC() {
+		var allLogs []*types.Log
+		for _, receipt := range work.receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
+		if err != nil {
 			return &newPayloadResult{err: err}
 		}
-		// EIP-7002
-		if err := core.ProcessWithdrawalQueue(&requests, work.evm); err != nil {
-			return &newPayloadResult{err: err}
+		work.bal.Merge(postBAL)
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			work.header.RequestsHash = &reqHash
 		}
-		// EIP-7251 consolidations
-		if err := core.ProcessConsolidationQueue(&requests, work.evm); err != nil {
-			return &newPayloadResult{err: err}
-		}
-	}
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
-	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts)
+	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts, work.bal)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.Verify(block.GasUsed()); err != nil {
+	if err := work.lane.Verify(block.GasUsed(), work.gasPool); err != nil {
 		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
 	}
 
+	if dbErr := work.state.Error(); dbErr != nil {
+		return &newPayloadResult{err: fmt.Errorf("%w: %v", errStateReadFailure, dbErr)}
+	}
 	return &newPayloadResult{
-		block:    block,
-		fees:     fees.ToBig(),
-		sidecars: work.sidecars.BlobTxSidecarList(),
-		stateDB:  work.state,
-		receipts: receipts,
-		requests: requests,
-		witness:  work.witness,
+		revertedTxs: work.revertedTxs,
+		revertedIdx: work.revertedIdx,
+		block:       block,
+		fees:        fees.ToBig(),
+		sidecars:    work.sidecars.BlobTxSidecarList(),
+		stateDB:     work.state,
+		receipts:    receipts,
+		requests:    requests,
+		witness:     work.witness,
 	}
 }
 
@@ -1850,7 +1447,8 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
 	workList := make([]*environment, 0, 10)
-	parentHash := w.chain.CurrentBlock().Hash()
+	parent := w.chain.CurrentBlock()
+	parentHash := parent.Hash()
 	var prevWork *environment
 	// workList clean up
 	defer func() {
@@ -2017,7 +1615,9 @@ LOOP:
 	var simBidBlockReward *uint256.Int
 	var simBidValidatorReward *uint256.Int
 	var localValidatorReward *uint256.Int
-	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+	// Cached builder bids must not replace the validator's Amsterdam activation block.
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 &&
+		!w.chainConfig.IsOnAmsterdam(bestWork.header.Number, parent.Time, bestWork.header.Time) {
 		inturnBlocksGauge.Inc(1)
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
@@ -2144,24 +1744,29 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts)
+		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, env.bal)
 		env.committed = true
 		if err != nil {
 			return err
+		}
+		if dbErr := env.state.Error(); dbErr != nil {
+			return fmt.Errorf("%w: %v", errStateReadFailure, dbErr)
 		}
 		env.txs = body.Transactions
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.Verify(block.GasUsed()); err != nil {
+		if err := env.lane.Verify(block.GasUsed(), env.gasPool); err != nil {
 			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
-		if env.lane.On() {
-			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
-			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+		budget := env.lane.Budget
+		if !env.lane.On() {
+			budget = paymentlane.Budget{}
 		}
+		amsterdam := w.chainConfig.IsAmsterdam(env.header.Number, env.header.Time)
+		recordPaymentLaneMetrics(budget, amsterdam)
 
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
@@ -2171,10 +1776,11 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
-			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
-				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
-				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+			logContext := []any{"number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "generalLaneYielded", env.generalLaneYielded,
+				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start))}
+			logContext = append(logContext, paymentLaneLogContext(budget, amsterdam)...)
+			log.Info("Commit new sealing work", logContext...)
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")
@@ -2183,7 +1789,6 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 	return nil
 }
 
-<<<<<<< HEAD
 // getSealingBlock generates the sealing block based on the given parameters.
 // The generation result will be passed back via the given channel no matter
 // the generation itself succeeds or not.
@@ -2191,25 +1796,6 @@ func (w *worker) getSealingBlock(params *generateParams) *newPayloadResult {
 	req := &getWorkReq{
 		params: params,
 		result: make(chan *newPayloadResult, 1),
-||||||| 117e067f0f
-// totalFees computes total consumed miner fees in Wei. Block transactions and receipts have to have the same order.
-func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
-	feesWei := new(big.Int)
-	for i, tx := range block.Transactions() {
-		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
-		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
-=======
-// totalFees computes total consumed miner fees in Wei. Block transactions and receipts have to have the same order.
-func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
-	baseFee := block.BaseFee()
-	feesWei := new(big.Int)
-	var gasUsed, product big.Int
-	for i, tx := range block.Transactions() {
-		minerFee, _ := tx.EffectiveGasTip(baseFee)
-		gasUsed.SetUint64(receipts[i].GasUsed)
-		product.Mul(&gasUsed, minerFee)
-		feesWei.Add(feesWei, &product)
->>>>>>> geth-v1.17.9
 	}
 	select {
 	case w.getWorkCh <- req:

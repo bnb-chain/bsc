@@ -144,7 +144,7 @@ func TestLoadMetaCacheHitStillFailsOnStickyStateError(t *testing.T) {
 	require.NoError(t, err)
 	statedb.SetCode(paymentlane.ContractAddress, code, tracing.CodeChangeSystemContractUpgrade)
 
-	root, err := statedb.Commit(1, false, false)
+	root, err := statedb.Commit(params.Rules{IsEIP158: false, IsCancun: false}, 1)
 	require.NoError(t, err)
 
 	good, err := state.New(root, db)

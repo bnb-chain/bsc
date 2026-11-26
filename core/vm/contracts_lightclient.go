@@ -112,6 +112,8 @@ func (c *tmHeaderValidate) Name() string {
 	return "HEADER_VALIDATE"
 }
 
+func (c *tmHeaderValidate) Cacheable() bool { return true }
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------
 
 // iavlMerkleProofValidate implemented as a native contract.
@@ -174,13 +176,14 @@ func (c *iavlMerkleProofValidateMoran) RequiredGas(_ []byte) uint64 {
 }
 
 func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err error) {
-	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+	validator := c.basicIavlMerkleProofValidate
+	validator.verifiers = []merkle.ProofOpVerifier{
 		forbiddenAbsenceOpVerifier,
 		singleValueOpVerifier,
 		multiStoreOpVerifier,
 		forbiddenSimpleValueOpVerifier,
 	}
-	return c.basicIavlMerkleProofValidate.Run(input)
+	return validator.Run(input)
 }
 
 func (c *iavlMerkleProofValidateMoran) Name() string {
@@ -196,16 +199,17 @@ func (c *iavlMerkleProofValidatePlanck) RequiredGas(_ []byte) uint64 {
 }
 
 func (c *iavlMerkleProofValidatePlanck) Run(input []byte) (result []byte, err error) {
-	c.basicIavlMerkleProofValidate.proofRuntime = v1.Ics23CompatibleProofRuntime()
-	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+	validator := c.basicIavlMerkleProofValidate
+	validator.proofRuntime = v1.Ics23CompatibleProofRuntime()
+	validator.verifiers = []merkle.ProofOpVerifier{
 		forbiddenAbsenceOpVerifier,
 		singleValueOpVerifier,
 		multiStoreOpVerifier,
 		forbiddenSimpleValueOpVerifier,
 	}
-	c.basicIavlMerkleProofValidate.keyVerifier = keyVerifier
-	c.basicIavlMerkleProofValidate.opsVerifier = proofOpsVerifier
-	return c.basicIavlMerkleProofValidate.Run(input)
+	validator.keyVerifier = keyVerifier
+	validator.opsVerifier = proofOpsVerifier
+	return validator.Run(input)
 }
 
 func (c *iavlMerkleProofValidatePlanck) Name() string {
@@ -221,16 +225,17 @@ func (c *iavlMerkleProofValidatePlato) RequiredGas(_ []byte) uint64 {
 }
 
 func (c *iavlMerkleProofValidatePlato) Run(input []byte) (result []byte, err error) {
-	c.basicIavlMerkleProofValidate.proofRuntime = v1.Ics23ProofRuntime()
-	c.basicIavlMerkleProofValidate.verifiers = []merkle.ProofOpVerifier{
+	validator := c.basicIavlMerkleProofValidate
+	validator.proofRuntime = v1.Ics23ProofRuntime()
+	validator.verifiers = []merkle.ProofOpVerifier{
 		forbiddenAbsenceOpVerifier,
 		singleValueOpVerifier,
 		multiStoreOpVerifier,
 		forbiddenSimpleValueOpVerifier,
 	}
-	c.basicIavlMerkleProofValidate.keyVerifier = keyVerifier
-	c.basicIavlMerkleProofValidate.opsVerifier = proofOpsVerifier
-	return c.basicIavlMerkleProofValidate.Run(input)
+	validator.keyVerifier = keyVerifier
+	validator.opsVerifier = proofOpsVerifier
+	return validator.Run(input)
 }
 
 func (c *iavlMerkleProofValidatePlato) Name() string {
@@ -249,6 +254,8 @@ type basicIavlMerkleProofValidate struct {
 	verifiers    []merkle.ProofOpVerifier
 	proofRuntime *merkle.ProofRuntime
 }
+
+func (c *basicIavlMerkleProofValidate) Cacheable() bool { return true }
 
 func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err error) {
 	defer func() {
@@ -431,6 +438,8 @@ func (c *cometBFTLightBlockValidate) Name() string {
 	return "COMET_BFT_LIGHT_BLOCK_VALIDATE"
 }
 
+func (c *cometBFTLightBlockValidate) Cacheable() bool { return true }
+
 type cometBFTLightBlockValidateHertz struct {
 	cometBFTLightBlockValidate
 }
@@ -500,3 +509,5 @@ func (c *secp256k1SignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr
 func (c *secp256k1SignatureRecover) Name() string {
 	return "SECP256K1_SIGNATURE_RECOVER"
 }
+
+func (c *secp256k1SignatureRecover) Cacheable() bool { return true }

@@ -15,7 +15,7 @@ func TestCAS20RevertData(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -58,7 +58,7 @@ func TestCAS20RevertData(t *testing.T) {
 		t.Fatalf("revert data = %x, want InsufficientBalance(alice,100,1000) = %x", ret, want)
 	}
 
-	ret, _, err = evm.Call(creator, token, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(1)), NewGasBudget(5_000_000), uint256.NewInt(7))
+	ret, _, err = evm.Call(creator, token, cas20Call(selTransfer, addrKey(cas20Bob), u256hash(1)), NewGasBudget(5_000_000, 0), uint256.NewInt(7))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("value-bearing call err = %v, want ErrExecutionReverted", err)
 	}
@@ -96,7 +96,7 @@ func TestCAS20UndecodableCalldataRevertsEmpty(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(creator, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(creator, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 

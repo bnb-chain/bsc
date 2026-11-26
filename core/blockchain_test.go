@@ -40,16 +40,13 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-||||||| 117e067f0f
-=======
 	"github.com/ethereum/go-ethereum/core/history"
->>>>>>> geth-v1.17.9
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/program"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -57,6 +54,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -185,14 +183,8 @@ func testBlockChainImport(chain types.Blocks, blockchain *BlockChain) error {
 		if err != nil {
 			return err
 		}
-<<<<<<< HEAD
 		statedb.SetExpectedStateRoot(block.Root())
-		res, err := blockchain.processor.Process(context.Background(), block, statedb, vm.Config{})
-||||||| 117e067f0f
-		res, err := blockchain.processor.Process(context.Background(), block, statedb, vm.Config{})
-=======
 		res, err := blockchain.processor.Process(context.Background(), block, statedb, nil, nil, vm.Config{}, nil)
->>>>>>> geth-v1.17.9
 		if err != nil {
 			blockchain.reportBadBlock(block, res, err)
 			return err
@@ -4139,17 +4131,17 @@ func (c *mockParlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []
 	return abort, results
 }
 
-func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body,
 	_ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64, tracer *tracing.Hooks) (err error) {
 	return
 }
 
-func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, _ ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
 	// Finalize block
-	c.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, nil, nil, nil, tracer)
+	c.Finalize(chain, header, state, body, nil, nil, nil, tracer)
 
 	// Assign the final state root to header.
-	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	header.Root = state.IntermediateRoot(chain.Config().Rules(header.Number, header.Difficulty.Sign() == 0, header.Time))
 
 	// Header seems complete, assemble into a block and return
 	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), receipts, nil
@@ -4525,15 +4517,11 @@ func testChainReorgSnapSync(t *testing.T, ancientLimit uint64) {
 	}
 }
 
-// TODO(sysvm): need fix when pruned sync enabled
-//
 // Tests the scenario that all the inserted chain segment are with the configured
 // chain cutoff point. In this case the chain segment before the cutoff should
 // be persisted without the receipts and bodies; chain after should be persisted
 // normally.
-//
-//nolint:unused
-func testInsertChainWithCutoff1(t *testing.T) {
+func TestInsertChainWithCutoff(t *testing.T) {
 	const chainLength = 64
 
 	// Configure and generate a sample block chain
@@ -4573,9 +4561,6 @@ func testInsertChainWithCutoff1(t *testing.T) {
 	})
 }
 
-// TODO(sysvm): need fix when pruned sync enabled
-//
-//nolint:unused
 func testInsertChainWithCutoff(t *testing.T, cutoff uint64, ancientLimit uint64, genesis *Genesis, blocks []*types.Block, receipts []types.Receipts) {
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 
@@ -4839,6 +4824,7 @@ func cutoffConfig(cutoff *types.Block) *BlockChainConfig {
 // a completed batch of the headers before the cutoff. In that phase the ancient
 // store holds headers but no block data, so there is nothing to prune.
 func TestRestartDuringHeadersBeforeCutoff(t *testing.T) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 	t.Run("memory", func(t *testing.T) { testRestartDuringHeadersBeforeCutoff(t, false) })
 	t.Run("disk", func(t *testing.T) { testRestartDuringHeadersBeforeCutoff(t, true) })
 }
@@ -4926,6 +4912,7 @@ func testRestartDuringHeadersBeforeCutoff(t *testing.T, disk bool) {
 // write and its tail truncation. The block data tail is then behind the ancient
 // head, with only nil placeholders in between, and is repaired on startup.
 func TestRestartDuringInterruptedHeadersBeforeCutoff(t *testing.T) {
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 	t.Run("memory", func(t *testing.T) { testRestartDuringInterruptedHeadersBeforeCutoff(t, false) })
 	t.Run("disk", func(t *testing.T) { testRestartDuringInterruptedHeadersBeforeCutoff(t, true) })
 }
@@ -4965,7 +4952,7 @@ func testRestartDuringInterruptedHeadersBeforeCutoff(t *testing.T, disk bool) {
 	// Replay the next batch up to its tail truncation: the headers are in the
 	// ancient store and the head markers point at the last of them, but the
 	// block data tail is still where the previous batch left it.
-	if _, err := rawdb.WriteAncientHeaderChain(db, headers[16:24]); err != nil {
+	if _, err := rawdb.WriteAncientHeaderChain(db, headers[16:24], chain.GetTd(headers[16].ParentHash, headers[16].Number.Uint64()-1)); err != nil {
 		t.Fatalf("failed to write headers to ancient store: %v", err)
 	}
 	batch := db.NewBatch()

@@ -1247,7 +1247,26 @@ func TestBlockFetcherMultiplePeers(t *testing.T) {
 	})
 }
 
-// TestQuickBlockFetching tests the quick block fetching feature
+func TestQuickBlockFetchingRejectsWrongHash(t *testing.T) {
+	fetcher := &BlockFetcher{
+		fetchRangeBlocks: func(string, uint64, common.Hash, uint64) ([]*types.Block, error) {
+			return []*types.Block{unknownBlock}, nil
+		},
+		quickBlockFetchingCh: make(chan *BlockFetchingEntry),
+		quit:                 make(chan struct{}),
+	}
+	defer close(fetcher.quit)
+	fetcher.asyncFetchRangeBlocks(&blockAnnounce{hash: genesis.Hash()})
+	select {
+	case result := <-fetcher.quickBlockFetchingCh:
+		if result.err == nil {
+			t.Fatal("range response with the wrong block hash was accepted")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("range response was not delivered")
+	}
+}
+
 func TestQuickBlockFetching(t *testing.T) {
 	// Setup test environment
 	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelInfo, true)))

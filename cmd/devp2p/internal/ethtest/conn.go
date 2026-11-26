@@ -67,26 +67,11 @@ func (s *Suite) dialAs(key *ecdsa.PrivateKey) (*Conn, error) {
 		return nil, err
 	}
 	conn.caps = []p2p.Cap{
-<<<<<<< HEAD
+		{Name: "eth", Version: eth.ETH71},
 		{Name: "eth", Version: eth.ETH70},
 		{Name: "eth", Version: eth.ETH68},
-||||||| 117e067f0f
-		{Name: "eth", Version: 70},
-		{Name: "eth", Version: 69},
-=======
-		{Name: "eth", Version: 72},
-		{Name: "eth", Version: 71},
-		{Name: "eth", Version: 70},
-		{Name: "eth", Version: 69},
->>>>>>> geth-v1.17.9
 	}
-<<<<<<< HEAD
-	conn.ourHighestProtoVersion = eth.ETH70
-||||||| 117e067f0f
-	conn.ourHighestProtoVersion = 70
-=======
-	conn.ourHighestProtoVersion = 72
->>>>>>> geth-v1.17.9
+	conn.ourHighestProtoVersion = eth.ETH71
 	return &conn, nil
 }
 
@@ -160,7 +145,7 @@ func (c *Conn) ReadMsg(proto Proto, code uint64, msg any) error {
 		if err != nil {
 			return err
 		}
-		if protoOffset(proto)+code == got {
+		if c.protoOffset(proto)+code == got {
 			return rlp.DecodeBytes(data, msg)
 		}
 	}
@@ -173,7 +158,7 @@ func (c *Conn) Write(proto Proto, code uint64, msg any) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.Conn.Write(protoOffset(proto)+code, payload)
+	_, err = c.Conn.Write(c.protoOffset(proto)+code, payload)
 	return err
 }
 
@@ -204,7 +189,7 @@ func (c *Conn) ReadEth() (any, error) {
 			c.Write(baseProto, pongMsg, []byte{})
 			continue
 		}
-		if getProto(code) != ethProto {
+		if c.getProto(code) != ethProto {
 			// Read until eth message.
 			continue
 		}
@@ -265,11 +250,11 @@ func (c *Conn) ReadSnap() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if getProto(code) != snapProto {
+		if c.getProto(code) != snapProto {
 			// Read until snap message.
 			continue
 		}
-		code -= protoOffset(snapProto)
+		code -= c.protoOffset(snapProto)
 
 		var msg any
 		switch int(code) {
@@ -417,7 +402,7 @@ func (c *Conn) statusExchange(chain *Chain, status *eth.StatusPacket) error {
 			return fmt.Errorf("failed to read from connection: %w", err)
 		}
 		switch code {
-		case eth.StatusMsg + protoOffset(ethProto):
+		case eth.StatusMsg + c.protoOffset(ethProto):
 			if c.negotiatedProtoVersion == 0 {
 				return errors.New("eth protocol version must be set in Conn")
 			}

@@ -44,7 +44,7 @@ func TestCAS20AssetExtension(t *testing.T) {
 	salt := common.HexToHash("0x0a")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	u := func(ret []byte, err error) uint64 {
@@ -172,7 +172,7 @@ func TestCAS20Announce(t *testing.T) {
 	salt := common.HexToHash("0x0e")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -260,7 +260,7 @@ func TestCAS20ExtraMetadata(t *testing.T) {
 	salt := common.HexToHash("0x0f")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	readStr := func(to common.Address, input []byte) string {
@@ -379,14 +379,14 @@ func TestCAS20AnnouncementIDShapes(t *testing.T) {
 		ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 			encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xbb"), creator,
 				[][]byte{cas20Call(selGrantRole, roleOperator, addrKey(creator))}),
-			NewGasBudget(9_000_000), uint256.NewInt(0))
+			NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("createCAS20: %v", err)
 		}
 		token := common.BytesToAddress(ret)
 
 		call := func(input []byte) ([]byte, error) {
-			out, _, err := evm.Call(creator, token, input, NewGasBudget(9_000_000), uint256.NewInt(0))
+			out, _, err := evm.Call(creator, token, input, NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 			return out, err
 		}
 		used := func(id string) bool {
@@ -422,7 +422,7 @@ func TestCAS20MultiplierCeilingIsOneConstant(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	operator := common.HexToAddress("0x09e7a70a")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	ret, err := call(cas20TestCaller, CAS20FactoryAddress, encodeCreateCAS20(

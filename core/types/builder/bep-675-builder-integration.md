@@ -62,11 +62,11 @@ if err != nil {
     return err  // never ignore: a nil lane no-ops silently and the block ships over-full
 }
 
-class := lane.Classify(tx)                         // before each apply
-if !lane.Admits(gasPool.Gas(), class, tx.Gas()) {  // general must leave the quota intact
+class := lane.Classify(tx) // before each apply
+if !lane.Admits(gasPool, class, tx.Gas()) { // general must leave the quota intact
     continue
 }
-usedBefore := gasPool.Used()
+usedBefore := gasPool.Snapshot()
 // ... apply tx ...
 lane.RecordUsedFrom(class, gasPool, usedBefore)
 ```
@@ -75,7 +75,25 @@ lane.RecordUsedFrom(class, gasPool, usedBefore)
 contract list from the still-unadvanced block `StateDB`, while `Classify` reads the live code view
 from that same state as execution advances.
 
-A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so, and neither will admission: the rule needs execution, so the validator's own `InsertChain` after the broadcast is what catches it, and the builder's permission is revoked like any other invalid BidBlock. Check it yourself with `lane.Verify(block.GasUsed())` before sending.
+Before Amsterdam, the rule is `header.GasUsed + max(quota - paymentGasUsed, 0) <= GasLimit`. From Amsterdam, payment execution and state gas are accumulated separately before refunds, and each resource must satisfy `userGas + systemGas + max(quota - paymentGas, 0) <= GasLimit`. Here `systemGas` is the scalar gas Parlia adds during finalization; it reduces both resource budgets. The quota and transaction classification are unchanged.
+
+`LaneState` selects the fork rules for the calls above. In `Budget`, `RecordUsed`, `IdleLane` and `Verify` retain the scalar model; their `Amsterdam` variants use separate execution and state counters. Use `LaneState.Admits` and `LaneState.Verify` for validity checks.
+
+Payment lane logs keep `paymentGasUsed` and `paymentLaneIdle` before Amsterdam. Afterwards, sealing and lane-admission logs report `paymentExecutionUsed`, `paymentStateUsed`, `paymentExecutionIdle` and `paymentStateIdle`. The block's `gas` field remains `header.GasUsed`.
+
+Metrics use the same suffixes under `paymentlane/` for production and `paymentlane/imported/` for import processing:
+
+| Suffix | Before Amsterdam | From Amsterdam |
+| --- | --- | --- |
+| `paymentLaneQuota` | Payment quota | The same quota for each resource |
+| `paymentGasUsed` | Scalar payment gas used | Legacy summary: `max(paymentExecutionUsed, paymentStateUsed)` |
+| `paymentLaneIdle` | Unused payment quota | Legacy summary: `max(paymentExecutionIdle, paymentStateIdle)` |
+| `paymentExecutionUsed` / `paymentStateUsed` | Zero | Payment usage in each resource, before transaction refunds |
+| `paymentExecutionIdle` / `paymentStateIdle` | Zero | `max(quota - used, 0)` in each resource |
+
+The legacy summaries remain for existing dashboards; they are independent maxima, so their sum need not equal the quota. Resource usage reflects execution-time state-gas refills. Each update clears the resource gauges before Amsterdam and all quota/usage/idle gauges when the lane is disabled, so fork changes do not retain stale values.
+
+`FinalizeAndAssembleBidBlock` and `mev_sendBidBlock` admission do not enforce this rule: it needs execution, so the validator's own `InsertChain` after the broadcast is what catches a violation, and the builder's permission is revoked like any other invalid BidBlock. Check it yourself with `lane.Verify(block.GasUsed(), gasPool)` before sending.
 
 ## 3. Finalize (generate unsigned system tx)
 
@@ -208,4 +226,4 @@ The transmission latency on the wire is not constant: the number of transactions
 5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". Use gRPC only when both `mev_params.BidBlockEnabled` and `mev_params.GRPCEnabled` are true.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
-8. From Jenner+1 the builder owns the BEP-703 lane: honour `Admits` while packing and check `lane.Verify(block.GasUsed())` before sending. A block that breaks the rule is caught by the validator's own import after it has already been signed and broadcast, which costs the builder its permission.
+8. From Jenner+1 the builder owns the BEP-703 lane: honour `Admits` while packing and check `lane.Verify(block.GasUsed(), gasPool)` before sending. A block that breaks the rule is caught by the validator's own import after it has already been signed and broadcast, which costs the builder its permission.

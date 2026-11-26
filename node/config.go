@@ -86,7 +86,6 @@ type Config struct {
 	// InsecureUnlockAllowed allows user to unlock accounts in unsafe http environment.
 	InsecureUnlockAllowed bool `toml:",omitempty"`
 
-<<<<<<< HEAD
 	// NoUSB disables hardware wallet monitoring and connectivity.
 	// Deprecated: USB monitoring is disabled by default and must be enabled explicitly.
 	NoUSB bool `toml:",omitempty"`
@@ -108,13 +107,6 @@ type Config struct {
 	// RangeLimit enable 5000 blocks limit when handle range query
 	RangeLimit bool `toml:",omitempty"`
 
-||||||| 117e067f0f
-	// NoUSB disables hardware wallet monitoring and connectivity.
-	// Deprecated: USB monitoring is disabled by default and must be enabled explicitly.
-	NoUSB bool `toml:",omitempty"`
-
-=======
->>>>>>> geth-v1.17.9
 	// USB enables hardware wallet monitoring and connectivity.
 	USB bool `toml:",omitempty"`
 

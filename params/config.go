@@ -29,19 +29,12 @@ import (
 // Genesis hashes to enforce below configs on.
 var (
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
-<<<<<<< HEAD
+	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
+	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
 
 	BSCGenesisHash    = common.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
 	ChapelGenesisHash = common.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
 	RialtoGenesisHash = common.HexToHash("0xee835a629f9cf5510b48b6ba41d69e0ff7d6ef10f977166ef939db41f59f5501")
-||||||| 117e067f0f
-	HoleskyGenesisHash = common.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
-	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
-	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
-=======
-	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
-	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
->>>>>>> geth-v1.17.9
 )
 
 func newUint64(val uint64) *uint64 { return &val }
@@ -56,69 +49,7 @@ var (
 	SepoliaChainConfig = readChainSpec("chainspecs/sepolia.json")
 
 	// HoodiChainConfig contains the chain parameters to run a node on the Hoodi test network.
-<<<<<<< HEAD
-	HoodiChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(560048),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(0),
-		MuirGlacierBlock:        big.NewInt(0),
-		BerlinBlock:             big.NewInt(0),
-		LondonBlock:             big.NewInt(0),
-		ArrowGlacierBlock:       nil,
-		GrayGlacierBlock:        nil,
-		TerminalTotalDifficulty: big.NewInt(0),
-		MergeNetsplitBlock:      big.NewInt(0),
-		ShanghaiTime:            newUint64(0),
-		CancunTime:              newUint64(0),
-		PragueTime:              newUint64(1742999832),
-		OsakaTime:               newUint64(1761677592),
-		BPO1Time:                newUint64(1762365720),
-		BPO2Time:                newUint64(1762955544),
-		DepositContractAddress:  common.HexToAddress("0x00000000219ab540356cBB839Cbe05303d7705Fa"),
-		Ethash:                  new(EthashConfig),
-		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun: DefaultCancunBlobConfig,
-			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
-			BPO1:   DefaultBPO1BlobConfig,
-			BPO2:   DefaultBPO2BlobConfig,
-		},
-	}
-
-	// just for prysm compile pass
-	// GoerliChainConfig contains the chain parameters to run a node on the Görli test network.
-	GoerliChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(5),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(1_561_651),
-		MuirGlacierBlock:        nil,
-		BerlinBlock:             big.NewInt(4_460_644),
-		LondonBlock:             big.NewInt(5_062_605),
-		ArrowGlacierBlock:       nil,
-		TerminalTotalDifficulty: big.NewInt(10_790_000),
-		ShanghaiTime:            newUint64(1678832736),
-		CancunTime:              newUint64(1705473120),
-		Clique: &CliqueConfig{
-			Period: 15,
-			Epoch:  30000,
-		},
-	}
+	HoodiChainConfig = readChainSpec("chainspecs/hoodi.json")
 
 	BSCChainConfig = &ChainConfig{
 		ChainID:             big.NewInt(56),
@@ -171,7 +102,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -226,7 +156,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -283,7 +212,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -325,46 +253,6 @@ var (
 		},
 	}
 
-||||||| 117e067f0f
-	HoodiChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(560048),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(0),
-		MuirGlacierBlock:        big.NewInt(0),
-		BerlinBlock:             big.NewInt(0),
-		LondonBlock:             big.NewInt(0),
-		ArrowGlacierBlock:       nil,
-		GrayGlacierBlock:        nil,
-		TerminalTotalDifficulty: big.NewInt(0),
-		MergeNetsplitBlock:      big.NewInt(0),
-		ShanghaiTime:            newUint64(0),
-		CancunTime:              newUint64(0),
-		PragueTime:              newUint64(1742999832),
-		OsakaTime:               newUint64(1761677592),
-		BPO1Time:                newUint64(1762365720),
-		BPO2Time:                newUint64(1762955544),
-		DepositContractAddress:  common.HexToAddress("0x00000000219ab540356cBB839Cbe05303d7705Fa"),
-		Ethash:                  new(EthashConfig),
-		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun: DefaultCancunBlobConfig,
-			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
-			BPO1:   DefaultBPO1BlobConfig,
-			BPO2:   DefaultBPO2BlobConfig,
-		},
-	}
-=======
-	HoodiChainConfig = readChainSpec("chainspecs/hoodi.json")
-
->>>>>>> geth-v1.17.9
 	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Ethash consensus.
 	AllEthashProtocolChanges = &ChainConfig{
@@ -612,24 +500,14 @@ var (
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
-	DefaultOsakaBlobConfigBSC  = DefaultCancunBlobConfig
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
 var NetworkNames = map[string]string{
 	MainnetChainConfig.ChainID.String(): "mainnet",
-<<<<<<< HEAD
 	BSCChainConfig.ChainID.String():     "bsc",
 	ChapelChainConfig.ChainID.String():  "chapel",
 	RialtoChainConfig.ChainID.String():  "rialto",
-||||||| 117e067f0f
-	SepoliaChainConfig.ChainID.String(): "sepolia",
-	HoleskyChainConfig.ChainID.String(): "holesky",
-	HoodiChainConfig.ChainID.String():   "hoodi",
-=======
-	SepoliaChainConfig.ChainID.String(): "sepolia",
-	HoodiChainConfig.ChainID.String():   "hoodi",
->>>>>>> geth-v1.17.9
 }
 
 // ChainConfig is the core config which determines the blockchain settings.
@@ -665,7 +543,6 @@ type ChainConfig struct {
 
 	// Fork scheduling was switched from blocks to timestamps here
 
-<<<<<<< HEAD
 	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
 	KeplerTime     *uint64 `json:"keplerTime,omitempty"`     // Kepler switch time (nil = no fork, 0 = already activated)
 	FeynmanTime    *uint64 `json:"feynmanTime,omitempty"`    // Feynman switch time (nil = no fork, 0 = already activated)
@@ -689,33 +566,8 @@ type ChainConfig struct {
 	BPO4Time       *uint64 `json:"bpo4Time,omitempty"`       // BPO4 switch time (nil = no fork, 0 = already on bpo4)
 	BPO5Time       *uint64 `json:"bpo5Time,omitempty"`       // BPO5 switch time (nil = no fork, 0 = already on bpo5)
 	AmsterdamTime  *uint64 `json:"amsterdamTime,omitempty"`  // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
+	BogotaTime     *uint64 `json:"bogotaTime,omitempty"`     // Bogota switch time (nil = no fork, 0 = already on bogota)
 	UBTTime        *uint64 `json:"ubtTime,omitempty"`        // UBT switch time (nil = no fork, 0 = already on UBT)
-||||||| 117e067f0f
-	ShanghaiTime  *uint64 `json:"shanghaiTime,omitempty"`  // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	CancunTime    *uint64 `json:"cancunTime,omitempty"`    // Cancun switch time (nil = no fork, 0 = already on cancun)
-	PragueTime    *uint64 `json:"pragueTime,omitempty"`    // Prague switch time (nil = no fork, 0 = already on prague)
-	OsakaTime     *uint64 `json:"osakaTime,omitempty"`     // Osaka switch time (nil = no fork, 0 = already on osaka)
-	BPO1Time      *uint64 `json:"bpo1Time,omitempty"`      // BPO1 switch time (nil = no fork, 0 = already on bpo1)
-	BPO2Time      *uint64 `json:"bpo2Time,omitempty"`      // BPO2 switch time (nil = no fork, 0 = already on bpo2)
-	BPO3Time      *uint64 `json:"bpo3Time,omitempty"`      // BPO3 switch time (nil = no fork, 0 = already on bpo3)
-	BPO4Time      *uint64 `json:"bpo4Time,omitempty"`      // BPO4 switch time (nil = no fork, 0 = already on bpo4)
-	BPO5Time      *uint64 `json:"bpo5Time,omitempty"`      // BPO5 switch time (nil = no fork, 0 = already on bpo5)
-	AmsterdamTime *uint64 `json:"amsterdamTime,omitempty"` // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
-	UBTTime       *uint64 `json:"ubtTime,omitempty"`       // UBT switch time (nil = no fork, 0 = already on UBT)
-=======
-	ShanghaiTime  *uint64 `json:"shanghaiTime,omitempty"`  // Shanghai switch time (nil = no fork, 0 = already on shanghai)
-	CancunTime    *uint64 `json:"cancunTime,omitempty"`    // Cancun switch time (nil = no fork, 0 = already on cancun)
-	PragueTime    *uint64 `json:"pragueTime,omitempty"`    // Prague switch time (nil = no fork, 0 = already on prague)
-	OsakaTime     *uint64 `json:"osakaTime,omitempty"`     // Osaka switch time (nil = no fork, 0 = already on osaka)
-	BPO1Time      *uint64 `json:"bpo1Time,omitempty"`      // BPO1 switch time (nil = no fork, 0 = already on bpo1)
-	BPO2Time      *uint64 `json:"bpo2Time,omitempty"`      // BPO2 switch time (nil = no fork, 0 = already on bpo2)
-	BPO3Time      *uint64 `json:"bpo3Time,omitempty"`      // BPO3 switch time (nil = no fork, 0 = already on bpo3)
-	BPO4Time      *uint64 `json:"bpo4Time,omitempty"`      // BPO4 switch time (nil = no fork, 0 = already on bpo4)
-	BPO5Time      *uint64 `json:"bpo5Time,omitempty"`      // BPO5 switch time (nil = no fork, 0 = already on bpo5)
-	AmsterdamTime *uint64 `json:"amsterdamTime,omitempty"` // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
-	BogotaTime    *uint64 `json:"bogotaTime,omitempty"`    // Bogota switch time (nil = no fork, 0 = already on bogota)
-	UBTTime       *uint64 `json:"ubtTime,omitempty"`       // UBT switch time (nil = no fork, 0 = already on UBT)
->>>>>>> geth-v1.17.9
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -779,7 +631,6 @@ func (c CliqueConfig) String() string {
 	return fmt.Sprintf("clique(period: %d, epoch: %d)", c.Period, c.Epoch)
 }
 
-<<<<<<< HEAD
 // ParliaConfig is the consensus engine configs for proof-of-staked-authority based sealing.
 type ParliaConfig struct {
 }
@@ -787,196 +638,6 @@ type ParliaConfig struct {
 // String implements the stringer interface, returning the consensus engine details.
 func (b *ParliaConfig) String() string {
 	return "parlia"
-||||||| 117e067f0f
-// String implements the fmt.Stringer interface, returning a string representation
-// of ChainConfig.
-func (c *ChainConfig) String() string {
-	result := fmt.Sprintf("ChainConfig{ChainID: %v", c.ChainID)
-
-	// Add block-based forks
-	if c.HomesteadBlock != nil {
-		result += fmt.Sprintf(", HomesteadBlock: %v", c.HomesteadBlock)
-	}
-	if c.DAOForkBlock != nil {
-		result += fmt.Sprintf(", DAOForkBlock: %v", c.DAOForkBlock)
-	}
-	if c.EIP150Block != nil {
-		result += fmt.Sprintf(", EIP150Block: %v", c.EIP150Block)
-	}
-	if c.EIP155Block != nil {
-		result += fmt.Sprintf(", EIP155Block: %v", c.EIP155Block)
-	}
-	if c.EIP158Block != nil {
-		result += fmt.Sprintf(", EIP158Block: %v", c.EIP158Block)
-	}
-	if c.ByzantiumBlock != nil {
-		result += fmt.Sprintf(", ByzantiumBlock: %v", c.ByzantiumBlock)
-	}
-	if c.ConstantinopleBlock != nil {
-		result += fmt.Sprintf(", ConstantinopleBlock: %v", c.ConstantinopleBlock)
-	}
-	if c.PetersburgBlock != nil {
-		result += fmt.Sprintf(", PetersburgBlock: %v", c.PetersburgBlock)
-	}
-	if c.IstanbulBlock != nil {
-		result += fmt.Sprintf(", IstanbulBlock: %v", c.IstanbulBlock)
-	}
-	if c.MuirGlacierBlock != nil {
-		result += fmt.Sprintf(", MuirGlacierBlock: %v", c.MuirGlacierBlock)
-	}
-	if c.BerlinBlock != nil {
-		result += fmt.Sprintf(", BerlinBlock: %v", c.BerlinBlock)
-	}
-	if c.LondonBlock != nil {
-		result += fmt.Sprintf(", LondonBlock: %v", c.LondonBlock)
-	}
-	if c.ArrowGlacierBlock != nil {
-		result += fmt.Sprintf(", ArrowGlacierBlock: %v", c.ArrowGlacierBlock)
-	}
-	if c.GrayGlacierBlock != nil {
-		result += fmt.Sprintf(", GrayGlacierBlock: %v", c.GrayGlacierBlock)
-	}
-	if c.MergeNetsplitBlock != nil {
-		result += fmt.Sprintf(", MergeNetsplitBlock: %v", c.MergeNetsplitBlock)
-	}
-
-	// Add timestamp-based forks
-	if c.ShanghaiTime != nil {
-		result += fmt.Sprintf(", ShanghaiTime: %v", *c.ShanghaiTime)
-	}
-	if c.CancunTime != nil {
-		result += fmt.Sprintf(", CancunTime: %v", *c.CancunTime)
-	}
-	if c.PragueTime != nil {
-		result += fmt.Sprintf(", PragueTime: %v", *c.PragueTime)
-	}
-	if c.OsakaTime != nil {
-		result += fmt.Sprintf(", OsakaTime: %v", *c.OsakaTime)
-	}
-	if c.BPO1Time != nil {
-		result += fmt.Sprintf(", BPO1Time: %v", *c.BPO1Time)
-	}
-	if c.BPO2Time != nil {
-		result += fmt.Sprintf(", BPO2Time: %v", *c.BPO2Time)
-	}
-	if c.BPO3Time != nil {
-		result += fmt.Sprintf(", BPO3Time: %v", *c.BPO3Time)
-	}
-	if c.BPO4Time != nil {
-		result += fmt.Sprintf(", BPO4Time: %v", *c.BPO4Time)
-	}
-	if c.BPO5Time != nil {
-		result += fmt.Sprintf(", BPO5Time: %v", *c.BPO5Time)
-	}
-	if c.AmsterdamTime != nil {
-		result += fmt.Sprintf(", AmsterdamTime: %v", *c.AmsterdamTime)
-	}
-	if c.UBTTime != nil {
-		result += fmt.Sprintf(", UBTTime: %v", *c.UBTTime)
-	}
-	result += "}"
-	return result
-=======
-// String implements the fmt.Stringer interface, returning a string representation
-// of ChainConfig.
-// GoString implements fmt.GoStringer, so that %#v prints the same readable
-// summary as %v. Without it the default Go-syntax formatting renders every
-// timestamp-based fork as a bare pointer address, which is exactly the part of
-// the config a reader needs when diagnosing a fork-activation problem.
-func (c *ChainConfig) GoString() string {
-	return c.String()
-}
-
-func (c *ChainConfig) String() string {
-	result := fmt.Sprintf("ChainConfig{ChainID: %v", c.ChainID)
-
-	// Add block-based forks
-	if c.HomesteadBlock != nil {
-		result += fmt.Sprintf(", HomesteadBlock: %v", c.HomesteadBlock)
-	}
-	if c.DAOForkBlock != nil {
-		result += fmt.Sprintf(", DAOForkBlock: %v", c.DAOForkBlock)
-	}
-	if c.EIP150Block != nil {
-		result += fmt.Sprintf(", EIP150Block: %v", c.EIP150Block)
-	}
-	if c.EIP155Block != nil {
-		result += fmt.Sprintf(", EIP155Block: %v", c.EIP155Block)
-	}
-	if c.EIP158Block != nil {
-		result += fmt.Sprintf(", EIP158Block: %v", c.EIP158Block)
-	}
-	if c.ByzantiumBlock != nil {
-		result += fmt.Sprintf(", ByzantiumBlock: %v", c.ByzantiumBlock)
-	}
-	if c.ConstantinopleBlock != nil {
-		result += fmt.Sprintf(", ConstantinopleBlock: %v", c.ConstantinopleBlock)
-	}
-	if c.PetersburgBlock != nil {
-		result += fmt.Sprintf(", PetersburgBlock: %v", c.PetersburgBlock)
-	}
-	if c.IstanbulBlock != nil {
-		result += fmt.Sprintf(", IstanbulBlock: %v", c.IstanbulBlock)
-	}
-	if c.MuirGlacierBlock != nil {
-		result += fmt.Sprintf(", MuirGlacierBlock: %v", c.MuirGlacierBlock)
-	}
-	if c.BerlinBlock != nil {
-		result += fmt.Sprintf(", BerlinBlock: %v", c.BerlinBlock)
-	}
-	if c.LondonBlock != nil {
-		result += fmt.Sprintf(", LondonBlock: %v", c.LondonBlock)
-	}
-	if c.ArrowGlacierBlock != nil {
-		result += fmt.Sprintf(", ArrowGlacierBlock: %v", c.ArrowGlacierBlock)
-	}
-	if c.GrayGlacierBlock != nil {
-		result += fmt.Sprintf(", GrayGlacierBlock: %v", c.GrayGlacierBlock)
-	}
-	if c.MergeNetsplitBlock != nil {
-		result += fmt.Sprintf(", MergeNetsplitBlock: %v", c.MergeNetsplitBlock)
-	}
-
-	// Add timestamp-based forks
-	if c.ShanghaiTime != nil {
-		result += fmt.Sprintf(", ShanghaiTime: %v", *c.ShanghaiTime)
-	}
-	if c.CancunTime != nil {
-		result += fmt.Sprintf(", CancunTime: %v", *c.CancunTime)
-	}
-	if c.PragueTime != nil {
-		result += fmt.Sprintf(", PragueTime: %v", *c.PragueTime)
-	}
-	if c.OsakaTime != nil {
-		result += fmt.Sprintf(", OsakaTime: %v", *c.OsakaTime)
-	}
-	if c.BPO1Time != nil {
-		result += fmt.Sprintf(", BPO1Time: %v", *c.BPO1Time)
-	}
-	if c.BPO2Time != nil {
-		result += fmt.Sprintf(", BPO2Time: %v", *c.BPO2Time)
-	}
-	if c.BPO3Time != nil {
-		result += fmt.Sprintf(", BPO3Time: %v", *c.BPO3Time)
-	}
-	if c.BPO4Time != nil {
-		result += fmt.Sprintf(", BPO4Time: %v", *c.BPO4Time)
-	}
-	if c.BPO5Time != nil {
-		result += fmt.Sprintf(", BPO5Time: %v", *c.BPO5Time)
-	}
-	if c.AmsterdamTime != nil {
-		result += fmt.Sprintf(", AmsterdamTime: %v", *c.AmsterdamTime)
-	}
-	if c.BogotaTime != nil {
-		result += fmt.Sprintf(", BogotaTime: %v", *c.BogotaTime)
-	}
-	if c.UBTTime != nil {
-		result += fmt.Sprintf(", UBTTime: %v", *c.UBTTime)
-	}
-	result += "}"
-	return result
->>>>>>> geth-v1.17.9
 }
 
 func (c *ChainConfig) Description() string {
@@ -999,157 +660,6 @@ func (c *ChainConfig) Description() string {
 		banner += "Consensus: unknown\n"
 	}
 
-<<<<<<< HEAD
-||||||| 117e067f0f
-	// Create a list of forks with a short description of them. Forks that only
-	// makes sense for mainnet should be optional at printing to avoid bloating
-	// the output for testnets and private networks.
-	banner += "Pre-Merge hard forks (block based):\n"
-	banner += fmt.Sprintf(" - Homestead:                   #%-8v\n", c.HomesteadBlock)
-	if c.DAOForkBlock != nil {
-		banner += fmt.Sprintf(" - DAO Fork:                    #%-8v\n", c.DAOForkBlock)
-	}
-	banner += fmt.Sprintf(" - Tangerine Whistle (EIP 150): #%-8v\n", c.EIP150Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/1 (EIP 155): #%-8v\n", c.EIP155Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/2 (EIP 158): #%-8v\n", c.EIP158Block)
-	banner += fmt.Sprintf(" - Byzantium:                   #%-8v\n", c.ByzantiumBlock)
-	banner += fmt.Sprintf(" - Constantinople:              #%-8v\n", c.ConstantinopleBlock)
-	banner += fmt.Sprintf(" - Petersburg:                  #%-8v\n", c.PetersburgBlock)
-	banner += fmt.Sprintf(" - Istanbul:                    #%-8v\n", c.IstanbulBlock)
-	if c.MuirGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Muir Glacier:                #%-8v\n", c.MuirGlacierBlock)
-	}
-	banner += fmt.Sprintf(" - Berlin:                      #%-8v\n", c.BerlinBlock)
-	banner += fmt.Sprintf(" - London:                      #%-8v\n", c.LondonBlock)
-	if c.ArrowGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Arrow Glacier:               #%-8v\n", c.ArrowGlacierBlock)
-	}
-	if c.GrayGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Gray Glacier:                #%-8v\n", c.GrayGlacierBlock)
-	}
-	banner += "\n"
-
-	// Add a special section for the merge as it's non-obvious
-	banner += "Merge configured:\n"
-	banner += fmt.Sprintf(" - Total terminal difficulty:  %v\n", c.TerminalTotalDifficulty)
-	if c.MergeNetsplitBlock != nil {
-		banner += fmt.Sprintf(" - Merge netsplit block:       #%-8v\n", c.MergeNetsplitBlock)
-	}
-	banner += "\n"
-
-	// Create a list of forks post-merge
-	banner += "Post-Merge hard forks (timestamp based):\n"
-	if c.ShanghaiTime != nil {
-		banner += fmt.Sprintf(" - Shanghai:                    @%-10v\n", *c.ShanghaiTime)
-	}
-	if c.CancunTime != nil {
-		banner += fmt.Sprintf(" - Cancun:                      @%-10v blob: (%s)\n", *c.CancunTime, c.BlobScheduleConfig.Cancun)
-	}
-	if c.PragueTime != nil {
-		banner += fmt.Sprintf(" - Prague:                      @%-10v blob: (%s)\n", *c.PragueTime, c.BlobScheduleConfig.Prague)
-	}
-	if c.OsakaTime != nil {
-		banner += fmt.Sprintf(" - Osaka:                       @%-10v blob: (%s)\n", *c.OsakaTime, c.BlobScheduleConfig.Osaka)
-	}
-	if c.BPO1Time != nil {
-		banner += fmt.Sprintf(" - BPO1:                        @%-10v blob: (%s)\n", *c.BPO1Time, c.BlobScheduleConfig.BPO1)
-	}
-	if c.BPO2Time != nil {
-		banner += fmt.Sprintf(" - BPO2:                        @%-10v blob: (%s)\n", *c.BPO2Time, c.BlobScheduleConfig.BPO2)
-	}
-	if c.BPO3Time != nil {
-		banner += fmt.Sprintf(" - BPO3:                        @%-10v blob: (%s)\n", *c.BPO3Time, c.BlobScheduleConfig.BPO3)
-	}
-	if c.BPO4Time != nil {
-		banner += fmt.Sprintf(" - BPO4:                        @%-10v blob: (%s)\n", *c.BPO4Time, c.BlobScheduleConfig.BPO4)
-	}
-	if c.BPO5Time != nil {
-		banner += fmt.Sprintf(" - BPO5:                        @%-10v blob: (%s)\n", *c.BPO5Time, c.BlobScheduleConfig.BPO5)
-	}
-	if c.AmsterdamTime != nil {
-		banner += fmt.Sprintf(" - Amsterdam:									 @%-10v blob: (%s)\n", *c.AmsterdamTime, c.BlobScheduleConfig.Amsterdam)
-	}
-	if c.UBTTime != nil {
-		banner += fmt.Sprintf(" - UBT:                         @%-10v blob: (%s)\n", *c.UBTTime, c.BlobScheduleConfig.UBT)
-	}
-	banner += fmt.Sprintf("\nAll fork specifications can be found at https://ethereum.github.io/execution-specs/src/ethereum/forks/\n")
-=======
-	// Create a list of forks with a short description of them. Forks that only
-	// makes sense for mainnet should be optional at printing to avoid bloating
-	// the output for testnets and private networks.
-	banner += "Pre-Merge hard forks (block based):\n"
-	banner += fmt.Sprintf(" - Homestead:                   #%-8v\n", c.HomesteadBlock)
-	if c.DAOForkBlock != nil {
-		banner += fmt.Sprintf(" - DAO Fork:                    #%-8v\n", c.DAOForkBlock)
-	}
-	banner += fmt.Sprintf(" - Tangerine Whistle (EIP 150): #%-8v\n", c.EIP150Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/1 (EIP 155): #%-8v\n", c.EIP155Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/2 (EIP 158): #%-8v\n", c.EIP158Block)
-	banner += fmt.Sprintf(" - Byzantium:                   #%-8v\n", c.ByzantiumBlock)
-	banner += fmt.Sprintf(" - Constantinople:              #%-8v\n", c.ConstantinopleBlock)
-	banner += fmt.Sprintf(" - Petersburg:                  #%-8v\n", c.PetersburgBlock)
-	banner += fmt.Sprintf(" - Istanbul:                    #%-8v\n", c.IstanbulBlock)
-	if c.MuirGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Muir Glacier:                #%-8v\n", c.MuirGlacierBlock)
-	}
-	banner += fmt.Sprintf(" - Berlin:                      #%-8v\n", c.BerlinBlock)
-	banner += fmt.Sprintf(" - London:                      #%-8v\n", c.LondonBlock)
-	if c.ArrowGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Arrow Glacier:               #%-8v\n", c.ArrowGlacierBlock)
-	}
-	if c.GrayGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Gray Glacier:                #%-8v\n", c.GrayGlacierBlock)
-	}
-	banner += "\n"
-
-	// Add a special section for the merge as it's non-obvious
-	banner += "Merge configured:\n"
-	banner += fmt.Sprintf(" - Total terminal difficulty:  %v\n", c.TerminalTotalDifficulty)
-	if c.MergeNetsplitBlock != nil {
-		banner += fmt.Sprintf(" - Merge netsplit block:       #%-8v\n", c.MergeNetsplitBlock)
-	}
-	banner += "\n"
-
-	// Create a list of forks post-merge
-	banner += "Post-Merge hard forks (timestamp based):\n"
-	if c.ShanghaiTime != nil {
-		banner += fmt.Sprintf(" - Shanghai:                    @%-10v\n", *c.ShanghaiTime)
-	}
-	if c.CancunTime != nil {
-		banner += fmt.Sprintf(" - Cancun:                      @%-10v blob: (%s)\n", *c.CancunTime, c.BlobScheduleConfig.Cancun)
-	}
-	if c.PragueTime != nil {
-		banner += fmt.Sprintf(" - Prague:                      @%-10v blob: (%s)\n", *c.PragueTime, c.BlobScheduleConfig.Prague)
-	}
-	if c.OsakaTime != nil {
-		banner += fmt.Sprintf(" - Osaka:                       @%-10v\n", *c.OsakaTime)
-	}
-	if c.BPO1Time != nil {
-		banner += fmt.Sprintf(" - BPO1:                        @%-10v blob: (%s)\n", *c.BPO1Time, c.BlobScheduleConfig.BPO1)
-	}
-	if c.BPO2Time != nil {
-		banner += fmt.Sprintf(" - BPO2:                        @%-10v blob: (%s)\n", *c.BPO2Time, c.BlobScheduleConfig.BPO2)
-	}
-	if c.BPO3Time != nil {
-		banner += fmt.Sprintf(" - BPO3:                        @%-10v blob: (%s)\n", *c.BPO3Time, c.BlobScheduleConfig.BPO3)
-	}
-	if c.BPO4Time != nil {
-		banner += fmt.Sprintf(" - BPO4:                        @%-10v blob: (%s)\n", *c.BPO4Time, c.BlobScheduleConfig.BPO4)
-	}
-	if c.BPO5Time != nil {
-		banner += fmt.Sprintf(" - BPO5:                        @%-10v blob: (%s)\n", *c.BPO5Time, c.BlobScheduleConfig.BPO5)
-	}
-	if c.AmsterdamTime != nil {
-		banner += fmt.Sprintf(" - Amsterdam:                   @%-10v\n", *c.AmsterdamTime)
-	}
-	if c.BogotaTime != nil {
-		banner += fmt.Sprintf(" - Bogota:                      @%-10v\n", *c.BogotaTime)
-	}
-	if c.UBTTime != nil {
-		banner += fmt.Sprintf(" - UBT:                         @%-10v\n", *c.UBTTime)
-	}
-	banner += fmt.Sprintf("\nAll fork specifications can be found at https://ethereum.github.io/execution-specs/src/ethereum/forks/\n")
->>>>>>> geth-v1.17.9
 	return banner
 }
 
@@ -1235,7 +745,7 @@ func (c *ChainConfig) String() string {
 
 	var OsakaTime *big.Int
 	if c.OsakaTime != nil {
-		OsakaTime = big.NewInt(0).SetUint64(*c.OsakaTime)
+		OsakaTime = new(big.Int).SetUint64(*c.OsakaTime)
 	}
 
 	var MendelTime *big.Int
@@ -1844,6 +1354,15 @@ func (c *ChainConfig) IsAmsterdam(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.AmsterdamTime, time)
 }
 
+// IsOnAmsterdam reports whether the current block activates Amsterdam.
+func (c *ChainConfig) IsOnAmsterdam(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsAmsterdam(lastBlockNumber, lastBlockTime) && c.IsAmsterdam(currentBlockNumber, currentBlockTime)
+}
+
 // IsBogota returns whether time is either equal to the Bogota fork time or greater.
 func (c *ChainConfig) IsBogota(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BogotaTime, time)
@@ -1901,10 +1420,6 @@ func (c *ChainConfig) CheckCompatible(newcfg *ChainConfig, height uint64, time u
 // CheckConfigForkOrder checks that we don't "skip" any forks, geth isn't pluggable enough
 // to guarantee that forks can be implemented in a different order than on official networks
 func (c *ChainConfig) CheckConfigForkOrder() error {
-	// skip checking for non-Parlia egine
-	if c.IsNotInBSC() {
-		return nil
-	}
 	type fork struct {
 		name      string
 		block     *big.Int // forks up to - and including the merge - were defined with block numbers
@@ -1912,41 +1427,75 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		optional  bool     // if true, the fork may be nil and next fork is still allowed
 	}
 	var lastFork fork
-	for _, cur := range []fork{
-		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
-		{name: "brunoBlock", block: c.BrunoBlock},
-		{name: "eulerBlock", block: c.EulerBlock},
-		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "planckBlock", block: c.PlanckBlock},
-		{name: "lubanBlock", block: c.LubanBlock},
-		{name: "platoBlock", block: c.PlatoBlock},
-		{name: "hertzBlock", block: c.HertzBlock},
-		{name: "hertzfixBlock", block: c.HertzfixBlock},
-		{name: "keplerTime", timestamp: c.KeplerTime},
-		{name: "feynmanTime", timestamp: c.FeynmanTime},
-		{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
-		{name: "cancunTime", timestamp: c.CancunTime},
-		{name: "haberTime", timestamp: c.HaberTime},
-		{name: "haberFixTime", timestamp: c.HaberFixTime},
-		{name: "bohrTime", timestamp: c.BohrTime},
-		{name: "pascalTime", timestamp: c.PascalTime},
-		{name: "pragueTime", timestamp: c.PragueTime},
-		{name: "lorentzTime", timestamp: c.LorentzTime},
-		{name: "maxwellTime", timestamp: c.MaxwellTime},
-		{name: "fermiTime", timestamp: c.FermiTime},
-		{name: "osakaTime", timestamp: c.OsakaTime},
-		{name: "mendelTime", timestamp: c.MendelTime},
-		{name: "pasteurTime", timestamp: c.PasteurTime},
-		{name: "jennerTime", timestamp: c.JennerTime, optional: true},
-		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
-		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
-		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
-		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
-		{name: "bogota", timestamp: c.BogotaTime, optional: true},
-		{name: "bpo3", timestamp: c.BPO3Time, optional: true},
-		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
-		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
-	} {
+	var forkOrder []fork
+	if c.IsInBSC() {
+		forkOrder = []fork{
+			{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
+			{name: "brunoBlock", block: c.BrunoBlock},
+			{name: "eulerBlock", block: c.EulerBlock},
+			{name: "gibbsBlock", block: c.GibbsBlock},
+			{name: "planckBlock", block: c.PlanckBlock},
+			{name: "lubanBlock", block: c.LubanBlock},
+			{name: "platoBlock", block: c.PlatoBlock},
+			{name: "hertzBlock", block: c.HertzBlock},
+			{name: "hertzfixBlock", block: c.HertzfixBlock},
+			{name: "keplerTime", timestamp: c.KeplerTime},
+			{name: "feynmanTime", timestamp: c.FeynmanTime},
+			{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
+			{name: "cancunTime", timestamp: c.CancunTime},
+			{name: "haberTime", timestamp: c.HaberTime},
+			{name: "haberFixTime", timestamp: c.HaberFixTime},
+			{name: "bohrTime", timestamp: c.BohrTime},
+			{name: "pascalTime", timestamp: c.PascalTime},
+			{name: "pragueTime", timestamp: c.PragueTime},
+			{name: "lorentzTime", timestamp: c.LorentzTime},
+			{name: "maxwellTime", timestamp: c.MaxwellTime},
+			{name: "fermiTime", timestamp: c.FermiTime},
+			{name: "osakaTime", timestamp: c.OsakaTime},
+			{name: "mendelTime", timestamp: c.MendelTime},
+			{name: "pasteurTime", timestamp: c.PasteurTime},
+			{name: "jennerTime", timestamp: c.JennerTime, optional: true},
+			{name: "ubtTime", timestamp: c.UBTTime, optional: true},
+			{name: "bpo1", timestamp: c.BPO1Time, optional: true},
+			{name: "bpo2", timestamp: c.BPO2Time, optional: true},
+			{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+			{name: "bogota", timestamp: c.BogotaTime, optional: true},
+			{name: "bpo3", timestamp: c.BPO3Time, optional: true},
+			{name: "bpo4", timestamp: c.BPO4Time, optional: true},
+			{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		}
+	} else {
+		forkOrder = []fork{
+			{name: "homesteadBlock", block: c.HomesteadBlock},
+			{name: "daoForkBlock", block: c.DAOForkBlock, optional: true},
+			{name: "eip150Block", block: c.EIP150Block},
+			{name: "eip155Block", block: c.EIP155Block},
+			{name: "eip158Block", block: c.EIP158Block},
+			{name: "byzantiumBlock", block: c.ByzantiumBlock},
+			{name: "constantinopleBlock", block: c.ConstantinopleBlock},
+			{name: "petersburgBlock", block: c.PetersburgBlock},
+			{name: "istanbulBlock", block: c.IstanbulBlock},
+			{name: "muirGlacierBlock", block: c.MuirGlacierBlock, optional: true},
+			{name: "berlinBlock", block: c.BerlinBlock},
+			{name: "londonBlock", block: c.LondonBlock},
+			{name: "arrowGlacierBlock", block: c.ArrowGlacierBlock, optional: true},
+			{name: "grayGlacierBlock", block: c.GrayGlacierBlock, optional: true},
+			{name: "mergeNetsplitBlock", block: c.MergeNetsplitBlock, optional: true},
+			{name: "shanghaiTime", timestamp: c.ShanghaiTime},
+			{name: "cancunTime", timestamp: c.CancunTime, optional: true},
+			{name: "pragueTime", timestamp: c.PragueTime, optional: true},
+			{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
+			{name: "ubtTime", timestamp: c.UBTTime, optional: true},
+			{name: "bpo1", timestamp: c.BPO1Time, optional: true},
+			{name: "bpo2", timestamp: c.BPO2Time, optional: true},
+			{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+			{name: "bogota", timestamp: c.BogotaTime, optional: true},
+			{name: "bpo3", timestamp: c.BPO3Time, optional: true},
+			{name: "bpo4", timestamp: c.BPO4Time, optional: true},
+			{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		}
+	}
+	for _, cur := range forkOrder {
 		if lastFork.name != "" {
 			switch {
 			// Non-optional forks must all be present in the chain config up to the last defined fork
@@ -2256,52 +1805,9 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	}
 }
 
-// BlobConfig returns the blob config active at the provided fork. Since named
-// forks (Osaka, Amsterdam, ...) no longer carry their own blob schedule, the
-// lookup walks down from fork through the BPO chain to Prague/Cancun and returns
-// the first non-nil entry.
+// BlobConfig returns the blob config active at the provided fork.
 func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
-<<<<<<< HEAD
-	switch fork {
-	case forks.BPO5:
-		return c.BlobScheduleConfig.BPO5
-	case forks.BPO4:
-		return c.BlobScheduleConfig.BPO4
-	case forks.BPO3:
-		return c.BlobScheduleConfig.BPO3
-	case forks.BPO2:
-		return c.BlobScheduleConfig.BPO2
-	case forks.BPO1:
-		return c.BlobScheduleConfig.BPO1
-	case forks.Jenner, forks.Pasteur, forks.Mendel, forks.Osaka:
-		return c.BlobScheduleConfig.Osaka
-	case forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague:
-		return c.BlobScheduleConfig.Prague
-	case forks.Cancun:
-		return c.BlobScheduleConfig.Cancun
-	default:
-||||||| 117e067f0f
-	switch fork {
-	case forks.BPO5:
-		return c.BlobScheduleConfig.BPO5
-	case forks.BPO4:
-		return c.BlobScheduleConfig.BPO4
-	case forks.BPO3:
-		return c.BlobScheduleConfig.BPO3
-	case forks.BPO2:
-		return c.BlobScheduleConfig.BPO2
-	case forks.BPO1:
-		return c.BlobScheduleConfig.BPO1
-	case forks.Osaka:
-		return c.BlobScheduleConfig.Osaka
-	case forks.Prague:
-		return c.BlobScheduleConfig.Prague
-	case forks.Cancun:
-		return c.BlobScheduleConfig.Cancun
-	default:
-=======
 	if c.BlobScheduleConfig == nil {
->>>>>>> geth-v1.17.9
 		return nil
 	}
 	bsc := c.BlobScheduleConfig
@@ -2360,16 +1866,10 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
-<<<<<<< HEAD
-	case fork == forks.Amsterdam:
-		return c.AmsterdamTime
-||||||| 117e067f0f
-=======
 	case fork == forks.Bogota:
 		return c.BogotaTime
 	case fork == forks.Amsterdam:
 		return c.AmsterdamTime
->>>>>>> geth-v1.17.9
 	case fork == forks.BPO5:
 		return c.BPO5Time
 	case fork == forks.BPO4:
@@ -2544,7 +2044,6 @@ type Rules struct {
 	IsEIP2929, IsEIP4762                                    bool
 	IsByzantium, IsConstantinople, IsPetersburg, IsIstanbul bool
 	IsBerlin, IsLondon                                      bool
-<<<<<<< HEAD
 	IsMerge                                                 bool
 	IsNano                                                  bool
 	IsMoran                                                 bool
@@ -2556,19 +2055,12 @@ type Rules struct {
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
-	IsPasteur, IsAmsterdam, IsUBT                           bool
+	IsPasteur, IsAmsterdam, IsBogota, IsUBT                 bool
 	IsJenner                                                bool
 	// IsInBSC is true when Parlia is configured (BSC chains). core/vm uses it to
 	// select the BSC precompile set (…ForBSC); non-BSC chains (e.g. the standard
 	// state / execution-spec tests) get the standard upstream set.
 	IsInBSC bool
-||||||| 117e067f0f
-	IsMerge, IsShanghai, IsCancun, IsPrague, IsOsaka        bool
-	IsAmsterdam, IsUBT                                      bool
-=======
-	IsMerge, IsShanghai, IsCancun, IsPrague, IsOsaka        bool
-	IsAmsterdam, IsBogota, IsUBT                            bool
->>>>>>> geth-v1.17.9
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -2589,7 +2081,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsEIP2929:        c.IsBerlin(num) && !isUBT,
 		IsLondon:         c.IsLondon(num),
 		IsMerge:          isMerge,
-<<<<<<< HEAD
 		IsNano:           c.IsNano(num),
 		IsMoran:          c.IsMoran(num),
 		IsPlanck:         c.IsPlanck(num),
@@ -2612,6 +2103,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsMendel:         c.IsMendel(num, timestamp),
 		IsPasteur:        c.IsPasteur(num, timestamp),
 		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
+		IsBogota:         (isMerge || c.IsInBSC()) && c.IsBogota(num, timestamp),
 		// IsJenner needs no (isMerge || IsInBSC()) prefix: unlike Amsterdam etc.
 		// (fork names shared with upstream ethereum), Jenner is a BSC-only fork
 		// and IsJenner() itself embeds the IsInBSC() gate.
@@ -2619,23 +2111,5 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsUBT:     isUBT,
 		IsEIP4762: isUBT,
 		IsInBSC:   c.IsInBSC(),
-||||||| 117e067f0f
-		IsShanghai:       isMerge && c.IsShanghai(num, timestamp),
-		IsCancun:         isMerge && c.IsCancun(num, timestamp),
-		IsPrague:         isMerge && c.IsPrague(num, timestamp),
-		IsOsaka:          isMerge && c.IsOsaka(num, timestamp),
-		IsAmsterdam:      isMerge && c.IsAmsterdam(num, timestamp),
-		IsUBT:            isUBT,
-		IsEIP4762:        isUBT,
-=======
-		IsShanghai:       isMerge && c.IsShanghai(num, timestamp),
-		IsCancun:         isMerge && c.IsCancun(num, timestamp),
-		IsPrague:         isMerge && c.IsPrague(num, timestamp),
-		IsOsaka:          isMerge && c.IsOsaka(num, timestamp),
-		IsAmsterdam:      isMerge && c.IsAmsterdam(num, timestamp),
-		IsBogota:         isMerge && c.IsBogota(num, timestamp),
-		IsUBT:            isUBT,
-		IsEIP4762:        isUBT,
->>>>>>> geth-v1.17.9
 	}
 }

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -33,7 +34,7 @@ func TestAccessListTracerSeesCAS20Storage(t *testing.T) {
 	statedb.SetCode(token, vm.CAS20MarkerCode, tracing.CodeChangeContractCreation)
 	statedb.SetState(token, slot(alice), common.BigToHash(big.NewInt(100)))
 	statedb.SetBalance(alice, uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
-	statedb.Finalise(false)
+	statedb.Finalise(params.Rules{IsEIP158: false})
 
 	cfg := *params.TestChainConfig
 	cfg.JennerTime = new(uint64)
@@ -45,8 +46,8 @@ func TestAccessListTracerSeesCAS20Storage(t *testing.T) {
 	evm := vm.NewEVM(blockCtx, state.NewHookedState(statedb, tr.Hooks()), &cfg, vm.Config{Tracer: tr.Hooks()})
 	tx := types.NewTx(&types.LegacyTx{To: &token, Gas: 100_000, GasPrice: big.NewInt(1), Data: input})
 	msg := &core.Message{From: alice, To: &token, GasLimit: tx.Gas(), GasPrice: uint256.NewInt(1), GasFeeCap: uint256.NewInt(1), GasTipCap: uint256.NewInt(1), Value: new(uint256.Int), Data: input}
-	statedb.SetTxContext(tx.Hash(), 0)
-	receipt, err := core.ApplyTransactionWithEVM(msg, core.NewGasPool(tx.Gas()), statedb, blockCtx.BlockNumber, common.Hash{}, blockCtx.Time, tx, evm)
+	statedb.SetTxContext(tx.Hash(), 0, uint32(0+1))
+	receipt, _, err := core.ApplyTransactionWithEVM(context.Background(), msg, core.NewGasPool(tx.Gas()), statedb, blockCtx.BlockNumber, common.Hash{}, blockCtx.Time, tx, evm)
 	evm.Release()
 	if err != nil || receipt.Status != types.ReceiptStatusSuccessful {
 		t.Fatalf("transfer: err %v status %d", err, receipt.Status)

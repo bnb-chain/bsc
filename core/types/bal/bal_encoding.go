@@ -35,6 +35,7 @@ import (
 )
 
 //go:generate go run github.com/ethereum/go-ethereum/rlp/rlpgen -out bal_encoding_rlp_generated.go -type AccountAccess -decoder
+//go:generate go run golang.org/x/tools/cmd/goimports -w bal_encoding_rlp_generated.go
 
 // These are objects used as input for the access list encoding. They mirror
 // the spec format.

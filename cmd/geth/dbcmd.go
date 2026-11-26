@@ -103,7 +103,8 @@ Remove blockchain and state databases`,
 			dbMetadataCmd,
 			dbCheckStateContentCmd,
 			dbInspectHistoryCmd,
-<<<<<<< HEAD
+			dbPebbleUpgradeCmd,
+			dbImportBadBlocksCmd,
 
 			// only defined in bsc
 			dbInspectTrieCmd,
@@ -111,11 +112,6 @@ Remove blockchain and state databases`,
 			dbTrieDeleteCmd,
 			dbDeleteTrieStateCmd,
 			ancientInspectCmd,
-||||||| 117e067f0f
-=======
-			dbPebbleUpgradeCmd,
-			dbImportBadBlocksCmd,
->>>>>>> geth-v1.17.9
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -488,13 +484,8 @@ func checkStateContent(ctx *cli.Context) error {
 		startTime = time.Now()
 		lastLog   = time.Now()
 	)
-<<<<<<< HEAD
-
 	it = rawdb.NewKeyLengthIterator(db.NewIterator(prefix, start), 32)
-||||||| 117e067f0f
-=======
 	defer it.Release()
->>>>>>> geth-v1.17.9
 	for it.Next() {
 		count++
 		k := it.Key()

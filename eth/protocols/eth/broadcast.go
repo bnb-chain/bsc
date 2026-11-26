@@ -34,8 +34,9 @@ const (
 // blockPropagation is a block propagation event, waiting for its turn in the
 // broadcast queue.
 type blockPropagation struct {
-	block *types.Block
-	td    *big.Int
+	block      *types.Block
+	td         *big.Int
+	balPayload []byte
 }
 
 // broadcastBlocks is a write loop that multiplexes blocks and block announcements
@@ -45,7 +46,7 @@ func (p *Peer) broadcastBlocks() {
 	for {
 		select {
 		case prop := <-p.queuedBlocks:
-			if err := p.SendNewBlock(prop.block, prop.td); err != nil {
+			if err := p.sendNewBlock(prop.block, prop.td, prop.balPayload); err != nil {
 				return
 			}
 			p.Log().Trace("Propagated block", "number", prop.block.Number(), "hash", prop.block.Hash(), "td", prop.td, "sidecars", len(prop.block.Sidecars()))
@@ -200,30 +201,14 @@ func (p *Peer) announceTransactions() {
 			// If there's anything available to transfer, fire up an async writer
 			if len(pending) > 0 {
 				done = make(chan struct{})
-<<<<<<< HEAD
 				gopool.Submit(func() {
-					if err := p.sendPooledTransactionHashes(pending, pendingTypes, pendingSizes); err != nil {
-||||||| 117e067f0f
-				go func() {
-					if err := p.sendPooledTransactionHashes(pending, pendingTypes, pendingSizes); err != nil {
-=======
-				go func() {
 					if err := p.sendPooledTransactionHashes(pending, pendingTypes, pendingSizes, mask); err != nil {
->>>>>>> geth-v1.17.9
 						fail <- err
 						return
 					}
 					close(done)
-<<<<<<< HEAD
-					//p.Log().Trace("Sent transaction announcements", "count", len(pending))
+					//p.Log().Trace("Sent transaction announcements", "count", len(pending), "mask", mask, "tx", pending)
 				})
-||||||| 117e067f0f
-					p.Log().Trace("Sent transaction announcements", "count", len(pending))
-				}()
-=======
-					p.Log().Trace("Sent transaction announcements", "count", len(pending), "mask", mask, "tx", pending)
-				}()
->>>>>>> geth-v1.17.9
 			}
 		}
 		// Transfer goroutine may or may not have been started, listen for events

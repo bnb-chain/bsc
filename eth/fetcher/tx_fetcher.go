@@ -208,25 +208,13 @@ type TxFetcher struct {
 	alternates map[common.Hash]map[string]struct{} // In-flight transaction alternate origins if retrieval fails
 
 	// Callbacks
-<<<<<<< HEAD
 	validateMeta func(common.Hash, byte) error              // Validate a tx metadata based on the local txpool
 	addTxs       func(string, []*types.Transaction) []error // Insert a batch of transactions into local txpool
 	fetchTxs     func(string, []common.Hash) error          // Retrieves a set of txs from a remote peer
 	dropPeer     func(string)                               // Drops a peer in case of announcement violation
-||||||| 117e067f0f
-	validateMeta func(common.Hash, byte) error      // Validate a tx metadata based on the local txpool
-	addTxs       func([]*types.Transaction) []error // Insert a batch of transactions into local txpool
-	fetchTxs     func(string, []common.Hash) error  // Retrieves a set of txs from a remote peer
-	dropPeer     func(string)                       // Drops a peer in case of announcement violation
-=======
-	validateMeta func(common.Hash, byte) error           // Validate a tx metadata based on the local txpool
-	addTxs       func([]*types.Transaction) []error      // Insert a batch of transactions into local txpool
-	fetchTxs     func(string, []common.Hash) error       // Retrieves a set of txs from a remote peer
-	dropPeer     func(string)                            // Drops a peer in case of announcement violation
-	onAccepted   func(peer string, hashes []common.Hash) // Optional: notified with accepted tx hashes per peer
+	onAccepted   func(peer string, hashes []common.Hash)    // Optional: notified with accepted tx hashes per peer
 
 	buffer *blobpool.BlobBuffer
->>>>>>> geth-v1.17.9
 
 	step     chan struct{}    // Notification channel when the fetcher loop iterates
 	clock    mclock.Clock     // Monotonic clock or simulated clock for tests
@@ -237,33 +225,17 @@ type TxFetcher struct {
 // NewTxFetcher creates a transaction fetcher to retrieve transaction
 // based on hash announcements.
 // Chain can be nil to disable on-chain checks.
-<<<<<<< HEAD
-func NewTxFetcher(chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func(string, []*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string)) *TxFetcher {
-	return NewTxFetcherForTests(chain, validateMeta, addTxs, fetchTxs, dropPeer, mclock.System{}, time.Now, nil)
-||||||| 117e067f0f
-func NewTxFetcher(chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string)) *TxFetcher {
-	return NewTxFetcherForTests(chain, validateMeta, addTxs, fetchTxs, dropPeer, mclock.System{}, time.Now, nil)
-=======
-func NewTxFetcher(chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error,
+func NewTxFetcher(chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func(string, []*types.Transaction) []error, fetchTxs func(string, []common.Hash) error,
 	dropPeer func(string), onAccepted func(string, []common.Hash), buffer *blobpool.BlobBuffer) *TxFetcher {
 	return NewTxFetcherForTests(chain, validateMeta, addTxs, fetchTxs, dropPeer, onAccepted, buffer, mclock.System{}, time.Now, nil)
->>>>>>> geth-v1.17.9
 }
 
 // NewTxFetcherForTests is a testing method to mock out the realtime clock with
 // a simulated version and the internal randomness with a deterministic one.
 // Chain can be nil to disable on-chain checks.
 func NewTxFetcherForTests(
-<<<<<<< HEAD
-	chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func(string, []*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string),
-	clock mclock.Clock, realTime func() time.Time, rand *mrand.Rand) *TxFetcher {
-||||||| 117e067f0f
-	chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string),
-	clock mclock.Clock, realTime func() time.Time, rand *mrand.Rand) *TxFetcher {
-=======
-	chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string), onAccepted func(string, []common.Hash),
+	chain *core.BlockChain, validateMeta func(common.Hash, byte) error, addTxs func(string, []*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string), onAccepted func(string, []common.Hash),
 	buffer *blobpool.BlobBuffer, clock mclock.Clock, realTime func() time.Time, rand *mrand.Rand) *TxFetcher {
->>>>>>> geth-v1.17.9
 	return &TxFetcher{
 		notify:         make(chan *txAnnounce),
 		cleanup:        make(chan *txDelivery),
@@ -421,23 +393,6 @@ func (f *TxFetcher) Enqueue(peer string, version uint, txs []*types.Transaction,
 			end = len(txs)
 		}
 		batch := txs[i:end]
-<<<<<<< HEAD
-
-		for j, err := range f.addTxs(peer, batch) {
-			// Track the transaction hash if the price is too low for us.
-			// Avoid re-request this transaction when we receive another
-			// announcement.
-			if errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced) || errors.Is(err, txpool.ErrTxGasPriceTooLow) {
-				f.underpriced.Add(batch[j].Hash(), batch[j].Time())
-||||||| 117e067f0f
-
-		for j, err := range f.addTxs(batch) {
-			// Track the transaction hash if the price is too low for us.
-			// Avoid re-request this transaction when we receive another
-			// announcement.
-			if errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced) || errors.Is(err, txpool.ErrTxGasPriceTooLow) {
-				f.underpriced.Add(batch[j].Hash(), batch[j].Time())
-=======
 		var (
 			poolTxs []*types.Transaction
 			blobTxs []*types.Transaction
@@ -449,7 +404,6 @@ func (f *TxFetcher) Enqueue(peer string, version uint, txs []*types.Transaction,
 				} else {
 					poolTxs = append(poolTxs, tx)
 				}
->>>>>>> geth-v1.17.9
 			}
 		} else {
 			poolTxs = batch
@@ -457,7 +411,7 @@ func (f *TxFetcher) Enqueue(peer string, version uint, txs []*types.Transaction,
 		batch = append(poolTxs, blobTxs...)
 
 		// Add regular tx to pool, blob tx to buffer.
-		errs := append(f.addTxs(poolTxs), f.buffer.AddTx(blobTxs, peer)...)
+		errs := append(f.addTxs(peer, poolTxs), f.buffer.AddTx(blobTxs, peer)...)
 
 		hashes := make([]common.Hash, len(batch))
 		for j := range batch {
@@ -498,15 +452,6 @@ func (f *TxFetcher) Enqueue(peer string, version uint, txs []*types.Transaction,
 		}
 		otherreject, nocapacity := f.handleAddErrors(hashes, errs, metrics)
 
-<<<<<<< HEAD
-		// If 'other reject' is >25% of the deliveries in any batch, sleep a bit.
-		// BSC's network is smaller and under heavier tx load, so this condition is relaxed compared to upstream geth.
-		if otherreject > addTxsBatchSize/4 {
-||||||| 117e067f0f
-		// If 'other reject' is >25% of the deliveries in any batch, sleep a bit.
-		if otherreject > int64((len(batch)+3)/4) {
-			log.Debug("Peer delivering stale or invalid transactions", "peer", peer, "rejected", otherreject)
-=======
 		// Notify the tracker which txs from this peer were accepted.
 		if f.onAccepted != nil && len(accepted) > 0 {
 			f.onAccepted(peer, accepted)
@@ -514,13 +459,12 @@ func (f *TxFetcher) Enqueue(peer string, version uint, txs []*types.Transaction,
 		// If more than 25% of the batch was refused, sleep a bit to throttle
 		// the peer. Capacity refusals count towards this (the backpressure is
 		// intended) but are reported separately.
-		if refused := otherreject + nocapacity; refused > int64((len(hashes)+3)/4) {
+		if refused := otherreject + nocapacity; refused > addTxsBatchSize/4 {
 			if nocapacity > otherreject {
 				log.Debug("Peer delivering transactions faster than there is room for", "refused", nocapacity)
 			} else {
 				log.Debug("Peer delivering stale or invalid transactions", "rejected", otherreject)
 			}
->>>>>>> geth-v1.17.9
 			time.Sleep(200 * time.Millisecond)
 			log.Debug("Peer delivering stale transactions", "peer", peer, "rejected", otherreject)
 		}

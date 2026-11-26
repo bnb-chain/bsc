@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
@@ -49,19 +48,12 @@ func makeJWTSecret(t *testing.T) (string, [32]byte, error) {
 }
 
 func TestEthSuite(t *testing.T) {
-	testEthSuite(t, ethproto.ETH72)
-}
-
-func TestEthSuiteEth71(t *testing.T) {
-	testEthSuite(t, ethproto.ETH71)
-}
-
-func testEthSuite(t *testing.T, ethVersion uint) {
+	ethVersion := ethproto.ProtocolVersions[0]
 	jwtPath, secret, err := makeJWTSecret(t)
 	if err != nil {
 		t.Fatalf("could not make jwt secret: %v", err)
 	}
-	geth, err := runGeth("./testdata", jwtPath, ethVersion)
+	geth, err := runGeth("./testdata", jwtPath)
 	if err != nil {
 		t.Fatalf("could not run geth: %v", err)
 	}
@@ -82,6 +74,9 @@ func testEthSuite(t *testing.T, ethVersion uint) {
 	suite.requireAvailableBALs = true
 	for _, test := range suite.EthTests() {
 		t.Run(test.Name, func(t *testing.T) {
+			if test.Name == "GetBlockAccessLists" && ethVersion < ethproto.ETH71 {
+				t.Skip("GetBlockAccessLists requires eth/71")
+			}
 			if test.Slow && testing.Short() {
 				t.Skipf("%s: skipping in -short mode", test.Name)
 			}
@@ -98,7 +93,7 @@ func TestSnapSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not make jwt secret: %v", err)
 	}
-	geth, err := runGeth("./testdata", jwtPath, ethproto.ETH72)
+	geth, err := runGeth("./testdata", jwtPath)
 	if err != nil {
 		t.Fatalf("could not run geth: %v", err)
 	}
@@ -123,7 +118,7 @@ func TestSnap2Suite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not make jwt secret: %v", err)
 	}
-	geth, err := runGeth("./testdata", jwtPath, ethproto.ETH72)
+	geth, err := runGeth("./testdata", jwtPath)
 	if err != nil {
 		t.Fatalf("could not run geth: %v", err)
 	}
@@ -145,7 +140,7 @@ func TestSnap2Suite(t *testing.T) {
 }
 
 // runGeth creates and starts a geth node
-func runGeth(dir string, jwtPath string, ethVersion uint) (*node.Node, error) {
+func runGeth(dir, jwtPath string) (*node.Node, error) {
 	stack, err := node.New(&node.Config{
 		AuthAddr: "127.0.0.1",
 		AuthPort: 0,
@@ -167,9 +162,6 @@ func runGeth(dir string, jwtPath string, ethVersion uint) (*node.Node, error) {
 		stack.Close()
 		return nil, err
 	}
-	stack.Server().Protocols = slices.DeleteFunc(stack.Server().Protocols, func(protocol p2p.Protocol) bool {
-		return protocol.Name == "eth" && protocol.Version > ethVersion
-	})
 	if err = stack.Start(); err != nil {
 		stack.Close()
 		return nil, err
@@ -190,12 +182,8 @@ func setupGeth(stack *node.Node, dir string) error {
 		TrieDirtyCache: 16,
 		TrieTimeout:    60 * time.Minute,
 		SnapshotCache:  10,
-<<<<<<< HEAD
 		TriesInMemory:  128,
-||||||| 117e067f0f
-=======
 		SnapV2:         true, // advertise snap/2 (alongside snap/1) so the snap/2 suite can negotiate it
->>>>>>> geth-v1.17.9
 	})
 	if err != nil {
 		return err

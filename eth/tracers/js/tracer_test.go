@@ -55,13 +55,7 @@ func runTrace(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainCo
 		gasLimit uint64 = 31000
 		startGas uint64 = 10000
 		value           = uint256.NewInt(0)
-<<<<<<< HEAD
-		contract        = vm.GetContract(common.Address{}, common.Address{}, value, vm.NewGasBudget(startGas), nil)
-||||||| 117e067f0f
-		contract        = vm.NewContract(common.Address{}, common.Address{}, value, vm.NewGasBudget(startGas), nil)
-=======
-		contract        = vm.NewContract(common.Address{}, common.Address{}, value, vm.NewGasBudget(startGas, 0), nil)
->>>>>>> geth-v1.17.9
+		contract        = vm.GetContract(common.Address{}, common.Address{}, value, vm.NewGasBudget(startGas, 0), nil)
 	)
 	defer vm.ReturnContract(contract)
 

@@ -79,11 +79,12 @@ func (*GetBlocksByRangePacket) Kind() byte   { return GetBlocksByRangeMsg }
 
 // BlockData contains types.extblock + sidecars
 type BlockData struct {
-	Header      *types.Header
-	Txs         []*types.Transaction
-	Uncles      []*types.Header
-	Withdrawals []*types.Withdrawal `rlp:"optional"`
-	Sidecars    types.BlobSidecars  `rlp:"optional"`
+	Header          *types.Header
+	Txs             []*types.Transaction
+	Uncles          []*types.Header
+	Withdrawals     []*types.Withdrawal `rlp:"optional"`
+	Sidecars        types.BlobSidecars  `rlp:"optional"`
+	BlockAccessList []byte              `rlp:"optional"` // RLP-encoded BAL after Amsterdam
 }
 
 // NewBlockData creates a new BlockData object from a block
@@ -95,6 +96,15 @@ func NewBlockData(block *types.Block) *BlockData {
 		Withdrawals: block.Withdrawals(),
 		Sidecars:    block.Sidecars(),
 	}
+}
+
+// ToBlock reconstructs a range response entry, checking any attached BAL before use.
+func (data *BlockData) ToBlock() (*types.Block, error) {
+	return types.NewBlockWithHeader(data.Header).WithBody(types.Body{
+		Transactions: data.Txs,
+		Uncles:       data.Uncles,
+		Withdrawals:  data.Withdrawals,
+	}).WithSidecars(data.Sidecars).WithAccessListRLP(data.BlockAccessList)
 }
 
 type BlocksByRangePacket struct {

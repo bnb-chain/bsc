@@ -46,8 +46,6 @@ var (
 
 	// errNotSupported is returned if the database doesn't support the required operation.
 	errNotSupported = errors.New("this operation is not supported")
-
-	errTruncationBelowTail = errors.New("truncation below tail")
 )
 
 // indexEntry contains the number/id of the file that the data resides in, as well as the
@@ -623,13 +621,6 @@ func (t *freezerTable) truncateHead(items uint64) error {
 	if existing <= items {
 		return nil
 	}
-<<<<<<< HEAD
-	if items < t.itemHidden.Load() {
-		return errTruncationBelowTail
-||||||| 117e067f0f
-	if items < t.itemHidden.Load() {
-		return errors.New("truncation below tail")
-=======
 	hidden := t.itemHidden.Load()
 
 	// The new head sits below this table's tail, so nothing of it survives:
@@ -638,7 +629,6 @@ func (t *freezerTable) truncateHead(items uint64) error {
 	// head.
 	if items < hidden {
 		return t.resetTo(items)
->>>>>>> geth-v1.17.9
 	}
 	// We need to truncate, save the old size for metrics tracking
 	oldSize, err := t.sizeNolock()

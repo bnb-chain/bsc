@@ -368,14 +368,8 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	st.StateDB.AddBalance(block.Coinbase(), new(uint256.Int), tracing.BalanceChangeUnspecified)
 
 	// Commit state mutations into database.
-<<<<<<< HEAD
 	st.StateDB.SetExpectedStateRoot(root)
-	root, _ = st.StateDB.Commit(block.NumberU64(), config.IsEIP158(block.Number()), config.IsCancun(block.Number(), block.Time()))
-||||||| 117e067f0f
-	root, _ = st.StateDB.Commit(block.NumberU64(), config.IsEIP158(block.Number()), config.IsCancun(block.Number(), block.Time()))
-=======
 	root, _ = st.StateDB.Commit(rules, block.NumberU64())
->>>>>>> geth-v1.17.9
 	if tracer := evm.Config.Tracer; tracer != nil && tracer.OnTxEnd != nil {
 		receipt := &types.Receipt{GasUsed: vmRet.UsedGas}
 		tracer.OnTxEnd(receipt, nil)
@@ -560,16 +554,9 @@ func MakePreState(db ethdb.Database, accounts types.GenesisAlloc, snapshotter bo
 	}
 
 	// Commit and re-open to start with a clean state.
-<<<<<<< HEAD
-	root := statedb.IntermediateRoot(false)
+	root := statedb.IntermediateRoot(params.Rules{})
 	statedb.SetExpectedStateRoot(root)
-	root, _ = statedb.Commit(0, false, false)
-||||||| 117e067f0f
-	root, _ := statedb.Commit(0, false, false)
-=======
-	// Materialising the alloc is not a fork-governed state transition.
-	root, _ := statedb.Commit(params.Rules{}, 0)
->>>>>>> geth-v1.17.9
+	root, _ = statedb.Commit(params.Rules{}, 0)
 
 	// If snapshot is requested, initialize the snapshotter and use it in state.
 	var snaps *snapshot.Tree

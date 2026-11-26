@@ -232,11 +232,6 @@ func makeTx(nonce uint64, gasTipCap uint64, gasFeeCap uint64, blobFeeCap uint64,
 	return types.MustSignNewTx(key, types.LatestSigner(params.MainnetChainConfig), blobtx)
 }
 
-<<<<<<< HEAD
-// makeMultiBlobTx is a utility method to construct a random blob tx with
-||||||| 117e067f0f
-// makeMultiBlobTx is a utility method to construct a ramdom blob tx with
-=======
 // encodeForPool encodes a blob transaction in the blobTxForPool storage format.
 func encodeForPool(tx *types.Transaction) []byte {
 	ptx, _ := newBlobTxForPool(tx)
@@ -245,7 +240,6 @@ func encodeForPool(tx *types.Transaction) []byte {
 }
 
 // makeMultiBlobTx is a utility method to construct a random blob tx with
->>>>>>> geth-v1.17.9
 // certain number of blobs in its sidecar.
 func makeMultiBlobTx(nonce uint64, gasTipCap uint64, gasFeeCap uint64, blobFeeCap uint64, blobCount int, blobOffset int, key *ecdsa.PrivateKey) *types.Transaction {
 	var (
@@ -316,7 +310,7 @@ func TestValidateTxBasicsRejectsMissingSidecar(t *testing.T) {
 		t.Fatal(err)
 	}
 	statedb.AddBalance(crypto.PubkeyToAddress(key.PublicKey), uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
-	if _, err := statedb.Commit(0, true, false); err != nil {
+	if _, err := statedb.Commit(params.Rules{IsEIP158: true}, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -334,7 +328,7 @@ func TestValidateTxBasicsRejectsMissingSidecar(t *testing.T) {
 	}
 	defer pool.Close()
 
-	tx := makeMultiBlobTx(0, 1, 1000, 100, 1, 0, key, types.BlobSidecarVersion0).WithoutBlobTxSidecar()
+	tx := makeMultiBlobTx(0, 1, 1000, 100, 1, 0, key).WithoutBlobTxSidecar()
 	var validationErr error
 	func() {
 		defer func() {
@@ -2316,6 +2310,37 @@ func testEncodeForNetwork(t *testing.T, ethVer uint) {
 	}
 	if !bytes.Equal(gotRLP, wantRLP) {
 		t.Fatalf("network encoding mismatch: got %d bytes, want %d bytes", len(gotRLP), len(wantRLP))
+	}
+}
+
+// BSC retains version-0 sidecars. A protocol upgrade must not drop blobs or
+// convert their proof format when serving a stored transaction.
+func TestEncodeForNetworkV0(t *testing.T) {
+	key, _ := crypto.GenerateKey()
+	tx := makeMultiBlobTx(0, 1, 1, 1, 1, 0, key)
+	sidecar := tx.BlobTxSidecar().Copy()
+	sidecar.Version = types.BlobSidecarVersion0
+	proof, err := kzg4844.ComputeBlobProof(&sidecar.Blobs[0], sidecar.Commitments[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecar.Proofs = []kzg4844.Proof{proof}
+	tx = tx.WithBlobTxSidecar(sidecar)
+	want, err := rlp.EncodeToBytes(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := encodeForPool(tx)
+	for _, version := range []uint{68, 70, 71} {
+		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
+			got, err := encodeForNetwork(stored, version)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatal("version-0 blob transaction changed during storage/network conversion")
+			}
+		})
 	}
 }
 

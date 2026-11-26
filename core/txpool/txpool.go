@@ -105,19 +105,7 @@ func New(gasTip uint64, chain BlockChain, subpools []SubPool) (*TxPool, error) {
 	// Initialize the state with head block, or fallback to empty one in
 	// case the head state is not available (might occur when node is not
 	// fully synced).
-<<<<<<< HEAD
-	statedb, err := chain.StateAt(head)
-	if err != nil {
-		statedb, err = chain.StateAt(&types.Header{Number: head.Number, Time: head.Time, Root: types.EmptyRootHash})
-	}
-||||||| 117e067f0f
-	statedb, err := chain.StateAt(head)
-	if err != nil {
-		statedb, err = chain.StateAt(chain.Genesis().Header())
-	}
-=======
 	statedb, err := HeadState(chain.Config(), chain.StateAt, head)
->>>>>>> geth-v1.17.9
 	if err != nil {
 		return nil, err
 	}

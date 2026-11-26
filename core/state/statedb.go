@@ -1210,18 +1210,12 @@ func (s *StateDB) SetTxContext(thash common.Hash, ti int, blockAccessIndex uint3
 	s.blockAccessIndex = blockAccessIndex
 }
 
-<<<<<<< HEAD
 // StateDB.Prepare is not called before processing a system transaction, call ClearAccessList instead.
 func (s *StateDB) ClearAccessList() {
 	s.accessList = newAccessList()
 }
 
-func (s *StateDB) clearJournalAndRefund() {
-||||||| 117e067f0f
-func (s *StateDB) clearJournalAndRefund() {
-=======
 func (s *StateDB) clearInternal() {
->>>>>>> geth-v1.17.9
 	s.journal.reset()
 	s.refund = 0
 
@@ -1333,10 +1327,10 @@ func (s *StateDB) handleDestruction(rules params.Rules) (map[common.Hash]*Accoun
 		//       cleared upon finalization; thus, `prevObj.origin` is guaranteed to be nil.
 		//    b. Post-Cancun (EIP-6780): If an EOA with balance is converted to a contract
 		//       via CREATE/CREATE2 and then calls SELFDESTRUCT within the same transaction,
-		//       we must honor 'noStorageWiping' to skip redundant or illegal disk deletion.
+		//       Cancun rules skip redundant or illegal disk deletion.
 		// 3. Verkle: Legacy trie-root based checks are inapplicable.
 		if !s.db.NoTries() && prev.Root == types.EmptyRootHash ||
-			s.db.NoTries() && noStorageWiping ||
+			s.db.NoTries() && rules.IsCancun ||
 			s.db.TrieDB().IsUBT() {
 			continue
 		}

@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types/bal"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -632,6 +633,31 @@ func (b *Block) WithAccessList(accessList *bal.BlockAccessList) *Block {
 	return b.WithAccessListUnsafe(accessList.Copy())
 }
 
+// WithAccessListRLP validates and attaches an RLP-encoded block access list.
+// An absent attachment leaves the block unchanged; an empty list is encoded as 0xc0.
+// Fork-dependent presence requirements are checked by the caller.
+func (b *Block) WithAccessListRLP(encoded []byte) (*Block, error) {
+	if len(encoded) == 0 {
+		return b, nil
+	}
+	if b.header.BlockAccessListHash == nil {
+		return nil, fmt.Errorf("block access list without header commitment")
+	}
+	if hash := crypto.Keccak256Hash(encoded); hash != *b.header.BlockAccessListHash {
+		return nil, fmt.Errorf("block access list hash mismatch: have %s, want %s", hash, *b.header.BlockAccessListHash)
+	}
+	list := new(bal.BlockAccessList)
+	if err := rlp.DecodeBytes(encoded, list); err != nil {
+		return nil, fmt.Errorf("invalid block access list encoding: %w", err)
+	}
+	if err := list.Validate(b.GasLimit(), len(b.transactions)); err != nil {
+		return nil, fmt.Errorf("invalid block access list: %w", err)
+	}
+	block := b.WithAccessListUnsafe(list)
+	block.ReceivedAt, block.ReceivedFrom = b.ReceivedAt, b.ReceivedFrom
+	return block, nil
+}
+
 // WithAccessListUnsafe returns a copy of the block with the given access list
 // embedded. Note that the access list is not deep-copied; use WithAccessList
 // if the provided list may be modified by other actors.
@@ -716,6 +742,12 @@ func EncodeSigHeader(w io.Writer, header *Header, chainId *big.Int) {
 		if header.RequestsHash != nil {
 			toEncode = append(toEncode, header.RequestsHash)
 		}
+	}
+	if header.BlockAccessListHash != nil {
+		toEncode = append(toEncode, header.BlockAccessListHash)
+	}
+	if header.SlotNumber != nil {
+		toEncode = append(toEncode, header.SlotNumber)
 	}
 	err := rlp.Encode(w, toEncode)
 	if err != nil {

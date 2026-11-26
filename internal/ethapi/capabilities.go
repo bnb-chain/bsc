@@ -116,12 +116,16 @@ func capabilityOldestBlock(number uint64) *hexutil.Uint64 {
 // "history pruned" errors.
 func (api *BlockChainAPI) Capabilities() *Capabilities {
 	head := api.b.CurrentHeader()
-	return buildCapabilities(
+	caps := buildCapabilities(
 		head.Number.Uint64(),
 		head.Hash(),
 		api.b.HistoryPruningCutoff(),
 		api.b.HistoryRetention(),
 	)
+	if api.b.Chain().NoTries() {
+		caps.StateProofs = CapabilityResource{Disabled: true}
+	}
+	return caps
 }
 
 // buildCapabilities computes the eth_capabilities response from the head

@@ -244,19 +244,9 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 	return envelope
 }
 
-<<<<<<< HEAD
 func (w *worker) runBuildIteration(ctx context.Context, start time.Time, iteration int, payload *Payload, params *generateParams, witness bool) {
 	_, span, spanEnd := telemetry.StartSpan(ctx, "miner.buildIteration",
 		telemetry.Int64Attribute("iteration", int64(iteration)),
-||||||| 117e067f0f
-func (miner *Miner) runBuildIteration(ctx context.Context, start time.Time, iteration int, payload *Payload, params *generateParams, witness bool) {
-	ctx, span, spanEnd := telemetry.StartSpan(ctx, "miner.buildIteration",
-		telemetry.Int64Attribute("iteration", int64(iteration)),
-=======
-func (miner *Miner) runBuildIteration(ctx context.Context, start time.Time, iteration int, payload *Payload, params *generateParams, witness bool) {
-	ctx, span, spanEnd := telemetry.StartSpan(ctx, "miner.buildIteration",
-		telemetry.IntAttribute("iteration", iteration),
->>>>>>> geth-v1.17.9
 	)
 	var err error
 	defer spanEnd(&err)

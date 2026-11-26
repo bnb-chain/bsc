@@ -342,7 +342,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		l.BlockSize = 32 << 10       // 32 KB
 		l.IndexBlockSize = 256 << 10 // 256 KB
 		l.FilterType = pebble.TableFilter
-		l.EnsureDefaults()
 	}
 
 	// Disable seek compaction explicitly. Check https://github.com/ethereum/go-ethereum/pull/20130

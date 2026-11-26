@@ -19,7 +19,7 @@ func TestCAS20TokenInfoMatchesTheSelectors(t *testing.T) {
 	future := now + 3600
 	call := func(to common.Address, input []byte) []byte {
 		t.Helper()
-		ret, _, err := evm.Call(creator, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(creator, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("call %x: %v", input[:4], err)
 		}

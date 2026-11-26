@@ -1111,7 +1111,7 @@ func TestWriteAncientBlocksNilBAL(t *testing.T) {
 	if block.AccessList() != nil {
 		t.Fatalf("test precondition: block must have nil access list")
 	}
-	if _, err := WriteAncientBlocks(db, []*types.Block{block}, types.EncodeBlockReceiptLists([]types.Receipts{nil})); err != nil {
+	if _, err := WriteAncientBlocks(db, []*types.Block{block}, types.EncodeBlockReceiptLists([]types.Receipts{nil}), big.NewInt(0)); err != nil {
 		t.Fatalf("WriteAncientBlocks failed: %v", err)
 	}
 	hash, number := block.Hash(), block.NumberU64()
@@ -1159,6 +1159,9 @@ func TestReadAccessListRLPAncientNonCanonical(t *testing.T) {
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerReceiptTable, 0, types.EncodeBlockReceiptLists([]types.Receipts{nil})[0]); err != nil {
+			return err
+		}
+		if err := op.Append(ChainFreezerDifficultyTable, 0, new(big.Int)); err != nil {
 			return err
 		}
 		return op.AppendRaw(ChainFreezerBALTable, 0, encoded)

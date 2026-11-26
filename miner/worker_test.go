@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -222,26 +223,13 @@ func TestGenerateAndImportBlock(t *testing.T) {
 }
 
 func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
-	// TODO: rewrite this test with ParliaTestChainConfig + a parlia-formatted
-	// genesis (vanity + validator + seal) so the snapshot bootstrap inside
-	// SetExtraData / prepareValidators succeeds. The current TestChainConfig
-	// has no parlia config and the empty genesis has no validator bytes, so
-	// prepareBidBlockTask returns "invalid validators bytes" before any of the
-	// preservation assertions can run.
-	t.Skip("needs parlia-formatted genesis; see TODO above")
-	engine := parlia.New(params.TestChainConfig, rawdb.NewMemoryDatabase(), nil, common.Hash{})
+	config := *params.ParliaTestChainConfig
+	config.AmsterdamTime = new(uint64)
+	engine := parlia.New(&config, rawdb.NewMemoryDatabase(), nil, common.Hash{})
 	defer engine.Close()
-	chain, err := core.NewBlockChain(rawdb.NewMemoryDatabase(), &core.Genesis{Config: params.TestChainConfig}, ethash.NewFaker(), nil)
-	if err != nil {
-		t.Fatalf("core.NewBlockChain failed: %v", err)
-	}
-	defer chain.Stop()
 	w := &worker{
-		chainConfig: params.TestChainConfig,
-		chain:       chain,
+		chainConfig: &config,
 		engine:      engine,
-		taskCh:      make(chan *task, 1),
-		exitCh:      make(chan struct{}),
 	}
 	w.running.Store(true)
 
@@ -255,7 +243,7 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	decoded := &buildertypes.DecodedBidBlock{
 		Header: &types.Header{
 			Number:      big.NewInt(1),
-			ParentHash:  chain.Genesis().Hash(),
+			ParentHash:  common.Hash{0x44},
 			UncleHash:   builderUncleHash,
 			Root:        root,
 			ReceiptHash: receiptHash,
@@ -267,7 +255,13 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 		GasFee:        big.NewInt(1),
 		SystemTxStart: 1, // no trailing unsigned system txs in this test
 	}
+	list := bal.NewConstructionBlockAccessList()
+	list.NonceChange(common.Address{1}, 1, 1)
+	decoded.BlockAccessList = list.ToEncodingObj()
+	balHash := decoded.BlockAccessList.Hash()
+	decoded.Header.BlockAccessListHash = &balHash
 	w.extra = []byte{0x44, 0x55}
+	wantExtra := common.CopyBytes(decoded.Header.Extra)
 
 	task, err := w.prepareBidBlockTask(decoded, time.Now())
 	if err != nil {
@@ -275,6 +269,9 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	}
 
 	block := task.block
+	if block.AccessList() == nil || block.AccessList().Hash() != balHash || block.Header().BlockAccessListHash == nil || *block.Header().BlockAccessListHash != balHash {
+		t.Fatal("BidBlock task lost the builder's BAL or hash")
+	}
 	if block.ReceiptHash() != receiptHash {
 		t.Fatalf("receipt hash mismatch: got %s want %s", block.ReceiptHash(), receiptHash)
 	}
@@ -296,13 +293,40 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	if block.UncleHash() != builderUncleHash {
 		t.Fatalf("uncle hash mismatch: got %s want %s", block.UncleHash(), builderUncleHash)
 	}
-	expectedHeader := types.CopyHeader(decoded.Header)
-	expectedHeader.Extra = common.CopyBytes(w.extra)
-	if err := engine.SetExtraData(chain, expectedHeader); err != nil {
-		t.Fatalf("SetExtraData failed: %v", err)
+	if got := block.Extra(); !bytes.Equal(got, wantExtra) {
+		t.Fatalf("extra mismatch: got %x want %x", got, wantExtra)
 	}
-	if got := block.Extra(); !bytes.Equal(got, expectedHeader.Extra) {
-		t.Fatalf("extra mismatch: got %x want %x", got, expectedHeader.Extra)
+}
+
+func TestBidBlockAccessListValidation(t *testing.T) {
+	list := bal.NewConstructionBlockAccessList()
+	list.NonceChange(common.Address{1}, 1, 1)
+	valid := list.ToEncodingObj()
+	hash := valid.Hash()
+	list.NonceChange(common.Address{1}, 3, 2)
+	invalid := list.ToEncodingObj()
+	invalidHash := invalid.Hash()
+	for _, tc := range []struct {
+		name      string
+		amsterdam bool
+		list      *bal.BlockAccessList
+		hash      *common.Hash
+		wantError bool
+	}{
+		{"legacy", false, nil, nil, false},
+		{"premature", false, valid, &hash, true},
+		{"valid", true, valid, &hash, false},
+		{"missing-list", true, nil, &hash, true},
+		{"missing-hash", true, valid, nil, true},
+		{"wrong-hash", true, valid, &common.Hash{1}, true},
+		{"invalid-index", true, invalid, &invalidHash, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			header := &types.Header{GasLimit: 30_000_000, BlockAccessListHash: tc.hash}
+			if err := validateBidBlockAccessList(header, tc.list, 1, tc.amsterdam); (err != nil) != tc.wantError {
+				t.Fatalf("unexpected BAL validation result: %v", err)
+			}
+		})
 	}
 }
 

@@ -723,7 +723,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		contractCreation = msg.To == nil
 		floorDataGas     uint64
 	)
-<<<<<<< HEAD
 	if st.evm.ChainConfig().IsNano(st.evm.Context.BlockNumber) {
 		for _, blackListAddr := range types.NanoBlackList {
 			if blackListAddr == msg.From {
@@ -734,12 +733,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			}
 		}
 	}
-	// Check clauses 4-5, subtract intrinsic gas if everything is correct
-	cost, err := IntrinsicGas(msg.Data, msg.AccessList, msg.SetCodeAuthorizations, contractCreation, rules.IsHomestead, rules.IsIstanbul, rules.IsShanghai, rules.IsAmsterdam)
-||||||| 117e067f0f
-	// Check clauses 4-5, subtract intrinsic gas if everything is correct
-	cost, err := IntrinsicGas(msg.Data, msg.AccessList, msg.SetCodeAuthorizations, contractCreation, rules.IsHomestead, rules.IsIstanbul, rules.IsShanghai, rules.IsAmsterdam)
-=======
 	// Validate the message and pre-pay gas.
 	if err := st.preCheck(rules); err != nil {
 		return nil, err
@@ -747,7 +740,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	// Calculate the intrinsic gas of this transaction and make sure the gas limit
 	// is sufficient to cover that.
 	intrinsicGas, err := IntrinsicGas(msg.Data, msg.AccessList, msg.SetCodeAuthorizations, msg.From, msg.To, msg.Value, rules)
->>>>>>> geth-v1.17.9
 	if err != nil {
 		return nil, err
 	}
@@ -836,8 +828,19 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	}
 	fee := new(uint256.Int).SetUint64(gasUsed)
 	fee.Mul(fee, effectiveTip)
-	st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)
-
+	// consensus engine is parlia
+	if st.evm.ChainConfig().IsInBSC() {
+		st.state.AddBalance(consensus.SystemAddress, fee, tracing.BalanceIncreaseRewardTransactionFee)
+		// add extra blob fee reward
+		if rules.IsCancun {
+			blobFee := new(big.Int).SetUint64(st.blobGasUsed())
+			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
+			blobFeeU256, _ := uint256.FromBig(blobFee)
+			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
+		}
+	} else {
+		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)
+	}
 	// add the coinbase to the witness iff the fee is greater than 0
 	if rules.IsEIP4762 && fee.Sign() != 0 {
 		st.evm.AccessEvents.AddAccount(st.evm.Context.Coinbase, true, math.MaxUint64)
@@ -1117,36 +1120,10 @@ func (st *stateTransition) settleGas(rules params.Rules, floorDataGas uint64) (g
 		}
 	}
 
-<<<<<<< HEAD
-	fee := new(uint256.Int).SetUint64(st.gasUsed())
-	fee.Mul(fee, effectiveTip)
-	// consensus engine is parlia
-	if st.evm.ChainConfig().IsInBSC() {
-		st.state.AddBalance(consensus.SystemAddress, fee, tracing.BalanceIncreaseRewardTransactionFee)
-		// add extra blob fee reward
-		if rules.IsCancun {
-			blobFee := new(big.Int).SetUint64(st.blobGasUsed())
-			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
-			blobFeeU256, _ := uint256.FromBig(blobFee)
-			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
-		}
-	} else {
-		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)
-||||||| 117e067f0f
-	if st.evm.Config.NoBaseFee && msg.GasFeeCap.Sign() == 0 && msg.GasTipCap.Sign() == 0 {
-		// Skip fee payment when NoBaseFee is set and the fee fields
-		// are 0. This avoids a negative effectiveTip being applied to
-		// the coinbase when simulating calls.
-	} else {
-		fee := new(uint256.Int).SetUint64(st.gasUsed())
-		fee.Mul(fee, effectiveTip)
-		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)
-=======
 	// Refund leftover gas to the sender
 	if gasLeft > 0 {
 		refund := new(uint256.Int).Mul(uint256.NewInt(gasLeft), st.msg.GasPrice)
 		st.state.AddBalance(st.msg.From, refund, tracing.BalanceIncreaseGasReturn)
->>>>>>> geth-v1.17.9
 
 		if st.evm.Config.Tracer.HasGasHook() {
 			st.evm.Config.Tracer.EmitGasChange(tracing.Gas{Execution: gasLeft}, tracing.Gas{}, tracing.GasChangeTxLeftOverReturned)

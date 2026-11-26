@@ -67,7 +67,7 @@ func TestCAS20PolicyRegistry(t *testing.T) {
 	reg := CAS20PolicyRegistryAddress
 
 	call := func(caller common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, reg, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, reg, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	authorized := func(id uint64, a common.Address) bool {
@@ -160,7 +160,7 @@ func TestCAS20PolicyIntegration(t *testing.T) {
 	salt := common.HexToHash("0x0c")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -219,7 +219,7 @@ func TestCAS20SeizeWithMemo(t *testing.T) {
 	salt := common.HexToHash("0x0d")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -312,7 +312,7 @@ func TestCAS20PolicyStorageLayout(t *testing.T) {
 
 	ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyAllowlist)),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createPolicy: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestCAS20PolicySentinels(t *testing.T) {
 	caller := common.HexToAddress("0xad4149")
 	ask := func(sel [4]byte, args ...common.Hash) []byte {
 		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, cas20Call(sel, args...),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("call: %v", err)
 		}
@@ -386,7 +386,7 @@ func TestCAS20PolicySentinels(t *testing.T) {
 	for _, id := range []uint64{cas20PolicyAlwaysAllow, cas20PolicyAlwaysBlock} {
 		_, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
 			cas20Call(selStageUpdateAdmin, u256hash(id), addrKey(caller)),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if !errors.Is(err, ErrExecutionReverted) {
 			t.Errorf("stageUpdateAdmin(%#x) err = %v, want revert", id, err)
 		}
@@ -399,7 +399,7 @@ func TestCAS20PolicyCheckOrder(t *testing.T) {
 	admin := common.HexToAddress("0xad4149")
 	stranger := common.HexToAddress("0x57ra9e")
 	call := func(caller common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	revertsWith := func(what string, caller common.Address, input []byte, sel [4]byte) {
@@ -455,7 +455,7 @@ func TestCAS20PolicySentinelsIgnoreMembership(t *testing.T) {
 	ask := func(id uint64) []byte {
 		ret, _, err := evm.Call(cas20Alice, CAS20PolicyRegistryAddress,
 			cas20Call(selIsAuthorized, u256hash(id), addrKey(cas20Bob)),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("isAuthorized: %v", err)
 		}
@@ -479,7 +479,7 @@ func TestCAS20PolicyCounterExhaustion(t *testing.T) {
 	create := func() ([]byte, error) {
 		ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress,
 			cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyBlocklist)),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -515,9 +515,9 @@ func TestCAS20PolicyEvents(t *testing.T) {
 		t.Helper()
 		txSeq++
 		hash := common.BigToHash(new(big.Int).SetUint64(uint64(txSeq)))
-		statedb.SetTxContext(hash, txSeq)
+		statedb.SetTxContext(hash, txSeq, uint32(txSeq+1))
 		if _, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, input,
-			NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0)); err != nil {
 			t.Fatalf("call: %v", err)
 		}
 		return statedb.GetLogs(hash, 1, common.Hash{}, 1)
@@ -588,7 +588,7 @@ func TestCAS20PolicyEvents(t *testing.T) {
 
 	ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress,
 		cas20Call(selCreatePolicy, addrKey(admin), u256hash(cas20PolicyAllowlist)),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createPolicy allowlist: %v", err)
 	}
@@ -659,7 +659,7 @@ func TestCAS20MembershipArgsDecodeStrictly(t *testing.T) {
 	admin := cas20TestCaller
 	call := func(input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress, input,
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -723,7 +723,7 @@ func TestCAS20SentinelErrorDoesNotDependOnInitialization(t *testing.T) {
 	caller := common.HexToAddress("0xca11e4")
 	call := func(input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress, input,
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -773,7 +773,7 @@ func TestCAS20CompositeChildValidation(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 	call := func(input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(admin, CAS20PolicyRegistryAddress, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	create := func(ptype uint64) uint64 {
@@ -865,7 +865,7 @@ func TestCAS20EmptyCompositeEvaluation(t *testing.T) {
 		t.Helper()
 		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
 			cas20Call(selIsAuthorized, wU64(id), addrKey(cas20Alice)),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("isAuthorized(%#x): %v", id, err)
 		}
@@ -894,7 +894,7 @@ func TestCAS20EmptyCompositeEvaluation(t *testing.T) {
 	// None of them exists, which is what keeps the tolerance unreachable from a token.
 	for _, id := range []uint64{ghostUnion, ghostIntersect, ghostBlocklist, ghostAllowlist} {
 		ret, _, err := evm.Call(caller, CAS20PolicyRegistryAddress,
-			cas20Call(selPolicyExists, wU64(id)), NewGasBudget(5_000_000), uint256.NewInt(0))
+			cas20Call(selPolicyExists, wU64(id)), NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("policyExists(%#x): %v", id, err)
 		}

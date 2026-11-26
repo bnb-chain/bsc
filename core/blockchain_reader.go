@@ -359,6 +359,31 @@ func (bc *BlockChain) GetAccessListRLP(hash common.Hash) rlp.RawValue {
 	return rawdb.ReadAccessListRLP(bc.db, hash, number)
 }
 
+// GetAccessListRLPForBlock retrieves the BAL for an already loaded block.
+// It returns nil if the BAL is unavailable and 0xc0 for an encoded empty BAL.
+func (bc *BlockChain) GetAccessListRLPForBlock(block *types.Block) rlp.RawValue {
+	number := block.NumberU64()
+	accessList := block.AccessList()
+	// Skip a repeat lookup if loading the block yielded no BAL below the BAL tail.
+	if accessList == nil {
+		if tail, err := bc.db.Tail(rawdb.ChainFreezerBALGroup); err == nil && number < tail {
+			return nil
+		}
+	}
+	if encoded := rawdb.ReadAccessListRLP(bc.db, block.Hash(), number); len(encoded) > 0 {
+		return encoded
+	}
+	if accessList == nil {
+		return nil
+	}
+	encoded, err := rlp.EncodeToBytes(accessList)
+	if err != nil {
+		log.Error("Failed to encode block access list", "hash", block.Hash(), "err", err)
+		return nil
+	}
+	return encoded
+}
+
 // GetUnclesInChain retrieves all the uncles from a given block backwards until
 // a specific distance is reached.
 func (bc *BlockChain) GetUnclesInChain(block *types.Block, length int) []*types.Header {
@@ -493,7 +518,6 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 	return bc.StateAt(head.Root, head.Number, head.Time)
 }
 
-<<<<<<< HEAD
 // StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
 func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error) {
 	// If there's no trie and the specified snapshot is not available, getting
@@ -518,7 +542,7 @@ func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error)
 	return stateDb, nil
 }
 
-func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
+func (bc *BlockChain) StateAt(root common.Hash, number *big.Int, time uint64) (*state.StateDB, error) {
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.
 	// Instead of that, it will be more useful to return an error to indicate
@@ -527,20 +551,8 @@ func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
 		return nil, errors.New("state is not available")
 	}
 
-	if bc.chainConfig.IsUBT(header.Number, header.Time) {
-		return state.New(header.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
-||||||| 117e067f0f
-// StateAt returns a new mutable state based on a particular point in time.
-func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
-	if bc.chainConfig.IsUBT(header.Number, header.Time) {
-		return state.New(header.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
-=======
-// StateAt returns a new mutable state with the given root, at the block with
-// the given number and time.
-func (bc *BlockChain) StateAt(root common.Hash, number *big.Int, time uint64) (*state.StateDB, error) {
 	if bc.chainConfig.IsUBT(number, time) {
 		return state.New(root, state.NewUBTDatabase(bc.triedb, bc.codedb))
->>>>>>> geth-v1.17.9
 	}
 	return state.New(root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
 }
@@ -719,7 +731,7 @@ func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEve
 
 // AncientTail retrieves the tail the ancients blocks
 func (bc *BlockChain) AncientTail() (uint64, error) {
-	tail, err := bc.db.Tail()
+	tail, err := bc.db.Tail(rawdb.ChainFreezerBlockDataGroup)
 	if err != nil {
 		return 0, err
 	}

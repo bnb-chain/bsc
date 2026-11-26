@@ -1,6 +1,7 @@
 package native
 
 import (
+	"context"
 	"encoding/json"
 	"math/big"
 	"strings"
@@ -56,8 +57,8 @@ func cas20Run(t *testing.T, statedb *state.StateDB, cfg *params.ChainConfig, hoo
 	defer evm.Release()
 	tx := types.NewTx(&types.LegacyTx{To: &to, Gas: 2_000_000, GasPrice: big.NewInt(1), Data: input})
 	msg := &core.Message{From: cas20Alice, To: &to, GasLimit: tx.Gas(), GasPrice: uint256.NewInt(1), GasFeeCap: uint256.NewInt(1), GasTipCap: uint256.NewInt(1), Value: new(uint256.Int), Data: input}
-	statedb.SetTxContext(tx.Hash(), 0)
-	receipt, err := core.ApplyTransactionWithEVM(msg, core.NewGasPool(tx.Gas()), statedb, blockCtx.BlockNumber, common.Hash{}, blockCtx.Time, tx, evm)
+	statedb.SetTxContext(tx.Hash(), 0, uint32(0+1))
+	receipt, _, err := core.ApplyTransactionWithEVM(context.Background(), msg, core.NewGasPool(tx.Gas()), statedb, blockCtx.BlockNumber, common.Hash{}, blockCtx.Time, tx, evm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func cas20TransferFixture(t *testing.T) (*state.StateDB, []byte) {
 	statedb.SetCode(cas20Token, vm.CAS20MarkerCode, tracing.CodeChangeContractCreation)
 	statedb.SetState(cas20Token, cas20BalanceSlot(cas20Alice), common.BigToHash(big.NewInt(100)))
 	statedb.SetBalance(cas20Alice, uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
-	statedb.Finalise(false)
+	statedb.Finalise(params.Rules{IsEIP158: false})
 	input := append(crypto.Keccak256([]byte("transfer(address,uint256)"))[:4], common.LeftPadBytes(cas20Bob.Bytes(), 32)...)
 	return statedb, append(input, common.LeftPadBytes([]byte{7}, 32)...)
 }
@@ -172,7 +173,7 @@ func TestPrestateSeesCAS20Creation(t *testing.T) {
 	featureKey := crypto.Keccak256Hash(crypto.Keccak256([]byte("bsc.cas20_asset")), featuresSlot.Bytes())
 	statedb.SetState(vm.CAS20ActivationRegistryAddress, featureKey, common.Hash{31: 1})
 	statedb.SetBalance(cas20Alice, uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
-	statedb.Finalise(false)
+	statedb.Finalise(params.Rules{IsEIP158: false})
 
 	// createCAS20(ASSET, salt, abi.encode(CAS20AssetCreateParams{1, "N", "S", alice, 18}), [])
 	def, err := abi.JSON(strings.NewReader(`[{"type":"function","name":"createCAS20","inputs":[{"name":"variant","type":"uint8"},{"name":"salt","type":"bytes32"},{"name":"params","type":"bytes"},{"name":"initCalls","type":"bytes[]"}]}]`))
