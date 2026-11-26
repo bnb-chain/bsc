@@ -1354,6 +1354,15 @@ func (c *ChainConfig) IsAmsterdam(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.AmsterdamTime, time)
 }
 
+// IsOnAmsterdam reports whether the current block activates Amsterdam.
+func (c *ChainConfig) IsOnAmsterdam(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsAmsterdam(lastBlockNumber, lastBlockTime) && c.IsAmsterdam(currentBlockNumber, currentBlockTime)
+}
+
 // IsBogota returns whether time is either equal to the Bogota fork time or greater.
 func (c *ChainConfig) IsBogota(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BogotaTime, time)

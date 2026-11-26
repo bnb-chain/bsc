@@ -1437,7 +1437,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 
 		if posa, ok := api.b.Engine().(consensus.PoSA); ok {
 			if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-				msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck()
+				msg.SkipNonceCheck().SkipEOACheck().SkipGasLimitCapCheck().SkipExecutionGasCapCheck()
 				balance := statedb.GetBalance(consensus.SystemAddress)
 				if balance.Cmp(common.U2560) > 0 {
 					statedb.SetBalance(consensus.SystemAddress, uint256.NewInt(0), tracing.BalanceChangeUnspecified)
