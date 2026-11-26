@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/catalyst"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
+	ethproto "github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/internal/utesting"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -47,6 +48,7 @@ func makeJWTSecret(t *testing.T) (string, [32]byte, error) {
 }
 
 func TestEthSuite(t *testing.T) {
+	ethVersion := ethproto.ProtocolVersions[0]
 	jwtPath, secret, err := makeJWTSecret(t)
 	if err != nil {
 		t.Fatalf("could not make jwt secret: %v", err)
@@ -61,8 +63,20 @@ func TestEthSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not create new test suite: %v", err)
 	}
+	conn, err := suite.dialAndPeer(nil)
+	if err != nil {
+		t.Fatalf("could not peer with test node: %v", err)
+	}
+	conn.Close()
+	if conn.negotiatedProtoVersion != ethVersion {
+		t.Fatalf("negotiated eth/%d, want eth/%d", conn.negotiatedProtoVersion, ethVersion)
+	}
+	suite.requireAvailableBALs = true
 	for _, test := range suite.EthTests() {
 		t.Run(test.Name, func(t *testing.T) {
+			if test.Name == "GetBlockAccessLists" && ethVersion < ethproto.ETH71 {
+				t.Skip("GetBlockAccessLists requires eth/71")
+			}
 			if test.Slow && testing.Short() {
 				t.Skipf("%s: skipping in -short mode", test.Name)
 			}
@@ -99,8 +113,34 @@ func TestSnapSuite(t *testing.T) {
 	}
 }
 
+func TestSnap2Suite(t *testing.T) {
+	jwtPath, secret, err := makeJWTSecret(t)
+	if err != nil {
+		t.Fatalf("could not make jwt secret: %v", err)
+	}
+	geth, err := runGeth("./testdata", jwtPath)
+	if err != nil {
+		t.Fatalf("could not run geth: %v", err)
+	}
+	defer geth.Close()
+
+	suite, err := NewSuite(geth.Server().Self(), "./testdata", geth.HTTPAuthEndpoint(), common.Bytes2Hex(secret[:]))
+	if err != nil {
+		t.Fatalf("could not create new test suite: %v", err)
+	}
+	suite.requireAvailableBALs = true
+	for _, test := range suite.Snap2Tests() {
+		t.Run(test.Name, func(t *testing.T) {
+			result := utesting.RunTests([]utesting.Test{{Name: test.Name, Fn: test.Fn}}, os.Stdout)
+			if result[0].Failed {
+				t.Fatal()
+			}
+		})
+	}
+}
+
 // runGeth creates and starts a geth node
-func runGeth(dir string, jwtPath string) (*node.Node, error) {
+func runGeth(dir, jwtPath string) (*node.Node, error) {
 	stack, err := node.New(&node.Config{
 		AuthAddr: "127.0.0.1",
 		AuthPort: 0,
@@ -143,6 +183,7 @@ func setupGeth(stack *node.Node, dir string) error {
 		TrieTimeout:    60 * time.Minute,
 		SnapshotCache:  10,
 		TriesInMemory:  128,
+		SnapV2:         true, // advertise snap/2 (alongside snap/1) so the snap/2 suite can negotiate it
 	})
 	if err != nil {
 		return err

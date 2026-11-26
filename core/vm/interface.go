@@ -78,16 +78,17 @@ type StateDB interface {
 
 	AddressInAccessList(addr common.Address) bool
 	SlotInAccessList(addr common.Address, slot common.Hash) (addressOk bool, slotOk bool)
+
 	// AddAddressToAccessList adds the given address to the access list. This operation is safe to perform
 	// even if the feature/fork is not active yet
 	AddAddressToAccessList(addr common.Address)
+
 	// AddSlotToAccessList adds the given (address,slot) to the access list. This operation is safe to perform
 	// even if the feature/fork is not active yet
 	AddSlotToAccessList(addr common.Address, slot common.Hash)
 	ClearAccessList()
 
 	Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList)
-	SetTxContext(thash common.Hash, ti int)
 	TxIndex() int
 
 	RevertToSnapshot(int)
@@ -97,7 +98,6 @@ type StateDB interface {
 
 	AddLog(*types.Log)
 	GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log
-	LogsForBurnAccounts() []*types.Log
 	AddPreimage(common.Hash, []byte)
 
 	Witness() *stateless.Witness
@@ -105,6 +105,7 @@ type StateDB interface {
 	AccessEvents() *state.AccessEvents
 
 	// Finalise must be invoked at the end of a transaction
-	Finalise(bool) *bal.StateAccessList
-	IntermediateRoot(deleteEmptyObjects bool) common.Hash
+	Finalise(rules params.Rules) *bal.ConstructionBlockAccessList
+	SetTxContext(thash common.Hash, ti int, blockAccessIndex uint32)
+	IntermediateRoot(rules params.Rules) common.Hash
 }

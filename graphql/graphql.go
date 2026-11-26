@@ -941,7 +941,7 @@ func (b *Block) RawHeader(ctx context.Context) (hexutil.Bytes, error) {
 
 func (b *Block) Raw(ctx context.Context) (hexutil.Bytes, error) {
 	block, err := b.resolve(ctx)
-	if err != nil {
+	if err != nil || block == nil {
 		return hexutil.Bytes{}, err
 	}
 	return rlp.EncodeToBytes(block)
@@ -1115,6 +1115,17 @@ func (b *Block) SlotNumber(ctx context.Context) (*hexutil.Uint64, error) {
 	}
 	ret := hexutil.Uint64(*header.SlotNumber)
 	return &ret, nil
+}
+
+func (b *Block) BlockAccessListHash(ctx context.Context) (*common.Hash, error) {
+	header, err := b.resolveHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if header.BlockAccessListHash == nil {
+		return nil, nil
+	}
+	return header.BlockAccessListHash, nil
 }
 
 // BlockFilterCriteria encapsulates criteria passed to a `logs` accessor inside
@@ -1445,7 +1456,7 @@ func (r *Resolver) Logs(ctx context.Context, args struct{ Filter FilterCriteria 
 	if args.Filter.ToBlock != nil {
 		end = int64(*args.Filter.ToBlock)
 	}
-	if begin > 0 && end > 0 && begin > end {
+	if begin >= 0 && end >= 0 && begin > end {
 		return nil, errInvalidBlockRange
 	}
 	var addresses []common.Address

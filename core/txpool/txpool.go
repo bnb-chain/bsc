@@ -32,6 +32,20 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+// HeadState returns the state of the given head, or an empty state if that is
+// not available, which happens while the node is not fully synced.
+func HeadState(config *params.ChainConfig, stateAt func(common.Hash, *big.Int, uint64) (*state.StateDB, error), head *types.Header) (*state.StateDB, error) {
+	statedb, err := stateAt(head.Root, head.Number, head.Time)
+	if err == nil {
+		return statedb, nil
+	}
+	root := types.EmptyRootHash
+	if config.IsUBT(head.Number, head.Time) {
+		root = types.EmptyBinaryHash
+	}
+	return stateAt(root, head.Number, head.Time)
+}
+
 // TxStatus is the current status of a transaction as seen by the pool.
 type TxStatus uint
 
@@ -51,14 +65,11 @@ type BlockChain interface {
 	// CurrentBlock returns the current head of the chain.
 	CurrentBlock() *types.Header
 
-	// Genesis returns the genesis block of the chain.
-	Genesis() *types.Block
-
 	// SubscribeChainHeadEvent subscribes to new blocks being added to the chain.
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
 
 	// StateAt returns a state database for a given chain header (generally the head).
-	StateAt(header *types.Header) (*state.StateDB, error)
+	StateAt(root common.Hash, number *big.Int, time uint64) (*state.StateDB, error)
 }
 
 // TxPool is an aggregator for various transaction specific pools, collectively
@@ -77,6 +88,9 @@ type TxPool struct {
 	quit chan chan error         // Quit channel to tear down the head updater
 	term chan struct{}           // Termination channel to detect a closed pool
 
+	newHeadCh  chan core.ChainHeadEvent
+	newHeadSub event.Subscription
+
 	sync chan chan error // Testing / simulator channel to block until internal reset is done
 }
 
@@ -91,21 +105,20 @@ func New(gasTip uint64, chain BlockChain, subpools []SubPool) (*TxPool, error) {
 	// Initialize the state with head block, or fallback to empty one in
 	// case the head state is not available (might occur when node is not
 	// fully synced).
-	statedb, err := chain.StateAt(head)
-	if err != nil {
-		statedb, err = chain.StateAt(&types.Header{Number: head.Number, Time: head.Time, Root: types.EmptyRootHash})
-	}
+	statedb, err := HeadState(chain.Config(), chain.StateAt, head)
 	if err != nil {
 		return nil, err
 	}
 	pool := &TxPool{
-		subpools: subpools,
-		chain:    chain,
-		state:    statedb,
-		quit:     make(chan chan error),
-		term:     make(chan struct{}),
-		sync:     make(chan chan error),
+		subpools:  subpools,
+		chain:     chain,
+		state:     statedb,
+		quit:      make(chan chan error),
+		term:      make(chan struct{}),
+		sync:      make(chan chan error),
+		newHeadCh: make(chan core.ChainHeadEvent),
 	}
+	pool.newHeadSub = chain.SubscribeChainHeadEvent(pool.newHeadCh)
 	reserver := NewReservationTracker()
 	for i, subpool := range subpools {
 		if err := subpool.Init(gasTip, head, reserver.NewHandle(i)); err != nil {
@@ -151,12 +164,8 @@ func (p *TxPool) loop(head *types.Header) {
 	// Close the termination marker when the pool stops
 	defer close(p.term)
 
-	// Subscribe to chain head events to trigger subpool resets
-	var (
-		newHeadCh  = make(chan core.ChainHeadEvent)
-		newHeadSub = p.chain.SubscribeChainHeadEvent(newHeadCh)
-	)
-	defer newHeadSub.Unsubscribe()
+	newHeadCh := p.newHeadCh
+	defer p.newHeadSub.Unsubscribe()
 
 	// Track the previous and current head to feed to an idle reset
 	var (
@@ -189,7 +198,7 @@ func (p *TxPool) loop(head *types.Header) {
 			case resetBusy <- struct{}{}:
 				// Updates the statedb with the new chain head. The head state may be
 				// unavailable if the initial state sync has not yet completed.
-				if statedb, err := p.chain.StateAt(newHead); err != nil {
+				if statedb, err := p.chain.StateAt(newHead.Root, newHead.Number, newHead.Time); err != nil {
 					log.Error("Failed to reset txpool state", "err", err)
 				} else {
 					p.stateLock.Lock()
@@ -288,9 +297,9 @@ func (p *TxPool) Get(hash common.Hash) *types.Transaction {
 }
 
 // GetRLP returns a RLP-encoded transaction if it is contained in the pool.
-func (p *TxPool) GetRLP(hash common.Hash) []byte {
+func (p *TxPool) GetRLP(hash common.Hash, version uint) []byte {
 	for _, subpool := range p.subpools {
-		encoded := subpool.GetRLP(hash)
+		encoded := subpool.GetRLP(hash, version)
 		if len(encoded) != 0 {
 			return encoded
 		}

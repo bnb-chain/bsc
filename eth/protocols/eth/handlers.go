@@ -19,6 +19,7 @@ package eth
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -406,6 +408,19 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
+	if peer.isAmsterdamBlock(ann.Block) {
+		if len(ann.BlockAccessList) == 0 {
+			// Leave the block eligible for a later broadcast with its BAL.
+			return nil
+		}
+		block, err := ann.Block.WithAccessListRLP(ann.BlockAccessList)
+		if err != nil {
+			return err
+		}
+		ann.Block = block
+	} else if len(ann.BlockAccessList) != 0 {
+		return errors.New("block access list before Amsterdam")
+	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
 
@@ -463,12 +478,48 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 	if err != nil {
 		return fmt.Errorf("BlockBodies: %w", err)
 	}
+	for i := range items {
+		if err := checkBodyItemCounts(&items[i]); err != nil {
+			return fmt.Errorf("BlockBodies: body %d: %w", i, err)
+		}
+	}
 	metadata := func() any { return hashBodyParts(items) }
 	return peer.dispatchResponse(&Response{
 		id:   res.RequestId,
 		code: BlockBodiesMsg,
 		Res:  (*BlockBodiesResponse)(&items),
 	}, metadata)
+}
+
+const (
+	minTxEncodedSize         = 1 + 9      // Min size for RLP encoded transaction
+	minWithdrawalEncodedSize = 1 + 3 + 21 // Min size for RLP encoded withdrawal
+	minReceiptEncodedSize    = 1 + 4      // Min size for RLP encoded receipt
+)
+
+// checkBodyItemCounts rejects bodies containing more transactions or withdrawals
+// than can fit in their encoded size.
+func checkBodyItemCounts(body *BlockBody) error {
+	if n := body.Transactions.Len(); n*minTxEncodedSize > len(body.Transactions.Content()) {
+		return fmt.Errorf("%d transactions in %d bytes", n, len(body.Transactions.Content()))
+	}
+	if body.Withdrawals != nil {
+		if n := body.Withdrawals.Len(); n*minWithdrawalEncodedSize > len(body.Withdrawals.Content()) {
+			return fmt.Errorf("%d withdrawals in %d bytes", n, len(body.Withdrawals.Content()))
+		}
+	}
+	return nil
+}
+
+// checkReceiptItemCounts rejects receipt lists containing more receipts than
+// can fit in their encoded size.
+func checkReceiptItemCounts(lists []*ReceiptList) error {
+	for i, list := range lists {
+		if n := list.items.Len(); n*minReceiptEncodedSize > len(list.items.Content()) {
+			return fmt.Errorf("list %d: %d receipts in %d bytes", i, n, len(list.items.Content()))
+		}
+	}
+	return nil
 }
 
 // BlockBodyHashes contains the lists of block body part roots for a list of block bodies.
@@ -616,6 +667,9 @@ func handleReceipts70(backend Backend, msg Decoder, peer *Peer) error {
 	if err != nil {
 		return fmt.Errorf("Receipts: %w", err)
 	}
+	if err := checkReceiptItemCounts(receiptLists); err != nil {
+		return fmt.Errorf("Receipts: %w", err)
+	}
 
 	err = peer.bufferReceipts(res.RequestId, receiptLists, res.LastBlockIncomplete)
 	if err != nil {
@@ -664,7 +718,27 @@ func handleNewPooledTransactionHashes(backend Backend, msg Decoder, peer *Peer) 
 	if !backend.AcceptTxs() {
 		return nil
 	}
-	ann := new(NewPooledTransactionHashesPacket)
+	ann := new(NewPooledTransactionHashesPacket71)
+	if err := msg.Decode(ann); err != nil {
+		return err
+	}
+	if len(ann.Hashes) != len(ann.Types) || len(ann.Hashes) != len(ann.Sizes) {
+		return fmt.Errorf("NewPooledTransactionHashes: invalid len of fields in %v %v %v", len(ann.Hashes), len(ann.Types), len(ann.Sizes))
+	}
+	// Schedule all the unknown hashes for retrieval
+	for _, hash := range ann.Hashes {
+		peer.MarkTransaction(hash)
+	}
+	return backend.Handle(peer, ann)
+}
+
+func handleNewPooledTransactionHashes72(backend Backend, msg Decoder, peer *Peer) error {
+	// New transaction announcement arrived, make sure we have
+	// a valid and fresh chain to handle them
+	if !backend.AcceptTxs() {
+		return nil
+	}
+	ann := new(NewPooledTransactionHashesPacket72)
 	if err := msg.Decode(ann); err != nil {
 		return err
 	}
@@ -684,23 +758,23 @@ func handleGetPooledTransactions(backend Backend, msg Decoder, peer *Peer) error
 	if err := msg.Decode(&query); err != nil {
 		return err
 	}
-	hashes, txs := answerGetPooledTransactions(backend, query.GetPooledTransactionsRequest)
+	hashes, txs := answerGetPooledTransactions(backend, query.GetPooledTransactionsRequest, peer.version)
 	return peer.ReplyPooledTransactionsRLP(query.RequestId, hashes, txs)
 }
 
-func answerGetPooledTransactions(backend Backend, query GetPooledTransactionsRequest) ([]common.Hash, []rlp.RawValue) {
+func answerGetPooledTransactions(backend Backend, query GetPooledTransactionsRequest, version uint) ([]common.Hash, []rlp.RawValue) {
 	// Gather transactions until the fetch or network limits is reached
 	var (
 		bytes  int
 		hashes []common.Hash
 		txs    []rlp.RawValue
 	)
-	for _, hash := range query {
-		if bytes >= softResponseLimit {
+	for i, hash := range query {
+		if bytes >= softResponseLimit || i >= maxPooledTxServe {
 			break
 		}
 		// Retrieve the requested transaction, skipping if unknown to us
-		encoded := backend.TxPool().GetRLP(hash)
+		encoded := backend.TxPool().GetRLP(hash, version)
 		if len(encoded) == 0 {
 			continue
 		}
@@ -761,4 +835,159 @@ func handleBlockRangeUpdate(backend Backend, msg Decoder, peer *Peer) error {
 	// We don't do anything with these messages for now, just store them on the peer.
 	peer.lastRange.Store(&update)
 	return nil
+}
+
+func handleGetCells(backend Backend, msg Decoder, peer *Peer) error {
+	// Decode the cell retrieval message
+	var query GetCellsRequestPacket
+	if err := msg.Decode(&query); err != nil {
+		return err
+	}
+	hashes, cells, custody := answerGetCells(backend, GetCellsRequest{Hashes: query.Hashes, Mask: query.Mask})
+	return peer.ReplyCells(query.RequestId, hashes, cells, custody)
+}
+
+func answerGetCells(backend Backend, query GetCellsRequest) ([]common.Hash, [][]kzg4844.Cell, types.CustodyBitmap) {
+	var (
+		cellCounts int
+		hashes     []common.Hash
+		cells      [][]kzg4844.Cell
+	)
+	maxCells := softResponseLimit / 2048
+	for i, hash := range query.Hashes {
+		if cellCounts >= maxCells || i >= maxCellsServe {
+			break
+		}
+		// Look up the blob versioned hashes for this transaction
+		vhashes := backend.BlobPool().GetBlobHashes(hash)
+		if len(vhashes) == 0 {
+			continue
+		}
+		blobCells, _, _ := backend.BlobPool().GetBlobCells(vhashes, query.Mask)
+
+		// Flatten per-blob cells into a single slice. If any blob has a nil
+		// entry (unavailable cell), skip the entire transaction.
+		var flat []kzg4844.Cell
+		skip := false
+		for _, bc := range blobCells {
+			if bc == nil {
+				skip = true
+				break
+			}
+			for _, c := range bc {
+				if c == nil {
+					skip = true
+					break
+				}
+			}
+			if skip {
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		for i := range blobCells[0] {
+			for _, bc := range blobCells {
+				flat = append(flat, *bc[i])
+			}
+		}
+		if len(flat) == 0 {
+			continue
+		}
+		hashes = append(hashes, hash)
+		cells = append(cells, flat)
+		cellCounts += len(flat)
+	}
+	return hashes, cells, query.Mask
+}
+
+func handleCells(backend Backend, msg Decoder, peer *Peer) error {
+	var cellsResponse CellsPacket
+	if err := msg.Decode(&cellsResponse); err != nil {
+		return err
+	}
+	tresp := tracker.Response{
+		ID:      cellsResponse.RequestId,
+		MsgCode: CellsMsg,
+		Size:    cellsResponse.Cells.Len(),
+	}
+	if err := peer.tracker.Fulfil(tresp); err != nil {
+		return fmt.Errorf("Cells: %w", err)
+	}
+	return backend.Handle(peer, &CellsResponse{
+		Hashes: cellsResponse.Hashes,
+		Cells:  cellsResponse.Cells,
+		Mask:   cellsResponse.Mask,
+	})
+}
+
+// handleGetBlockAccessLists serves a GetBlockAccessLists request.
+func handleGetBlockAccessLists(backend Backend, msg Decoder, peer *Peer) error {
+	var query GetBlockAccessListsPacket
+	if err := msg.Decode(&query); err != nil {
+		return err
+	}
+	response := serviceGetBlockAccessListsQuery(backend.Chain(), query.GetBlockAccessListsRequest)
+	return peer.ReplyBlockAccessLists(query.RequestId, response)
+}
+
+// serviceGetBlockAccessListsQuery assembles the response to a BAL query.
+// Unavailable BALs are returned as empty list entries.
+func serviceGetBlockAccessListsQuery(chain *core.BlockChain, query GetBlockAccessListsRequest) rlp.RawList[rlp.RawValue] {
+	var (
+		bytes int
+		bals  rlp.RawList[rlp.RawValue]
+	)
+	for _, hash := range query {
+		if bytes >= softResponseLimit || bals.Len() >= maxBALsServe {
+			break
+		}
+		data := chain.GetAccessListRLP(hash)
+		if len(data) == 0 {
+			// The signal for missing BAL is the empty string, because
+			// an empty list is also a valid BAL.
+			bals.AppendRaw(rlp.EmptyString)
+			continue
+		}
+		bals.AppendRaw(data)
+		bytes += len(data)
+	}
+	return bals
+}
+
+// handleBlockAccessLists processes an incoming BlockAccessLists response,
+// validates it against the request tracker, and dispatches it to the waiting caller.
+func handleBlockAccessLists(backend Backend, msg Decoder, peer *Peer) error {
+	res := new(BlockAccessListPacket)
+	if err := msg.Decode(res); err != nil {
+		return err
+	}
+	tresp := tracker.Response{ID: res.RequestId, MsgCode: BlockAccessListsMsg, Size: res.List.Len()}
+	if err := peer.tracker.Fulfil(tresp); err != nil {
+		return fmt.Errorf("BlockAccessLists: %w", err)
+	}
+	bals, err := res.List.Items()
+	if err != nil {
+		return fmt.Errorf("BlockAccessLists: %w", err)
+	}
+
+	metadata := func() interface{} {
+		hashes := make([]common.Hash, len(bals))
+		for i := range bals {
+			// Unavailable BALs (signaled by the empty string) are marked
+			// with the zero hash
+			if bytes.Equal(bals[i], rlp.EmptyString) {
+				continue
+			}
+			hashes[i] = crypto.Keccak256Hash(bals[i])
+		}
+		return hashes
+	}
+
+	return peer.dispatchResponse(&Response{
+		id:   res.RequestId,
+		code: BlockAccessListsMsg,
+		Res:  (*BlockAccessListResponse)(&bals),
+	}, metadata)
 }

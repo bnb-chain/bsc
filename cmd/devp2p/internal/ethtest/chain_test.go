@@ -123,6 +123,21 @@ func TestEthProtocolNegotiation(t *testing.T) {
 			},
 			expected: eth.ETH70,
 		},
+		{
+			conn:     &Conn{ourHighestProtoVersion: eth.ETH71},
+			caps:     []p2p.Cap{{Name: "eth", Version: eth.ETH72}, {Name: "eth", Version: eth.ETH71}, {Name: "eth", Version: eth.ETH70}},
+			expected: eth.ETH71,
+		},
+		{
+			conn:     &Conn{ourHighestProtoVersion: eth.ETH71},
+			caps:     []p2p.Cap{{Name: "eth", Version: eth.ETH70}, {Name: "eth", Version: eth.ETH68}},
+			expected: eth.ETH70,
+		},
+		{
+			conn:     &Conn{ourHighestProtoVersion: eth.ETH71},
+			caps:     []p2p.Cap{{Name: "eth", Version: eth.ETH68}},
+			expected: eth.ETH68,
+		},
 	}
 
 	for i, tt := range tests {
@@ -130,6 +145,24 @@ func TestEthProtocolNegotiation(t *testing.T) {
 			tt.conn.negotiateEthProtocol(tt.caps)
 			assert.Equal(t, tt.expected, uint32(tt.conn.negotiatedProtoVersion))
 		})
+	}
+}
+
+// TestChainHasAmsterdamWindow ensures the checked-in fixture keeps the recent
+// block window exercised by the eth/71 and snap/2 tests past Amsterdam.
+func TestChainHasAmsterdamWindow(t *testing.T) {
+	chain, err := NewChain("./testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := chain.Len() - 16
+	if start < 0 {
+		start = 0
+	}
+	for i := start; i < chain.Len(); i++ {
+		if chain.blocks[i].BlockAccessListHash() == nil {
+			t.Fatalf("test chain block %d has no block access list commitment", i)
+		}
 	}
 }
 
@@ -194,6 +227,21 @@ func TestChainGetHeaders(t *testing.T) {
 			},
 			expected: []*types.Header{
 				chain.Head().Header(),
+			},
+		},
+		{
+			req: eth.GetBlockHeadersPacket{
+				GetBlockHeadersRequest: &eth.GetBlockHeadersRequest{
+					Origin:  eth.HashOrNumber{Number: uint64(10)},
+					Amount:  uint64(3),
+					Skip:    1,
+					Reverse: true,
+				},
+			},
+			expected: []*types.Header{
+				chain.blocks[10].Header(),
+				chain.blocks[8].Header(),
+				chain.blocks[6].Header(),
 			},
 		},
 	}

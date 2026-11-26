@@ -2,12 +2,14 @@ package vm
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/params"
 )
 
 // Every charge mirrors an existing EVM cost function, so nothing a CAS20 call does
 // is cheaper than the same work through bytecode (BEP-702 3.14). Opcode, memory
 // and call overhead are not synthesized: the table there is exhaustive.
+// Amsterdam uses EIP-8037/8038 pricing; earlier forks keep the Jenner schedule.
 //
 // No CAS20 address is warm by default (a transaction access list still applies).
 // That holds because they are absent from the static precompile map, and nothing
@@ -50,6 +52,9 @@ func (ctx *PrecompileContext) chargeAccountAccess(addr common.Address) bool {
 	}
 	// Warmed before the charge, in the interpreter's order; the addition is journalled.
 	ctx.StateDB.AddAddressToAccessList(addr)
+	if ctx.evm != nil && ctx.evm.chainRules.IsAmsterdam {
+		return ctx.chargeGas(params.ColdAccountAccessAmsterdam)
+	}
 	return ctx.chargeGas(params.ColdAccountAccessCostEIP2929)
 }
 
@@ -59,6 +64,15 @@ func (ctx *PrecompileContext) chargeCodeWrite(addr common.Address, code []byte) 
 	if ctx.ReadOnly {
 		ctx.markWriteProtected()
 		return false
+	}
+	if ctx.evm != nil && ctx.evm.chainRules.IsAmsterdam {
+		cost := GasCosts{StateGas: uint64(len(code)) * ctx.evm.Context.CostPerStateByte}
+		if hadNoCode(ctx.StateDB, addr) {
+			cost.ExecutionGas = params.CreateAccessAmsterdam
+			cost.StateGas += params.AccountCreationSize * ctx.evm.Context.CostPerStateByte
+		}
+		// Code hashing keeps its existing explicit keccak charge.
+		return ctx.chargeCosts(cost) && ctx.chargeKeccak(len(code))
 	}
 	cost := params.CreateDataGas * uint64(len(code))
 	if hadNoCode(ctx.StateDB, addr) {
@@ -70,10 +84,10 @@ func (ctx *PrecompileContext) chargeCodeWrite(addr common.Address, code []byte) 
 // EIP-2200's reentrancy guard, which is what makes transfer()/send() safe: a CAS20
 // token writes state without SSTORE, so it applies the check itself.
 func (ctx *PrecompileContext) sstoreSentry() bool {
-	return ctx.gas.RegularGas > params.SstoreSentryGasEIP2200
+	return ctx.gas.ExecutionGas > params.SstoreSentryGasEIP2200
 }
 
-// Mirrors makeGasSStoreFunc, arms in the same order with the same clause numbers.
+// chargeStorageWrite follows the active SSTORE schedule, including refunds and refills.
 func (s cas20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 	if s.ctx == nil {
 		return true
@@ -87,6 +101,19 @@ func (s cas20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 		return false
 	}
 	s.ctx.traceStorageRead(s.token, slot)
+	if s.ctx.evm != nil && s.ctx.evm.chainRules.IsAmsterdam {
+		// Cost calculation can refill state gas before the next charge.
+		prior := s.ctx.gas.AsTracing()
+		cost, err := gasSStoreCostAmsterdam(s.ctx.evm, s.ctx.gas, s.token, slot, value)
+		if err != nil {
+			s.ctx.markOutOfGas()
+			return false
+		}
+		if hooks := s.ctx.evm.Config.Tracer; hooks.HasGasHook() && prior != s.ctx.gas.AsTracing() {
+			hooks.EmitGasChange(prior, s.ctx.gas.AsTracing(), tracing.GasChangeCallPrecompiledContract)
+		}
+		return s.ctx.chargeCosts(cost)
+	}
 	var (
 		current, original = s.state.GetStateAndCommittedState(s.token, slot)
 		clearingRefund    = params.SstoreClearsScheduleRefundEIP3529

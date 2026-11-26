@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types/bal"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -131,7 +132,7 @@ type Header struct {
 	RequestsHash *common.Hash `json:"requestsHash" rlp:"optional"`
 
 	// BlockAccessListHash was added by EIP-7928 and is ignored in legacy headers.
-	BlockAccessListHash *common.Hash `json:"balHash" rlp:"optional"`
+	BlockAccessListHash *common.Hash `json:"blockAccessListHash" rlp:"optional"`
 
 	// SlotNumber was added by EIP-7843 and is ignored in legacy headers.
 	SlotNumber *uint64 `json:"slotNumber" rlp:"optional"`
@@ -465,8 +466,9 @@ func (b *Block) BaseFee() *big.Int {
 	return new(big.Int).Set(b.header.BaseFee)
 }
 
-func (b *Block) BeaconRoot() *common.Hash   { return b.header.ParentBeaconRoot }
-func (b *Block) RequestsHash() *common.Hash { return b.header.RequestsHash }
+func (b *Block) BeaconRoot() *common.Hash          { return b.header.ParentBeaconRoot }
+func (b *Block) RequestsHash() *common.Hash        { return b.header.RequestsHash }
+func (b *Block) BlockAccessListHash() *common.Hash { return b.header.BlockAccessListHash }
 
 func (b *Block) ExcessBlobGas() *uint64 {
 	var excessBlobGas *uint64
@@ -631,6 +633,31 @@ func (b *Block) WithAccessList(accessList *bal.BlockAccessList) *Block {
 	return b.WithAccessListUnsafe(accessList.Copy())
 }
 
+// WithAccessListRLP validates and attaches an RLP-encoded block access list.
+// An absent attachment leaves the block unchanged; an empty list is encoded as 0xc0.
+// Fork-dependent presence requirements are checked by the caller.
+func (b *Block) WithAccessListRLP(encoded []byte) (*Block, error) {
+	if len(encoded) == 0 {
+		return b, nil
+	}
+	if b.header.BlockAccessListHash == nil {
+		return nil, fmt.Errorf("block access list without header commitment")
+	}
+	if hash := crypto.Keccak256Hash(encoded); hash != *b.header.BlockAccessListHash {
+		return nil, fmt.Errorf("block access list hash mismatch: have %s, want %s", hash, *b.header.BlockAccessListHash)
+	}
+	list := new(bal.BlockAccessList)
+	if err := rlp.DecodeBytes(encoded, list); err != nil {
+		return nil, fmt.Errorf("invalid block access list encoding: %w", err)
+	}
+	if err := list.Validate(b.GasLimit(), len(b.transactions)); err != nil {
+		return nil, fmt.Errorf("invalid block access list: %w", err)
+	}
+	block := b.WithAccessListUnsafe(list)
+	block.ReceivedAt, block.ReceivedFrom = b.ReceivedAt, b.ReceivedFrom
+	return block, nil
+}
+
 // WithAccessListUnsafe returns a copy of the block with the given access list
 // embedded. Note that the access list is not deep-copied; use WithAccessList
 // if the provided list may be modified by other actors.
@@ -715,6 +742,12 @@ func EncodeSigHeader(w io.Writer, header *Header, chainId *big.Int) {
 		if header.RequestsHash != nil {
 			toEncode = append(toEncode, header.RequestsHash)
 		}
+	}
+	if header.BlockAccessListHash != nil {
+		toEncode = append(toEncode, header.BlockAccessListHash)
+	}
+	if header.SlotNumber != nil {
+		toEncode = append(toEncode, header.SlotNumber)
 	}
 	err := rlp.Encode(w, toEncode)
 	if err != nil {

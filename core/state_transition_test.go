@@ -22,8 +22,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 func TestFloorDataGas(t *testing.T) {
@@ -73,21 +73,22 @@ func TestFloorDataGas(t *testing.T) {
 		{
 			name:      "amsterdam/empty",
 			amsterdam: true,
-			want:      params.TxGas,
+			// EIP-2780 anchors the floor to the reduced base cost.
+			want: params.TxBaseCost2780,
 		},
 		{
 			name:      "amsterdam/data-only",
 			amsterdam: true,
 			data:      bytes.Repeat([]byte{0x00}, 1024),
 			// post-amsterdam: every byte = 4 tokens regardless of value
-			want: params.TxGas + 1024*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
+			want: params.TxBaseCost2780 + 1024*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
 		},
 		{
 			name:      "amsterdam/data-non-zero",
 			amsterdam: true,
 			data:      bytes.Repeat([]byte{0xff}, 1024),
 			// same as zero data post-amsterdam
-			want: params.TxGas + 1024*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
+			want: params.TxBaseCost2780 + 1024*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
 		},
 		{
 			name:      "amsterdam/access-list-addresses-only",
@@ -97,7 +98,7 @@ func TestFloorDataGas(t *testing.T) {
 				{Address: addr2},
 			},
 			// 2 * 20 bytes * 4 tokens/byte * 16 cost/token
-			want: params.TxGas + 2*common.AddressLength*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
+			want: params.TxBaseCost2780 + 2*common.AddressLength*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
 		},
 		{
 			name:      "amsterdam/access-list-with-storage-keys",
@@ -106,7 +107,7 @@ func TestFloorDataGas(t *testing.T) {
 				{Address: addr1, StorageKeys: []common.Hash{key1, key2}},
 			},
 			// 1 addr * 20 * 4 + 2 keys * 32 * 4 = 80 + 256 = 336 tokens * 16
-			want: params.TxGas + (1*common.AddressLength+2*common.HashLength)*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
+			want: params.TxBaseCost2780 + (1*common.AddressLength+2*common.HashLength)*params.TxTokenPerNonZeroByte*params.TxCostFloorPerToken7976,
 		},
 		{
 			name:      "amsterdam/mixed",
@@ -117,13 +118,13 @@ func TestFloorDataGas(t *testing.T) {
 				{Address: addr2, StorageKeys: []common.Hash{key1, key2}},
 			},
 			// data: 100*4 = 400; addrs: 2*20*4 = 160; keys: 3*32*4 = 384; total = 944 * 16
-			want: params.TxGas + (100*params.TxTokenPerNonZeroByte+2*common.AddressLength*params.TxTokenPerNonZeroByte+3*common.HashLength*params.TxTokenPerNonZeroByte)*params.TxCostFloorPerToken7976,
+			want: params.TxBaseCost2780 + (100*params.TxTokenPerNonZeroByte+2*common.AddressLength*params.TxTokenPerNonZeroByte+3*common.HashLength*params.TxTokenPerNonZeroByte)*params.TxCostFloorPerToken7976,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rules := params.Rules{IsAmsterdam: tt.amsterdam}
-			got, err := FloorDataGas(rules, tt.data, tt.accessList)
+			got, err := FloorDataGas(rules, addr1, &addr1, new(uint256.Int), tt.data, tt.accessList)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -155,6 +156,7 @@ func TestIntrinsicGas(t *testing.T) {
 		isEIP2028   bool
 		isEIP3860   bool
 		isAmsterdam bool
+		value       *uint256.Int
 		want        uint64
 	}{
 		{
@@ -237,9 +239,12 @@ func TestIntrinsicGas(t *testing.T) {
 			},
 			isEIP2028:   true,
 			isAmsterdam: true,
-			// base access-list charge + EIP-7981 extra
-			want: params.TxGas +
-				2*params.TxAccessListAddressGas + 3*params.TxAccessListStorageKeyGas +
+			// EIP-2780: zero-value call base is TxBaseCost + ColdAccountAccess
+			// (15,000); the recipient touch is charged at the cold rate
+			// unconditionally at the intrinsic phase. Plus base access-list
+			// charge + EIP-7981 extra.
+			want: params.TxBaseCost2780 + params.ColdAccountAccessAmsterdam +
+				2*params.TxAccessListAddressGasAmsterdam + 3*params.TxAccessListStorageKeyGasAmsterdam +
 				2*amsterdamAddressCost + 3*amsterdamStorageKeyCost,
 		},
 		{
@@ -250,8 +255,45 @@ func TestIntrinsicGas(t *testing.T) {
 				{Address: addr1},
 			},
 			isEIP2028: true,
-			// 3 auths * 25000
+			// 3 auths * 25000 (pre-Amsterdam: CallNewAccountGas per auth tuple)
 			want: params.TxGas + 3*params.CallNewAccountGas,
+		},
+		{
+			name:        "amsterdam/contract-creation-empty",
+			creation:    true,
+			isHomestead: true,
+			isEIP2028:   true,
+			isAmsterdam: true,
+			// EIP-2780: creation execution gas is TxBaseCost + CreateAccess (23,000);
+			// the new-account state charge is applied at runtime.
+			want: params.TxBaseCost2780 + params.CreateAccessAmsterdam,
+		},
+		{
+			name:        "amsterdam/contract-creation-init-code",
+			data:        bytes.Repeat([]byte{0x00}, 64), // 2 words of init code
+			creation:    true,
+			isHomestead: true,
+			isEIP2028:   true,
+			isEIP3860:   true, // Shanghai gates init-code word gas
+			isAmsterdam: true,
+			want: params.TxBaseCost2780 + params.CreateAccessAmsterdam +
+				64*params.TxDataZeroGas + 2*params.InitCodeWordGas,
+		},
+		{
+			name: "amsterdam/contract-creation-with-access-list",
+			data: bytes.Repeat([]byte{0xff}, 32), // 1 word of non-zero init code
+			accessList: types.AccessList{
+				{Address: addr1, StorageKeys: []common.Hash{key1}},
+			},
+			creation:    true,
+			isHomestead: true,
+			isEIP2028:   true,
+			isEIP3860:   true,
+			isAmsterdam: true,
+			want: params.TxBaseCost2780 + params.CreateAccessAmsterdam +
+				32*params.TxDataNonZeroGasEIP2028 + 1*params.InitCodeWordGas +
+				1*params.TxAccessListAddressGasAmsterdam + 1*params.TxAccessListStorageKeyGasAmsterdam +
+				1*amsterdamAddressCost + 1*amsterdamStorageKeyCost,
 		},
 		{
 			name: "amsterdam/combined",
@@ -264,23 +306,56 @@ func TestIntrinsicGas(t *testing.T) {
 			},
 			isEIP2028:   true,
 			isAmsterdam: true,
-			want: params.TxGas +
+			// EIP-2780: the recipient touch and the per-authorization authority
+			// access (priced into ExecutionPerAuthBaseCost) are both charged at the
+			// cold rate unconditionally at the intrinsic phase; the account leaf
+			// and indicator bytes are charged at runtime.
+			want: params.TxBaseCost2780 + params.ColdAccountAccessAmsterdam +
 				100*params.TxDataNonZeroGasEIP2028 +
-				1*params.TxAccessListAddressGas + 1*params.TxAccessListStorageKeyGas +
+				1*params.TxAccessListAddressGasAmsterdam + 1*params.TxAccessListStorageKeyGasAmsterdam +
 				1*amsterdamAddressCost + 1*amsterdamStorageKeyCost +
-				1*params.CallNewAccountGas,
+				1*params.ExecutionPerAuthBaseCost,
+		},
+		{
+			name:        "amsterdam/value-transfer-call",
+			isEIP2028:   true,
+			isAmsterdam: true,
+			value:       uint256.NewInt(1),
+			// EIP-2780: TxBaseCost + ColdAccountAccess + TransferLogCost + TxValueCost = 21,000.
+			want: params.TxBaseCost2780 + params.ColdAccountAccessAmsterdam +
+				params.TxValueCost2780,
+		},
+		{
+			name:        "amsterdam/value-bearing-contract-creation",
+			creation:    true,
+			isHomestead: true,
+			isEIP2028:   true,
+			isAmsterdam: true,
+			value:       uint256.NewInt(1),
+			// EIP-2780: TxBaseCost + CreateAccess + TransferLogCost = 24,756;
+			// the new-account state charge is applied at runtime.
+			want: params.TxBaseCost2780 + params.CreateAccessAmsterdam,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			rules := params.Rules{
+				IsHomestead: tt.isHomestead,
+				IsIstanbul:  tt.isEIP2028,
+				IsShanghai:  tt.isEIP3860,
+				IsAmsterdam: tt.isAmsterdam,
+			}
+			var to *common.Address
+			if !tt.creation {
+				to = &addr1
+			}
 			got, err := IntrinsicGas(tt.data, tt.accessList, tt.authList,
-				tt.creation, tt.isHomestead, tt.isEIP2028, tt.isEIP3860, tt.isAmsterdam)
+				common.Address{}, to, tt.value, rules)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			want := vm.GasCosts{RegularGas: tt.want}
-			if got != want {
-				t.Fatalf("gas mismatch: got %+v, want %+v", got, want)
+			if got != tt.want {
+				t.Fatalf("gas mismatch: got %+v, want %+v", got, tt.want)
 			}
 		})
 	}

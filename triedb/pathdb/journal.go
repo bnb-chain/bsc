@@ -92,7 +92,7 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 	// The journal is not matched with persistent state, discard them.
 	// It can happen that geth crashes without persisting the journal.
 	if !bytes.Equal(root.Bytes(), diskRoot.Bytes()) {
-		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
+		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, diskRoot, root)
 	}
 	// Load the disk layer from the journal
 	base, err := db.loadDiskLayer(r)
@@ -350,7 +350,7 @@ func (db *Database) Journal(root common.Hash) error {
 	// but the ancient store is not properly closed, resulting in recent writes
 	// being lost. After a restart, the ancient store would then be misaligned
 	// with the disk layer, causing data corruption.
-	if err := syncHistory(db.stateFreezer, db.trienodeFreezer); err != nil {
+	if err := db.persistHistory(); err != nil {
 		return err
 	}
 	// Store the journal into the database and return

@@ -24,7 +24,9 @@ import (
 	"math/big"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -103,8 +105,10 @@ func TestIndexerRandomRange(t *testing.T) {
 			ts.testDisableSnapshots = rand.Intn(2) == 0
 			ts.setHistory(uint64(history), noHistory)
 		case 1:
-			// change head to random position of random fork
-			fork, head = rand.Intn(len(forks)), rand.Intn(1001)
+			// change head to random position of random fork. Genesis is left out
+			// because a reset index is not initialized until the head moves past
+			// it, so WaitIdle would never return.
+			fork, head = rand.Intn(len(forks)), rand.Intn(1000)+1
 			ts.chain.setCanonicalChain(forks[fork][:head+1])
 		case 2:
 			checkSnapshot = false
@@ -337,6 +341,98 @@ func TestIndexerCompareDb(t *testing.T) {
 	ts.checkDbHash("no index")
 }
 
+func TestIndexerResetOnStartup(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		rewind, disabled, pruned bool
+	}{
+		{name: "missing_marker"},
+		{name: "chain_rewind", rewind: true},
+		{name: "disabled", disabled: true},
+		{name: "pruned", pruned: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestSetup(t)
+			defer ts.close()
+			ts.chain.addBlocks(12, 1, 1, 1, false)
+			ts.setHistory(0, false)
+			ts.fm.WaitIdle()
+			lastMap := ts.fm.indexedRange.maps.Last()
+			ts.fm.Stop()
+			ts.fm = nil
+			if tc.rewind {
+				ts.chain.setHead(1)
+			} else {
+				rawdb.DeleteFilterMapLastBlock(ts.db, lastMap)
+			}
+			var chain blockchain = ts.chain
+			if tc.pruned {
+				chain = prunedHashChain{blockchain: chain, cutoff: 2}
+			}
+			head := ts.chain.CurrentBlock()
+			view := NewChainView(chain, head.Number.Uint64(), head.Hash())
+			var err error
+			ts.fm, err = NewFilterMaps(ts.db, view, 0, 0, ts.params, Config{Disabled: tc.disabled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ts.fm.indexedView != nil || ts.fm.indexedRange.initialized {
+				t.Fatal("index was not reset")
+			}
+			ts.fm.Start()
+			if tc.disabled || tc.pruned {
+				select {
+				case <-ts.fm.disabledCh:
+				case <-time.After(5 * time.Second):
+					t.Fatal("indexer did not enter unindexed mode")
+				}
+				ts.fm.WaitIdle()
+			}
+			mb := ts.fm.NewMatcherBackend()
+			defer mb.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			synced, err := mb.SyncLogIndex(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ts.fm.WaitIdle()
+			if tc.disabled || tc.pruned {
+				if ts.fm.indexedRange.initialized || !synced.IndexedBlocks.IsEmpty() {
+					t.Fatal("disabled index returned indexed blocks")
+				}
+				return
+			}
+			if !ts.fm.indexedRange.headIndexed || ts.fm.indexedRange.blocks.Last() != head.Number.Uint64() {
+				t.Fatal("index did not recover to the current head")
+			}
+			var got, want []*types.Log
+			for n := uint64(1); n <= head.Number.Uint64(); n++ {
+				for _, receipt := range ts.chain.GetReceiptsByHash(ts.chain.GetCanonicalHash(n)) {
+					want = append(want, receipt.Logs...)
+				}
+			}
+			for i := uint64(0); i <= ts.fm.indexedRange.headDelimiter; i++ {
+				log, err := ts.fm.getLogByLvIndex(i)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if log != nil {
+					got = append(got, log)
+				}
+			}
+			if len(got) != len(want) {
+				t.Fatalf("indexed %d logs, want %d", len(got), len(want))
+			}
+			for i := range want {
+				if got[i] != want[i] {
+					t.Fatalf("log %d does not match receipts", i)
+				}
+			}
+		})
+	}
+}
+
 type testSetup struct {
 	t                    *testing.T
 	fm                   *FilterMaps
@@ -345,6 +441,7 @@ type testSetup struct {
 	params               Params
 	dbHashes             map[string]common.Hash
 	testDisableSnapshots bool
+	historyCutoff        atomic.Uint64 // receipts before it are not available
 }
 
 func newTestSetup(t *testing.T) *testSetup {
@@ -370,7 +467,7 @@ func (ts *testSetup) setHistory(history uint64, noHistory bool) {
 		History:  history,
 		Disabled: noHistory,
 	}
-	ts.fm, _ = NewFilterMaps(ts.db, view, 0, 0, ts.params, config)
+	ts.fm, _ = NewFilterMaps(ts.db, view, ts.historyCutoff.Load(), 0, ts.params, config)
 	ts.fm.testDisableSnapshots = ts.testDisableSnapshots
 	ts.fm.Start()
 }
@@ -514,14 +611,14 @@ func (tc *testChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
 	tc.lock.RLock()
 	defer tc.lock.RUnlock()
 
+	if block := tc.blocks[hash]; block == nil || block.NumberU64() < tc.ts.historyCutoff.Load() {
+		return nil
+	}
 	return tc.receipts[hash]
 }
 
 func (tc *testChain) GetRawReceipts(hash common.Hash, number uint64) types.Receipts {
-	tc.lock.RLock()
-	defer tc.lock.RUnlock()
-
-	return tc.receipts[hash]
+	return tc.GetReceiptsByHash(hash)
 }
 
 func (tc *testChain) addBlocks(count, maxTxPerBlock, maxLogsPerReceipt, maxTopicsPerLog int, random bool) {
@@ -613,7 +710,7 @@ func (tc *testChain) setTargetHead() {
 	if tc.ts.fm != nil {
 		if !tc.ts.fm.disabled {
 			//tc.ts.fm.targetViewCh <- NewChainView(tc, head.Number.Uint64(), head.Hash())
-			tc.ts.fm.SetTarget(NewChainView(tc, head.Number.Uint64(), head.Hash()), 0, 0)
+			tc.ts.fm.SetTarget(NewChainView(tc, head.Number.Uint64(), head.Hash()), tc.ts.historyCutoff.Load(), 0)
 		}
 	}
 }

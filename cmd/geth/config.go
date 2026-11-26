@@ -102,7 +102,9 @@ var deprecatedConfigFields = map[string]bool{
 	"ethconfig.Config.LightPeers":              true,
 	"ethconfig.Config.LightNoPrune":            true,
 	"ethconfig.Config.LightNoSyncServe":        true,
+	"ethconfig.Config.EnableStateSizeTracking": true,
 	"legacypool.Config.OverflowPoolSlots":      true,
+	"params.BlobScheduleConfig.Osaka":          true,
 
 	// Deprecated May 2026, the incremental snapshot feature was removed.
 	"ethconfig.Config.EnableIncrSnapshots":       true,
@@ -202,7 +204,7 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 	if ctx.IsSet(utils.EthStatsURLFlag.Name) {
 		cfg.Ethstats.URL = ctx.String(utils.EthStatsURLFlag.Name)
 	}
-	applyMetricConfig(ctx, &cfg)
+	utils.SetMetricsConfig(ctx, &cfg.Metrics)
 
 	// do some post loading config logic
 	if cfg.Eth.PruneAncientData {
@@ -294,6 +296,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideJenner.Name) {
 		v := ctx.Uint64(utils.OverrideJenner.Name)
 		cfg.Eth.OverrideJenner = &v
+	}
+	if ctx.IsSet(utils.OverrideAmsterdam.Name) {
+		v := ctx.Uint64(utils.OverrideAmsterdam.Name)
+		cfg.Eth.OverrideAmsterdam = &v
 	}
 	if ctx.IsSet(utils.OverrideBPO1.Name) {
 		v := ctx.Uint64(utils.OverrideBPO1.Name)
@@ -411,75 +417,6 @@ func dumpConfig(ctx *cli.Context) error {
 	dump.Write(out)
 
 	return nil
-}
-
-func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
-	if ctx.IsSet(utils.MetricsEnabledFlag.Name) {
-		cfg.Metrics.Enabled = ctx.Bool(utils.MetricsEnabledFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsEnabledExpensiveFlag.Name) {
-		log.Warn("Expensive metrics are collected by default, please remove this flag", "flag", utils.MetricsEnabledExpensiveFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsHTTPFlag.Name) {
-		cfg.Metrics.HTTP = ctx.String(utils.MetricsHTTPFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsPortFlag.Name) {
-		cfg.Metrics.Port = ctx.Int(utils.MetricsPortFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsEnableInfluxDBFlag.Name) {
-		cfg.Metrics.EnableInfluxDB = ctx.Bool(utils.MetricsEnableInfluxDBFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBEndpointFlag.Name) {
-		cfg.Metrics.InfluxDBEndpoint = ctx.String(utils.MetricsInfluxDBEndpointFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBDatabaseFlag.Name) {
-		cfg.Metrics.InfluxDBDatabase = ctx.String(utils.MetricsInfluxDBDatabaseFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBUsernameFlag.Name) {
-		cfg.Metrics.InfluxDBUsername = ctx.String(utils.MetricsInfluxDBUsernameFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBPasswordFlag.Name) {
-		cfg.Metrics.InfluxDBPassword = ctx.String(utils.MetricsInfluxDBPasswordFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBTagsFlag.Name) {
-		cfg.Metrics.InfluxDBTags = ctx.String(utils.MetricsInfluxDBTagsFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBIntervalFlag.Name) {
-		cfg.Metrics.InfluxDBInterval = ctx.Duration(utils.MetricsInfluxDBIntervalFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsEnableInfluxDBV2Flag.Name) {
-		cfg.Metrics.EnableInfluxDBV2 = ctx.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBTokenFlag.Name) {
-		cfg.Metrics.InfluxDBToken = ctx.String(utils.MetricsInfluxDBTokenFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBBucketFlag.Name) {
-		cfg.Metrics.InfluxDBBucket = ctx.String(utils.MetricsInfluxDBBucketFlag.Name)
-	}
-	if ctx.IsSet(utils.MetricsInfluxDBOrganizationFlag.Name) {
-		cfg.Metrics.InfluxDBOrganization = ctx.String(utils.MetricsInfluxDBOrganizationFlag.Name)
-	}
-	// Sanity-check the commandline flags. It is fine if some unused fields is part
-	// of the toml-config, but we expect the commandline to only contain relevant
-	// arguments, otherwise it indicates an error.
-	var (
-		enableExport   = ctx.Bool(utils.MetricsEnableInfluxDBFlag.Name)
-		enableExportV2 = ctx.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
-	)
-	if enableExport || enableExportV2 {
-		v1FlagIsSet := ctx.IsSet(utils.MetricsInfluxDBUsernameFlag.Name) ||
-			ctx.IsSet(utils.MetricsInfluxDBPasswordFlag.Name)
-
-		v2FlagIsSet := ctx.IsSet(utils.MetricsInfluxDBTokenFlag.Name) ||
-			ctx.IsSet(utils.MetricsInfluxDBOrganizationFlag.Name) ||
-			ctx.IsSet(utils.MetricsInfluxDBBucketFlag.Name)
-
-		if enableExport && v2FlagIsSet {
-			utils.Fatalf("Flags --%s, --%s, --%s are only available for influxdb-v2", utils.MetricsInfluxDBOrganizationFlag.Name, utils.MetricsInfluxDBTokenFlag.Name, utils.MetricsInfluxDBBucketFlag.Name)
-		} else if enableExportV2 && v1FlagIsSet {
-			utils.Fatalf("Flags --%s, --%s are only available for influxdb-v1", utils.MetricsInfluxDBUsernameFlag.Name, utils.MetricsInfluxDBPasswordFlag.Name)
-		}
-	}
 }
 
 func setAccountManagerBackends(conf *node.Config, am *accounts.Manager, keydir string) error {

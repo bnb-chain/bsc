@@ -51,6 +51,19 @@ type Config struct {
 	Overrides *params.ChainConfig `json:"overrides,omitempty"`
 }
 
+// countingWriter wraps an io.Writer and records how many bytes have been
+// written through it.
+type countingWriter struct {
+	w io.Writer
+	n int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += n
+	return n, err
+}
+
 //go:generate go run github.com/fjl/gencodec -type StructLog -field-override structLogMarshaling -out gen_structlog.go
 
 // StructLog is emitted to the EVM each cycle and lists information about the
@@ -227,17 +240,17 @@ type StructLogger struct {
 
 	writer     io.Writer         // If set, the logger will stream instead of store logs
 	logs       []json.RawMessage // buffer of json-encoded logs
-	resultSize int
+	resultSize int               // total bytes of trace output
 
-	interrupt atomic.Bool // Atomic flag to signal execution interruption
-	reason    error       // Textual reason for the interruption
-	skip      bool        // skip processing hooks.
+	interrupt atomic.Bool           // Atomic flag to signal execution interruption
+	reason    atomic.Pointer[error] // Reason for the interruption, populated by Stop
+	skip      bool                  // skip processing hooks.
 }
 
 // NewStreamingStructLogger returns a new streaming logger.
 func NewStreamingStructLogger(cfg *Config, writer io.Writer) *StructLogger {
 	l := NewStructLogger(cfg)
-	l.writer = writer
+	l.writer = &countingWriter{w: writer}
 	return l
 }
 
@@ -301,7 +314,8 @@ func (l *StructLogger) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope 
 
 	// Copy a snapshot of the current storage to a new container
 	var storage Storage
-	if !l.cfg.DisableStorage && (op == vm.SLOAD || op == vm.SSTORE) {
+	// A step that halts with an error does not execute the opcode, so it records no storage.
+	if !l.cfg.DisableStorage && err == nil && (op == vm.SLOAD || op == vm.SSTORE) {
 		// initialise new changed values storage container for this contract
 		// if not present.
 		if l.storage[contractAddr] == nil {
@@ -335,6 +349,7 @@ func (l *StructLogger) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope 
 		return
 	}
 	log.Write(l.writer)
+	l.resultSize = l.writer.(*countingWriter).n
 }
 
 // OnExit is called a call frame finishes processing.
@@ -358,8 +373,8 @@ func (l *StructLogger) OnExit(depth int, output []byte, gasUsed uint64, err erro
 
 func (l *StructLogger) GetResult() (json.RawMessage, error) {
 	// Tracing aborted
-	if l.reason != nil {
-		return nil, l.reason
+	if p := l.reason.Load(); p != nil {
+		return nil, *p
 	}
 	failed := l.err != nil
 	returnData := common.CopyBytes(l.output)
@@ -377,7 +392,7 @@ func (l *StructLogger) GetResult() (json.RawMessage, error) {
 
 // Stop terminates execution of the tracer at the first opportune moment.
 func (l *StructLogger) Stop(err error) {
-	l.reason = err
+	l.reason.Store(&err)
 	l.interrupt.Store(true)
 }
 

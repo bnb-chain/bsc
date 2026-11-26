@@ -19,6 +19,8 @@ func postLondonConfig() *params.ChainConfig {
 func preLondonConfig() *params.ChainConfig {
 	config := *params.TestChainConfig
 	config.LondonBlock = nil
+	config.ArrowGlacierBlock = nil
+	config.GrayGlacierBlock = nil
 	return &config
 }
 

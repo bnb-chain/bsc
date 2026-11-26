@@ -39,6 +39,10 @@ const (
 	// storage.
 	freezerRecheckInterval = time.Minute
 
+	// balRetentionBlocks is the finalized-height window for BAL pruning and range
+	// serving, sized for seven days at BSC's 450 ms block interval.
+	balRetentionBlocks = 1_344_000
+
 	// For BSC, freezing 30,000 blocks at once will seriously affect performance near the chain head.
 	// Set to 200 to keep up with 450ms block interval (~133 blocks/min) while limiting I/O impact.
 	SlowFreezerBatchLimit = 200
@@ -60,9 +64,7 @@ var (
 // key-value database to flat files for saving space on live database.
 type chainFreezer struct {
 	ancients ethdb.AncientStore // Ancient store for storing cold chain segment
-
-	// Optional Era database used as a backup for the pruned chain.
-	eradb *eradb.Store
+	eradb    *eradb.Store       // Optional Era database used as a backup for the pruned chain
 
 	quit    chan struct{}
 	wg      sync.WaitGroup
@@ -96,6 +98,7 @@ func newChainFreezer(datadir string, eraDir string, namespace string, readonly b
 	}
 	edb, err := eradb.New(resolveChainEraDir(datadir, eraDir))
 	if err != nil {
+		freezer.Close()
 		return nil, err
 	}
 	cf := chainFreezer{
@@ -149,6 +152,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 		backoff   bool
 		triggered chan struct{} // Used in tests
 		nfdb      = &nofreezedb{KeyValueStore: db}
+		chainDB   = &freezerdb{KeyValueStore: db, chainFreezer: f}
 	)
 	timer := time.NewTimer(freezerRecheckInterval)
 	defer timer.Stop()
@@ -328,6 +332,9 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			f.tryPruneBlobAncientTable(env, number)
 		}
 		f.tryPruneHistoryBlock(number)
+		if isAmsterdam(env, head.Number, head.Time) {
+			f.tryPruneBALs(chainDB, env.ChainCfg)
+		}
 
 		// TODO(galaio): Temporarily comment that the current BSC is suitable for small-volume writes,
 		// and then the large-volume mode will be enabled after optimizing the freeze performance of ancient.
@@ -446,7 +453,10 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 			// Retrieve all the components of the canonical block.
 			hash := ReadCanonicalHash(nfdb, number)
 			if hash == (common.Hash{}) {
-				return fmt.Errorf("canonical hash missing, can't freeze block %d", number)
+				// A missing canonical mapping at the freeze frontier is almost
+				// always an orphaned block left by an unclean stop (header/body
+				// present by hash, but no number->hash mapping).
+				return fmt.Errorf("canonical hash missing, can't freeze block %d (block data present at height: %v)", number, ReadAllHashes(nfdb, number))
 			}
 			h, header := ReadHeaderAndRaw(nfdb, hash, number)
 			if len(header) == 0 {
@@ -473,6 +483,16 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 				}
 			}
 
+			// An empty block access list is allowed and may occur in multiple
+			// scenarios, such as:
+			//   - pre-Amsterdam blocks
+			//   - post-Amsterdam blocks with the BAL absent (e.g. pruned by network)
+			//   - post-Amsterdam blocks with an explicitly empty BAL
+			//
+			// In these cases, a nil entry will be stored in the BAL table as the
+			// absence placeholder.
+			bals := ReadAccessListRLP(nfdb, hash, number)
+
 			// Write to the batch.
 			if err := op.AppendRaw(ChainFreezerHashTable, number, hash[:]); err != nil {
 				return fmt.Errorf("can't write hash to Freezer: %v", err)
@@ -495,6 +515,9 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 				}
 			}
 
+			if err := op.AppendRaw(ChainFreezerBALTable, number, bals); err != nil {
+				return fmt.Errorf("can't write bals to Freezer: %v", err)
+			}
 			hashes = append(hashes, hash)
 		}
 		return nil
@@ -532,13 +555,53 @@ func (f *chainFreezer) tryPruneHistoryBlock(best uint64) {
 	if expectTail > ancientHead {
 		expectTail = ancientHead
 	}
-	old, err := f.TruncateTail(expectTail)
+	old, err := f.TruncateTail(ChainFreezerBlockDataGroup, expectTail)
 	if err != nil {
 		log.Warn("PruneHistoryBlock TruncateTail error", "best", best,
 			"expectTail", expectTail, "blockHistory", blockHistory, "err", err)
 		return
 	}
 	log.Debug("Prune block history successful", "oldtail", old, "tail", expectTail, "best", best, "history", blockHistory)
+}
+
+// BALRetentionFloor returns the first block whose BAL must be retained.
+func BALRetentionFloor(finalized uint64) uint64 {
+	if finalized <= balRetentionBlocks {
+		return 0
+	}
+	return finalized - balRetentionBlocks
+}
+
+func (f *chainFreezer) tryPruneBALs(db ethdb.Reader, config *params.ChainConfig) {
+	finalizedHash := ReadFinalizedBlockHash(db)
+	if finalizedHash == (common.Hash{}) {
+		return
+	}
+	finalizedNumber, ok := ReadHeaderNumber(db, finalizedHash)
+	floor := BALRetentionFloor(finalizedNumber)
+	if !ok || floor == 0 {
+		return
+	}
+	tail, err := f.Tail(ChainFreezerBALGroup)
+	if err != nil {
+		log.Warn("Failed to read BAL freezer tail", "err", err)
+		return
+	}
+	if floor <= tail || ReadCanonicalHash(db, finalizedNumber) != finalizedHash {
+		return
+	}
+	finalized := ReadHeader(db, finalizedHash, finalizedNumber)
+	if finalized == nil || !config.IsAmsterdam(finalized.Number, finalized.Time) {
+		return
+	}
+	oldTail, err := f.TruncateTail(ChainFreezerBALGroup, floor)
+	if err != nil {
+		log.Warn("Failed to prune BAL history", "target", floor, "err", err)
+		return
+	}
+	if tail, err := f.Tail(ChainFreezerBALGroup); err == nil && tail > oldTail {
+		log.Debug("Pruned BAL history", "oldtail", oldTail, "tail", tail, "finalized", finalizedNumber)
+	}
 }
 
 func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
@@ -549,6 +612,13 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 	return env.ChainCfg.IsCancun(num, time)
 }
 
+func isAmsterdam(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
+	if env == nil || env.ChainCfg == nil {
+		return false
+	}
+	return env.ChainCfg.IsAmsterdam(num, time)
+}
+
 func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
 	return db.ResetTable(ChainFreezerBlobSidecarTable, next, true)
 }
@@ -557,10 +627,14 @@ func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
 func (f *chainFreezer) Ancient(kind string, number uint64) ([]byte, error) {
 	// Lookup the entry in the underlying ancient store, assuming that
 	// headers and hashes are always available.
-	if chainFreezerTableConfigs[kind].prunable == false {
+	if chainFreezerTableConfigs[kind].tailGroup == "" {
 		return f.ancients.Ancient(kind, number)
 	}
-	tail, err := f.ancients.Tail()
+	group, err := tableTailGroup(kind)
+	if err != nil {
+		return nil, err
+	}
+	tail, err := f.ancients.Tail(group)
 	if err != nil {
 		return nil, err
 	}
@@ -577,8 +651,18 @@ func (f *chainFreezer) Ancient(kind string, number uint64) ([]byte, error) {
 		return f.eradb.GetRawBody(number)
 	case ChainFreezerReceiptTable:
 		return f.eradb.GetRawReceipts(number)
+	case ChainFreezerBALTable:
+		return nil, errOutOfBounds
 	}
 	return nil, errUnknownTable
+}
+
+// tableTailGroup returns the tail group identifier for a chain freezer table.
+func tableTailGroup(kind string) (string, error) {
+	if cfg, ok := chainFreezerTableConfigs[kind]; ok {
+		return cfg.tailGroup, nil
+	}
+	return "", errUnknownTable
 }
 
 // ReadAncients executes an operation while preventing mutations to the freezer,
@@ -597,8 +681,8 @@ func (f *chainFreezer) Ancients() (uint64, error) {
 	return f.ancients.Ancients()
 }
 
-func (f *chainFreezer) Tail() (uint64, error) {
-	return f.ancients.Tail()
+func (f *chainFreezer) Tail(group string) (uint64, error) {
+	return f.ancients.Tail(group)
 }
 
 func (f *chainFreezer) AncientSize(kind string) (uint64, error) {
@@ -621,8 +705,8 @@ func (f *chainFreezer) TruncateHead(items uint64) (uint64, error) {
 	return f.ancients.TruncateHead(items)
 }
 
-func (f *chainFreezer) TruncateTail(items uint64) (uint64, error) {
-	return f.ancients.TruncateTail(items)
+func (f *chainFreezer) TruncateTail(group string, items uint64) (uint64, error) {
+	return f.ancients.TruncateTail(group, items)
 }
 
 func (f *chainFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {

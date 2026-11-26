@@ -350,12 +350,38 @@ func (bc *BlockChain) GetReceiptsRLP(hash common.Hash) rlp.RawValue {
 	return rawdb.ReadReceiptsRLP(bc.db, hash, number)
 }
 
+// GetAccessListRLP retrieves the block access list of a block in RLP encoding.
 func (bc *BlockChain) GetAccessListRLP(hash common.Hash) rlp.RawValue {
 	number, ok := rawdb.ReadHeaderNumber(bc.db, hash)
 	if !ok {
 		return nil
 	}
 	return rawdb.ReadAccessListRLP(bc.db, hash, number)
+}
+
+// GetAccessListRLPForBlock retrieves the BAL for an already loaded block.
+// It returns nil if the BAL is unavailable and 0xc0 for an encoded empty BAL.
+func (bc *BlockChain) GetAccessListRLPForBlock(block *types.Block) rlp.RawValue {
+	number := block.NumberU64()
+	accessList := block.AccessList()
+	// Skip a repeat lookup if loading the block yielded no BAL below the BAL tail.
+	if accessList == nil {
+		if tail, err := bc.db.Tail(rawdb.ChainFreezerBALGroup); err == nil && number < tail {
+			return nil
+		}
+	}
+	if encoded := rawdb.ReadAccessListRLP(bc.db, block.Hash(), number); len(encoded) > 0 {
+		return encoded
+	}
+	if accessList == nil {
+		return nil
+	}
+	encoded, err := rlp.EncodeToBytes(accessList)
+	if err != nil {
+		log.Error("Failed to encode block access list", "hash", block.Hash(), "err", err)
+		return nil
+	}
+	return encoded
 }
 
 // GetUnclesInChain retrieves all the uncles from a given block backwards until
@@ -466,11 +492,11 @@ func (bc *BlockChain) HasBlockAndState(hash common.Hash, number uint64) bool {
 	return bc.HasState(block.Root())
 }
 
-// stateRecoverable checks if the specified state is recoverable.
+// StateRecoverable checks if the specified state is recoverable.
 // Note, this function assumes the state is not present, because
 // state is not treated as recoverable if it's available, thus
 // false will be returned in this case.
-func (bc *BlockChain) stateRecoverable(root common.Hash) bool {
+func (bc *BlockChain) StateRecoverable(root common.Hash) bool {
 	if bc.triedb.Scheme() == rawdb.HashScheme {
 		return false
 	}
@@ -488,7 +514,8 @@ func (bc *BlockChain) ContractCodeWithPrefix(hash common.Hash) []byte {
 
 // State returns a new mutable state based on the current HEAD block.
 func (bc *BlockChain) State() (*state.StateDB, error) {
-	return bc.StateAt(bc.CurrentBlock())
+	head := bc.CurrentBlock()
+	return bc.StateAt(head.Root, head.Number, head.Time)
 }
 
 // StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
@@ -515,7 +542,7 @@ func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error)
 	return stateDb, nil
 }
 
-func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
+func (bc *BlockChain) StateAt(root common.Hash, number *big.Int, time uint64) (*state.StateDB, error) {
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.
 	// Instead of that, it will be more useful to return an error to indicate
@@ -524,10 +551,10 @@ func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
 		return nil, errors.New("state is not available")
 	}
 
-	if bc.chainConfig.IsUBT(header.Number, header.Time) {
-		return state.New(header.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
+	if bc.chainConfig.IsUBT(number, time) {
+		return state.New(root, state.NewUBTDatabase(bc.triedb, bc.codedb))
 	}
-	return state.New(header.Root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
+	return state.New(root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
 }
 
 // StateAtForkBoundary returns a new mutable state based on the parent state
@@ -555,14 +582,14 @@ func (bc *BlockChain) StateAtForkBoundary(parent *types.Header, header *types.He
 	return state.New(parent.Root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
 }
 
-// HistoricState returns a historic state specified by the given header.
-// Live states are not available and won't be served, please use `State`
-// or `StateAt` instead.
-func (bc *BlockChain) HistoricState(header *types.Header) (*state.StateDB, error) {
-	if bc.chainConfig.IsUBT(header.Number, header.Time) {
+// HistoricState returns a historic state with the given root, at the block with
+// the given number and time. Live states are not available and won't be served,
+// please use `State` or `StateAt` instead.
+func (bc *BlockChain) HistoricState(root common.Hash, number *big.Int, time uint64) (*state.StateDB, error) {
+	if bc.chainConfig.IsUBT(number, time) {
 		return nil, errors.New("historical state over ubt is not yet supported")
 	}
-	return state.New(header.Root, state.NewHistoricDatabase(bc.triedb, bc.codedb))
+	return state.New(root, state.NewHistoricDatabase(bc.triedb, bc.codedb))
 }
 
 // Config retrieves the chain's fork configuration.
@@ -639,6 +666,18 @@ func (bc *BlockChain) CodeDB() *state.CodeDB {
 	return bc.codedb
 }
 
+// PrecompileCache retrieves the shared precompile result cache, so callers
+// such as the miner can reuse results already computed during block import.
+func (bc *BlockChain) PrecompileCache() *vm.PrecompileCache {
+	return bc.precompileCache
+}
+
+// JumpDestCache retrieves the shared JUMPDEST analysis cache, so callers such
+// as the miner can reuse bitmaps already computed during block import.
+func (bc *BlockChain) JumpDestCache() vm.JumpDestCache {
+	return bc.jumpDestCache
+}
+
 // HeaderChain returns the underlying header chain.
 func (bc *BlockChain) HeaderChain() *HeaderChain {
 	return bc.hc
@@ -692,7 +731,7 @@ func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEve
 
 // AncientTail retrieves the tail the ancients blocks
 func (bc *BlockChain) AncientTail() (uint64, error) {
-	tail, err := bc.db.Tail()
+	tail, err := bc.db.Tail(rawdb.ChainFreezerBlockDataGroup)
 	if err != nil {
 		return 0, err
 	}

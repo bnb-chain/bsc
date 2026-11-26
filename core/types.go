@@ -46,10 +46,10 @@ type TransactionsByPriceAndNonce interface {
 type Prefetcher interface {
 	// Prefetch processes the state changes according to the Ethereum rules by running
 	// the transaction messages using the statedb, but any changes are discarded. The
-	// only goal is to warm the state caches.
-	Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interrupt *atomic.Bool)
+	// only goal is to pre-cache transaction signatures and state trie nodes.
+	Prefetch(block *types.Block, statedb *state.StateDB, jumpDestCache vm.JumpDestCache, precompileCache *vm.PrecompileCache, cfg vm.Config, interrupt *atomic.Bool, execIndex *atomic.Int64)
 	// PrefetchMining used for pre-caching transaction signatures and state trie nodes. Only used for mining stage.
-	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr *atomic.Pointer[types.Transaction])
+	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, jumpDestCache vm.JumpDestCache, precompileCache *vm.PrecompileCache, cfg vm.Config, interruptCh <-chan struct{}, txCurr *atomic.Pointer[types.Transaction])
 }
 
 // Processor is an interface for processing blocks using a given initial state.
@@ -57,7 +57,7 @@ type Processor interface {
 	// Process processes the state changes according to the Ethereum rules by running
 	// the transaction messages using the statedb and applying any rewards to both
 	// the processor (coinbase) and any included uncles.
-	Process(ctx context.Context, block *types.Block, statedb *state.StateDB, cfg vm.Config) (*ProcessResult, error)
+	Process(ctx context.Context, block *types.Block, statedb *state.StateDB, jumpDestCache vm.JumpDestCache, precompileCache *vm.PrecompileCache, cfg vm.Config, execIndex *atomic.Int64) (*ProcessResult, error)
 }
 
 // ProcessResult contains the values computed by Process.
@@ -66,4 +66,9 @@ type ProcessResult struct {
 	Requests [][]byte
 	Logs     []*types.Log
 	GasUsed  uint64
+
+	// pipeline digests the receipts and the access list alongside execution
+	// and validation. It is nil for a result assembled elsewhere, and the
+	// validator computes the receipt digests itself in that case.
+	pipeline *digestPipeline
 }

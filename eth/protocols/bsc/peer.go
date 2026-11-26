@@ -26,7 +26,7 @@ const (
 	// so the limit is 47 ~= 21/0.45, here set it to 68 with a buffer.
 	receiveRateLimitPerSecond = 68
 
-	// serveBytesRateLimitPerSecond is the per-peer budget, in response bytes,
+	// serveBytesRateLimitPerSecond is the per-peer budget, in encoded bytes,
 	// for serving GetBlocksByRange over one second. A single small request can
 	// force up to softResponseLimit (8 MiB) of disk lookups, RLP encoding and
 	// upload, so — mirroring the vote receive-rate limiter — a peer that keeps
@@ -51,7 +51,7 @@ type Peer struct {
 	periodCounter uint                       // Votes number in the latest period
 
 	blockServeBegin   time.Time // Begin time of the latest period for block-serving byte counting
-	blockServeCounter uint64    // GetBlocksByRange response bytes served in the latest period
+	blockServeCounter uint64    // GetBlocksByRange bytes encoded in the latest period
 
 	dispatcher *Dispatcher // Message request-response dispatcher
 
@@ -165,7 +165,7 @@ func blockServeBudget() uint64 {
 // IsOverBlockServeLimit reports whether this peer has already exhausted its
 // per-period GetBlocksByRange serving budget, rolling the period over when it
 // has elapsed. It does not charge the budget; call ChargeBlockServe with the
-// actual response size after a response has been built.
+// encoded bytes, including entries discarded by message-size limits.
 //
 // These per-peer counters are only ever touched from the peer's single
 // message-handling goroutine (Handle), same as the vote counter above, so no
@@ -179,11 +179,10 @@ func (p *Peer) IsOverBlockServeLimit() bool {
 		p.blockServeCounter = 0
 		return false
 	}
-	return p.blockServeCounter > blockServeBudget()
+	return p.blockServeCounter >= blockServeBudget()
 }
 
-// ChargeBlockServe accounts n response bytes served for a GetBlocksByRange
-// reply against this peer's rolling per-period budget.
+// ChargeBlockServe accounts n encoded bytes against the block-serving budget.
 func (p *Peer) ChargeBlockServe(n uint64) {
 	if time.Since(p.blockServeBegin).Seconds() >= secondsPerPeriod {
 		p.blockServeBegin = time.Now()

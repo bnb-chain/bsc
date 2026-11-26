@@ -21,8 +21,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
+	"reflect"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -32,7 +36,9 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
@@ -62,6 +68,82 @@ type simBlock struct {
 	BlockOverrides *override.BlockOverrides
 	StateOverrides *override.StateOverride
 	Calls          []TransactionArgs
+}
+
+// UnmarshalJSON rejects block and account override keys that are not defined.
+// encoding/json alone ignores unknown keys.
+func (b *simBlock) UnmarshalJSON(input []byte) error {
+	var dec struct {
+		BlockOverrides json.RawMessage
+		StateOverrides map[common.Address]json.RawMessage
+		Calls          []TransactionArgs
+	}
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
+	}
+	var res simBlock
+	if dec.BlockOverrides != nil {
+		if err := checkOverrideKeys(dec.BlockOverrides, reflect.TypeFor[override.BlockOverrides](), "block override"); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(dec.BlockOverrides, &res.BlockOverrides); err != nil {
+			return err
+		}
+	}
+	if dec.StateOverrides != nil {
+		overrides := make(override.StateOverride, len(dec.StateOverrides))
+		for addr, raw := range dec.StateOverrides {
+			if err := checkOverrideKeys(raw, reflect.TypeFor[override.OverrideAccount](), "state override for "+addr.Hex()); err != nil {
+				return err
+			}
+			var account override.OverrideAccount
+			if err := json.Unmarshal(raw, &account); err != nil {
+				return err
+			}
+			overrides[addr] = account
+		}
+		res.StateOverrides = &overrides
+	}
+	res.Calls = dec.Calls
+	*b = res
+	return nil
+}
+
+// checkOverrideKeys returns an error for a key of the JSON object that does not
+// name a field of t, or that names a field another key already names. Names
+// match case-insensitively, as in encoding/json. Repeated identical keys cannot
+// be seen here; encoding/json keeps the last one.
+func checkOverrideKeys(input json.RawMessage, t reflect.Type, what string) error {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(input, &keys); err != nil || keys == nil {
+		return nil
+	}
+	seen := make(map[int]string)
+	for _, key := range slices.Sorted(maps.Keys(keys)) {
+		field := -1
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if !f.IsExported() || name == "-" {
+				continue
+			}
+			if name == "" {
+				name = f.Name
+			}
+			if strings.EqualFold(key, name) {
+				field = i
+				break
+			}
+		}
+		if field < 0 {
+			return fmt.Errorf("unknown field %q in %s", key, what)
+		}
+		if prev, ok := seen[field]; ok {
+			return fmt.Errorf("keys %q and %q in %s name the same field", prev, key, what)
+		}
+		seen[field] = key
+	}
+	return nil
 }
 
 // simCallResult is the result of a simulated call.
@@ -326,12 +408,17 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		gp          = core.NewGasPool(blockContext.GasLimit)
 		blobGasUsed uint64
 
-		txes        = make([]*types.Transaction, len(block.Calls))
-		callResults = make([]simCallResult, len(block.Calls))
-		receipts    = make([]*types.Receipt, len(block.Calls))
+		txes            = make([]*types.Transaction, len(block.Calls))
+		callResults     = make([]simCallResult, len(block.Calls))
+		receipts        = make([]*types.Receipt, len(block.Calls))
+		blockAccessList = bal.NewConstructionBlockAccessList()
+
+		// Post-Amsterdam the protocol emits an EIP-7708 transfer log for every
+		// ether transfer, so synthesizing them would report each transfer twice.
+		traceTransfers = sim.traceTransfers && !sim.chainConfig.IsAmsterdam(header.Number, header.Time)
 
 		// Block hash will be repaired after execution.
-		tracer   = newTracer(sim.traceTransfers, blockContext.BlockNumber.Uint64(), blockContext.Time, common.Hash{}, common.Hash{}, 0)
+		tracer   = newTracer(traceTransfers, blockContext.BlockNumber.Uint64(), blockContext.Time, common.Hash{}, common.Hash{}, 0)
 		vmConfig = &vm.Config{
 			NoBaseFee: !sim.validate,
 			Tracer:    tracer.Hooks(),
@@ -347,17 +434,15 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	}
 	evm := vm.NewEVM(blockContext, tracingStateDB, sim.chainConfig, *vmConfig)
 	defer evm.Release()
+
 	// It is possible to override precompiles with EVM bytecode, or
 	// move them to another address.
 	if precompiles != nil {
 		evm.SetPrecompiles(precompiles)
 	}
-	if sim.chainConfig.IsPrague(header.Number, header.Time) || sim.chainConfig.IsUBT(header.Number, header.Time) {
-		core.ProcessParentBlockHash(header.ParentHash, evm)
-	}
-	if header.ParentBeaconRoot != nil {
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, evm)
-	}
+	// Run pre-execution system calls
+	blockAccessList.Merge(core.PreExecution(ctx, header.ParentBeaconRoot, parent, sim.chainConfig, evm, header.Number, header.Time))
+
 	var allLogs []*types.Log
 	for i, call := range block.Calls {
 		// Terminate if the context is cancelled
@@ -368,6 +453,12 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		// EIP-2681 also limits the nonce when validation is off and the nonce checks are skipped.
+		if !sim.validate {
+			if from := call.from(); sim.state.GetNonce(from) == math.MaxUint64 {
+				return nil, nil, nil, txValidationError(fmt.Errorf("%w: address %v, nonce: %d", core.ErrNonceMax, from.Hex(), uint64(math.MaxUint64)))
+			}
+		}
 		var (
 			tx     = call.ToTransaction(types.DynamicFeeTxType)
 			txHash = tx.Hash()
@@ -377,8 +468,11 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		tracer.reset(txHash, uint(i))
 
 		// EoA check is always skipped, even in validation mode.
-		sim.state.SetTxContext(txHash, i)
+		sim.state.SetTxContext(txHash, i, uint32(i+1))
 		msg := call.ToMessage(header.BaseFee, !sim.validate)
+		if !sim.validate {
+			msg.SkipExecutionGasCapCheck()
+		}
 		result, err := applyMessageWithEVM(ctx, evm, msg, timeout, gp)
 		if err != nil {
 			txErr := txValidationError(err)
@@ -387,9 +481,9 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		// Update the state with pending changes.
 		var root []byte
 		if sim.chainConfig.IsByzantium(blockContext.BlockNumber) {
-			tracingStateDB.Finalise(true)
+			blockAccessList.Merge(tracingStateDB.Finalise(evm.GetRules()))
 		} else {
-			root = sim.state.IntermediateRoot(sim.chainConfig.IsEIP158(blockContext.BlockNumber)).Bytes()
+			root = sim.state.IntermediateRoot(evm.GetRules()).Bytes()
 		}
 		receipts[i] = core.MakeReceipt(evm, result, sim.state, blockContext.BlockNumber, common.Hash{}, blockContext.Time, tx, gp.CumulativeUsed(), root)
 		blobGasUsed += receipts[i].BlobGasUsed
@@ -427,40 +521,41 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 		header.BlobGasUsed = &blobGasUsed
 	}
 
-	// Process EIP-7685 requests
-	var requests [][]byte
-	if sim.chainConfig.IsPrague(header.Number, header.Time) {
-		requests = [][]byte{}
-		// EIP-6110
-		if err := core.ParseDepositLogs(&requests, allLogs, sim.chainConfig); err != nil {
-			return nil, nil, nil, err
-		}
-		// EIP-7002
-		if err := core.ProcessWithdrawalQueue(&requests, evm); err != nil {
-			return nil, nil, nil, err
-		}
-		// EIP-7251
-		if err := core.ProcessConsolidationQueue(&requests, evm); err != nil {
-			return nil, nil, nil, err
-		}
+	blockBody := &types.Body{
+		Transactions: txes,
+	}
+	// Withdrawals are a post-Shanghai field. Attaching a non-nil withdrawals
+	// slice would cause types.NewBlock to populate WithdrawalsHash on the
+	// header and emit withdrawals fields for pre-Shanghai blocks.
+	if sim.chainConfig.IsShanghai(header.Number, header.Time) {
+		blockBody.Withdrawals = *block.BlockOverrides.Withdrawals
+	}
+	if sim.isBSC() {
+		// Simulation omits Parlia system transactions but still applies contract upgrades.
+		systemcontracts.TryUpdateBuildInSystemContract(sim.chainConfig, header.Number, parent.Time, header.Time, sim.state, false)
+	}
+	// Process the withdrawals and EIP-7685 requests
+	requests, bal, err := core.PostExecution(ctx, sim.chainConfig, header.Number, header.Time, allLogs, blockBody.Withdrawals, evm, uint32(len(block.Calls)+1))
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	if requests != nil {
 		reqHash := types.CalcRequestsHash(requests)
 		header.RequestsHash = &reqHash
 	}
-
-	blockBody := &types.Body{
-		Transactions: txes,
-		Withdrawals:  *block.BlockOverrides.Withdrawals, // Withdrawal is also sanitized as non-nil
-	}
+	blockAccessList.Merge(bal)
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
 
 	// Assemble the block
-	b, err := sim.FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
+	var b *types.Block
+	if sim.isBSC() {
+		b, err = sim.FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
+	} else {
+		b, _, err = core.AssembleBlock(sim.b.Engine(), chainHeadReader, header, sim.state, blockBody, receipts, blockAccessList)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
 	repairLogs(callResults, b.Hash())
 	return b, callResults, senders, nil
 }
@@ -482,7 +577,13 @@ func (sim *simulator) sanitizeCall(call *TransactionArgs, state vm.StateDB, head
 		call.Nonce = (*hexutil.Uint64)(&nonce)
 	}
 	// Let the call run wild unless explicitly specified.
-	remaining := gp.Gas()
+	amsterdam := sim.chainConfig.IsAmsterdam(header.Number, header.Time)
+	remaining := gp.Available(amsterdam)
+	if amsterdam && !sim.validate {
+		// The execution gas is not capped in non-strict mode (see processBlock),
+		// so the whole gas limit is reserved in the execution dimension too.
+		remaining = min(remaining, header.GasLimit-gp.CumulativeExecution())
+	}
 	if call.Gas == nil {
 		call.Gas = (*hexutil.Uint64)(&remaining)
 	}
@@ -635,6 +736,19 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 		if !sim.isBSC() && sim.chainConfig.IsPostMerge(number.Uint64(), timestamp) {
 			difficulty = big.NewInt(0)
 		}
+		if overrides.Difficulty != nil && difficulty.Sign() == 0 {
+			return nil, &invalidParamsError{fmt.Sprintf("block %d: difficulty override is not allowed after the merge", number)}
+		}
+		var slotNumber *uint64
+		if sim.isBSC() {
+			if sim.chainConfig.IsAmsterdam(number, timestamp) {
+				slot := number.Uint64()
+				slotNumber = &slot
+			}
+		} else if header.SlotNumber != nil {
+			slot := *header.SlotNumber + 1
+			slotNumber = &slot
+		}
 		header = overrides.MakeHeader(&types.Header{
 			UncleHash:        types.EmptyUncleHash,
 			ReceiptHash:      types.EmptyReceiptsHash,
@@ -644,6 +758,7 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 			GasLimit:         header.GasLimit,
 			WithdrawalsHash:  withdrawalsHash,
 			ParentBeaconRoot: parentBeaconRoot,
+			SlotNumber:       slotNumber,
 		})
 		res[bi] = header
 	}
@@ -659,7 +774,7 @@ func (sim *simulator) newSimulatedChainContext(ctx context.Context, headers []*t
 }
 
 func (sim *simulator) FinalizeAndAssemble(chain *simChainHeadReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, error) {
-	header.Root = sim.state.IntermediateRoot(true)
+	header.Root = sim.state.IntermediateRoot(sim.chainConfig.Rules(header.Number, header.Difficulty.Sign() == 0, header.Time))
 	if sim.chainConfig.IsShanghai(header.Number, header.Time) {
 		if body.Withdrawals == nil {
 			body.Withdrawals = make([]*types.Withdrawal, 0)

@@ -59,10 +59,8 @@ var (
 		utils.MinFreeDiskSpaceFlag,
 		utils.KeyStoreDirFlag,
 		utils.ExternalSignerFlag,
-		utils.NoUSBFlag, // deprecated
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
-		utils.RangeLimitFlag, // deprecated
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
@@ -71,6 +69,7 @@ var (
 		utils.OverrideMaxwell,
 		utils.OverrideFermi,
 		utils.OverrideOsaka,
+		utils.OverrideAmsterdam,
 		utils.OverrideMendel,
 		utils.OverridePasteur,
 		utils.OverrideJenner,
@@ -83,7 +82,6 @@ var (
 		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.OverrideBreatheBlockInterval,
 		utils.OverrideFixedTurnLength,
-		utils.EnablePersonal, // deprecated
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
 		utils.TxPoolJournalFlag,
@@ -94,48 +92,42 @@ var (
 		utils.TxPoolGlobalSlotsFlag,
 		utils.TxPoolAccountQueueFlag,
 		utils.TxPoolGlobalQueueFlag,
-		utils.TxPoolOverflowPoolSlotsFlag, // deprecated
 		utils.TxPoolLifetimeFlag,
-		utils.MinerTxGasLimitFlag,
-		utils.EnableBALFlag,
 		utils.BlobPoolDataDirFlag,
 		utils.BlobPoolDataCapFlag,
 		utils.BlobPoolPriceBumpFlag,
+		utils.BlobPoolFetchProbabilityFlag,
 		utils.SyncModeFlag,
 		utils.TriesVerifyModeFlag,
 		// utils.SyncTargetFlag,
 		utils.ExitWhenSyncedFlag,
 		utils.GCModeFlag,
 		utils.SnapshotFlag,
-		utils.TxLookupLimitFlag, // deprecated
+		utils.SnapV2Flag,
 		utils.TransactionHistoryFlag,
 		utils.BlockHistoryFlag,
 		// utils.ChainHistoryFlag, // disabled in bsc
 		utils.LogHistoryFlag,
 		utils.LogNoHistoryFlag,
-		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
-		utils.PathDBSyncFlag,
-		utils.JournalFileFlag, // deprecated
 		utils.TrienodeHistoryFlag,
 		utils.TrienodeHistoryFullValueCheckpointFlag,
 		utils.BinTrieGroupDepthFlag,
 		utils.LightKDFFlag,
 		utils.EthRequiredBlocksFlag,
-		utils.LegacyWhitelistFlag, // deprecated
 		utils.TriesInMemoryFlag,
 		utils.CacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,
-		utils.CacheTrieJournalFlag,   // deprecated
-		utils.CacheTrieRejournalFlag, // deprecated
 		utils.CacheGCFlag,
 		utils.CacheSnapshotFlag,
 		// utils.CacheNoPrefetchFlag,
+		utils.CacheNoPrecompileFlag,
 		utils.CachePreimagesFlag,
-		utils.PruneAncientDataFlag, // deprecated
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,
+		utils.MemoryLimitFlag,
+		utils.GOGCFlag,
 		utils.CryptoKZGFlag,
 		utils.ListenPortFlag,
 		utils.DiscoveryPortFlag,
@@ -149,7 +141,6 @@ var (
 		utils.MinerExtraDataFlag,
 		utils.MinerMaxBlobsFlag,
 		utils.MinerRecommitIntervalFlag,
-		utils.MinerNewPayloadTimeoutFlag, // deprecated
 		utils.MinerDelayLeftoverFlag,
 		// utils.MinerNewPayloadTimeout,
 		utils.NATFlag,
@@ -158,7 +149,6 @@ var (
 		utils.DiscoveryV4Flag,
 		utils.DiscoveryV5Flag,
 		utils.InstanceFlag,
-		utils.LegacyDiscoveryV5Flag, // deprecated
 		utils.NetrestrictFlag,
 		utils.NodeKeyFileFlag,
 		utils.NodeKeyHexFlag,
@@ -186,10 +176,7 @@ var (
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
-		utils.LogDebugFlag,
-		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
-		utils.VMOpcodeOptimizeFlag, // deprecated
 		// utils.BeaconApiFlag,
 		// utils.BeaconApiHeaderFlag,
 		// utils.BeaconThresholdFlag,
@@ -200,6 +187,7 @@ var (
 		// utils.BeaconCheckpointFlag,
 		// utils.BeaconCheckpointFileFlag,
 		utils.LogSlowBlockFlag,
+		utils.StateSizeTrackingFlag, // deprecated
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -231,9 +219,11 @@ var (
 		utils.RPCGlobalEVMTimeoutFlag,
 		utils.RPCGlobalTxFeeCapFlag,
 		utils.RPCGlobalLogQueryLimit,
+		utils.EngineMaxReorgDepthFlag,
 		utils.AllowUnprotectedTxs,
 		utils.BatchRequestLimit,
 		utils.BatchResponseMaxSize,
+		utils.HTTPBodyLimitFlag,
 		utils.RPCTxSyncDefaultTimeoutFlag,
 		utils.RPCTxSyncMaxTimeoutFlag,
 		utils.RPCGlobalRangeLimitFlag,
@@ -244,25 +234,6 @@ var (
 		utils.RPCTelemetryInstanceIDFlag,
 		utils.RPCTelemetryTagsFlag,
 		utils.RPCTelemetrySampleRatioFlag,
-	}
-
-	metricsFlags = []cli.Flag{
-		utils.MetricsEnabledFlag,
-		utils.MetricsEnabledExpensiveFlag,
-		utils.MetricsHTTPFlag,
-		utils.MetricsPortFlag,
-		utils.MetricsEnableInfluxDBFlag,
-		utils.MetricsInfluxDBEndpointFlag,
-		utils.MetricsInfluxDBDatabaseFlag,
-		utils.MetricsInfluxDBUsernameFlag,
-		utils.MetricsInfluxDBPasswordFlag,
-		utils.MetricsInfluxDBTagsFlag,
-		utils.MetricsInfluxDBIntervalFlag,
-		utils.MetricsEnableInfluxDBV2Flag,
-		utils.MetricsInfluxDBTokenFlag,
-		utils.MetricsInfluxDBBucketFlag,
-		utils.MetricsInfluxDBOrganizationFlag,
-		utils.StateSizeTrackingFlag,
 	}
 )
 
@@ -318,7 +289,7 @@ func init() {
 		rpcFlags,
 		consoleFlags,
 		debug.Flags,
-		metricsFlags,
+		utils.MetricsFlags,
 	)
 	flags.AutoEnvVars(app.Flags, "GETH")
 

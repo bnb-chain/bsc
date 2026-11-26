@@ -27,7 +27,7 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(cas20Storage)) (*state.
 	bc := cas20BlockContext(now)
 	evm := NewEVM(bc, statedb, cas20TestChainConfig(), Config{})
 	run := func(caller common.Address, input []byte) ([]byte, error) {
-		gas := NewGasBudget(2_000_000)
+		gas := NewGasBudget(2_000_000, 0)
 		ctx := &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
 		return newCAS20Token(ctx, 18).dispatch(input)
 	}
@@ -44,7 +44,7 @@ func TestCAS20Permit(t *testing.T) {
 	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, cas20TestChainConfig(), Config{})
 	// A real budget: a read whose charge fails returns zero, and a 1-gas context
 	// would sign against an empty name.
-	gas := NewGasBudget(2_000_000)
+	gas := NewGasBudget(2_000_000, 0)
 	domTok := newCAS20Token(&PrecompileContext{evm: evm, StateDB: statedb, Self: token, gas: &gas}, 18)
 
 	sign := func(key *ecdsa.PrivateKey, owner, spender common.Address, value, deadline, nonce uint64) (byte, common.Hash, common.Hash) {
@@ -118,7 +118,7 @@ func TestCAS20Memo(t *testing.T) {
 		s.setBalance(cas20Alice, uint256.NewInt(1000))
 	})
 	txHash := common.HexToHash("0xabc")
-	statedb.SetTxContext(txHash, 0)
+	statedb.SetTxContext(txHash, 0, uint32(0+1))
 
 	memo := common.HexToHash("0xdeadbeef")
 	ret, err := run(cas20Alice, cas20Call(selTransferWithMemo, addrKey(cas20Bob), u256hash(100), memo))

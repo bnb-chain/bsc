@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/keccak"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -1087,6 +1088,95 @@ func makeTestBAL(t *testing.T) (rlp.RawValue, *bal.BlockAccessList) {
 		t.Fatalf("failed to decode BAL: %v", err)
 	}
 	return encoded, &decoded
+}
+
+// TestWriteAncientBlocksNilBAL ensures that freezing a block with no block
+// access list produces an empty entry in the BAL ancient table and that
+// ReadAccessList returns nil afterwards (i.e. the empty entry is not surfaced
+// as a malformed BAL).
+func TestWriteAncientBlocksNilBAL(t *testing.T) {
+	db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: t.TempDir()})
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend: %v", err)
+	}
+	defer db.Close()
+
+	block := types.NewBlockWithHeader(&types.Header{
+		Number:      big.NewInt(0),
+		Extra:       []byte("nil-bal block"),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	if block.AccessList() != nil {
+		t.Fatalf("test precondition: block must have nil access list")
+	}
+	if _, err := WriteAncientBlocks(db, []*types.Block{block}, types.EncodeBlockReceiptLists([]types.Receipts{nil}), big.NewInt(0)); err != nil {
+		t.Fatalf("WriteAncientBlocks failed: %v", err)
+	}
+	hash, number := block.Hash(), block.NumberU64()
+
+	// The BAL ancient entry should exist as an empty blob.
+	if blob := ReadAccessListRLP(db, hash, number); len(blob) != 0 {
+		t.Fatalf("ReadAccessListRLP: got %x, want empty", blob)
+	}
+	// ReadAccessList must surface nil rather than attempting to RLP-decode
+	// the empty payload.
+	if b := ReadAccessList(db, hash, number); b != nil {
+		t.Fatalf("ReadAccessList: got %v, want nil", b)
+	}
+	// HasAccessList only consults the KV store and there's nothing there.
+	if HasAccessList(db, hash, number) {
+		t.Fatal("HasAccessList returned true for absent BAL")
+	}
+}
+
+func TestReadAccessListRLPAncientNonCanonical(t *testing.T) {
+	db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: t.TempDir()})
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend: %v", err)
+	}
+	defer db.Close()
+
+	encoded, accessList := makeTestBAL(t)
+	accessListHash := accessList.Hash()
+	block := types.NewBlockWithHeader(&types.Header{
+		Number:              big.NewInt(0),
+		Extra:               []byte("canonical-bal block"),
+		UncleHash:           types.EmptyUncleHash,
+		TxHash:              types.EmptyTxsHash,
+		ReceiptHash:         types.EmptyReceiptsHash,
+		BlockAccessListHash: &accessListHash,
+	}).WithAccessList(accessList)
+	if _, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw(ChainFreezerHashTable, 0, block.Hash().Bytes()); err != nil {
+			return err
+		}
+		if err := op.Append(ChainFreezerHeaderTable, 0, block.Header()); err != nil {
+			return err
+		}
+		if err := op.Append(ChainFreezerBodiesTable, 0, block.Body()); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(ChainFreezerReceiptTable, 0, types.EncodeBlockReceiptLists([]types.Receipts{nil})[0]); err != nil {
+			return err
+		}
+		if err := op.Append(ChainFreezerDifficultyTable, 0, new(big.Int)); err != nil {
+			return err
+		}
+		return op.AppendRaw(ChainFreezerBALTable, 0, encoded)
+	}); err != nil {
+		t.Fatalf("failed to write ancient block: %v", err)
+	}
+	if blob := ReadAccessListRLP(db, block.Hash(), block.NumberU64()); len(blob) == 0 {
+		t.Fatal("canonical block access list not found in ancients")
+	}
+	// Ancients contain data only for the canonical hash. Looking up another
+	// hash at the same height must not return the canonical block's access list.
+	nonCanonical := common.HexToHash("0xdeadbeef")
+	if blob := ReadAccessListRLP(db, nonCanonical, block.NumberU64()); len(blob) != 0 {
+		t.Fatalf("ReadAccessListRLP returned canonical data for non-canonical hash: %x", blob)
+	}
 }
 
 // TestBALStorage tests write/read/delete of BALs in the KV store.

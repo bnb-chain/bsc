@@ -81,19 +81,20 @@ func NewEVMBlockContext(header *types.Header, chain ChainContext, author *common
 	}
 
 	return vm.BlockContext{
-		CanTransfer:    CanTransfer,
-		Transfer:       Transfer,
-		GetHash:        GetHashFn(header, chain),
-		Coinbase:       beneficiary,
-		BlockNumber:    new(big.Int).Set(header.Number),
-		Time:           header.Time,
-		Difficulty:     new(big.Int).Set(header.Difficulty),
-		BaseFee:        baseFee,
-		BlobBaseFee:    blobBaseFee,
-		GasLimit:       header.GasLimit,
-		Random:         random,
-		SlotNum:        slotNum,
-		MilliTimestamp: header.MilliTimestamp(),
+		CanTransfer:      CanTransfer,
+		Transfer:         Transfer,
+		GetHash:          GetHashFn(header, chain),
+		Coinbase:         beneficiary,
+		BlockNumber:      new(big.Int).Set(header.Number),
+		Time:             header.Time,
+		Difficulty:       new(big.Int).Set(header.Difficulty),
+		BaseFee:          baseFee,
+		BlobBaseFee:      blobBaseFee,
+		GasLimit:         header.GasLimit,
+		Random:           random,
+		SlotNum:          slotNum,
+		CostPerStateByte: params.CostPerStateByte,
+		MilliTimestamp:   header.MilliTimestamp(),
 	}
 }
 

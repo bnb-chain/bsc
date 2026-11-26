@@ -17,6 +17,7 @@
 package miner
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -35,11 +36,13 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/txorder"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
@@ -94,10 +97,15 @@ var (
 	bidBlockEvidenceRevokeCounter = metrics.NewRegisteredCounter("worker/bidBlockEvidenceRevoke", nil)
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
-	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
-	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
-	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
-	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
+	paymentLaneQuotaGauge         = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)
+	paymentLaneGasUsedGauge       = metrics.NewRegisteredGauge("paymentlane/paymentGasUsed", nil)
+	paymentLaneIdleGauge          = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)
+	paymentLaneExecutionUsedGauge = metrics.NewRegisteredGauge("paymentlane/paymentExecutionUsed", nil)
+	paymentLaneStateUsedGauge     = metrics.NewRegisteredGauge("paymentlane/paymentStateUsed", nil)
+	paymentLaneExecutionIdleGauge = metrics.NewRegisteredGauge("paymentlane/paymentExecutionIdle", nil)
+	paymentLaneStateIdleGauge     = metrics.NewRegisteredGauge("paymentlane/paymentStateIdle", nil)
+	generalLaneYieldedCounter     = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter     = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -109,6 +117,7 @@ var (
 	errBlockInterruptedByTimeout   = errors.New("timeout while building block")
 	errBlockInterruptedByOutOfGas  = errors.New("out of gas while building block")
 	errBlockInterruptedByBetterBid = errors.New("better bid arrived while building block")
+	errStateReadFailure            = errors.New("state read failed while building block")
 )
 
 // maxBlobsPerBlock returns the maximum number of blobs per block.
@@ -137,6 +146,13 @@ type environment struct {
 	receipts []*types.Receipt
 	sidecars types.BlobSidecars
 	blobs    int
+	bal      *bal.ConstructionBlockAccessList
+
+	// revertedTxs and revertedIdx record transactions that were executed during
+	// block building but then reverted (excluded from the block), together with
+	// the index each was tried at.
+	revertedTxs []*types.Transaction
+	revertedIdx []uint32
 
 	witness *stateless.Witness
 
@@ -213,6 +229,11 @@ type newPayloadResult struct {
 	receipts []*types.Receipt       // Receipts collected during construction
 	requests [][]byte               // Consensus layer requests collected during block construction
 	witness  *stateless.Witness     // Witness is an optional stateless proof
+
+	// revertedTxs and revertedIdx record the transactions tried-and-reverted
+	// during construction and the index each was assigned.
+	revertedTxs []*types.Transaction
+	revertedIdx []uint32
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -725,6 +746,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	prevEnv *environment, witness bool) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
+	// TODO(BSC): Handle the MPT-to-UBT transition before enabling UBT.
 	state, err := w.chain.StateWithCacheAt(parent.Root)
 	if err != nil {
 		return nil, err
@@ -769,11 +791,14 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		coinbase: coinbase,
 		gasPool:  core.NewGasPool(header.GasLimit - gasReserved),
 		header:   header,
+		bal:      bal.NewConstructionBlockAccessList(),
 		witness:  state.Witness(),
 		evm:      vm.NewEVM(core.NewEVMBlockContext(header, w.chain, &coinbase), state, w.chainConfig, vm.Config{}),
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
+	env.evm.SetJumpDestCache(w.chain.JumpDestCache())
+	env.evm.SetPrecompileCache(w.chain.PrecompileCache())
 	return env, nil
 }
 
@@ -827,24 +852,63 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
 	laneType := env.lane.Classify(tx)
 	var (
-		snap       = env.state.Snapshot()
-		gp         = env.gasPool.Snapshot()
-		usedBefore = env.gasPool.Used()
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Snapshot()
 	)
 
-	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, receiptProcessors...)
+	receipt, txBAL, err := core.ApplyTransaction(context.Background(), env.evm, env.gasPool, env.state, env.header, tx)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.Set(gp)
+		env.revertedTxs = append(env.revertedTxs, tx.WithoutBlobTxSidecar())
+		env.revertedIdx = append(env.revertedIdx, uint32(env.tcount))
+	} else {
+		env.bal.Merge(txBAL)
+		for _, processor := range receiptProcessors {
+			processor.Apply(receipt)
+		}
 	}
 	env.header.GasUsed = env.gasPool.Used()
-	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, gp)
 	return receipt, err
 }
 
-func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce,
+func recordPaymentLaneMetrics(b paymentlane.Budget, amsterdam bool) {
+	used, idle := b.PaymentLaneUsed, b.IdleLane()
+	var executionUsed, stateUsed, executionIdle, stateIdle uint64
+	if amsterdam {
+		executionUsed, stateUsed = b.PaymentExecutionUsed, b.PaymentStateUsed
+		executionIdle, stateIdle = b.IdleLaneAmsterdam()
+		used, idle = max(executionUsed, stateUsed), max(executionIdle, stateIdle)
+	}
+	paymentLaneQuotaGauge.Update(int64(b.PaymentLaneQuota))
+	paymentLaneGasUsedGauge.Update(int64(used))
+	paymentLaneIdleGauge.Update(int64(idle))
+	paymentLaneExecutionUsedGauge.Update(int64(executionUsed))
+	paymentLaneStateUsedGauge.Update(int64(stateUsed))
+	paymentLaneExecutionIdleGauge.Update(int64(executionIdle))
+	paymentLaneStateIdleGauge.Update(int64(stateIdle))
+}
+
+func paymentLaneLogContext(b paymentlane.Budget, amsterdam bool) []any {
+	attrs := []any{"paymentLaneQuota", b.PaymentLaneQuota}
+	if !amsterdam {
+		return append(attrs, "paymentGasUsed", b.PaymentLaneUsed, "paymentLaneIdle", b.IdleLane())
+	}
+	executionIdle, stateIdle := b.IdleLaneAmsterdam()
+	return append(attrs,
+		"paymentExecutionUsed", b.PaymentExecutionUsed, "paymentStateUsed", b.PaymentStateUsed,
+		"paymentExecutionIdle", executionIdle, "paymentStateIdle", stateIdle)
+}
+
+func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *txorder.TransactionsByPriceAndNonce,
 	interruptCh chan int32, stopTimer *time.Timer) error {
 	isCancun := w.chainConfig.IsCancun(env.header.Number, env.header.Time)
+	isAmsterdam := w.chainConfig.IsAmsterdam(env.header.Number, env.header.Time)
+	minTxGas := params.TxGas
+	if isAmsterdam {
+		minTxGas = params.TxBaseCost2780
+	}
 
 	// initialize bloom processors
 	processorCapacity := 100
@@ -863,7 +927,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	var prefetchCurr atomic.Pointer[types.Transaction]
 	if prefetchHead := txsPrefetch.PeekWithUnwrap(); prefetchHead != nil {
 		prefetchCurr.Store(prefetchHead)
-		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.StateForPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, &prefetchCurr)
+		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Available(env.evm.GetRules().IsAmsterdam), env.state.StateForPrefetch(), w.chain.JumpDestCache(), w.chain.PrecompileCache().PrefetchView(), *w.chain.GetVMConfig(), stopPrefetchCh, &prefetchCurr)
 	}
 
 	signal := commitInterruptNone
@@ -887,8 +951,8 @@ LOOP:
 			}
 		}
 		// If we don't have enough gas for any further transactions then we're done.
-		if env.gasPool.Gas() < params.TxGas {
-			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
+		if env.gasPool.Available(isAmsterdam) < minTxGas {
+			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", minTxGas)
 			signal = commitInterruptOutOfGas
 			break
 		}
@@ -913,7 +977,7 @@ LOOP:
 		// Retrieve the next transaction and abort if all done.
 		var (
 			ltx *txpool.LazyTransaction
-			txs *transactionsByPriceAndNonce
+			txs *txorder.TransactionsByPriceAndNonce
 		)
 		pltx, ptip := plainTxs.Peek()
 		bltx, btip := blobTxs.Peek()
@@ -935,8 +999,8 @@ LOOP:
 		}
 
 		// If we don't have enough space for the next transaction, skip the account.
-		if env.gasPool.Gas() < ltx.Gas {
-			log.Trace("Not enough gas left for transaction", "hash", ltx.Hash, "left", env.gasPool.Gas(), "needed", ltx.Gas)
+		if env.gasPool.Available(isAmsterdam) < ltx.Gas {
+			log.Trace("Not enough gas left for transaction", "hash", ltx.Hash, "have", env.gasPool, "needed", ltx.Gas)
 			txs.Pop()
 			continue
 		}
@@ -963,10 +1027,12 @@ LOOP:
 		prefetchCurr.Store(tx)
 
 		laneType := env.lane.Classify(tx)
-		if !env.lane.Admits(env.gasPool.Gas(), laneType, tx.Gas()) {
+		if !env.lane.Admits(env.gasPool, laneType, tx.Gas()) {
 			generalLaneYieldedCounter.Inc(1)
 			env.generalLaneYielded++
-			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			logContext := []any{"hash", ltx.Hash, "left", env.gasPool.Available(isAmsterdam)}
+			logContext = append(logContext, paymentLaneLogContext(env.lane.Budget, isAmsterdam)...)
+			log.Trace("Yielding idle payment lane", logContext...)
 			txs.Pop()
 			continue
 		}
@@ -988,7 +1054,7 @@ LOOP:
 			continue
 		}
 		// Start executing the transaction
-		env.state.SetTxContext(tx.Hash(), env.tcount)
+		env.state.SetTxContext(tx.Hash(), env.tcount, uint32(env.tcount+1))
 
 		_, err := w.commitTransaction(env, tx, bloomProcessors)
 		switch {
@@ -1022,8 +1088,9 @@ type generateParams struct {
 	withdrawals       types.Withdrawals // List of withdrawals to include in block.
 	prevWork          *environment
 	beaconRoot        *common.Hash // The beacon root (cancun field).
-	slotNum           *uint64      // The slot number (amsterdam field).
-	noTxs             bool         // Flag whether an empty block without any transaction is expected
+	targetGasLimit    *uint64
+	slotNum           *uint64 // The slot number (amsterdam field).
+	noTxs             bool    // Flag whether an empty block without any transaction is expected
 	forceOverrides    bool
 	overrideExtraData []byte
 	overrideTxs       []*types.Transaction
@@ -1055,10 +1122,15 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		timestamp = parent.Time + 1
 	}
 	// Construct the sealing block header.
+	number := new(big.Int).Add(parent.Number, common.Big1)
+	gasCeil := w.config.GasCeil
+	if w.chainConfig.IsAmsterdam(number, timestamp) && genParams.targetGasLimit != nil {
+		gasCeil = *genParams.targetGasLimit
+	}
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, w.config.GasCeil),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, gasCeil),
 		Time:       timestamp,
 		Coinbase:   genParams.coinbase,
 	}
@@ -1109,8 +1181,16 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	}
 	// Apply EIP-7843.
 	if w.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		uint64SlotNum := header.Number.Uint64()
-		header.SlotNumber = &uint64SlotNum
+		if w.chainConfig.IsInBSC() {
+			// BSC uses block numbers instead of beacon slots.
+			slot := header.Number.Uint64()
+			header.SlotNumber = &slot
+		} else {
+			if genParams.slotNum == nil {
+				return nil, errors.New("missing slot number")
+			}
+			header.SlotNumber = genParams.slotNum
+		}
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
@@ -1121,16 +1201,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		return nil, err
 	}
 
-	// Handle upgrade built-in system contract code
-	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
-
-	if header.ParentBeaconRoot != nil {
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
-	}
-
-	if w.chainConfig.IsPrague(header.Number, header.Time) {
-		core.ProcessParentBlockHash(header.ParentHash, env.evm)
-	}
+	env.bal.Merge(core.PreExecution(context.Background(), header.ParentBeaconRoot, parent, w.chainConfig, env.evm, header.Number, header.Time))
 	return env, nil
 }
 
@@ -1163,9 +1234,12 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
 	var pendingBlobTxs map[common.Address][]*txpool.LazyTransaction
-	if env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
+	if w.chainConfig.IsNotInBSC() || env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
 		filter.BlobTxs = true
 		filter.BlobVersion = types.BlobSidecarVersion0
+		if w.chainConfig.IsNotInBSC() && w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+			filter.BlobVersion = types.BlobSidecarVersion1
+		}
 
 		blobTxsStart := time.Now()
 		pendingBlobTxs, _ = w.eth.TxPool().Pending(filter)
@@ -1211,16 +1285,16 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 
 	// Fill the block with all available pending transactions.
 	if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
+		plainTxs := txorder.NewTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
+		blobTxs := txorder.NewTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
 			return err
 		}
 	}
 	if len(normalPlainTxs) > 0 || len(normalBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
+		plainTxs := txorder.NewTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee)
+		blobTxs := txorder.NewTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
 			return err
@@ -1251,19 +1325,16 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if !genParam.noTxs {
 		if genParam.forceOverrides && len(genParam.overrideTxs) > 0 {
 			for _, tx := range genParam.overrideTxs {
-				work.state.SetTxContext(tx.Hash(), work.tcount)
+				work.state.SetTxContext(tx.Hash(), work.tcount, uint32(work.tcount+1))
 				if _, err := w.commitTransaction(work, tx); err != nil {
 					return &newPayloadResult{err: err}
 				}
 			}
 		} else {
-			interrupt := new(atomic.Int32)
-			timer := time.AfterFunc(*w.config.Recommit, func() {
-				interrupt.Store(commitInterruptTimeout)
-			})
+			timer := time.NewTimer(*w.config.Recommit)
 			defer timer.Stop()
 
-			err := w.fillTransactions(nil, work, nil, nil)
+			err := w.fillTransactions(nil, work, timer, nil)
 			if errors.Is(err, errBlockInterruptedByTimeout) {
 				log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 			}
@@ -1281,51 +1352,48 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 			}
 		}
 	}
-	allLogs := make([]*types.Log, 0)
-	for _, r := range work.receipts {
-		allLogs = append(allLogs, r.Logs...)
-	}
-	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && w.chainConfig.IsNotInBSC() {
-		requests = [][]byte{}
-		// EIP-6110 deposits
-		if err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig); err != nil {
+	if w.chainConfig.IsNotInBSC() {
+		var allLogs []*types.Log
+		for _, receipt := range work.receipts {
+			allLogs = append(allLogs, receipt.Logs...)
+		}
+		var postBAL *bal.ConstructionBlockAccessList
+		requests, postBAL, err = core.PostExecution(context.Background(), w.chainConfig, work.header.Number, work.header.Time, allLogs, genParam.withdrawals, work.evm, uint32(work.tcount+1))
+		if err != nil {
 			return &newPayloadResult{err: err}
 		}
-		// EIP-7002
-		if err := core.ProcessWithdrawalQueue(&requests, work.evm); err != nil {
-			return &newPayloadResult{err: err}
+		work.bal.Merge(postBAL)
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			work.header.RequestsHash = &reqHash
 		}
-		// EIP-7251 consolidations
-		if err := core.ProcessConsolidationQueue(&requests, work.evm); err != nil {
-			return &newPayloadResult{err: err}
-		}
-	}
-	if requests != nil {
-		reqHash := types.CalcRequestsHash(requests)
-		work.header.RequestsHash = &reqHash
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
-	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts)
+	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts, work.bal)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.Verify(block.GasUsed()); err != nil {
+	if err := work.lane.Verify(block.GasUsed(), work.gasPool); err != nil {
 		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
 	}
 
+	if dbErr := work.state.Error(); dbErr != nil {
+		return &newPayloadResult{err: fmt.Errorf("%w: %v", errStateReadFailure, dbErr)}
+	}
 	return &newPayloadResult{
-		block:    block,
-		fees:     fees.ToBig(),
-		sidecars: work.sidecars.BlobTxSidecarList(),
-		stateDB:  work.state,
-		receipts: receipts,
-		requests: requests,
-		witness:  work.witness,
+		revertedTxs: work.revertedTxs,
+		revertedIdx: work.revertedIdx,
+		block:       block,
+		fees:        fees.ToBig(),
+		sidecars:    work.sidecars.BlobTxSidecarList(),
+		stateDB:     work.state,
+		receipts:    receipts,
+		requests:    requests,
+		witness:     work.witness,
 	}
 }
 
@@ -1379,7 +1447,8 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
 	workList := make([]*environment, 0, 10)
-	parentHash := w.chain.CurrentBlock().Hash()
+	parent := w.chain.CurrentBlock()
+	parentHash := parent.Hash()
 	var prevWork *environment
 	// workList clean up
 	defer func() {
@@ -1546,7 +1615,9 @@ LOOP:
 	var simBidBlockReward *uint256.Int
 	var simBidValidatorReward *uint256.Int
 	var localValidatorReward *uint256.Int
-	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+	// Cached builder bids must not replace the validator's Amsterdam activation block.
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 &&
+		!w.chainConfig.IsOnAmsterdam(bestWork.header.Number, parent.Time, bestWork.header.Time) {
 		inturnBlocksGauge.Inc(1)
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
@@ -1673,24 +1744,29 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts)
+		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, env.bal)
 		env.committed = true
 		if err != nil {
 			return err
+		}
+		if dbErr := env.state.Error(); dbErr != nil {
+			return fmt.Errorf("%w: %v", errStateReadFailure, dbErr)
 		}
 		env.txs = body.Transactions
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.Verify(block.GasUsed()); err != nil {
+		if err := env.lane.Verify(block.GasUsed(), env.gasPool); err != nil {
 			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
-		if env.lane.On() {
-			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
-			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+		budget := env.lane.Budget
+		if !env.lane.On() {
+			budget = paymentlane.Budget{}
 		}
+		amsterdam := w.chainConfig.IsAmsterdam(env.header.Number, env.header.Time)
+		recordPaymentLaneMetrics(budget, amsterdam)
 
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
@@ -1700,10 +1776,11 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
-			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
-				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
-				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+			logContext := []any{"number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "generalLaneYielded", env.generalLaneYielded,
+				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start))}
+			logContext = append(logContext, paymentLaneLogContext(budget, amsterdam)...)
+			log.Info("Commit new sealing work", logContext...)
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

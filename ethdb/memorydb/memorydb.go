@@ -295,8 +295,11 @@ type keyvalue struct {
 	value  []byte
 	delete bool
 
-	rangeFrom []byte
-	rangeTo   []byte
+	// rangeDelete marks a range deletion. It cannot be inferred from an
+	// empty key, since the empty key is itself a valid key to delete.
+	rangeDelete bool
+	rangeFrom   []byte
+	rangeTo     []byte
 }
 
 // batch is a write-only memory batch that commits changes to its host
@@ -324,9 +327,10 @@ func (b *batch) Delete(key []byte) error {
 // DeleteRange removes all keys in the range [start, end) from the batch for later committing.
 func (b *batch) DeleteRange(start, end []byte) error {
 	b.writes = append(b.writes, keyvalue{
-		rangeFrom: bytes.Clone(start),
-		rangeTo:   bytes.Clone(end),
-		delete:    true,
+		rangeDelete: true,
+		rangeFrom:   bytes.Clone(start),
+		rangeTo:     bytes.Clone(end),
+		delete:      true,
 	})
 	b.size += len(start) + len(end)
 	return nil
@@ -347,7 +351,7 @@ func (b *batch) Write() error {
 	}
 	for _, entry := range b.writes {
 		if entry.delete {
-			if entry.key != "" {
+			if !entry.rangeDelete {
 				// Single key deletion
 				delete(b.db.db, entry.key)
 			} else {
@@ -379,7 +383,7 @@ func (b *batch) Reset() {
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
 	for _, entry := range b.writes {
 		if entry.delete {
-			if entry.key != "" {
+			if !entry.rangeDelete {
 				// Single key deletion
 				if err := w.Delete([]byte(entry.key)); err != nil {
 					return err

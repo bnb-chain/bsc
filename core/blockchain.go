@@ -26,6 +26,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -98,6 +99,11 @@ var (
 	blockInsertTxSizeGauge  = metrics.NewRegisteredGauge("chain/insert/txsize", nil)
 	blockInsertGasUsedGauge = metrics.NewRegisteredGauge("chain/insert/gasused", nil)
 
+	// Metrics for the ancient store writes performed during snap sync.
+	ancientWriteTimer = metrics.NewRegisteredTimer("chain/ancient/write", nil)
+	ancientSyncTimer  = metrics.NewRegisteredTimer("chain/ancient/sync", nil)
+	ancientBytesMeter = metrics.NewRegisteredMeter("chain/ancient/bytes", nil)
+
 	chainInfoGauge   = metrics.NewRegisteredGaugeInfo("chain/info", nil)
 	chainMgaspsMeter = metrics.NewRegisteredResettingTimer("chain/mgasps", nil)
 
@@ -116,11 +122,15 @@ var (
 	accountCacheMissMeter = metrics.NewRegisteredMeter("chain/account/reads/cache/process/miss", nil)
 	storageCacheHitMeter  = metrics.NewRegisteredMeter("chain/storage/reads/cache/process/hit", nil)
 	storageCacheMissMeter = metrics.NewRegisteredMeter("chain/storage/reads/cache/process/miss", nil)
+	codeCacheHitMeter     = metrics.NewRegisteredMeter("chain/code/reads/cache/process/hit", nil)
+	codeCacheMissMeter    = metrics.NewRegisteredMeter("chain/code/reads/cache/process/miss", nil)
 
 	accountCacheHitPrefetchMeter  = metrics.NewRegisteredMeter("chain/account/reads/cache/prefetch/hit", nil)
 	accountCacheMissPrefetchMeter = metrics.NewRegisteredMeter("chain/account/reads/cache/prefetch/miss", nil)
 	storageCacheHitPrefetchMeter  = metrics.NewRegisteredMeter("chain/storage/reads/cache/prefetch/hit", nil)
 	storageCacheMissPrefetchMeter = metrics.NewRegisteredMeter("chain/storage/reads/cache/prefetch/miss", nil)
+	codeCacheHitPrefetchMeter     = metrics.NewRegisteredMeter("chain/code/reads/cache/prefetch/hit", nil)
+	codeCacheMissPrefetchMeter    = metrics.NewRegisteredMeter("chain/code/reads/cache/prefetch/miss", nil)
 
 	accountReadSingleTimer = metrics.NewRegisteredResettingTimer("chain/account/single/reads", nil)
 	storageReadSingleTimer = metrics.NewRegisteredResettingTimer("chain/storage/single/reads", nil)
@@ -143,6 +153,7 @@ var (
 	blockPrefetchInterruptMeter  = metrics.NewRegisteredMeter("chain/prefetch/interrupts", nil)
 	blockPrefetchTxsInvalidMeter = metrics.NewRegisteredMeter("chain/prefetch/txs/invalid", nil)
 	blockPrefetchTxsValidMeter   = metrics.NewRegisteredMeter("chain/prefetch/txs/valid", nil)
+	blockPrefetchTxsSkippedMeter = metrics.NewRegisteredMeter("chain/prefetch/txs/skipped", nil)
 
 	errInsertionInterrupted = errors.New("insertion is interrupted")
 	errChainStopped         = errors.New("blockchain is stopped")
@@ -202,7 +213,6 @@ const (
 type BlockChainConfig struct {
 	TriesInMemory uint64 // How many tries keeps in memory
 	NoTries       bool   // Insecure settings. Do not have any tries in databases if enabled.
-	PathSyncFlush bool   // Whether sync flush the trienodebuffer of pathdb to disk.
 
 	// Trie database related options
 	TrieCleanLimit       int           // Memory allowance (MB) to use for caching trie nodes in memory
@@ -240,9 +250,10 @@ type BlockChainConfig struct {
 	HistoryPolicy history.HistoryPolicy
 
 	// Misc options
-	NoPrefetch bool            // Whether to disable heuristic state prefetching when processing blocks
-	Overrides  *ChainOverrides // Optional chain config overrides
-	VmConfig   vm.Config       // Config options for the EVM Interpreter
+	NoPrefetch        bool            // Whether to disable heuristic state prefetching when processing blocks
+	NoPrecompileCache bool            // Whether to disable precompile result caching when processing blocks
+	Overrides         *ChainOverrides // Optional chain config overrides
+	VmConfig          vm.Config       // Config options for the EVM Interpreter
 
 	// TxLookupLimit specifies the maximum number of blocks from head for which
 	// transaction hashes will be indexed.
@@ -250,9 +261,6 @@ type BlockChainConfig struct {
 	// If the value is zero, all transactions of the entire chain will be indexed.
 	// If the value is -1, indexing is disabled.
 	TxLookupLimit int64
-
-	// StateSizeTracking indicates whether the state size tracking is enabled.
-	StateSizeTracking bool
 
 	// SlowBlockThreshold is the block execution time threshold beyond which
 	// detailed statistics will be logged. Negative value means disabled (default),
@@ -379,16 +387,18 @@ type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cfg         *BlockChainConfig   // Blockchain configuration
 
-	db            ethdb.Database                   // Low level persistent database to store final content in
-	snaps         *snapshot.Tree                   // Snapshot tree for fast trie leaf access
-	triegc        *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
-	gcproc        time.Duration                    // Accumulates canonical block processing for trie dumping
-	lastWrite     uint64                           // Last block when the state was flushed
-	flushInterval atomic.Int64                     // Time interval (processing time) after which to flush a state
-	triedb        *triedb.Database                 // The database handler for maintaining trie nodes.
-	codedb        *state.CodeDB                    // The database handler for maintaining contract codes.
-	triesInMemory uint64
-	txIndexer     *txIndexer // Transaction indexer, might be nil if not enabled
+	db              ethdb.Database                   // Low level persistent database to store final content in
+	snaps           *snapshot.Tree                   // Snapshot tree for fast trie leaf access
+	triegc          *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
+	gcproc          time.Duration                    // Accumulates canonical block processing for trie dumping
+	lastWrite       uint64                           // Last block when the state was flushed
+	flushInterval   atomic.Int64                     // Time interval (processing time) after which to flush a state
+	triedb          *triedb.Database                 // The database handler for maintaining trie nodes.
+	codedb          *state.CodeDB                    // The database handler for maintaining contract codes.
+	jumpDestCache   vm.JumpDestCache                 // Shared JUMPDEST analysis cache for block processing
+	precompileCache *vm.PrecompileCache              // Shared precompile result cache for block processing, nil when disabled
+	txIndexer       *txIndexer                       // Transaction indexer, might be nil if not enabled
+	triesInMemory   uint64
 
 	hc                       *HeaderChain
 	rmLogsFeed               event.Feed
@@ -436,13 +446,15 @@ type BlockChain struct {
 	stopping      atomic.Bool   // false if chain is running, true when stopped
 	procInterrupt atomic.Bool   // interrupt signaler for block processing
 
+	prefetchLock sync.Mutex     // Orders prefetcher launches against shutdown
+	prefetchWg   sync.WaitGroup // Tracks running block prefetchers
+
 	engine     consensus.Engine
 	prefetcher Prefetcher
 	validator  Validator // Block and state validator interface
 	processor  Processor // Block transaction processor interface
 	forker     *ForkChoice
 	logger     *tracing.Hooks
-	stateSizer *state.SizeTracker // State size tracking
 
 	lastForkReadyAlert time.Time     // Last time there was a fork readiness print out
 	slowBlockThreshold time.Duration // Block execution time threshold beyond which detailed statistics will be logged
@@ -490,12 +502,19 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 		log.Info("")
 	*/
 
+	var pcache *vm.PrecompileCache
+	if !cfg.NoPrecompileCache {
+		pcache = vm.NewPrecompileCache()
+	}
+
 	bc := &BlockChain{
 		chainConfig:        chainConfig,
 		cfg:                cfg,
 		db:                 db,
 		triedb:             triedb,
 		codedb:             state.NewCodeDB(db),
+		jumpDestCache:      NewJumpDestCache(),
+		precompileCache:    pcache,
 		triegc:             prque.New[int64, common.Hash](nil),
 		quit:               make(chan struct{}),
 		badBidBlockCh:      make(chan BadBidBlockEvent, badBidBlockQueueSize),
@@ -663,17 +682,6 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	// Start tx indexer if it's enabled.
 	if bc.cfg.TxLookupLimit >= 0 {
 		bc.txIndexer = newTxIndexer(uint64(bc.cfg.TxLookupLimit), bc)
-	}
-
-	// Start state size tracker
-	if bc.cfg.StateSizeTracking {
-		stateSizer, err := state.NewSizeTracker(bc.db, bc.triedb)
-		if err == nil {
-			bc.stateSizer = stateSizer
-			log.Info("Enabled state size metrics")
-		} else {
-			log.Info("Failed to setup size tracker", "err", err)
-		}
 	}
 
 	// do options before start any routine
@@ -860,6 +868,13 @@ func (bc *BlockChain) loadLastState() error {
 		if block := bc.GetBlockByHash(head); block != nil {
 			bc.currentSnapBlock.Store(block.Header())
 			headFastBlockGauge.Update(int64(block.NumberU64()))
+		} else if header := bc.GetHeaderByHash(head); header != nil {
+			// Blocks before the history cutoff have no body: while snap sync
+			// inserts the headers before the cutoff, the head snap block is one.
+			if cutoff, _ := bc.HistoryPruningCutoff(); header.Number.Uint64() < cutoff {
+				bc.currentSnapBlock.Store(header)
+				headFastBlockGauge.Update(header.Number.Int64())
+			}
 		}
 	}
 
@@ -899,7 +914,7 @@ func (bc *BlockChain) loadLastState() error {
 
 // initializeHistoryPruning sets bc.historyPrunePoint.
 func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
-	freezerTail, _ := bc.db.Tail()
+	freezerTail, _ := bc.db.Tail(rawdb.ChainFreezerBlockDataGroup)
 	policy := bc.cfg.HistoryPolicy
 
 	switch policy.Mode {
@@ -920,10 +935,15 @@ func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
 		}
 		return nil
 
-	case history.KeepPostMerge, history.KeepPostPrague:
+	case history.KeepPostMerge, history.KeepPostPrague, history.KeepPostOsaka, history.KeepCustom:
 		target := policy.Target
+
 		// Already at the target.
 		if freezerTail == target.BlockNumber {
+			// Absent while snap sync has yet to write the cutoff block itself.
+			if hash := bc.GetCanonicalHash(freezerTail); hash != (common.Hash{}) && hash != target.BlockHash {
+				return fmt.Errorf("database tail %d has hash %s, want %s", freezerTail, hash, target.BlockHash)
+			}
 			bc.historyPrunePoint.Store(target)
 			return nil
 		}
@@ -931,11 +951,45 @@ func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
 		if freezerTail > target.BlockNumber {
 			return fmt.Errorf("database pruned beyond requested history (tail=%d, target=%d)", freezerTail, target.BlockNumber)
 		}
+		// Snap sync still inserting the headers before the target: the whole
+		// chain is in the ancient store, which holds headers only (its block
+		// data is empty up to the head), so there is nothing to prune.
+		if frozen, err := bc.db.Ancients(); err == nil && frozen > 0 && latest < frozen {
+			// The block data tail normally sits at the ancient head, but a batch
+			// of headers interrupted between its ancient write and its tail
+			// truncation leaves it behind. The entries in between are then the
+			// nil placeholders written alongside the headers, at most a batch
+			// of them, so they are all checked and the tail is repaired, as no
+			// later insertion moves it otherwise.
+			if freezerTail < frozen {
+				for number := max(freezerTail, 1); number < frozen; number++ {
+					body, err := bc.db.Ancient(rawdb.ChainFreezerBodiesTable, number)
+					if err != nil {
+						return fmt.Errorf("failed to read block body %d: %w", number, err)
+					}
+					if len(body) != 0 {
+						return bc.historyPruningRequired(policy, freezerTail, frozen, latest)
+					}
+					receipts, err := bc.db.Ancient(rawdb.ChainFreezerReceiptTable, number)
+					if err != nil {
+						return fmt.Errorf("failed to read block receipts %d: %w", number, err)
+					}
+					if len(receipts) != 0 {
+						return bc.historyPruningRequired(policy, freezerTail, frozen, latest)
+					}
+				}
+				log.Warn("Repairing chain history tail", "tail", freezerTail, "frozen", frozen)
+				if _, err := bc.db.TruncateTail(rawdb.ChainFreezerBlockDataGroup, frozen); err != nil {
+					return fmt.Errorf("failed to repair chain history tail: %w", err)
+				}
+			}
+			bc.historyPrunePoint.Store(target)
+			return nil
+		}
 		// Database needs pruning (freezerTail < target).
 		if latest != 0 {
-			log.Error(fmt.Sprintf("Chain history mode is configured as %q, but database is not pruned to the target block.", policy.Mode.String()))
-			log.Error(fmt.Sprintf("Run 'geth prune-history --history.chain %s' to prune history.", policy.Mode.String()))
-			return errors.New("history pruning required")
+			frozen, _ := bc.db.Ancients()
+			return bc.historyPruningRequired(policy, freezerTail, frozen, latest)
 		}
 		// Fresh database (latest == 0), will sync from target point.
 		bc.historyPrunePoint.Store(target)
@@ -944,6 +998,15 @@ func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
 	default:
 		return fmt.Errorf("invalid history mode: %d", policy.Mode)
 	}
+}
+
+// historyPruningRequired logs the instructions for pruning the chain history to
+// the configured target and returns the error refusing to start without it.
+func (bc *BlockChain) historyPruningRequired(policy history.HistoryPolicy, tail, frozen, latest uint64) error {
+	log.Error(fmt.Sprintf("Chain history mode is configured as %q, but database is not pruned to the target block.", policy.Mode.String()),
+		"tail", tail, "frozen", frozen, "latest", latest, "target", policy.Target.BlockNumber)
+	log.Error(fmt.Sprintf("Run 'geth prune-history --history.chain %s' to prune history.", policy.String()))
+	return errors.New("history pruning required")
 }
 
 // SetHead rewinds the local chain to a new head. Depending on whether the node
@@ -1074,7 +1137,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 
 		// noState represents if the target state requested for search
 		// is unavailable and impossible to be recovered.
-		noState = !bc.HasState(root) && !bc.stateRecoverable(root)
+		noState = !bc.HasState(root) && !bc.StateRecoverable(root)
 
 		start  = time.Now() // Timestamp the rewinding is restarted
 		logged = time.Now() // Timestamp last progress log was printed
@@ -1101,7 +1164,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		}
 		// Check if the associated state is available or recoverable if
 		// the requested root has already been crossed.
-		if beyondRoot && (bc.HasState(head.Root) || bc.stateRecoverable(head.Root)) {
+		if beyondRoot && (bc.HasState(head.Root) || bc.StateRecoverable(head.Root)) {
 			break
 		}
 		// If pivot block is reached, return the genesis block as the
@@ -1127,14 +1190,11 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 			return head, rootNumber
 		}
 	}
-	// Recover if the target state if it's not available yet.
-	if !bc.HasState(head.Root) {
-		if err := bc.triedb.Recover(head.Root); err != nil {
-			log.Error("Failed to rollback state, resetting to genesis", "err", err)
-			return bc.genesisBlock.Header(), rootNumber
-		}
-	}
-	log.Info("Rewound to block with state", "number", head.Number, "hash", head.Hash())
+	// Note, the state of the located head may not be physically present yet if
+	// it's only recoverable. The actual recovery is intentionally deferred once
+	// the new head is finalized, so that a deep rewind rolls the state back in
+	// one shot.
+	log.Info("Rewound to block with available state", "number", head.Number, "hash", head.Hash())
 	return head, rootNumber
 }
 
@@ -1258,17 +1318,9 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			bc.currentBlock.Store(newHeadBlock)
 			headBlockGauge.Update(int64(newHeadBlock.Number.Uint64()))
 
-			// The head state is missing, which is only possible in the path-based
-			// scheme. This situation occurs when the chain head is rewound below
-			// the pivot point. In this scenario, there is no possible recovery
-			// approach except for rerunning a snap sync. Do nothing here until the
-			// state syncer picks it up.
-			if !bc.HasState(newHeadBlock.Root) {
-				if newHeadBlock.Number.Uint64() != 0 {
-					log.Crit("Chain is stateless at a non-genesis block")
-				}
-				log.Info("Chain is stateless, wait state sync", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash())
-			}
+			// Note, the located head state might not be physically present yet; in
+			// the path-based scheme a recoverable state is materialized in a single
+			// shot once the rewind is finalized.
 		}
 		// Rewind the snap block in a simpleton way to the target head
 		if currentSnapBlock := bc.CurrentSnapBlock(); currentSnapBlock != nil && header.Number.Uint64() < currentSnapBlock.Number.Uint64() {
@@ -1319,6 +1371,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			rawdb.DeleteReceipts(db, hash, num)
 			rawdb.DeleteTd(db, hash, num)
 			rawdb.DeleteBlobSidecars(db, hash, num)
+			rawdb.DeleteAccessList(db, hash, num)
 		}
 		// Todo(rjl493456442) txlookup, log index, etc
 	}
@@ -1337,6 +1390,31 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		} else {
 			log.Warn("Rewinding blockchain to block", "target", head)
 			bc.hc.SetHead(head, updateFn, delFn)
+		}
+	}
+	// In the path-based scheme, the rewind loop above only locates the new head
+	// without materializing its state, so the potentially deep rollback is done
+	// here in a single shot. This rolls back the whole rewound range at once,
+	// performing a single fsync rather than one per block, which is critical when
+	// rewinding a large number of blocks.
+	if newHeadBlock := bc.CurrentBlock(); !bc.HasState(newHeadBlock.Root) {
+		switch {
+		case bc.StateRecoverable(newHeadBlock.Root):
+			if err := bc.triedb.Recover(newHeadBlock.Root); err != nil {
+				// The state was confirmed recoverable just above, so a failure here
+				// can only stem from an unexpected I/O error. There is no safe way to
+				// continue with a half-rolled-back state, hence crash hard.
+				log.Crit("Failed to recover state", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash(), "err", err)
+			}
+		case newHeadBlock.Number.Uint64() != 0:
+			// rewindHead only returns a non-genesis head when its state is present
+			// or recoverable, so this branch should be unreachable.
+			log.Crit("Chain is stateless at a non-genesis block", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash())
+		default:
+			// The chain head was rewound below the snap-sync pivot to a stateless
+			// genesis. There is no recovery approach except rerunning a snap sync;
+			// do nothing here until the state syncer picks it up.
+			log.Info("Chain is stateless, wait state sync", "number", newHeadBlock.Number, "hash", newHeadBlock.Hash())
 		}
 	}
 	// Clear out any stale content from the caches
@@ -1389,7 +1467,7 @@ func (bc *BlockChain) SnapSyncStart() error {
 // given hash, regardless of the chain contents prior to snap sync. It is
 // invoked once snap sync completes and assumes that SnapSyncStart was called
 // previously.
-func (bc *BlockChain) SnapSyncComplete(hash common.Hash) error {
+func (bc *BlockChain) SnapSyncComplete(hash common.Hash, isSnapV2 bool) error {
 	// Make sure that both the block as well at its state trie exists
 	block := bc.GetBlockByHash(hash)
 	if block == nil {
@@ -1400,23 +1478,36 @@ func (bc *BlockChain) SnapSyncComplete(hash common.Hash) error {
 	}
 	defer bc.chainmu.Unlock()
 
-	// Reset the trie database with the fresh snap synced state.
+	// Reset the trie database with the fresh snap synced state. Snap/1 needs
+	// a full trie-to-flat regeneration; snap/2 adopts the already-consistent
+	// flat state and skips that work.
 	root := block.Root()
 	if bc.triedb.Scheme() == rawdb.PathScheme {
-		if err := bc.triedb.Enable(root); err != nil {
-			return err
+		if isSnapV2 {
+			if err := bc.triedb.AdoptSyncedState(root); err != nil {
+				return err
+			}
+		} else {
+			if err := bc.triedb.Enable(root); err != nil {
+				return err
+			}
 		}
 	}
 	if !bc.NoTries() && !bc.HasState(root) {
 		return fmt.Errorf("non existent state [%x..]", root[:4])
 	}
-	// Destroy any existing state snapshot and regenerate it in the background,
-	// also resuming the normal maintenance of any previously paused snapshot.
+
+	// The legacy snapshot tree (hash scheme only) was persistently disabled
+	// before the sync, re-enables it explicitly.
+	//
+	// For snap/2 the downloaded flat state is already complete and root-verified,
+	// so the background generation is unnecessary.
 	if bc.snaps != nil {
-		bc.snaps.Rebuild(root)
+		bc.snaps.Rebuild(root, !isSnapV2)
 	}
 
 	// If all checks out, manually set the head block.
+	rawdb.WriteHeadBlockHash(bc.db, hash)
 	bc.currentBlock.Store(block.Header())
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
@@ -1574,10 +1665,6 @@ func (bc *BlockChain) stopWithoutSaving() {
 	close(bc.quit)
 	bc.InterruptInsert(true)
 
-	// Stop state size tracker
-	if bc.stateSizer != nil {
-		bc.stateSizer.Stop()
-	}
 	// Now wait for all chain modifications to end and persistent goroutines to exit.
 	//
 	// Note: Close waits for the mutex to become available, i.e. any running chain
@@ -1586,6 +1673,11 @@ func (bc *BlockChain) stopWithoutSaving() {
 	// returned.
 	bc.chainmu.Close()
 	bc.wg.Wait()
+
+	// Wait for the block prefetchers
+	bc.prefetchLock.Lock()
+	bc.prefetchWg.Wait()
+	bc.prefetchLock.Unlock()
 }
 
 // Stop stops the blockchain service. If any imports are currently in progress
@@ -1785,6 +1877,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			}
 		}
 		// Write all chain data to ancients.
+		start := time.Now()
 		first := blockChain[0]
 		ptd := bc.GetTd(first.ParentHash(), first.NumberU64()-1)
 		if ptd == nil {
@@ -1797,11 +1890,15 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			return 0, err
 		}
 		size += writeSize
+		ancientWriteTimer.UpdateSince(start)
+		ancientBytesMeter.Mark(writeSize)
 
 		// Sync the ancient store explicitly to ensure all data has been flushed to disk.
+		start = time.Now()
 		if err := bc.db.SyncAncient(); err != nil {
 			return 0, err
 		}
+		ancientSyncTimer.UpdateSince(start)
 		// Write hash to number mappings
 		batch := bc.db.NewBatch()
 		for _, block := range blockChain {
@@ -1824,34 +1921,19 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	// existing local chain segments (reorg around the chain tip). The reorganized part
 	// will be included in the provided chain segment, and stale canonical markers will be
 	// silently rewritten. Therefore, no explicit reorg logic is needed.
-	writeLive := func(blockChain types.Blocks, receiptChain []rlp.RawValue) (int, error) {
-		var (
-			skipPresenceCheck = false
-			batch             = bc.db.NewBatch()
-		)
+	writeLive := func(blockChain types.Blocks, receiptChain []rlp.RawValue) error {
+		batch := bc.db.NewBatch()
 		first := blockChain[0]
 		ptd := bc.GetTd(first.ParentHash(), first.NumberU64()-1)
 		if ptd == nil {
-			return 0, consensus.ErrUnknownAncestor
+			return consensus.ErrUnknownAncestor
 		}
 		tdSum := new(big.Int).Set(ptd)
 		for i, block := range blockChain {
 			tdSum.Add(tdSum, block.Difficulty())
 			// Short circuit insertion if shutting down or processing failed
 			if bc.insertStopped() {
-				return 0, errInsertionInterrupted
-			}
-			if !skipPresenceCheck {
-				// Ignore if the entire data is already known
-				if bc.HasBlock(block.Hash(), block.NumberU64()) {
-					stats.ignored++
-					continue
-				} else {
-					// If block N is not present, neither are the later blocks.
-					// This should be true, but if we are mistaken, the shortcut
-					// here will only cause overwriting of some existing data
-					skipPresenceCheck = true
-				}
+				return errInsertionInterrupted
 			}
 			// Write all the data out into the database
 			rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), tdSum)
@@ -1867,7 +1949,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			// except transaction indexes(will be created once sync is finished).
 			if batch.ValueSize() >= ethdb.IdealBatchSize {
 				if err := batch.Write(); err != nil {
-					return 0, err
+					return err
 				}
 				size += int64(batch.ValueSize())
 				batch.Reset()
@@ -1880,13 +1962,10 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		if batch.ValueSize() > 0 {
 			size += int64(batch.ValueSize())
 			if err := batch.Write(); err != nil {
-				return 0, err
+				return err
 			}
 		}
-		if err := updateHead(blockChain[len(blockChain)-1].Header()); err != nil {
-			return 0, err
-		}
-		return 0, nil
+		return updateHead(blockChain[len(blockChain)-1].Header())
 	}
 
 	// Split the supplied blocks into two groups, according to the
@@ -1903,11 +1982,11 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		}
 	}
 	if index != len(blockChain) {
-		if n, err := writeLive(blockChain[index:], receiptChain[index:]); err != nil {
+		if err := writeLive(blockChain[index:], receiptChain[index:]); err != nil {
 			if err == errInsertionInterrupted {
 				return 0, nil
 			}
-			return n, err
+			return 0, err
 		}
 	}
 	var (
@@ -1961,6 +2040,11 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, statedb *state.StateDB) error {
+	if !bc.HasHeader(block.ParentHash(), block.NumberU64()-1) {
+		return consensus.ErrUnknownAncestor
+	}
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
@@ -1971,18 +2055,17 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	// Irrelevant of the canonical status, write the block itself to the database.
 	//
-	// Note all the components of block(td, hash->number map, header, body, receipts)
+	// Note all the components of block(hash->number map, header, body, receipts)
 	// should be written atomically. BlockBatch is used for containing all components.
-	wg := sync.WaitGroup{}
-	defer wg.Wait()
-	wg.Add(1)
-	go func() {
-		var (
-			batch = bc.db.NewBatch()
-			start = time.Now()
-		)
-		defer batch.Close()
+	var (
+		batch      = bc.db.NewBatch()
+		preimages  = statedb.Preimages()
+		blockWrite = make(chan struct{})
+	)
+	defer batch.Close()
 
+	go func() {
+		start := time.Now()
 		rawdb.WriteTd(batch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(batch, block)
 		rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receipts)
@@ -1990,46 +2073,42 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
-		rawdb.WritePreimages(batch, statedb.Preimages())
+		rawdb.WritePreimages(batch, preimages)
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}
-		log.Debug("Committed block data", "size", common.StorageSize(batch.ValueSize()), "elapsed", common.PrettyDuration(time.Since(start)))
+		elapsed := time.Since(start)
+		log.Debug("Committed block data", "size", common.StorageSize(batch.ValueSize()), "elapsed", common.PrettyDuration(elapsed))
+		blockWriteTimer.Update(elapsed)
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
 		bc.cacheReceipts(block.Hash(), receipts, block)
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
 		}
-		wg.Done()
+		close(blockWrite)
 	}()
+	defer func() { <-blockWrite }()
 
 	var (
-		err           error
-		root          common.Hash
-		isEIP158      = bc.chainConfig.IsEIP158(block.Number())
-		isCancun      = bc.chainConfig.IsCancun(block.Number(), block.Time())
-		hasStateHook  = bc.logger != nil && bc.logger.OnStateUpdate != nil
-		hasStateSizer = bc.stateSizer != nil
+		err          error
+		root         common.Hash
+		hasStateHook = bc.logger != nil && bc.logger.OnStateUpdate != nil
+		rules        = bc.chainConfig.Rules(block.Number(), block.Difficulty().Sign() == 0, block.Time())
 	)
-	if hasStateHook || hasStateSizer {
-		r, update, err := statedb.CommitWithUpdate(block.NumberU64(), isEIP158, isCancun)
+	if hasStateHook {
+		r, update, err := statedb.CommitWithUpdate(rules, block.NumberU64())
 		if err != nil {
 			return err
 		}
-		if hasStateHook {
-			trUpdate, err := update.ToTracingUpdate()
-			if err != nil {
-				return err
-			}
-			bc.logger.OnStateUpdate(trUpdate)
+		trUpdate, err := update.ToTracingUpdate()
+		if err != nil {
+			return err
 		}
-		if hasStateSizer {
-			bc.stateSizer.Notify(update)
-		}
+		bc.logger.OnStateUpdate(trUpdate)
 		root = r
 	} else {
-		root, err = statedb.Commit(block.NumberU64(), isEIP158, isCancun)
+		root, err = statedb.Commit(rules, block.NumberU64())
 		if err != nil {
 			return err
 		}
@@ -2612,6 +2691,131 @@ type ExecuteConfig struct {
 	EnableWitnessStats bool
 }
 
+// overrideTracerActivation returns the EVM configuration to execute a block with, honoring the
+// caller's tracing intent.
+func (bc *BlockChain) overrideTracerActivation(tracerOn bool) vm.Config {
+	vmConfig := bc.cfg.VmConfig
+	if !tracerOn {
+		vmConfig.Tracer = nil
+	}
+	return vmConfig
+}
+
+// useBALExecution reports whether the block will be executed through the
+// BAL-driven parallel processor.
+func (bc *BlockChain) useBALExecution(block *types.Block, vmConfig vm.Config, wantWitness bool) bool {
+	return supportsParallelExecution(block, bc.chainConfig, wantWitness, vmConfig.Tracer != nil, vmConfig.DisableParallelExecution)
+}
+
+// setupExecutionState builds the state instance that block execution reads from
+// and writes to.
+//
+//   - BAL-driven parallel execution (Amsterdam blocks carrying an access list):
+//     a single reader(the underlying state reader wrapped with a shared cache
+//     and an access-list-hint prefetcher) feeds both the canonical state and
+//     every per-transaction state built on top of it.
+//
+//   - Sequential execution with prefetching: the main processor and a
+//     speculative whole-block prefetcher share one cached reader.
+//
+//   - No prefetching: a plain reader, with a no-op cleanup.
+func (bc *BlockChain) setupExecutionState(parentRoot common.Hash, block *types.Block, vmConfig vm.Config, config ExecuteConfig, interrupt *atomic.Bool, execIndex *atomic.Int64) (*state.StateDB, func(*blockProcessingResult), error) {
+	noop := func(*blockProcessingResult) {}
+
+	var sdb state.Database
+	if bc.chainConfig.IsUBT(block.Number(), block.Time()) {
+		sdb = state.NewUBTDatabase(bc.triedb, bc.codedb)
+	} else {
+		sdb = state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps)
+	}
+	type prewarmReader interface {
+		// ReadersWithCacheStats creates a pair of state readers that share the
+		// same underlying state reader and internal state cache, while maintaining
+		// separate statistics respectively.
+		ReadersWithCacheStats(stateRoot common.Hash) (state.Reader, state.Reader, error)
+	}
+	wantWitness := config.StatelessSelfValidation || config.MakeWitness
+
+	switch warmer, ok := sdb.(prewarmReader); {
+	case bc.useBALExecution(block, vmConfig, wantWitness):
+		base, err := sdb.Reader(parentRoot)
+		if err != nil {
+			return nil, nil, err
+		}
+		reader, stop := state.NewBlockExecutionReader(base, prefetchHint(block.AccessList()), runtime.NumCPU())
+		statedb, err := state.NewWithReader(parentRoot, sdb, reader)
+		if err != nil {
+			stop()
+			return nil, nil, err
+		}
+		return statedb, func(*blockProcessingResult) { stop() }, nil
+
+	case (!bc.chainConfig.NeedBadSharedStorage(block.Number()) && (bc.cfg.NoPrefetch || len(block.Transactions()) < prefetchTxNumber)) || !ok:
+		statedb, err := state.New(parentRoot, sdb)
+		if err != nil {
+			return nil, nil, err
+		}
+		return statedb, noop, nil
+
+	default:
+		// The main processor and the speculative prefetcher share the same reader
+		// with a local cache for mitigating the overhead of state access.
+		prefetch, process, err := warmer.ReadersWithCacheStats(parentRoot)
+		if err != nil {
+			return nil, nil, err
+		}
+		throwaway, err := state.NewWithReader(parentRoot, sdb, prefetch)
+		if err != nil {
+			return nil, nil, err
+		}
+		statedb, err := state.NewWithReader(parentRoot, sdb, process)
+		if err != nil {
+			return nil, nil, err
+		}
+		if bc.trackPrefetch() {
+			go func(start time.Time) {
+				defer bc.prefetchWg.Done()
+
+				// Disable tracing for prefetcher executions.
+				vmCfg := vmConfig
+				vmCfg.Tracer = nil
+				bc.prefetcher.Prefetch(block, throwaway, bc.jumpDestCache, bc.precompileCache.PrefetchView(), vmCfg, interrupt, execIndex)
+
+				blockPrefetchExecuteTimer.Update(time.Since(start))
+				if interrupt.Load() {
+					blockPrefetchInterruptMeter.Mark(1)
+				}
+			}(time.Now())
+		}
+
+		return statedb, func(result *blockProcessingResult) {
+			// Upload the statistics of reader at the end.
+			if result == nil {
+				return
+			}
+			if stater, ok := prefetch.(state.ReaderStater); ok {
+				result.stats.StatePrefetchCacheStats = stater.GetStats()
+			}
+			if stater, ok := process.(state.ReaderStater); ok {
+				result.stats.StateReadCacheStats = stater.GetStats()
+			}
+		}, nil
+	}
+}
+
+// trackPrefetch registers a block prefetcher, or returns false if the
+// chain is stopping.
+func (bc *BlockChain) trackPrefetch() bool {
+	bc.prefetchLock.Lock()
+	defer bc.prefetchLock.Unlock()
+
+	if bc.stopping.Load() {
+		return false
+	}
+	bc.prefetchWg.Add(1)
+	return true
+}
+
 // ProcessBlock executes and validates the given block. If there was no error
 // it writes the block and associated state to database.
 func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, block *types.Block, config ExecuteConfig) (result *blockProcessingResult, blockEndErr error) {
@@ -2620,76 +2824,27 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 		startTime = time.Now()
 		statedb   *state.StateDB
 		interrupt atomic.Bool
-		sdb       state.Database
+		execIndex atomic.Int64
 	)
 	defer interrupt.Store(true) // terminate the prefetch at the end
+	execIndex.Store(-1)         // no transaction executed yet
 
-	if bc.chainConfig.IsUBT(block.Number(), block.Time()) {
-		sdb = state.NewUBTDatabase(bc.triedb, bc.codedb)
-	} else {
-		sdb = state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps)
-	}
-	// If prefetching is enabled, run that against the current state to pre-cache
-	// transactions and probabilistically some of the account/storage trie nodes.
-	//
-	// Note: the main processor and prefetcher share the same reader with a local
-	// cache for mitigating the overhead of state access.
-	type prewarmReader interface {
-		// ReadersWithCacheStats creates a pair of state readers that share the
-		// same underlying state reader and internal state cache, while maintaining
-		// separate statistics respectively.
-		ReadersWithCacheStats(stateRoot common.Hash) (state.Reader, state.Reader, error)
-	}
-	warmer, ok := sdb.(prewarmReader)
+	// Resolve the EVM config for this execution before any component consults
+	// it. The live tracer stored in bc.cfg.VmConfig is a stateful, node-wide
+	// singleton whose hooks are only safe to drive from the chain-insertion
+	// goroutine, so it is attached only when the caller opts in via
+	// EnableTracer. Both the reader topology (setupExecutionState) and the
+	// execution strategy (StateProcessor.Process) key off this resolved
+	// config, keeping the BAL-parallel/sequential decision consistent.
+	vmConfig := bc.overrideTracerActivation(config.EnableTracer)
 
-	needBadSharedStorage := bc.chainConfig.NeedBadSharedStorage(block.Number())
-	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber)
-	if !needPrefetch || !ok {
-		statedb, err = state.New(parentRoot, sdb)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// If prefetching is enabled, run that against the current state to pre-cache
-		// transactions and probabilistically some of the account/storage trie nodes.
-		//
-		// Note: the main processor and prefetcher share the same reader with a local
-		// cache for mitigating the overhead of state access.
-		prefetch, process, err := warmer.ReadersWithCacheStats(parentRoot)
-		if err != nil {
-			return nil, err
-		}
-		throwaway, err := state.NewWithReader(parentRoot, sdb, prefetch)
-		if err != nil {
-			return nil, err
-		}
-		statedb, err = state.NewWithReader(parentRoot, sdb, process)
-		if err != nil {
-			return nil, err
-		}
-		// Upload the statistics of reader at the end
-		defer func() {
-			if result != nil {
-				if stater, ok := prefetch.(state.ReaderStater); ok {
-					result.stats.StatePrefetchCacheStats = stater.GetStats()
-				}
-				if stater, ok := process.(state.ReaderStater); ok {
-					result.stats.StateReadCacheStats = stater.GetStats()
-				}
-			}
-		}()
-		go func(start time.Time, throwaway *state.StateDB, block *types.Block) {
-			// Disable tracing for prefetcher executions.
-			vmCfg := bc.cfg.VmConfig
-			vmCfg.Tracer = nil
-			bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
-
-			blockPrefetchExecuteTimer.Update(time.Since(start))
-			if interrupt.Load() {
-				blockPrefetchInterruptMeter.Mark(1)
-			}
-		}(time.Now(), throwaway, block)
+	// Set up the state reader feeding execution, along with a cleanup to run once
+	// processing is complete (stop the prefetcher, upload reader statistics).
+	statedb, cleanup, err := bc.setupExecutionState(parentRoot, block, vmConfig, config, &interrupt, &execIndex)
+	if err != nil {
+		return nil, err
 	}
+	defer func() { cleanup(result) }()
 
 	// If we are past Byzantium, enable prefetching to pull in trie node paths
 	// while processing transactions. Before Byzantium the prefetcher is mostly
@@ -2704,7 +2859,11 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 			if err != nil {
 				return nil, err
 			}
+			defer witness.ReportMetrics(block.NumberU64())
 		}
+		// The prefetcher warms trie node paths in the background.
+		// - Sequential execution feeds it from the EVM as it touches state;
+		// - BAL-driven parallel execution feeds it from the block access list;
 		statedb.StartPrefetcher("chain", witness)
 		defer statedb.StopPrefetcher()
 	}
@@ -2730,9 +2889,9 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	// Process block using the parent state as reference point
 	pstart := time.Now()
 	statedb.SetExpectedStateRoot(block.Root())
-	statedb.SetNeedBadSharedStorage(needBadSharedStorage)
+	statedb.SetNeedBadSharedStorage(bc.chainConfig.NeedBadSharedStorage(block.Number()))
 	pctx, _, spanEnd := telemetry.StartSpan(ctx, "bc.processor.Process")
-	res, err := bc.processor.Process(pctx, block, statedb, bc.cfg.VmConfig)
+	res, err := bc.processor.Process(pctx, block, statedb, bc.jumpDestCache, bc.precompileCache, vmConfig, &execIndex)
 	spanEnd(&err)
 	if err != nil {
 		bc.reportBadBlock(block, res, err)
@@ -2770,7 +2929,7 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 		task := types.NewBlockWithHeader(context).WithBody(*block.Body())
 
 		// Run the stateless self-cross-validation
-		crossStateRoot, crossReceiptRoot, err := ExecuteStateless(ctx, bc.chainConfig, bc.cfg.VmConfig, task, witness)
+		crossStateRoot, crossReceiptRoot, err := ExecuteStateless(ctx, bc.chainConfig, vmConfig, task, witness)
 		if err != nil {
 			return nil, fmt.Errorf("stateless self-validation failed: %v", err)
 		}
@@ -2811,10 +2970,17 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	stats.Validation = vtime - (statedb.AccountHashes + statedb.AccountUpdates + statedb.StorageUpdates) // The time spent on block validation
 	stats.CrossValidation = xvtime                                                                       // The time spent on stateless cross validation
 
+	// Attach the computed block access list so it gets persisted alongside the
+	// block. The validator has already verified the hash matches the header.
+	// BAL is only meaningful from Amsterdam onward; skip pre-Amsterdam blocks
+	// to avoid persisting and serving empty BALs over the network.
+	if enc, _ := res.encodedAccessList(); enc != nil && block.AccessList() == nil && bc.chainConfig.IsAmsterdam(block.Number(), block.Time()) {
+		block = block.WithAccessListUnsafe(enc)
+	}
+
 	// Write the block to the chain and get the status.
 	var status WriteStatus
 	if config.WriteState {
-		wstart := time.Now()
 		if !config.WriteHead {
 			// Don't set the head, only insert the block
 			err = bc.writeBlockWithState(block, res.Receipts, statedb)
@@ -2828,11 +2994,6 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 		stats.AccountCommits = statedb.AccountCommits  // Account commits are complete, we can mark them
 		stats.StorageCommits = statedb.StorageCommits  // Storage commits are complete, we can mark them
 		stats.DatabaseCommit = statedb.DatabaseCommits // Database commits are complete, we can mark them
-		stats.BlockWrite = time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.DatabaseCommits
-	}
-	// Report the collected witness statistics
-	if witness != nil {
-		witness.ReportMetrics(block.NumberU64())
 	}
 	elapsed := time.Since(startTime) + 1 // prevent zero division
 	blockInsertTxSizeGauge.Update(int64(len(block.Transactions())))
@@ -2937,7 +3098,7 @@ func (bc *BlockChain) insertSideChain(ctx context.Context, block *types.Block, i
 	)
 	parent := it.previous()
 	for parent != nil && !bc.HasState(parent.Root) {
-		if bc.stateRecoverable(parent.Root) {
+		if bc.StateRecoverable(parent.Root) {
 			if err := bc.triedb.Recover(parent.Root); err != nil {
 				return nil, 0, err
 			}
@@ -3001,7 +3162,7 @@ func (bc *BlockChain) recoverAncestors(ctx context.Context, block *types.Block, 
 		parent  = block
 	)
 	for parent != nil && !bc.HasState(parent.Root()) {
-		if bc.stateRecoverable(parent.Root()) {
+		if bc.StateRecoverable(parent.Root()) {
 			if err := bc.triedb.Recover(parent.Root()); err != nil {
 				return common.Hash{}, err
 			}
@@ -3540,11 +3701,15 @@ func (bc *BlockChain) logForkReadiness(block *types.Block) {
 // summarizeBadBlock returns a string summarizing the bad block and other
 // relevant information.
 func summarizeBadBlock(block *types.Block, receipts []*types.Receipt, config *params.ChainConfig, err error) string {
-	var receiptString string
+	var receiptString strings.Builder
 	for i, receipt := range receipts {
-		receiptString += fmt.Sprintf("\n  %d: cumulative: %v gas: %v contract: %v status: %v tx: %v logs: %v bloom: %x state: %x",
+		logStrings := make([]string, 0, len(receipt.Logs))
+		for _, l := range receipt.Logs {
+			logStrings = append(logStrings, fmt.Sprintf("{address: %v, topics: %v, data: %#x}", l.Address, l.Topics, l.Data))
+		}
+		fmt.Fprintf(&receiptString, "\n  %d: cumulative: %v gas: %v contract: %v status: %v tx: %v logs: [%s] bloom: %x state: %x",
 			i, receipt.CumulativeGasUsed, receipt.GasUsed, receipt.ContractAddress.Hex(),
-			receipt.Status, receipt.TxHash.Hex(), receipt.Logs, receipt.Bloom, receipt.PostState)
+			receipt.Status, receipt.TxHash.Hex(), strings.Join(logStrings, ", "), receipt.Bloom, receipt.PostState)
 	}
 	version, vcs := version.Info()
 	platform := fmt.Sprintf("%s %s %s %s", version, runtime.Version(), runtime.GOARCH, runtime.GOOS)
@@ -3570,10 +3735,10 @@ Miner: %v
 IsBidBlock: %v%v
 Error: %v
 Platform: %v%v
-Chain config: %#v
+Chain config: %v
 Receipts: %v
 ##############################
-`, block.Number(), block.Hash(), block.Coinbase(), isBidBlock, builderString, err, platform, vcs, config, receiptString)
+`, block.Number(), block.Hash(), block.Coinbase(), isBidBlock, builderString, err, platform, vcs, config, receiptString.String())
 }
 
 // InsertHeaderChain attempts to insert the given header chain in to the local
@@ -3671,7 +3836,7 @@ func (bc *BlockChain) InsertHeadersBeforeCutoff(headers []*types.Header) (int, e
 	}
 	// Truncate the useless chain segment (zero bodies and receipts) in the
 	// ancient store.
-	if _, err := bc.db.TruncateTail(last.Number.Uint64() + 1); err != nil {
+	if _, err := bc.db.TruncateTail(rawdb.ChainFreezerBlockDataGroup, last.Number.Uint64()+1); err != nil {
 		return 0, err
 	}
 	// Last step update all in-memory markers
@@ -3700,11 +3865,6 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memory tries flushAlloc interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
-}
-
-// StateSizer returns the state size tracker, or nil if it's not initialized
-func (bc *BlockChain) StateSizer() *state.SizeTracker {
-	return bc.stateSizer
 }
 
 func (bc *BlockChain) GetBlockStats(hash common.Hash) *BlockStats {
@@ -3736,7 +3896,7 @@ func (bc *BlockChain) PruneBlockHistory(blockHistory uint64) error {
 	if pruneHeight > ancientHead {
 		pruneHeight = ancientHead
 	}
-	old, err := bc.db.TruncateTail(pruneHeight)
+	old, err := bc.db.TruncateTail(rawdb.ChainFreezerBlockDataGroup, pruneHeight)
 	if err != nil {
 		return err
 	}

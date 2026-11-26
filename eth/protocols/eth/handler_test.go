@@ -20,6 +20,7 @@ import (
 	"bytes"
 	rand2 "crypto/rand"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -40,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
@@ -66,9 +68,10 @@ func u64(val uint64) *uint64 { return &val }
 // purpose is to allow testing the request/reply workflows and wire serialization
 // in the `eth` protocol without actually doing any data processing.
 type testBackend struct {
-	db     ethdb.Database
-	chain  *core.BlockChain
-	txpool *txpool.TxPool
+	db       ethdb.Database
+	chain    *core.BlockChain
+	txpool   *txpool.TxPool
+	blobpool *blobpool.BlobPool
 }
 
 // newTestBackend creates an empty chain and wraps it into a mock backend.
@@ -147,9 +150,10 @@ func newTestBackendWithGenerator(blocks int, shanghai bool, cancun bool, generat
 	txpool, _ := txpool.New(txconfig.PriceLimit, chain, []txpool.SubPool{legacyPool, blobPool})
 
 	return &testBackend{
-		db:     db,
-		chain:  chain,
-		txpool: txpool,
+		db:       db,
+		chain:    chain,
+		txpool:   txpool,
+		blobpool: blobPool,
 	}
 }
 
@@ -161,6 +165,7 @@ func (b *testBackend) close() {
 
 func (b *testBackend) Chain() *core.BlockChain { return b.chain }
 func (b *testBackend) TxPool() TxPool          { return b.txpool }
+func (b *testBackend) BlobPool() BlobPool      { return b.blobpool }
 
 func (b *testBackend) RunPeer(peer *Peer, handler Handler) error {
 	// Normally the backend would do peer maintenance and handshakes. All that
@@ -544,6 +549,79 @@ func TestHashBody(t *testing.T) {
 	}
 }
 
+func TestCheckBodyItemCounts(t *testing.T) {
+	// The smallest possible encodings must be accepted.
+	txs := []*types.Transaction{
+		types.NewTx(&types.LegacyTx{}),
+		types.NewTx(&types.AccessListTx{}),
+		types.NewTx(&types.DynamicFeeTx{}),
+	}
+	wds := []*types.Withdrawal{{}, {}}
+	for _, tx := range txs {
+		enc, _ := tx.MarshalBinary()
+		if tx.Type() == types.LegacyTxType && len(enc) != minTxEncodedSize {
+			t.Fatalf("minimal legacy tx has size %d, want %d", len(enc), minTxEncodedSize)
+		}
+	}
+	if enc, _ := rlp.EncodeToBytes(wds[0]); len(enc) != minWithdrawalEncodedSize {
+		t.Fatalf("minimal withdrawal has size %d, want %d", len(enc), minWithdrawalEncodedSize)
+	}
+	wdList := encodeRL(wds)
+	body := BlockBody{Transactions: encodeRL(txs), Withdrawals: &wdList}
+	if err := checkBodyItemCounts(&body); err != nil {
+		t.Fatalf("valid body rejected: %v", err)
+	}
+
+	// Lists of elements too small to be valid must be rejected.
+	var tinyTxs rlp.RawList[*types.Transaction]
+	var tinyWds rlp.RawList[*types.Withdrawal]
+	for range 1000 {
+		tinyTxs.AppendRaw([]byte{0x01})
+		tinyWds.AppendRaw([]byte{0x01})
+	}
+	if err := checkBodyItemCounts(&BlockBody{Transactions: tinyTxs}); err == nil {
+		t.Fatal("body with tiny transactions accepted")
+	}
+	if err := checkBodyItemCounts(&BlockBody{Withdrawals: &tinyWds}); err == nil {
+		t.Fatal("body with tiny withdrawals accepted")
+	}
+}
+
+func TestCheckReceiptItemCounts(t *testing.T) {
+	// The smallest possible encodings must be accepted.
+	receipts := []*types.Receipt{
+		{Type: types.LegacyTxType, Status: types.ReceiptStatusFailed},
+		{Type: types.DynamicFeeTxType, Status: types.ReceiptStatusSuccessful},
+	}
+	for _, tr := range receipts {
+		r := newReceipt(tr)
+		enc, _ := rlp.EncodeToBytes(&r)
+		if len(enc) != minReceiptEncodedSize {
+			t.Fatalf("minimal receipt has size %d, want %d", len(enc), minReceiptEncodedSize)
+		}
+		var dec Receipt
+		if err := dec.decode(enc); err != nil {
+			t.Fatalf("minimal receipt is not decodable: %v", err)
+		}
+	}
+	if err := checkReceiptItemCounts([]*ReceiptList{NewReceiptList(receipts)}); err != nil {
+		t.Fatalf("valid receipts rejected: %v", err)
+	}
+
+	// Lists of elements too small to be valid must be rejected. The two-byte
+	// element is a list holding a single empty string, which passes the
+	// structural checks in EncodeForStorage.
+	for _, elem := range [][]byte{{0x01}, {0xc1, 0x80}} {
+		var tiny ReceiptList
+		for range 1000 {
+			tiny.items.AppendRaw(elem)
+		}
+		if err := checkReceiptItemCounts([]*ReceiptList{&tiny}); err == nil {
+			t.Fatalf("receipt list of %d-byte elements accepted", len(elem))
+		}
+	}
+}
+
 // Tests that the transaction receipts can be retrieved based on hashes.
 func TestGetBlockReceipts68(t *testing.T) { testGetBlockReceipts(t, ETH68) }
 
@@ -714,6 +792,103 @@ func testGetBlockPartialReceipts(t *testing.T, protocol int) {
 		List:                rawPartialReceipt,
 	}); err != nil {
 		t.Errorf("receipts mismatch: %v", err)
+	}
+}
+
+// makeTestBAL creates a BAL with a given address access and balance change,
+// and returns its RLP encoding. This is used for injection into the chain DB via
+// rawdb.WriteAccessListRLP.
+// TODO: Should be deleted when bal is integrated with chain maker.
+func makeTestBAL(t *testing.T, addr common.Address) rlp.RawValue {
+	cb := bal.NewConstructionBlockAccessList()
+	cb.AccountRead(addr)
+	cb.BalanceChange(0, addr, uint256.NewInt(1))
+	var buf bytes.Buffer
+	if err := cb.EncodeRLP(&buf); err != nil {
+		t.Fatalf("failed to encode BAL: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// TestGetBlockAccessLists checks serving part of bal exchange
+func TestGetBlockAccessLists(t *testing.T) { testGetBlockAccessLists(t, ETH71) }
+
+func testGetBlockAccessLists(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	backend := newTestBackend(5)
+	defer backend.close()
+
+	peer, _ := newTestPeer("peer", protocol, backend)
+	defer peer.close()
+
+	bal1 := makeTestBAL(t, common.Address{0x11})
+	bal2 := makeTestBAL(t, common.Address{0x22})
+
+	var (
+		hashes []common.Hash
+		expect rlp.RawList[rlp.RawValue]
+	)
+	for i := uint64(0); i <= backend.chain.CurrentBlock().Number.Uint64(); i++ {
+		block := backend.chain.GetBlockByNumber(i)
+		hashes = append(hashes, block.Hash())
+		switch i {
+		case 1:
+			rawdb.WriteAccessListRLP(backend.db, block.Hash(), i, bal1)
+			expect.AppendRaw(bal1)
+		case 3:
+			rawdb.WriteAccessListRLP(backend.db, block.Hash(), i, bal2)
+			expect.AppendRaw(bal2)
+		default:
+			expect.AppendRaw(rlp.EmptyString)
+		}
+	}
+
+	p2p.Send(peer.app, GetBlockAccessListsMsg, &GetBlockAccessListsPacket{
+		RequestId:                  123,
+		GetBlockAccessListsRequest: hashes,
+	})
+	if err := p2p.ExpectMsg(peer.app, BlockAccessListsMsg, &BlockAccessListPacket{
+		RequestId: 123,
+		List:      expect,
+	}); err != nil {
+		t.Errorf("BAL response mismatch: %v", err)
+	}
+}
+
+// TestBlockAccessListsUnavailableDecode checks that a BlockAccessLists response
+// containing the EIP-8159 unavailability marker (RLP empty string).
+func TestBlockAccessListsUnavailableDecode(t *testing.T) {
+	t.Parallel()
+
+	balRaw := makeTestBAL(t, common.Address{0x11})
+
+	// Assemble a response the way the serving side does, with the middle
+	// entry signaled as unavailable.
+	var list rlp.RawList[rlp.RawValue]
+	list.AppendRaw(balRaw)
+	list.AppendRaw(rlp.EmptyString)
+	list.AppendRaw(balRaw)
+
+	enc, err := rlp.EncodeToBytes(&BlockAccessListPacket{RequestId: 42, List: list})
+	if err != nil {
+		t.Fatalf("failed to encode packet: %v", err)
+	}
+	var packet BlockAccessListPacket
+	if err := rlp.DecodeBytes(enc, &packet); err != nil {
+		t.Fatalf("failed to decode packet: %v", err)
+	}
+	bals, err := packet.List.Items()
+	if err != nil {
+		t.Fatalf("failed to decode BAL entries: %v", err)
+	}
+	if len(bals) != 3 {
+		t.Fatalf("wrong entry count: got %d, want 3", len(bals))
+	}
+	for i, want := range [][]byte{balRaw, rlp.EmptyString, balRaw} {
+		if !bytes.Equal(bals[i], want) {
+			t.Errorf("entry %d mismatch: got %x, want %x", i, bals[i], want)
+		}
 	}
 }
 
@@ -902,7 +1077,7 @@ func TestHandleNewBlock(t *testing.T) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, backend.chain.Config())
+	localEth := NewPeer(ETH68, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil, backend.chain.Config())
 
 	// Run the tests
 	for _, tc := range testCases {
@@ -915,13 +1090,57 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 }
 
+func TestHandleNewBlockBALRetry(t *testing.T) {
+	backend := newTestBackendWithGenerator(0, true, true, nil)
+	defer backend.close()
+	backend.chain.Config().PragueTime = u64(0)
+	backend.chain.Config().AmsterdamTime = u64(0)
+	header := types.CopyHeader(backend.chain.CurrentBlock())
+	header.BlockAccessListHash = &types.EmptyBlockAccessListHash
+	header.SlotNumber = u64(0)
+	header.ParentBeaconRoot = new(common.Hash)
+	header.RequestsHash = &types.EmptyRequestsHash
+	block := types.NewBlockWithHeader(header)
+	td := big.NewInt(1)
+	app, net := p2p.MsgPipe()
+	defer app.Close()
+	peer := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "", nil), net, nil, nil, backend.chain.Config())
+	defer peer.Close()
+	peer.AsyncSendNewBlock(block, td, func() ([]byte, error) {
+		return EncodeNewBlockWithBAL(block, td)
+	})
+	if peer.KnownBlock(block.Hash()) {
+		t.Fatal("a block without its BAL must remain eligible for announcement after import")
+	}
+	for _, tc := range []struct {
+		amsterdam  uint64
+		attachment []byte
+		known      bool
+		wantErr    bool
+	}{
+		{block.Time() + 1, rlp.EmptyList, false, true},
+		{block.Time(), nil, false, false},
+		{block.Time(), rlp.EmptyList, true, false},
+	} {
+		backend.chain.Config().AmsterdamTime = &tc.amsterdam
+		size, payload, err := rlp.EncodeToReader(&NewBlockPacket{Block: block, TD: td, BlockAccessList: tc.attachment})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = handleNewBlock(backend, p2p.Msg{Size: uint32(size), Payload: payload}, peer)
+		if (err != nil) != tc.wantErr || peer.KnownBlock(block.Hash()) != tc.known {
+			t.Fatalf("attachment %x: error %v, known %t", tc.attachment, err, peer.KnownBlock(block.Hash()))
+		}
+	}
+}
+
 func TestHandleNewBlockhashes(t *testing.T) {
 	t.Parallel()
 
 	backend := newTestBackendWithGenerator(1, false, false, nil)
 	defer backend.close()
 
-	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "peer", nil), nil, nil, backend.chain.Config())
+	localEth := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "peer", nil), nil, nil, nil, backend.chain.Config())
 
 	newPacket := func(n int) NewBlockHashesPacket {
 		ann := make(NewBlockHashesPacket, n)
@@ -994,7 +1213,7 @@ func testGetPooledTransaction(t *testing.T, blobTx bool) {
 		emptyBlob          = kzg4844.Blob{}
 		emptyBlobs         = []kzg4844.Blob{emptyBlob}
 		emptyBlobCommit, _ = kzg4844.BlobToCommitment(&emptyBlob)
-		emptyBlobProof, _  = kzg4844.ComputeBlobProof(&emptyBlob, emptyBlobCommit)
+		emptyCellProof, _  = kzg4844.ComputeCellProofs(&emptyBlob)
 		emptyBlobHash      = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
 	)
 	backend := newTestBackendWithGenerator(0, true, true, nil)
@@ -1018,7 +1237,7 @@ func testGetPooledTransaction(t *testing.T, blobTx bool) {
 			To:         testAddr,
 			BlobHashes: []common.Hash{emptyBlobHash},
 			BlobFeeCap: uint256.MustFromBig(common.Big1),
-			Sidecar:    types.NewBlobTxSidecar(types.BlobSidecarVersion0, emptyBlobs, []kzg4844.Commitment{emptyBlobCommit}, []kzg4844.Proof{emptyBlobProof}),
+			Sidecar:    types.NewBlobTxSidecar(types.BlobSidecarVersion1, emptyBlobs, []kzg4844.Commitment{emptyBlobCommit}, emptyCellProof),
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -1053,10 +1272,98 @@ func testGetPooledTransaction(t *testing.T, blobTx bool) {
 	}
 }
 
+// Tests that pooled transaction retrievals stop after maxPooledTxServe lookups,
+// even if the requested hashes are unknown and the response stays empty.
+func TestGetPooledTransactionsLookupCap(t *testing.T) {
+	backend := newTestBackendWithGenerator(0, true, false, nil)
+	defer backend.close()
+
+	signer := types.NewCancunSigner(params.TestChainConfig.ChainID)
+	tx, err := types.SignTx(
+		types.NewTransaction(0, testAddr, big.NewInt(10_000), params.TxGas, big.NewInt(1_000_000_000), nil),
+		signer,
+		testKey,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := backend.txpool.Add([]*types.Transaction{tx}, true); errs[0] != nil {
+		t.Fatal(errs[0])
+	}
+	// Pad the request with unknown hashes so the known one lands at the given index
+	request := func(index int) GetPooledTransactionsRequest {
+		query := make(GetPooledTransactionsRequest, index+1)
+		for i := range index {
+			query[i] = common.BigToHash(big.NewInt(int64(i + 1)))
+		}
+		query[index] = tx.Hash()
+		return query
+	}
+	if hashes, _ := answerGetPooledTransactions(backend, request(maxPooledTxServe-1), ETH70); len(hashes) != 1 {
+		t.Errorf("transaction within lookup cap not served: have %d, want 1", len(hashes))
+	}
+	if hashes, _ := answerGetPooledTransactions(backend, request(maxPooledTxServe), ETH70); len(hashes) != 0 {
+		t.Errorf("transaction beyond lookup cap served: have %d, want 0", len(hashes))
+	}
+}
+
 func encodeRL[T any](slice []T) rlp.RawList[T] {
 	rl, err := rlp.EncodeToRawList(slice)
 	if err != nil {
 		panic(err)
 	}
 	return rl
+}
+
+type blockPropagationBackend struct {
+	*testBackend
+	packets chan Packet
+}
+
+func (b *blockPropagationBackend) Handle(_ *Peer, packet Packet) error {
+	b.packets <- packet
+	return nil
+}
+
+// BSC still propagates blocks through eth peers, including on eth/71. Exercise
+// dispatch and decoding rather than calling the propagation handlers directly.
+func TestBSCBlockPropagation(t *testing.T) {
+	backend := newTestBackend(2)
+	defer backend.close()
+	block := backend.chain.GetBlockByNumber(1)
+	td := backend.chain.GetTd(block.Hash(), block.NumberU64())
+	for _, version := range []uint{ETH68, ETH70, ETH71} {
+		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
+			receiver := &blockPropagationBackend{testBackend: backend, packets: make(chan Packet, 1)}
+			peer, errc := newTestPeer("propagation", version, receiver)
+			defer peer.close()
+			for _, packet := range []Packet{
+				&NewBlockHashesPacket{{Hash: block.Hash(), Number: block.NumberU64()}},
+				&NewBlockPacket{Block: block, TD: td},
+			} {
+				if err := p2p.Send(peer.app, uint64(packet.Kind()), packet); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case received := <-receiver.packets:
+					switch got := received.(type) {
+					case *NewBlockHashesPacket:
+						if len(*got) != 1 || (*got)[0].Hash != block.Hash() || (*got)[0].Number != block.NumberU64() {
+							t.Fatalf("wrong block announcement: %+v", got)
+						}
+					case *NewBlockPacket:
+						if got.Block.Hash() != block.Hash() || got.TD.Cmp(td) != 0 {
+							t.Fatal("block propagation lost block or TD")
+						}
+					default:
+						t.Fatalf("unexpected packet %T", received)
+					}
+				case err := <-errc:
+					t.Fatalf("propagation rejected: %v", err)
+				case <-time.After(5 * time.Second):
+					t.Fatal("propagation was not delivered")
+				}
+			}
+		})
+	}
 }

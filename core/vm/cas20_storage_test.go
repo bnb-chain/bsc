@@ -165,15 +165,15 @@ func TestCAS20StorageGas(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := cas20Addr(cas20VariantAsset, 1)
-	gas := NewGasBudget(1_000_000)
+	gas := NewGasBudget(1_000_000, 0)
 	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredCAS20Storage(ctx)
 
 	alice := common.HexToAddress("0xa11ce")
 	charged := func(fn func()) uint64 {
-		before := gas.RegularGas
+		before := gas.ExecutionGas
 		fn()
-		return before - gas.RegularGas
+		return before - gas.ExecutionGas
 	}
 
 	// Every access also pays the 64-byte keccak that derives the slot.
@@ -201,7 +201,7 @@ func TestCAS20StorageGas(t *testing.T) {
 	}
 	_ = reset
 
-	if got, want := 1_000_000-gas.RegularGas, 4*keccak64+cold+set+warm+warm+warm; got != want {
+	if got, want := 1_000_000-gas.ExecutionGas, 4*keccak64+cold+set+warm+warm+warm; got != want {
 		t.Errorf("gas used = %d, want %d", got, want)
 	}
 	if ctx.OutOfGas() {
@@ -217,7 +217,7 @@ func TestCAS20StorageGas(t *testing.T) {
 func TestCAS20StorageGasOutOfGas(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	token := cas20Addr(cas20VariantAsset, 1)
-	gas := NewGasBudget(100) // less than one cold access
+	gas := NewGasBudget(100, 0) // less than one cold access
 	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredCAS20Storage(ctx)
 
@@ -225,8 +225,8 @@ func TestCAS20StorageGasOutOfGas(t *testing.T) {
 	if !ctx.OutOfGas() {
 		t.Fatal("expected out of gas")
 	}
-	if gas.RegularGas != 0 {
-		t.Errorf("budget should be exhausted, got %d", gas.RegularGas)
+	if gas.ExecutionGas != 0 {
+		t.Errorf("budget should be exhausted, got %d", gas.ExecutionGas)
 	}
 }
 
@@ -343,14 +343,14 @@ func TestCAS20StringBoundaryMatrix(t *testing.T) {
 func TestCAS20LongStringGas(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	token := cas20Addr(cas20VariantAsset, 1)
-	gas := NewGasBudget(10_000_000)
+	gas := NewGasBudget(10_000_000, 0)
 	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredCAS20Storage(ctx)
 
 	charged := func(fn func()) uint64 {
-		before := gas.RegularGas
+		before := gas.ExecutionGas
 		fn()
-		return before - gas.RegularGas
+		return before - gas.ExecutionGas
 	}
 	const (
 		keccak32 = params.Keccak256Gas + params.Keccak256WordGas // 32-byte preimage
@@ -388,7 +388,7 @@ func TestCAS20LongStringGas(t *testing.T) {
 // spawner's dispatcher that checks it.
 func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	gas := NewGasBudget(100)
+	gas := NewGasBudget(100, 0)
 	parent := &PrecompileContext{
 		StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 1),
 		Caller: cas20Alice, DirectCall: true, gas: &gas,
@@ -414,7 +414,7 @@ func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	if later := parent.spawnBootstrap(cas20Addr(cas20VariantAsset, 3), cas20Alice); !later.OutOfGas() {
 		t.Error("a context spawned from an exhausted frame does not start exhausted")
 	}
-	gas2 := NewGasBudget(100)
+	gas2 := NewGasBudget(100, 0)
 	p2 := &PrecompileContext{StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 4), gas: &gas2}
 	c2 := p2.spawnBootstrap(cas20Addr(cas20VariantAsset, 5), cas20Alice)
 	p2.chargeGas(1_000_000)
@@ -427,21 +427,21 @@ func TestCAS20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 // spend the same gas budget.
 func TestCAS20SpawnedContextSharesGasBudget(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	gas := NewGasBudget(10_000_000)
+	gas := NewGasBudget(10_000_000, 0)
 	parent := &PrecompileContext{
 		StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 1),
 		Caller: cas20Alice, DirectCall: true, gas: &gas,
 	}
 	child := parent.spawnBootstrap(cas20Addr(cas20VariantAsset, 2), cas20Alice)
 
-	before := parent.gas.RegularGas
+	before := parent.gas.ExecutionGas
 	parent.chargeGas(700)
 	child.chargeGas(300)
 
-	if got := before - parent.gas.RegularGas; got != 1000 {
+	if got := before - parent.gas.ExecutionGas; got != 1000 {
 		t.Errorf("spawner gas used = %d, want 1000 — the child's charges are missing", got)
 	}
-	if got := before - child.gas.RegularGas; got != 1000 {
+	if got := before - child.gas.ExecutionGas; got != 1000 {
 		t.Errorf("child gas used = %d, want 1000 — the budget is not shared", got)
 	}
 }
@@ -451,7 +451,7 @@ func TestCAS20SpawnedContextSharesGasBudget(t *testing.T) {
 // never landed.
 func TestCAS20SpawnedContextPropagatesSentryRefusal(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	gas := NewGasBudget(params.SstoreSentryGasEIP2200)
+	gas := NewGasBudget(params.SstoreSentryGasEIP2200, 0)
 	parent := &PrecompileContext{
 		StateDB: statedb, Self: cas20Addr(cas20VariantAsset, 1),
 		Caller: cas20Alice, DirectCall: true, gas: &gas,
@@ -487,7 +487,7 @@ func TestCAS20StorageRefunds(t *testing.T) {
 		token := cas20Addr(cas20VariantAsset, 1)
 		// Without the sentinel Finalise below would reap the account, storage included.
 		statedb.SetCode(token, CAS20MarkerCode, tracing.CodeChangeContractCreation)
-		gas := NewGasBudget(10_000_000)
+		gas := NewGasBudget(10_000_000, 0)
 		ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 		return statedb, newMeteredCAS20Storage(ctx), ctx
 	}
@@ -497,7 +497,7 @@ func TestCAS20StorageRefunds(t *testing.T) {
 
 	statedb, s, _ := newCtx()
 	s.state.SetState(s.token, slot, one)
-	statedb.Finalise(true) // commit, so `original` is non-zero
+	statedb.Finalise(params.Rules{IsEIP158: true}) // commit, so `original` is non-zero
 	s.setWord(slot, common.Hash{})
 	if got := statedb.GetRefund(); got != clearing {
 		t.Errorf("clear refund = %d, want %d", got, clearing)
@@ -510,7 +510,7 @@ func TestCAS20StorageRefunds(t *testing.T) {
 
 	statedb, s, _ = newCtx()
 	s.state.SetState(s.token, slot, one)
-	statedb.Finalise(true)
+	statedb.Finalise(params.Rules{IsEIP158: true})
 	s.setWord(slot, two)
 	s.setWord(slot, one)
 	want := (params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929) - params.WarmStorageReadCostEIP2929
@@ -528,7 +528,7 @@ func TestCAS20SstoreSentry(t *testing.T) {
 	slot := slotAt(cas20SlotTotalSupply)
 
 	// Warm and dirty, so the write itself would be cheap; exactly the stipend left.
-	gas := NewGasBudget(params.SstoreSentryGasEIP2200)
+	gas := NewGasBudget(params.SstoreSentryGasEIP2200, 0)
 	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredCAS20Storage(ctx)
 	statedb.AddSlotToAccessList(token, slot)
@@ -541,7 +541,7 @@ func TestCAS20SstoreSentry(t *testing.T) {
 		t.Fatalf("refused write still mutated state: %x", got)
 	}
 
-	gas2 := NewGasBudget(params.SstoreSentryGasEIP2200 + 1 + params.SstoreSetGasEIP2200)
+	gas2 := NewGasBudget(params.SstoreSentryGasEIP2200+1+params.SstoreSetGasEIP2200, 0)
 	ctx2 := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas2}
 	newMeteredCAS20Storage(ctx2).setWord(slot, common.Hash{31: 7})
 	if ctx2.OutOfGas() {
@@ -558,7 +558,7 @@ func TestCAS20GasNeverCheaperThanBytecode(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xfee")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	initCalls := [][]byte{
@@ -575,14 +575,14 @@ func TestCAS20GasNeverCheaperThanBytecode(t *testing.T) {
 	measure := func(to common.Address, amount uint64) uint64 {
 		t.Helper()
 		in := cas20Call(selTransfer, addrKey(to), u256hash(amount))
-		if _, _, err := evm.Call(cas20Alice, token, in, NewGasBudget(budget), uint256.NewInt(0)); err != nil {
+		if _, _, err := evm.Call(cas20Alice, token, in, NewGasBudget(budget, 0), uint256.NewInt(0)); err != nil {
 			t.Fatalf("warming transfer: %v", err)
 		}
-		_, left, err := evm.Call(cas20Alice, token, in, NewGasBudget(budget), uint256.NewInt(0))
+		_, left, err := evm.Call(cas20Alice, token, in, NewGasBudget(budget, 0), uint256.NewInt(0))
 		if err != nil {
 			t.Fatalf("measured transfer: %v", err)
 		}
-		return uint64(budget) - left.RegularGas
+		return uint64(budget) - left.ExecutionGas
 	}
 
 	keccak64 := params.Keccak256Gas + 2*params.Keccak256WordGas

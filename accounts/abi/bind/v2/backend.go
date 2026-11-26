@@ -106,6 +106,9 @@ type ContractTransactor interface {
 
 	// SendTransactionConditional injects the conditional transaction into the pending pool for execution after verification.
 	SendTransactionConditional(ctx context.Context, tx *types.Transaction, opts types.TransactionOpts) error
+
+	// TransactionByHash retrieves the transaction associated with the hash, if it exists in the pool.
+	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 }
 
 // DeployBackend wraps the operations needed by WaitMined and WaitDeployed.

@@ -60,6 +60,9 @@ func TestVhosts(t *testing.T) {
 	resp := rpcRequest(t, url, testMethod, "host", "test")
 	assert.Equal(t, resp.StatusCode, http.StatusOK)
 
+	respUpper := rpcRequest(t, url, testMethod, "host", "TeSt:1234")
+	assert.Equal(t, respUpper.StatusCode, http.StatusOK)
+
 	resp2 := rpcRequest(t, url, testMethod, "host", "bad")
 	assert.Equal(t, resp2.StatusCode, http.StatusForbidden)
 }
@@ -368,6 +371,9 @@ func TestJWT(t *testing.T) {
 				"bar": "baz",
 			}))
 		},
+		func() string {
+			return fmt.Sprintf("bearer %v", issueToken(secret, nil, testClaim{"iat": time.Now().Unix()}))
+		},
 	}
 	for i, tokenFn := range expOk {
 		token := tokenFn()
@@ -417,9 +423,6 @@ func TestJWT(t *testing.T) {
 		},
 		func() string {
 			return fmt.Sprintf("Bearer  %v", issueToken(secret, nil, testClaim{"iat": time.Now().Unix()}))
-		},
-		func() string {
-			return fmt.Sprintf("bearer %v", issueToken(secret, nil, testClaim{"iat": time.Now().Unix()}))
 		},
 		func() string {
 			return fmt.Sprintf("Bearer: %v", issueToken(secret, nil, testClaim{"iat": time.Now().Unix()}))

@@ -84,7 +84,7 @@ func TestCAS20Factory(t *testing.T) {
 	salt := common.HexToHash("0x01")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -149,7 +149,7 @@ func TestCAS20FactoryOwnerless(t *testing.T) {
 	initCalls := [][]byte{cas20Call(selGrantRole, roleMint, addrKey(creator))}
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20(cas20VariantStablecoin, salt, common.Address{}, initCalls),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20 ownerless: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestCAS20FactoryOwnerless(t *testing.T) {
 		t.Fatal("bootstrap should have granted MINT despite ownerless")
 	}
 	if _, _, err := evm.Call(creator, token, cas20Call(selGrantRole, roleBurn, addrKey(creator)),
-		NewGasBudget(1_000_000), uint256.NewInt(0)); !errors.Is(err, ErrExecutionReverted) {
+		NewGasBudget(1_000_000, 0), uint256.NewInt(0)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("grant on ownerless token err = %v, want revert", err)
 	}
 }
@@ -171,7 +171,7 @@ func TestCAS20CreateParams(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	call := func(input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	salt := func(n uint64) common.Hash { return u256hash(n) }
@@ -219,7 +219,7 @@ func TestCAS20CreateParams(t *testing.T) {
 	if got := strOf(view.symbol()); got != "GLD" {
 		t.Fatalf("symbol = %q, want GLD", got)
 	}
-	dec, _, err := evm.Call(creator, asset, cas20Call(selDecimals), NewGasBudget(200_000), uint256.NewInt(0))
+	dec, _, err := evm.Call(creator, asset, cas20Call(selDecimals), NewGasBudget(200_000, 0), uint256.NewInt(0))
 	if err != nil || !bytes.Equal(dec, u256hash(8).Bytes()) {
 		t.Fatalf("decimals() = %x (err %v), want 8", dec, err)
 	}
@@ -229,11 +229,11 @@ func TestCAS20CreateParams(t *testing.T) {
 		t.Fatalf("createCAS20 stablecoin: %v", err)
 	}
 	stable := common.BytesToAddress(ret)
-	cur, _, err := evm.Call(creator, stable, cas20Call(selCurrency), NewGasBudget(200_000), uint256.NewInt(0))
+	cur, _, err := evm.Call(creator, stable, cas20Call(selCurrency), NewGasBudget(200_000, 0), uint256.NewInt(0))
 	if err != nil || !bytes.Equal(cur, encString("EUR")) {
 		t.Fatalf("currency() = %x (err %v), want EUR", cur, err)
 	}
-	dec, _, err = evm.Call(creator, stable, cas20Call(selDecimals), NewGasBudget(200_000), uint256.NewInt(0))
+	dec, _, err = evm.Call(creator, stable, cas20Call(selDecimals), NewGasBudget(200_000, 0), uint256.NewInt(0))
 	if err != nil || !bytes.Equal(dec, u256hash(6).Bytes()) {
 		t.Fatalf("stablecoin decimals() = %x (err %v), want 6", dec, err)
 	}
@@ -242,12 +242,12 @@ func TestCAS20CreateParams(t *testing.T) {
 func TestCAS20CreatedEvent(t *testing.T) {
 	statedb, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xe7e17")
-	statedb.SetTxContext(common.HexToHash("0xbeef"), 0)
+	statedb.SetTxContext(common.HexToHash("0xbeef"), 0, uint32(0+1))
 
 	params := cas20StablecoinParams("Dollar Coin", "USDX", creator, "USD")
 	ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 		encodeCreateCAS20WithParams(cas20VariantStablecoin, common.HexToHash("0x77"), params, nil),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestCAS20CreateParamsCanonicalEncoding(t *testing.T) {
 
 	ret, _, err := evm.Call(admin, CAS20FactoryAddress,
 		encodeCreateCAS20WithParams(cas20VariantAsset, common.HexToHash("0xcafe"), blob, nil),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20 with a canonically encoded blob: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestCAS20CreateParamsRejectsMalformed(t *testing.T) {
 	call := func(salt common.Hash, blob []byte) error {
 		_, _, err := evm.Call(admin, CAS20FactoryAddress,
 			encodeCreateCAS20WithParams(cas20VariantAsset, salt, blob, nil),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return err
 	}
 
@@ -348,7 +348,7 @@ func TestCAS20CreateParamsRejectsMalformed(t *testing.T) {
 	dirtyLen[6*32] = 0x01 // high byte of the length word
 	ret, _, err := evm.Call(admin, CAS20FactoryAddress,
 		encodeCreateCAS20WithParams(cas20VariantAsset, common.HexToHash("0x3"), dirtyLen, nil),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("dirty length word err = %v, want revert", err)
 	}
@@ -364,7 +364,7 @@ func TestCAS20FieldValidationPrecedesOccupancy(t *testing.T) {
 		params := cas20StablecoinParams("N", "S", creator, currency)
 		ret, _, err := evm.Call(creator, CAS20FactoryAddress,
 			encodeCreateCAS20WithParams(cas20VariantStablecoin, salt, params, nil),
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	salt := common.HexToHash("0x5a17")
@@ -413,7 +413,7 @@ func TestCAS20OutOfEnumVariantRevertsEmpty(t *testing.T) {
 		{"getCAS20Address", cas20Call(selGetCAS20Address, u256hash(2), addrKey(caller), common.Hash{})},
 	} {
 		ret, _, err := evm.Call(caller, CAS20FactoryAddress, tc.input,
-			NewGasBudget(5_000_000), uint256.NewInt(0))
+			NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if !errors.Is(err, ErrExecutionReverted) {
 			t.Errorf("%s with variant 2: err = %v, want a revert", tc.name, err)
 		}
@@ -425,7 +425,7 @@ func TestCAS20OutOfEnumVariantRevertsEmpty(t *testing.T) {
 
 	ret, _, err := evm.Call(caller, CAS20FactoryAddress,
 		cas20Call(selGetCAS20Address, u256hash(uint64(cas20VariantStablecoin)), addrKey(caller), common.Hash{}),
-		NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("getCAS20Address for the stablecoin variant: %v", err)
 	}
@@ -438,13 +438,13 @@ func TestCAS20BootstrapReachesTheVariant(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	call := func(input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(creator, common.Address{}, input, NewGasBudget(9_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(creator, common.Address{}, input, NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	_ = call
 
 	at := func(to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(creator, to, input, NewGasBudget(9_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(creator, to, input, NewGasBudget(9_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	u := func(ret []byte, err error) uint64 {

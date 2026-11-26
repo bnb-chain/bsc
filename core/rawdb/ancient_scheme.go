@@ -41,24 +41,58 @@ const (
 
 	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
 	ChainFreezerBlobSidecarTable = "blobs"
+
+	// ChainFreezerBALTable indicates the name of the freezer block access list
+	// table introduced by EIP-7928.
+	ChainFreezerBALTable = "bals"
+)
+
+// Identifiers of tail groups used by the chain freezer.
+const (
+	// ChainFreezerBlockDataGroup is the tail group shared by the body and
+	// receipt tables. The two tables are pruned together and therefore have
+	// the same tail position.
+	ChainFreezerBlockDataGroup = "blockdata"
+
+	// ChainFreezerBALGroup is the tail group for the block access list table.
+	// BAL is only populated after EIP-7928 activates, so it generally has a
+	// higher tail than the block-data group and is pruned independently.
+	ChainFreezerBALGroup = "bal"
+
+	// ChainFreezerBlobGroup BSC blob sidecars are pruned independently from block data.
+	ChainFreezerBlobGroup = "blobs"
 )
 
 // chainFreezerTableConfigs configures the settings for tables in the chain freezer.
-// Compression is disabled for hashes as they don't compress well.
+// Compression is disabled for hashes as they don't compress well. Headers,
+// canonical hashes and total difficulty are retained when pruning block history.
 var chainFreezerTableConfigs = map[string]freezerTableConfig{
-	ChainFreezerHeaderTable:      {noSnappy: false, prunable: true},
-	ChainFreezerHashTable:        {noSnappy: true, prunable: true},
-	ChainFreezerBodiesTable:      {noSnappy: false, prunable: true},
-	ChainFreezerReceiptTable:     {noSnappy: false, prunable: true},
-	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: true},
-	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true},
+	ChainFreezerHeaderTable:      {noSnappy: false},
+	ChainFreezerHashTable:        {noSnappy: true},
+	ChainFreezerBodiesTable:      {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerReceiptTable:     {noSnappy: false, tailGroup: ChainFreezerBlockDataGroup},
+	ChainFreezerDifficultyTable:  {noSnappy: true},
+	ChainFreezerBlobSidecarTable: {noSnappy: false, tailGroup: ChainFreezerBlobGroup},
+	ChainFreezerBALTable:         {noSnappy: false, tailGroup: ChainFreezerBALGroup},
 }
 var additionTables = []string{ChainFreezerBlobSidecarTable}
 
+// legacyPrunedChainTable identifies tables pruned by older BSC versions. Their
+// existing tails must be preserved even though new tail pruning is disabled.
+func legacyPrunedChainTable(kind string) bool {
+	return kind == ChainFreezerHeaderTable || kind == ChainFreezerHashTable || kind == ChainFreezerDifficultyTable
+}
+
 // freezerTableConfig contains the settings for a freezer table.
 type freezerTableConfig struct {
-	noSnappy bool // disables item compression
-	prunable bool // true for tables that can be pruned by TruncateTail
+	// noSnappy disables item compression when true.
+	noSnappy bool
+
+	// tailGroup names a logical group of tables that share the same tail
+	// position. Tables in the same group are pruned together and must agree
+	// on their tail. An empty value means the table is not prunable; its
+	// tail is always 0.
+	tailGroup string
 }
 
 const (
@@ -73,13 +107,17 @@ const (
 	stateHistoryStorageData  = "storage.data"
 )
 
+// DefaultHistoryGroup is the tail group shared by all state/trienode history
+// tables with tail pruning enabled.
+const DefaultHistoryGroup = "history"
+
 // stateFreezerTableConfigs configures the settings for tables in the state freezer.
 var stateFreezerTableConfigs = map[string]freezerTableConfig{
-	stateHistoryMeta:         {noSnappy: true, prunable: true},
-	stateHistoryAccountIndex: {noSnappy: false, prunable: true},
-	stateHistoryStorageIndex: {noSnappy: false, prunable: true},
-	stateHistoryAccountData:  {noSnappy: false, prunable: true},
-	stateHistoryStorageData:  {noSnappy: false, prunable: true},
+	stateHistoryMeta:         {noSnappy: true, tailGroup: DefaultHistoryGroup},
+	stateHistoryAccountIndex: {noSnappy: false, tailGroup: DefaultHistoryGroup},
+	stateHistoryStorageIndex: {noSnappy: false, tailGroup: DefaultHistoryGroup},
+	stateHistoryAccountData:  {noSnappy: false, tailGroup: DefaultHistoryGroup},
+	stateHistoryStorageData:  {noSnappy: false, tailGroup: DefaultHistoryGroup},
 }
 
 const (
@@ -90,13 +128,13 @@ const (
 
 // trienodeFreezerTableConfigs configures the settings for tables in the trienode freezer.
 var trienodeFreezerTableConfigs = map[string]freezerTableConfig{
-	trienodeHistoryHeaderTable: {noSnappy: false, prunable: true},
+	trienodeHistoryHeaderTable: {noSnappy: false, tailGroup: DefaultHistoryGroup},
 
 	// Disable snappy compression to allow efficient partial read.
-	trienodeHistoryKeySectionTable: {noSnappy: true, prunable: true},
+	trienodeHistoryKeySectionTable: {noSnappy: true, tailGroup: DefaultHistoryGroup},
 
 	// Disable snappy compression to allow efficient partial read.
-	trienodeHistoryValueSectionTable: {noSnappy: true, prunable: true},
+	trienodeHistoryValueSectionTable: {noSnappy: true, tailGroup: DefaultHistoryGroup},
 }
 
 // The list of identifiers of ancient stores.

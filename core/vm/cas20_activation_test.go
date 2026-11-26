@@ -60,7 +60,7 @@ func TestCAS20ActivationRegistry(t *testing.T) {
 	stranger := common.HexToAddress("0x5747a9e")
 
 	call := func(caller common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, reg, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, reg, input, NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 	feature := common.HexToHash("0xf1") // not seeded, so it starts inactive
@@ -123,7 +123,7 @@ func TestCAS20ActivationGates(t *testing.T) {
 	creator := common.HexToAddress("0xc4ea70")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -174,7 +174,7 @@ func TestCAS20NeverOverwritesForeignCode(t *testing.T) {
 	foreign := []byte{0x60, 0x00, 0x60, 0x00, 0xf3} // a plausible runtime stub
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -204,7 +204,7 @@ func TestCAS20ParamKeySpaceIsClosed(t *testing.T) {
 	_, evm := newCAS20EVM(t)
 	gov := params.CAS20GovHubAddress
 	call := func(input []byte) error {
-		_, _, err := evm.Call(gov, CAS20ActivationRegistryAddress, input, NewGasBudget(1_000_000), uint256.NewInt(0))
+		_, _, err := evm.Call(gov, CAS20ActivationRegistryAddress, input, NewGasBudget(1_000_000, 0), uint256.NewInt(0))
 		return err
 	}
 	addr := common.HexToAddress("0xad4151").Bytes()
@@ -253,7 +253,7 @@ func TestCAS20ActivationAdminMustBeSet(t *testing.T) {
 	feature := common.HexToHash("0xf3")
 	for _, caller := range []common.Address{{}, common.HexToAddress("0x57ra9e")} {
 		_, _, err := evm.Call(caller, CAS20ActivationRegistryAddress,
-			cas20Call(selActivate, feature), NewGasBudget(5_000_000), uint256.NewInt(0))
+			cas20Call(selActivate, feature), NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 		if !errors.Is(err, ErrExecutionReverted) {
 			t.Errorf("activate from %s against an empty admin slot: err = %v, want a revert",
 				caller.Hex(), err)
@@ -311,7 +311,7 @@ func TestCAS20SeededSentinelSurvivesClearing(t *testing.T) {
 	for _, addr := range registries {
 		bare.SetState(addr, slot, value)
 	}
-	bare.Finalise(true)
+	bare.Finalise(params.Rules{IsEIP158: true})
 	for _, addr := range registries {
 		if bare.Exist(addr) || bare.GetState(addr, slot) != (common.Hash{}) {
 			t.Fatalf("%s with storage and no code survived a clearing pass; the hazard this test "+
@@ -327,7 +327,7 @@ func TestCAS20SeededSentinelSurvivesClearing(t *testing.T) {
 	for _, addr := range registries {
 		seeded.SetState(addr, slot, value)
 	}
-	seeded.Finalise(true)
+	seeded.Finalise(params.Rules{IsEIP158: true})
 	for _, addr := range registries {
 		if got := seeded.GetCodeHash(addr); got != cas20MarkerCodeHash {
 			t.Fatalf("%s after a clearing pass: code hash %x, want the sentinel %x", addr.Hex(), got, cas20MarkerCodeHash)

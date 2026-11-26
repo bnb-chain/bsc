@@ -36,7 +36,6 @@ func jennerTestChainConfig(jennerTime uint64) *params.ChainConfig {
 	config.BlobScheduleConfig = &params.BlobScheduleConfig{
 		Cancun: params.DefaultCancunBlobConfig,
 		Prague: params.DefaultPragueBlobConfigBSC,
-		Osaka:  params.DefaultOsakaBlobConfigBSC,
 	}
 	return &config
 }
@@ -162,7 +161,7 @@ func TestJennerForkTransition(t *testing.T) {
 	var prevMilli uint64
 	for _, block := range blocks {
 		header := chain.GetHeaderByNumber(block.NumberU64())
-		statedb, err := chain.StateAt(header)
+		statedb, err := chain.StateAt(header.Root, header.Number, header.Time)
 		if err != nil {
 			t.Fatalf("block %d: state: %v", block.NumberU64(), err)
 		}

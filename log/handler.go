@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -39,7 +40,7 @@ func (h *discardHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 }
 
 type TerminalHandler struct {
-	mu       sync.Mutex
+	mu       *sync.Mutex
 	wr       io.Writer
 	lvl      slog.Level
 	useColor bool
@@ -68,6 +69,7 @@ func NewTerminalHandler(wr io.Writer, useColor bool) *TerminalHandler {
 // records which are less than or equal to the specified verbosity level.
 func NewTerminalHandlerWithLevel(wr io.Writer, lvl slog.Level, useColor bool) *TerminalHandler {
 	return &TerminalHandler{
+		mu:           &sync.Mutex{},
 		wr:           wr,
 		lvl:          lvl,
 		useColor:     useColor,
@@ -79,9 +81,9 @@ func (h *TerminalHandler) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	buf := h.format(h.buf, r, h.useColor)
-	h.wr.Write(buf)
+	_, err := h.wr.Write(buf)
 	h.buf = buf[:0]
-	return nil
+	return err
 }
 
 func (h *TerminalHandler) Enabled(_ context.Context, level slog.Level) bool {
@@ -94,10 +96,11 @@ func (h *TerminalHandler) WithGroup(name string) slog.Handler {
 
 func (h *TerminalHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &TerminalHandler{
+		mu:           h.mu,
 		wr:           h.wr,
 		lvl:          h.lvl,
 		useColor:     h.useColor,
-		attrs:        append(h.attrs, attrs...),
+		attrs:        append(slices.Clone(h.attrs), attrs...),
 		fieldPadding: make(map[string]int),
 	}
 }

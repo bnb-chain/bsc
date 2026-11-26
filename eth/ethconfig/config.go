@@ -54,7 +54,7 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	HistoryMode:             history.KeepAll,
+	HistoryMode:             history.HistoryPolicy{Mode: history.KeepAll},
 	SyncMode:                SnapSync,
 	NetworkId:               0, // enable auto configuration of networkID == chainID
 	TxLookupLimit:           2350000,
@@ -79,6 +79,7 @@ var Defaults = Config{
 	RPCEVMTimeout:           5 * time.Second,
 	GPO:                     FullNodeGPO,
 	RPCTxFeeCap:             1,
+	EngineMaxReorgDepth:     32,
 	TxSyncDefaultTimeout:    5 * time.Second,
 	TxSyncMaxTimeout:        10 * time.Second,
 	SlowBlockThreshold:      -1, // Disabled by default; set via --debug.logslowblock flag
@@ -112,7 +113,7 @@ type Config struct {
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID
 	// HistoryMode configures chain history retention.
-	HistoryMode history.HistoryMode
+	HistoryMode history.HistoryPolicy
 
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// nodes to connect to.
@@ -121,8 +122,9 @@ type Config struct {
 	BscDiscoveryURLs  []string
 
 	// State options.
-	NoPruning  bool // Whether to disable pruning and flush everything to disk
-	NoPrefetch bool // Whether to disable prefetching and only load state on demand
+	NoPruning         bool // Whether to disable pruning and flush everything to disk
+	NoPrefetch        bool // Whether to disable prefetching and only load state on demand
+	NoPrecompileCache bool // Whether to disable precompile result caching
 
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
@@ -148,8 +150,10 @@ type Config struct {
 	// State scheme represents the scheme used to store ethereum states and trie
 	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
 	// consistent with persistent state.
-	StateScheme   string `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
-	PathSyncFlush bool   `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
+	StateScheme string `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
+
+	// Deprecated: retained for config-file compatibility; has no effect.
+	PathSyncFlush bool `toml:",omitempty"`
 
 	DisableTxIndexer bool `toml:",omitempty"` // Whether to enable the transaction indexer
 
@@ -218,8 +222,10 @@ type Config struct {
 	// Generate execution witnesses and self-check against them (testing purpose)
 	StatelessSelfValidation bool
 
-	// Enables tracking of state size
-	EnableStateSizeTracking bool
+	// SnapV2 enables the experimental snap/2 (EIP-8189, BAL-based) sync protocol:
+	// the node advertises snap/2 on the wire and uses the snap/2 state syncer.
+	// It is not safe to enable on public networks yet.
+	SnapV2 bool
 
 	// Enables VM tracing
 	VMTrace           string
@@ -247,6 +253,11 @@ type Config struct {
 	// OverrideFermi (TODO: remove after the fork)
 	OverrideFermi *uint64 `toml:",omitempty"`
 
+	// EngineMaxReorgDepth is the maximum depth the chain head can be rewound
+	// to an already-canonical ancestor by engine API forkchoiceUpdated calls
+	// (0 = no limit).
+	EngineMaxReorgDepth uint64
+
 	// OverrideOsaka (TODO: remove after the fork)
 	OverrideOsaka *uint64 `toml:",omitempty"`
 
@@ -258,6 +269,9 @@ type Config struct {
 
 	// OverrideJenner (TODO: remove after the fork)
 	OverrideJenner *uint64 `toml:",omitempty"`
+
+	// OverrideAmsterdam (TODO: remove after the fork)
+	OverrideAmsterdam *uint64 `toml:",omitempty"`
 
 	// OverrideBPO1 (TODO: remove after the fork)
 	OverrideBPO1 *uint64 `toml:",omitempty"`

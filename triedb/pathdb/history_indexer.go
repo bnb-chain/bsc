@@ -542,7 +542,7 @@ func (i *indexIniter) run(recover bool) {
 
 // next returns the ID of the next state history to be indexed.
 func (i *indexIniter) next() (uint64, error) {
-	tail, err := i.freezer.Tail()
+	tail, err := i.freezer.Tail(rawdb.DefaultHistoryGroup)
 	if err != nil {
 		return 0, err
 	}
@@ -766,7 +766,7 @@ func checkVersion(disk ethdb.KeyValueStore, typ historyType) {
 	if err == nil {
 		version = fmt.Sprintf("%d", m.Version)
 	}
-	log.Info("Cleaned up obsolete history index", "type", typ, "version", version, "want", version)
+	log.Info("Cleaned up obsolete history index", "type", typ, "version", version, "want", fmt.Sprintf("%d", ver))
 }
 
 // newHistoryIndexer constructs the history indexer and launches the background

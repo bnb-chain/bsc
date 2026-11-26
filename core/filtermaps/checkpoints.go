@@ -43,9 +43,6 @@ var checkpointsMainnetJSON []byte
 //go:embed checkpoints_sepolia.json
 var checkpointsSepoliaJSON []byte
 
-//go:embed checkpoints_holesky.json
-var checkpointsHoleskyJSON []byte
-
 //go:embed checkpoints_hoodi.json
 var checkpointsHoodiJSON []byte
 
@@ -61,7 +58,6 @@ var checkpointsBSCMainnetJSON []byte
 var checkpoints = []checkpointList{
 	decodeCheckpoints(checkpointsMainnetJSON),
 	decodeCheckpoints(checkpointsSepoliaJSON),
-	decodeCheckpoints(checkpointsHoleskyJSON),
 	decodeCheckpoints(checkpointsHoodiJSON),
 	decodeCheckpoints(checkpointsBSCChapelJSON),
 	decodeCheckpoints(checkpointsBSCMainnetJSON),

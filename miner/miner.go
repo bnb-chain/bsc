@@ -182,7 +182,7 @@ func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) {
 	if block == nil {
 		return nil, nil, nil
 	}
-	stateDb, err := miner.worker.chain.StateAt(block)
+	stateDb, err := miner.worker.chain.StateAt(block.Root, block.Number, block.Time)
 	if err != nil {
 		return nil, nil, nil
 	}

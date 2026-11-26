@@ -112,7 +112,7 @@ func (arguments Arguments) UnpackIntoMap(v map[string]any, data []byte) error {
 // Copy performs the operation go format -> provided struct.
 func (arguments Arguments) Copy(v any, values []any) error {
 	// make sure the passed value is arguments pointer
-	if reflect.Ptr != reflect.ValueOf(v).Kind() {
+	if reflect.Pointer != reflect.ValueOf(v).Kind() {
 		return fmt.Errorf("abi: Unpack(non-pointer %T)", v)
 	}
 	if len(values) == 0 {
@@ -165,7 +165,7 @@ func (arguments Arguments) copyTuple(v any, marshalledValues []any) error {
 		}
 	case reflect.Slice, reflect.Array:
 		if value.Len() < len(marshalledValues) {
-			return fmt.Errorf("abi: insufficient number of arguments for unpack, want %d, got %d", len(arguments), value.Len())
+			return fmt.Errorf("abi: insufficient number of arguments for unpack, want %d, got %d", len(marshalledValues), value.Len())
 		}
 		for i := range nonIndexedArgs {
 			if err := set(value.Index(i), reflect.ValueOf(marshalledValues[i])); err != nil {

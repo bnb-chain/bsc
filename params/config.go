@@ -29,6 +29,8 @@ import (
 // Genesis hashes to enforce below configs on.
 var (
 	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
+	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
+	HoodiGenesisHash   = common.HexToHash("0xbbe312868b376a3001692a646dd2d7d1e4406380dfd86b98aa8a34d1557c971b")
 
 	BSCGenesisHash    = common.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
 	ChapelGenesisHash = common.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
@@ -38,178 +40,16 @@ var (
 func newUint64(val uint64) *uint64 { return &val }
 
 var (
-	MainnetTerminalTotalDifficulty, _ = new(big.Int).SetString("58_750_000_000_000_000_000_000", 0)
-
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
-	MainnetChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(1),
-		HomesteadBlock:          big.NewInt(1_150_000),
-		DAOForkBlock:            big.NewInt(1_920_000),
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(2_463_000),
-		EIP155Block:             big.NewInt(2_675_000),
-		EIP158Block:             big.NewInt(2_675_000),
-		ByzantiumBlock:          big.NewInt(4_370_000),
-		ConstantinopleBlock:     big.NewInt(7_280_000),
-		PetersburgBlock:         big.NewInt(7_280_000),
-		IstanbulBlock:           big.NewInt(9_069_000),
-		MuirGlacierBlock:        big.NewInt(9_200_000),
-		BerlinBlock:             big.NewInt(12_244_000),
-		LondonBlock:             big.NewInt(12_965_000),
-		ArrowGlacierBlock:       big.NewInt(13_773_000),
-		GrayGlacierBlock:        big.NewInt(15_050_000),
-		TerminalTotalDifficulty: MainnetTerminalTotalDifficulty, // 58_750_000_000_000_000_000_000
-		ShanghaiTime:            newUint64(1681338455),
-		CancunTime:              newUint64(1710338135),
-		PragueTime:              newUint64(1746612311),
-		OsakaTime:               newUint64(1764798551),
-		BPO1Time:                newUint64(1765290071),
-		BPO2Time:                newUint64(1767747671),
-		DepositContractAddress:  common.HexToAddress("0x00000000219ab540356cbb839cbe05303d7705fa"),
-		Ethash:                  new(EthashConfig),
-		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun: DefaultCancunBlobConfig,
-			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
-			BPO1:   DefaultBPO1BlobConfig,
-			BPO2:   DefaultBPO2BlobConfig,
-		},
-	}
-	// HoleskyChainConfig contains the chain parameters to run a node on the Holesky test network.
-	HoleskyChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(17000),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(0),
-		MuirGlacierBlock:        nil,
-		BerlinBlock:             big.NewInt(0),
-		LondonBlock:             big.NewInt(0),
-		ArrowGlacierBlock:       nil,
-		GrayGlacierBlock:        nil,
-		TerminalTotalDifficulty: big.NewInt(0),
-		MergeNetsplitBlock:      nil,
-		ShanghaiTime:            newUint64(1696000704),
-		CancunTime:              newUint64(1707305664),
-		PragueTime:              newUint64(1740434112),
-		OsakaTime:               newUint64(1759308480),
-		BPO1Time:                newUint64(1759800000),
-		BPO2Time:                newUint64(1760389824),
-		DepositContractAddress:  common.HexToAddress("0x4242424242424242424242424242424242424242"),
-		Ethash:                  new(EthashConfig),
-		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun: DefaultCancunBlobConfig,
-			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
-			BPO1:   DefaultBPO1BlobConfig,
-			BPO2:   DefaultBPO2BlobConfig,
-		},
-	}
-	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
-	SepoliaChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(11155111),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(0),
-		MuirGlacierBlock:        big.NewInt(0),
-		BerlinBlock:             big.NewInt(0),
-		LondonBlock:             big.NewInt(0),
-		ArrowGlacierBlock:       nil,
-		GrayGlacierBlock:        nil,
-		TerminalTotalDifficulty: big.NewInt(17_000_000_000_000_000),
-		MergeNetsplitBlock:      big.NewInt(1735371),
-		ShanghaiTime:            newUint64(1677557088),
-		CancunTime:              newUint64(1706655072),
-		PragueTime:              newUint64(1741159776),
-		OsakaTime:               newUint64(1760427360),
-		BPO1Time:                newUint64(1761017184),
-		BPO2Time:                newUint64(1761607008),
-		DepositContractAddress:  common.HexToAddress("0x7f02c3e3c98b133055b8b348b2ac625669ed295d"),
-		Ethash:                  new(EthashConfig),
-		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun: DefaultCancunBlobConfig,
-			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
-			BPO1:   DefaultBPO1BlobConfig,
-			BPO2:   DefaultBPO2BlobConfig,
-		},
-	}
-	// HoodiChainConfig contains the chain parameters to run a node on the Hoodi test network.
-	HoodiChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(560048),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(0),
-		MuirGlacierBlock:        big.NewInt(0),
-		BerlinBlock:             big.NewInt(0),
-		LondonBlock:             big.NewInt(0),
-		ArrowGlacierBlock:       nil,
-		GrayGlacierBlock:        nil,
-		TerminalTotalDifficulty: big.NewInt(0),
-		MergeNetsplitBlock:      big.NewInt(0),
-		ShanghaiTime:            newUint64(0),
-		CancunTime:              newUint64(0),
-		PragueTime:              newUint64(1742999832),
-		OsakaTime:               newUint64(1761677592),
-		BPO1Time:                newUint64(1762365720),
-		BPO2Time:                newUint64(1762955544),
-		DepositContractAddress:  common.HexToAddress("0x00000000219ab540356cBB839Cbe05303d7705Fa"),
-		Ethash:                  new(EthashConfig),
-		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun: DefaultCancunBlobConfig,
-			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
-			BPO1:   DefaultBPO1BlobConfig,
-			BPO2:   DefaultBPO2BlobConfig,
-		},
-	}
+	MainnetChainConfig = readChainSpec("chainspecs/mainnet.json")
 
-	// just for prysm compile pass
-	// GoerliChainConfig contains the chain parameters to run a node on the Görli test network.
-	GoerliChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(5),
-		HomesteadBlock:          big.NewInt(0),
-		DAOForkBlock:            nil,
-		DAOForkSupport:          true,
-		EIP150Block:             big.NewInt(0),
-		EIP155Block:             big.NewInt(0),
-		EIP158Block:             big.NewInt(0),
-		ByzantiumBlock:          big.NewInt(0),
-		ConstantinopleBlock:     big.NewInt(0),
-		PetersburgBlock:         big.NewInt(0),
-		IstanbulBlock:           big.NewInt(1_561_651),
-		MuirGlacierBlock:        nil,
-		BerlinBlock:             big.NewInt(4_460_644),
-		LondonBlock:             big.NewInt(5_062_605),
-		ArrowGlacierBlock:       nil,
-		TerminalTotalDifficulty: big.NewInt(10_790_000),
-		ShanghaiTime:            newUint64(1678832736),
-		CancunTime:              newUint64(1705473120),
-		Clique: &CliqueConfig{
-			Period: 15,
-			Epoch:  30000,
-		},
-	}
+	MainnetTerminalTotalDifficulty = MainnetChainConfig.TerminalTotalDifficulty // 58_750_000_000_000_000_000_000
+
+	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
+	SepoliaChainConfig = readChainSpec("chainspecs/sepolia.json")
+
+	// HoodiChainConfig contains the chain parameters to run a node on the Hoodi test network.
+	HoodiChainConfig = readChainSpec("chainspecs/hoodi.json")
 
 	BSCChainConfig = &ChainConfig{
 		ChainID:             big.NewInt(56),
@@ -262,7 +102,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -317,7 +156,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -374,7 +212,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
-			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -441,6 +278,7 @@ var (
 		CancunTime:              nil,
 		PragueTime:              nil,
 		OsakaTime:               nil,
+		BogotaTime:              nil,
 		UBTTime:                 nil,
 		Ethash:                  new(EthashConfig),
 		Clique:                  nil,
@@ -466,10 +304,10 @@ var (
 		TerminalTotalDifficulty: big.NewInt(0),
 		PragueTime:              newUint64(0),
 		OsakaTime:               newUint64(0),
+		BogotaTime:              newUint64(0),
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
 		},
 	}
 
@@ -497,6 +335,7 @@ var (
 		CancunTime:              nil,
 		PragueTime:              nil,
 		OsakaTime:               nil,
+		BogotaTime:              nil,
 		UBTTime:                 nil,
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64),
 		Ethash:                  nil,
@@ -527,6 +366,7 @@ var (
 		CancunTime:              nil,
 		PragueTime:              nil,
 		OsakaTime:               nil,
+		BogotaTime:              nil,
 		UBTTime:                 nil,
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64),
 		Ethash:                  new(EthashConfig),
@@ -557,6 +397,7 @@ var (
 		CancunTime:              newUint64(0),
 		PragueTime:              newUint64(0),
 		OsakaTime:               newUint64(0),
+		BogotaTime:              nil,
 		UBTTime:                 nil,
 		TerminalTotalDifficulty: big.NewInt(0),
 		Ethash:                  new(EthashConfig),
@@ -564,7 +405,6 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfig,
-			Osaka:  DefaultOsakaBlobConfig,
 		},
 	}
 
@@ -592,6 +432,7 @@ var (
 		CancunTime:              nil,
 		PragueTime:              nil,
 		OsakaTime:               nil,
+		BogotaTime:              nil,
 		UBTTime:                 nil,
 		TerminalTotalDifficulty: big.NewInt(math.MaxInt64),
 		Ethash:                  new(EthashConfig),
@@ -628,12 +469,6 @@ var (
 		Max:            9,
 		UpdateFraction: 5007716,
 	}
-	// DefaultOsakaBlobConfig is the default blob configuration for the Osaka fork.
-	DefaultOsakaBlobConfig = &BlobConfig{
-		Target:         6,
-		Max:            9,
-		UpdateFraction: 5007716,
-	}
 	// DefaultBPO1BlobConfig is the default blob configuration for the BPO1 fork.
 	DefaultBPO1BlobConfig = &BlobConfig{
 		Target:         10,
@@ -662,11 +497,9 @@ var (
 	DefaultBlobSchedule = &BlobScheduleConfig{
 		Cancun: DefaultCancunBlobConfig,
 		Prague: DefaultPragueBlobConfig,
-		Osaka:  DefaultOsakaBlobConfig,
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
-	DefaultOsakaBlobConfigBSC  = DefaultCancunBlobConfig
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
@@ -733,6 +566,7 @@ type ChainConfig struct {
 	BPO4Time       *uint64 `json:"bpo4Time,omitempty"`       // BPO4 switch time (nil = no fork, 0 = already on bpo4)
 	BPO5Time       *uint64 `json:"bpo5Time,omitempty"`       // BPO5 switch time (nil = no fork, 0 = already on bpo5)
 	AmsterdamTime  *uint64 `json:"amsterdamTime,omitempty"`  // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
+	BogotaTime     *uint64 `json:"bogotaTime,omitempty"`     // Bogota switch time (nil = no fork, 0 = already on bogota)
 	UBTTime        *uint64 `json:"ubtTime,omitempty"`        // UBT switch time (nil = no fork, 0 = already on UBT)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
@@ -911,7 +745,7 @@ func (c *ChainConfig) String() string {
 
 	var OsakaTime *big.Int
 	if c.OsakaTime != nil {
-		OsakaTime = big.NewInt(0).SetUint64(*c.OsakaTime)
+		OsakaTime = new(big.Int).SetUint64(*c.OsakaTime)
 	}
 
 	var MendelTime *big.Int
@@ -1013,17 +847,18 @@ func (bc *BlobConfig) String() string {
 }
 
 // BlobScheduleConfig determines target and max number of blobs allow per fork.
+//
+// From Prague onward, the blob schedule is updated only at BPO (Blob Parameter-Only)
+// forks. Named forks such as Osaka or Amsterdam inherit the most recently configured
+// BPO entry and must not declare their own BlobConfig.
 type BlobScheduleConfig struct {
-	Cancun    *BlobConfig `json:"cancun,omitempty"`
-	Prague    *BlobConfig `json:"prague,omitempty"`
-	Osaka     *BlobConfig `json:"osaka,omitempty"`
-	BPO1      *BlobConfig `json:"bpo1,omitempty"`
-	BPO2      *BlobConfig `json:"bpo2,omitempty"`
-	BPO3      *BlobConfig `json:"bpo3,omitempty"`
-	BPO4      *BlobConfig `json:"bpo4,omitempty"`
-	BPO5      *BlobConfig `json:"bpo5,omitempty"`
-	Amsterdam *BlobConfig `json:"amsterdam,omitempty"`
-	UBT       *BlobConfig `json:"ubt,omitempty"`
+	Cancun *BlobConfig `json:"cancun,omitempty"`
+	Prague *BlobConfig `json:"prague,omitempty"`
+	BPO1   *BlobConfig `json:"bpo1,omitempty"`
+	BPO2   *BlobConfig `json:"bpo2,omitempty"`
+	BPO3   *BlobConfig `json:"bpo3,omitempty"`
+	BPO4   *BlobConfig `json:"bpo4,omitempty"`
+	BPO5   *BlobConfig `json:"bpo5,omitempty"`
 }
 
 // IsHomestead returns whether num is either equal to the homestead block or greater.
@@ -1519,6 +1354,20 @@ func (c *ChainConfig) IsAmsterdam(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.AmsterdamTime, time)
 }
 
+// IsOnAmsterdam reports whether the current block activates Amsterdam.
+func (c *ChainConfig) IsOnAmsterdam(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsAmsterdam(lastBlockNumber, lastBlockTime) && c.IsAmsterdam(currentBlockNumber, currentBlockTime)
+}
+
+// IsBogota returns whether time is either equal to the Bogota fork time or greater.
+func (c *ChainConfig) IsBogota(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.BogotaTime, time)
+}
+
 // IsUBT returns whether time is either equal to the Verkle fork time or greater.
 func (c *ChainConfig) IsUBT(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.UBTTime, time)
@@ -1571,10 +1420,6 @@ func (c *ChainConfig) CheckCompatible(newcfg *ChainConfig, height uint64, time u
 // CheckConfigForkOrder checks that we don't "skip" any forks, geth isn't pluggable enough
 // to guarantee that forks can be implemented in a different order than on official networks
 func (c *ChainConfig) CheckConfigForkOrder() error {
-	// skip checking for non-Parlia egine
-	if c.IsNotInBSC() {
-		return nil
-	}
 	type fork struct {
 		name      string
 		block     *big.Int // forks up to - and including the merge - were defined with block numbers
@@ -1582,40 +1427,75 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		optional  bool     // if true, the fork may be nil and next fork is still allowed
 	}
 	var lastFork fork
-	for _, cur := range []fork{
-		{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
-		{name: "brunoBlock", block: c.BrunoBlock},
-		{name: "eulerBlock", block: c.EulerBlock},
-		{name: "gibbsBlock", block: c.GibbsBlock},
-		{name: "planckBlock", block: c.PlanckBlock},
-		{name: "lubanBlock", block: c.LubanBlock},
-		{name: "platoBlock", block: c.PlatoBlock},
-		{name: "hertzBlock", block: c.HertzBlock},
-		{name: "hertzfixBlock", block: c.HertzfixBlock},
-		{name: "keplerTime", timestamp: c.KeplerTime},
-		{name: "feynmanTime", timestamp: c.FeynmanTime},
-		{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
-		{name: "cancunTime", timestamp: c.CancunTime},
-		{name: "haberTime", timestamp: c.HaberTime},
-		{name: "haberFixTime", timestamp: c.HaberFixTime},
-		{name: "bohrTime", timestamp: c.BohrTime},
-		{name: "pascalTime", timestamp: c.PascalTime},
-		{name: "pragueTime", timestamp: c.PragueTime},
-		{name: "lorentzTime", timestamp: c.LorentzTime},
-		{name: "maxwellTime", timestamp: c.MaxwellTime},
-		{name: "fermiTime", timestamp: c.FermiTime},
-		{name: "osakaTime", timestamp: c.OsakaTime},
-		{name: "mendelTime", timestamp: c.MendelTime},
-		{name: "pasteurTime", timestamp: c.PasteurTime},
-		{name: "jennerTime", timestamp: c.JennerTime, optional: true},
-		{name: "ubtTime", timestamp: c.UBTTime, optional: true},
-		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
-		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
-		{name: "bpo3", timestamp: c.BPO3Time, optional: true},
-		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
-		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
-		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
-	} {
+	var forkOrder []fork
+	if c.IsInBSC() {
+		forkOrder = []fork{
+			{name: "mirrorSyncBlock", block: c.MirrorSyncBlock},
+			{name: "brunoBlock", block: c.BrunoBlock},
+			{name: "eulerBlock", block: c.EulerBlock},
+			{name: "gibbsBlock", block: c.GibbsBlock},
+			{name: "planckBlock", block: c.PlanckBlock},
+			{name: "lubanBlock", block: c.LubanBlock},
+			{name: "platoBlock", block: c.PlatoBlock},
+			{name: "hertzBlock", block: c.HertzBlock},
+			{name: "hertzfixBlock", block: c.HertzfixBlock},
+			{name: "keplerTime", timestamp: c.KeplerTime},
+			{name: "feynmanTime", timestamp: c.FeynmanTime},
+			{name: "feynmanFixTime", timestamp: c.FeynmanFixTime},
+			{name: "cancunTime", timestamp: c.CancunTime},
+			{name: "haberTime", timestamp: c.HaberTime},
+			{name: "haberFixTime", timestamp: c.HaberFixTime},
+			{name: "bohrTime", timestamp: c.BohrTime},
+			{name: "pascalTime", timestamp: c.PascalTime},
+			{name: "pragueTime", timestamp: c.PragueTime},
+			{name: "lorentzTime", timestamp: c.LorentzTime},
+			{name: "maxwellTime", timestamp: c.MaxwellTime},
+			{name: "fermiTime", timestamp: c.FermiTime},
+			{name: "osakaTime", timestamp: c.OsakaTime},
+			{name: "mendelTime", timestamp: c.MendelTime},
+			{name: "pasteurTime", timestamp: c.PasteurTime},
+			{name: "jennerTime", timestamp: c.JennerTime, optional: true},
+			{name: "ubtTime", timestamp: c.UBTTime, optional: true},
+			{name: "bpo1", timestamp: c.BPO1Time, optional: true},
+			{name: "bpo2", timestamp: c.BPO2Time, optional: true},
+			{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+			{name: "bogota", timestamp: c.BogotaTime, optional: true},
+			{name: "bpo3", timestamp: c.BPO3Time, optional: true},
+			{name: "bpo4", timestamp: c.BPO4Time, optional: true},
+			{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		}
+	} else {
+		forkOrder = []fork{
+			{name: "homesteadBlock", block: c.HomesteadBlock},
+			{name: "daoForkBlock", block: c.DAOForkBlock, optional: true},
+			{name: "eip150Block", block: c.EIP150Block},
+			{name: "eip155Block", block: c.EIP155Block},
+			{name: "eip158Block", block: c.EIP158Block},
+			{name: "byzantiumBlock", block: c.ByzantiumBlock},
+			{name: "constantinopleBlock", block: c.ConstantinopleBlock},
+			{name: "petersburgBlock", block: c.PetersburgBlock},
+			{name: "istanbulBlock", block: c.IstanbulBlock},
+			{name: "muirGlacierBlock", block: c.MuirGlacierBlock, optional: true},
+			{name: "berlinBlock", block: c.BerlinBlock},
+			{name: "londonBlock", block: c.LondonBlock},
+			{name: "arrowGlacierBlock", block: c.ArrowGlacierBlock, optional: true},
+			{name: "grayGlacierBlock", block: c.GrayGlacierBlock, optional: true},
+			{name: "mergeNetsplitBlock", block: c.MergeNetsplitBlock, optional: true},
+			{name: "shanghaiTime", timestamp: c.ShanghaiTime},
+			{name: "cancunTime", timestamp: c.CancunTime, optional: true},
+			{name: "pragueTime", timestamp: c.PragueTime, optional: true},
+			{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
+			{name: "ubtTime", timestamp: c.UBTTime, optional: true},
+			{name: "bpo1", timestamp: c.BPO1Time, optional: true},
+			{name: "bpo2", timestamp: c.BPO2Time, optional: true},
+			{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
+			{name: "bogota", timestamp: c.BogotaTime, optional: true},
+			{name: "bpo3", timestamp: c.BPO3Time, optional: true},
+			{name: "bpo4", timestamp: c.BPO4Time, optional: true},
+			{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		}
+	}
+	for _, cur := range forkOrder {
 		if lastFork.name != "" {
 			switch {
 			// Non-optional forks must all be present in the chain config up to the last defined fork
@@ -1663,13 +1543,11 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	}{
 		{name: "cancun", timestamp: c.CancunTime, config: bsc.Cancun},
 		{name: "prague", timestamp: c.PragueTime, config: bsc.Prague},
-		{name: "osaka", timestamp: c.OsakaTime, config: bsc.Osaka},
 		{name: "bpo1", timestamp: c.BPO1Time, config: bsc.BPO1},
 		{name: "bpo2", timestamp: c.BPO2Time, config: bsc.BPO2},
 		{name: "bpo3", timestamp: c.BPO3Time, config: bsc.BPO3},
 		{name: "bpo4", timestamp: c.BPO4Time, config: bsc.BPO4},
 		{name: "bpo5", timestamp: c.BPO5Time, config: bsc.BPO5},
-		{name: "amsterdam", timestamp: c.AmsterdamTime, config: bsc.Amsterdam},
 	} {
 		if cur.config != nil {
 			if err := cur.config.validate(); err != nil {
@@ -1863,6 +1741,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.AmsterdamTime, newcfg.AmsterdamTime, headTimestamp) {
 		return newTimestampCompatError("Amsterdam fork timestamp", c.AmsterdamTime, newcfg.AmsterdamTime)
 	}
+	if isForkTimestampIncompatible(c.BogotaTime, newcfg.BogotaTime, headTimestamp) {
+		return newTimestampCompatError("Bogota fork timestamp", c.BogotaTime, newcfg.BogotaTime)
+	}
 	return nil
 }
 
@@ -1883,6 +1764,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
+	case c.IsBogota(london, time):
+		return forks.Bogota
 	case c.IsAmsterdam(london, time):
 		return forks.Amsterdam
 	case c.IsBPO5(london, time):
@@ -1922,28 +1805,30 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	}
 }
 
-// BlobConfig returns the blob config associated with the provided fork.
+// BlobConfig returns the blob config active at the provided fork.
 func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
-	switch fork {
-	case forks.BPO5:
-		return c.BlobScheduleConfig.BPO5
-	case forks.BPO4:
-		return c.BlobScheduleConfig.BPO4
-	case forks.BPO3:
-		return c.BlobScheduleConfig.BPO3
-	case forks.BPO2:
-		return c.BlobScheduleConfig.BPO2
-	case forks.BPO1:
-		return c.BlobScheduleConfig.BPO1
-	case forks.Jenner, forks.Pasteur, forks.Mendel, forks.Osaka:
-		return c.BlobScheduleConfig.Osaka
-	case forks.Fermi, forks.Maxwell, forks.Lorentz, forks.Prague:
-		return c.BlobScheduleConfig.Prague
-	case forks.Cancun:
-		return c.BlobScheduleConfig.Cancun
-	default:
+	if c.BlobScheduleConfig == nil {
 		return nil
 	}
+	bsc := c.BlobScheduleConfig
+	chain := []struct {
+		at  forks.Fork
+		cfg *BlobConfig
+	}{
+		{forks.BPO5, bsc.BPO5},
+		{forks.BPO4, bsc.BPO4},
+		{forks.BPO3, bsc.BPO3},
+		{forks.BPO2, bsc.BPO2},
+		{forks.BPO1, bsc.BPO1},
+		{forks.Prague, bsc.Prague},
+		{forks.Cancun, bsc.Cancun},
+	}
+	for _, e := range chain {
+		if e.at <= fork && e.cfg != nil {
+			return e.cfg
+		}
+	}
+	return nil
 }
 
 // ActiveSystemContracts returns the currently active system contracts at the
@@ -1951,6 +1836,11 @@ func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
 func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Address {
 	fork := c.LatestFork(time)
 	active := make(map[string]common.Address)
+	if fork >= forks.Amsterdam {
+		// EIP-8282 - Builder Execution Requests
+		active["BUILDER_DEPOSIT_CONTRACT_ADDRESS"] = BuilderDepositAddress
+		active["BUILDER_EXIT_CONTRACT_ADDRESS"] = BuilderExitAddress
+	}
 	if fork >= forks.Osaka {
 		// no new system contracts
 	}
@@ -1976,6 +1866,8 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
+	case fork == forks.Bogota:
+		return c.BogotaTime
 	case fork == forks.Amsterdam:
 		return c.AmsterdamTime
 	case fork == forks.BPO5:
@@ -2163,7 +2055,7 @@ type Rules struct {
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
-	IsPasteur, IsAmsterdam, IsUBT                           bool
+	IsPasteur, IsAmsterdam, IsBogota, IsUBT                 bool
 	IsJenner                                                bool
 	// IsInBSC is true when Parlia is configured (BSC chains). core/vm uses it to
 	// select the BSC precompile set (…ForBSC); non-BSC chains (e.g. the standard
@@ -2211,6 +2103,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsMendel:         c.IsMendel(num, timestamp),
 		IsPasteur:        c.IsPasteur(num, timestamp),
 		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
+		IsBogota:         (isMerge || c.IsInBSC()) && c.IsBogota(num, timestamp),
 		// IsJenner needs no (isMerge || IsInBSC()) prefix: unlike Amsterdam etc.
 		// (fork names shared with upstream ethereum), Jenner is a BSC-only fork
 		// and IsJenner() itself embeds the IsInBSC() gate.

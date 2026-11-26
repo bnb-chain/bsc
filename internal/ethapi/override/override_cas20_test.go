@@ -47,7 +47,7 @@ func TestCAS20CodeOverrideRunsTheOverride(t *testing.T) {
 			Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {}}
 		evm := vm.NewEVM(blockCtx, statedb, &cfg, vm.Config{})
 		evm.SetPrecompiles(precompiles)
-		ret, _, err := evm.Call(common.Address{19: 9}, tc.addr, nil, vm.NewGasBudget(100_000), new(uint256.Int))
+		ret, _, err := evm.Call(common.Address{19: 9}, tc.addr, nil, vm.NewGasBudget(100_000, 0), new(uint256.Int))
 		evm.Release()
 		if err != nil || new(uint256.Int).SetBytes(ret).Uint64() != 42 {
 			t.Errorf("%s: override not executed: ret %x err %v", tc.name, ret, err)
@@ -74,7 +74,7 @@ func TestCAS20RoutingWithoutOverride(t *testing.T) {
 	evm.SetPrecompiles(precompiles)
 	// Empty calldata is an unknown selector to the token: an empty revert, not the
 	// 0xEF sentinel executing as bytecode.
-	ret, _, err := evm.Call(common.Address{19: 9}, token, nil, vm.NewGasBudget(100_000), new(uint256.Int))
+	ret, _, err := evm.Call(common.Address{19: 9}, token, nil, vm.NewGasBudget(100_000, 0), new(uint256.Int))
 	evm.Release()
 	if err != vm.ErrExecutionReverted || len(ret) != 0 {
 		t.Errorf("unoverridden token: ret %x err %v, want an empty revert from native code", ret, err)

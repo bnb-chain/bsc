@@ -73,8 +73,8 @@ func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
 	defer emptyPipeEth.Close()
 	defer fullPipeEth.Close()
 
-	emptyPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{1}, "", caps), emptyPipeEth, empty.txpool, nil)
-	fullPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{2}, "", caps), fullPipeEth, full.txpool, nil)
+	emptyPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{1}, "", caps), emptyPipeEth, empty.txpool, empty.blobpool, nil)
+	fullPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{2}, "", caps), fullPipeEth, full.txpool, full.blobpool, nil)
 	defer emptyPeerEth.Close()
 	defer fullPeerEth.Close()
 
@@ -166,8 +166,8 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 	defer emptyPipeEth.Close()
 	defer fullPipeEth.Close()
 
-	emptyPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{1}, "", caps), emptyPipeEth, empty.txpool, empty.chain.Config())
-	fullPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{2}, "", caps), fullPipeEth, full.txpool, full.chain.Config())
+	emptyPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{1}, "", caps), emptyPipeEth, empty.txpool, nil, empty.chain.Config())
+	fullPeerEth := eth.NewPeer(ethVer, p2p.NewPeer(enode.ID{2}, "", caps), fullPipeEth, full.txpool, nil, full.chain.Config())
 	defer emptyPeerEth.Close()
 	defer fullPeerEth.Close()
 
@@ -192,7 +192,7 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 		return snap.Handle((*snapHandler)(full.handler), peer)
 	})
 
-	for empty.handler.peers.snapLen() < 1 {
+	for empty.handler.peers.snapLen(snap.SNAP1) < 1 {
 		// Wait a bit for the above handlers to start
 		time.Sleep(100 * time.Millisecond)
 	}

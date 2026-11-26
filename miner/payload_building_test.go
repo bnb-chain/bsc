@@ -104,7 +104,7 @@ func TestBuildTestingPayloadUsesOverrides(t *testing.T) {
 		FeeRecipient: testBankAddress,
 	}
 	extraData := []byte{0x12, 0x34}
-	payload, err := (&Miner{worker: w}).BuildTestingPayload(args, []*types.Transaction{tx}, false, extraData)
+	_, payload, err := (&Miner{worker: w}).BuildTestingPayload(args, []*types.Transaction{tx}, false, extraData)
 	if err != nil {
 		t.Fatalf("failed to build testing payload: %v", err)
 	}

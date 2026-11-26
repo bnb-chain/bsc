@@ -38,13 +38,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/fetcher"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/eth/txtracker"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -91,7 +94,7 @@ type txPool interface {
 
 	// GetRLP retrieves the RLP-encoded transaction from local txpool
 	// with given tx hash.
-	GetRLP(hash common.Hash) []byte
+	GetRLP(hash common.Hash, version uint) []byte
 
 	// GetMetadata returns the transaction type and transaction size with the
 	// given transaction hash.
@@ -124,18 +127,32 @@ type votePool interface {
 	SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription
 }
 
+// blobPool defines the methods needed from a blob pool implementation to
+// support cell-based blob data availability.
+type blobPool interface {
+	Has(hash common.Hash) bool
+	GetBlobHashes(hash common.Hash) []common.Hash
+	GetBlobCells(vhashes []common.Hash, mask types.CustodyBitmap) ([][]*kzg4844.Cell, [][]*kzg4844.Proof, error)
+	GetCustody(hash common.Hash) *types.CustodyBitmap
+	AddPooledTx(pooledTx *blobpool.BlobTxForPool) error
+	ValidateTxBasics(pooledTx *types.Transaction) error
+}
+
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	NodeID         enode.ID         // P2P node ID used for tx propagation topology
-	Database       ethdb.Database   // Database for direct sync insertions
-	Chain          *core.BlockChain // Blockchain to serve data from
-	TxPool         txPool           // Transaction pool to propagate from
-	VotePool       votePool
-	Network        uint64                 // Network identifier to adfvertise
-	Sync           ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
-	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	NodeID           enode.ID         // P2P node ID used for tx propagation topology
+	Database         ethdb.Database   // Database for direct sync insertions
+	Chain            *core.BlockChain // Blockchain to serve data from
+	TxPool           txPool
+	BlobPool         blobPool // Blob pool for cell-based blob data availability
+	VotePool         votePool
+	Network          uint64                 // Network identifier to adfvertise
+	Sync             ethconfig.SyncMode     // Whether to snap or full sync
+	BloomCache       uint64                 // Megabytes to alloc for snap sync bloom
+	RequiredBlocks   map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	SnapV2           bool                   // Whether to advertise and sync via the snap/2 protocol
+	FetchProbability uint64
 
 	DirectBroadcast           bool
 	DisablePeerTxBroadcast    bool
@@ -154,6 +171,7 @@ type handler struct {
 
 	database ethdb.Database
 	txpool   txPool
+	blobpool blobPool
 	chain    *core.BlockChain
 	maxPeers int
 
@@ -177,6 +195,8 @@ type handler struct {
 
 	downloader     *downloader.Downloader
 	txFetcher      *fetcher.TxFetcher
+	blobFetcher    *fetcher.BlobFetcher
+	txTracker      *txtracker.Tracker
 	peers          *peerSet
 	txBroadcastKey [16]byte
 
@@ -214,6 +234,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		disablePeerTxBroadcast:     config.DisablePeerTxBroadcast,
 		database:                   config.Database,
 		txpool:                     config.TxPool,
+		blobpool:                   config.BlobPool,
 		votepool:                   config.VotePool,
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
@@ -242,7 +263,8 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, nil)
+	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, nil, config.SnapV2)
+
 	// If snap sync is requested but snapshots are disabled, fail loudly
 	if h.downloader.ConfigSyncMode() == ethconfig.SnapSync && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().Scheme() == rawdb.HashScheme) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
@@ -323,8 +345,15 @@ func newHandler(config *handlerConfig) (*handler, error) {
 
 		blocks := make([]*types.Block, len(res))
 		for i, item := range res {
-			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
-			block = block.WithSidecars(item.Sidecars)
+			block, err := item.ToBlock()
+			if err != nil {
+				h.removePeer(peer)
+				return nil, err
+			}
+			if block.AccessList() != nil && !h.chain.Config().IsAmsterdam(block.Number(), block.Time()) {
+				h.removePeer(peer)
+				return nil, errors.New("block access list before Amsterdam")
+			}
 			block.ReceivedAt = time.Now()
 			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
@@ -356,6 +385,25 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return p.RequestTxs(hashes)
 	}
+
+	// Construct the blob buffer for assembling blob txs from separate tx and cell deliveries.
+	// Construct the blob buffer for assembling blob txs from separate tx and cell deliveries.
+	blobBuffer := blobpool.NewBlobBuffer(blobpool.BlobBufferFunctions{
+		ValidateTx: func(tx *types.Transaction) error {
+			if h.blobpool == nil {
+				return errors.New("blob pool unavailable")
+			}
+			return h.blobpool.ValidateTxBasics(tx)
+		},
+		AddToPool: func(tx *blobpool.BlobTxForPool) error {
+			if h.blobpool == nil {
+				return errors.New("blob pool unavailable")
+			}
+			return h.blobpool.AddPooledTx(tx)
+		},
+		DropPeer: h.removePeer,
+	})
+
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false)
 		for _, err := range errors {
@@ -373,7 +421,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return errors
 	}
 	validateMeta := func(tx common.Hash, kind byte) error {
-		if h.txpool.Has(tx) {
+		if h.txpool.Has(tx) || blobBuffer.HasTx(tx) {
 			return txpool.ErrAlreadyKnown
 		}
 		if !h.txpool.FilterType(kind) {
@@ -381,7 +429,31 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return nil
 	}
-	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer)
+	h.txTracker = txtracker.New()
+	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer, h.txTracker.NotifyAccepted, blobBuffer)
+
+	// Construct the blob fetcher for cell-based blob data availability
+	blobCallbacks := fetcher.BlobFetcherFunctions{
+		FetchPayloads: func(peer string, hashes []common.Hash, cells types.CustodyBitmap) error {
+			p := h.peers.peer(peer)
+			if p == nil {
+				return errors.New("unknown peer")
+			}
+			return p.RequestPayload(hashes, cells)
+		},
+		HasPayload: func(hash common.Hash) bool {
+			return (h.blobpool != nil && h.blobpool.Has(hash)) || blobBuffer.HasCells(hash)
+		},
+		AddCells: func(hash common.Hash, deliveries map[string]*fetcher.PeerCellDelivery, custody types.CustodyBitmap) {
+			converted := make(map[string]*blobpool.PeerDelivery, len(deliveries))
+			for peer, d := range deliveries {
+				converted[peer] = &blobpool.PeerDelivery{Cells: d.Cells, Indices: d.Indices}
+			}
+			blobBuffer.AddCells(hash, converted, custody)
+		},
+		DropPeer: h.removePeer,
+	}
+	h.blobFetcher = fetcher.NewBlobFetcher(blobCallbacks, types.CustodyBitmapAll, nil, config.FetchProbability)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
@@ -469,11 +541,17 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 	reject := false // reserved peer slots
 	if h.downloader.ConfigSyncMode() == ethconfig.SnapSync {
-		if snap == nil {
-			// If we are running snap-sync, we want to reserve roughly half the peer
-			// slots for peers supporting the snap protocol.
-			// The logic here is; we only allow up to 5 more non-snap peers than snap-peers.
-			if all, snp := h.peers.len(), h.peers.snapLen(); all-snp > snp+5 {
+		// A peer is useful to the active state syncer only if it offers the snap
+		// extension at (or above) the syncer's version. Non-snap peers AND peers
+		// stuck on an older snap version (e.g. snap/1 while we sync via snap/2)
+		// are both "non-usable": the node still serves them, but they must not be
+		// allowed to fill the slots reserved for peers that can serve the sync.
+		minVersion := h.downloader.SnapSyncVersion()
+		usable := snap != nil && snap.Version() >= minVersion
+		if !usable {
+			// Reserve roughly half the slots for usable peers: only allow up to 5
+			// more non-usable peers (non-snap or below-version snap) than usable ones.
+			if all, snp := h.peers.len(), h.peers.snapLen(minVersion); all-snp > snp+5 {
 				reject = true
 			}
 		}
@@ -532,7 +610,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		return err
 	}
 	if snap != nil {
-		if err := h.downloader.SnapSyncer.Register(snap); err != nil {
+		if err := h.downloader.RegisterSnapPeer(snap); err != nil {
 			peer.Log().Error("Failed to register peer in snap syncer", "err", err)
 			return err
 		}
@@ -676,10 +754,12 @@ func (h *handler) unregisterPeer(id string) {
 
 	// Remove the `snap` extension if it exists
 	if peer.snapExt != nil {
-		h.downloader.SnapSyncer.Unregister(id)
+		h.downloader.UnregisterSnapPeer(peer.snapExt.Peer)
 	}
 	h.downloader.UnregisterPeer(id)
 	h.txFetcher.Drop(id)
+	h.blobFetcher.Drop(id)
+	h.txTracker.NotifyPeerDrop(id)
 
 	if err := h.peers.unregisterPeer(id); err != nil {
 		logger.Error("Ethereum peer removal failed", "err", err)
@@ -721,6 +801,10 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	// start sync handlers
 	h.wg.Add(1)
 	go h.chainSync.loop()
+	h.blobFetcher.Start()
+
+	// Start the transaction tracker (records tx deliveries, credits peer inclusions).
+	h.txTracker.Start(h.chain)
 
 	// start peer handler tracker
 	h.wg.Add(1)
@@ -755,6 +839,8 @@ func (h *handler) Stop() {
 		}
 	}
 	close(h.stopCh)
+	h.blobFetcher.Stop()
+	h.txTracker.Stop()
 	// Quit chainSync and txsync64.
 	// After this is done, no new peers will be accepted.
 	close(h.quitSync)
@@ -791,6 +877,9 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
+		balPayload := sync.OnceValues(func() ([]byte, error) {
+			return eth.EncodeNewBlockWithBAL(block, td)
+		})
 
 		// Broadcast the block to peers based on broadcast strategy.
 		totalPeers := len(peers)
@@ -809,7 +898,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 				"hash", hash, "peer", peer.ID(),
 				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 			)
-			peer.AsyncSendNewBlock(block, td)
+			peer.AsyncSendNewBlock(block, td, balPayload)
 		}
 
 		// Step 3: Handle proxyed peers.
@@ -821,7 +910,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 					)
-					peer.AsyncSendNewBlock(block, td)
+					peer.AsyncSendNewBlock(block, td, balPayload)
 					proxyedPeersCnt++
 				}
 			}
@@ -836,7 +925,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 					)
-					peer.AsyncSendNewBlock(block, td)
+					peer.AsyncSendNewBlock(block, td, balPayload)
 					evnPeersCnt++
 				}
 			}

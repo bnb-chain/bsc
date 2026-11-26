@@ -158,6 +158,23 @@ func TestUDPv4_pingTimeout(t *testing.T) {
 	}
 }
 
+// TestUDPv4_RequestENRNoUDPEndpoint verifies that RequestENR returns a clean
+// errNoUDPEndpoint error for a node without a usable UDP endpoint, instead of
+// silently sending a packet to the zero address and waiting for a timeout.
+// This mirrors the existing guards in ping/Ping/findnode.
+func TestUDPv4_RequestENRNoUDPEndpoint(t *testing.T) {
+	t.Parallel()
+	test := newUDPTest(t)
+	defer test.close()
+
+	key := newkey()
+	// UDP port 0 makes UDPEndpoint return ok=false.
+	node := enode.NewV4(&key.PublicKey, net.ParseIP("1.2.3.4"), 2222, 0)
+	if _, err := test.udp.RequestENR(node); !errors.Is(err, errNoUDPEndpoint) {
+		t.Errorf("expected errNoUDPEndpoint, got %v", err)
+	}
+}
+
 type testPacket byte
 
 func (req testPacket) Kind() byte   { return byte(req) }
@@ -450,6 +467,41 @@ func TestUDPv4_successfulPing(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Errorf("node was not added within 2 seconds")
+	}
+}
+
+// This test checks that pings from unbonded nodes do not feed the endpoint predictor.
+func TestUDPv4_pingEndpointStatementRequiresBond(t *testing.T) {
+	test := newUDPTest(t)
+	defer test.close()
+
+	var (
+		claimed = v4wire.Endpoint{IP: net.ParseIP("6.6.6.6").To4(), UDP: 6666}
+		keys    []*ecdsa.PrivateKey
+		addrs   []netip.AddrPort
+	)
+	for i := range 2 * 10 { // 2x iptrackMinStatements
+		keys = append(keys, newkey())
+		addrs = append(addrs, netip.AddrPortFrom(netip.AddrFrom4([4]byte{10, 20, 0, byte(i)}), 30303))
+	}
+	ping := &v4wire.Ping{From: testRemote, To: claimed, Version: 4, Expiration: futureExp}
+
+	// Pings from unbonded nodes must not change the local endpoint.
+	for i := range keys {
+		test.packetInFrom(nil, keys[i], addrs[i], ping)
+	}
+	if ip := test.udp.localNode.Node().IPAddr(); ip == netip.AddrFrom4([4]byte{6, 6, 6, 6}) {
+		t.Fatalf("local endpoint changed by unbonded pings: %v", ip)
+	}
+
+	// Once bonded, the statements are accepted.
+	for i := range keys {
+		id := enode.PubkeyToIDV4(&keys[i].PublicKey)
+		test.db.UpdateLastPongReceived(id, addrs[i].Addr(), time.Now())
+		test.packetInFrom(nil, keys[i], addrs[i], ping)
+	}
+	if ip := test.udp.localNode.Node().IPAddr(); ip != netip.AddrFrom4([4]byte{6, 6, 6, 6}) {
+		t.Fatalf("local endpoint not updated by bonded pings: %v", ip)
 	}
 }
 

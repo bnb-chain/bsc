@@ -46,8 +46,6 @@ var (
 
 	// errNotSupported is returned if the database doesn't support the required operation.
 	errNotSupported = errors.New("this operation is not supported")
-
-	errTruncationBelowTail = errors.New("truncation below tail")
 )
 
 // indexEntry contains the number/id of the file that the data resides in, as well as the
@@ -102,7 +100,9 @@ type freezerTable struct {
 	// should never be lower than itemOffset.
 	itemHidden atomic.Uint64
 
-	config      freezerTableConfig // table configuration (compression, prunability). Note: compression flag does not apply retroactively to existing files
+	// table configuration (compression, prunability). Note: compression flag
+	// does not apply retroactively to existing files.
+	config      freezerTableConfig
 	readonly    bool
 	maxFileSize uint32 // Max file size for data-files
 	name        string
@@ -183,7 +183,7 @@ func newTable(path string, name string, readMeter, writeMeter *metrics.Meter, si
 	}
 	// Load metadata from the file. The tag will be true if legacy metadata
 	// is detected.
-	metadata, err := newMetadata(meta)
+	metadata, err := newMetadata(meta, readonly)
 	if err != nil {
 		meta.Close()
 		index.Close()
@@ -621,8 +621,14 @@ func (t *freezerTable) truncateHead(items uint64) error {
 	if existing <= items {
 		return nil
 	}
-	if items < t.itemHidden.Load() {
-		return errTruncationBelowTail
+	hidden := t.itemHidden.Load()
+
+	// The new head sits below this table's tail, so nothing of it survives:
+	// everything above the new head is discarded here and everything below
+	// the tail was already pruned. Reset the table to be empty at the new
+	// head.
+	if items < hidden {
+		return t.resetTo(items)
 	}
 	// We need to truncate, save the old size for metrics tracking
 	oldSize, err := t.sizeNolock()

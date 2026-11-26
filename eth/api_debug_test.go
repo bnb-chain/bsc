@@ -29,14 +29,19 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
+	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
@@ -130,7 +135,7 @@ func TestAccountRange(t *testing.T) {
 			m[addr] = true
 		}
 	}
-	root, _ := sdb.Commit(0, true, false)
+	root, _ := sdb.Commit(params.Rules{IsEIP158: true}, 0)
 	sdb, _ = state.New(root, statedb)
 
 	trie, err := statedb.OpenTrie(root)
@@ -188,7 +193,7 @@ func TestEmptyAccountRange(t *testing.T) {
 		st, _   = state.New(types.EmptyRootHash, statedb)
 	)
 	// Commit(although nothing to flush) and re-init the statedb
-	st.Commit(0, true, false)
+	st.Commit(params.Rules{IsEIP158: true}, 0)
 	st, _ = state.New(types.EmptyRootHash, statedb)
 
 	results := st.RawDump(&state.DumpConfig{
@@ -231,7 +236,7 @@ func TestStorageRangeAt(t *testing.T) {
 	for _, entry := range storage {
 		sdb.SetState(addr, *entry.Key, entry.Value)
 	}
-	root, _ := sdb.Commit(0, false, false)
+	root, _ := sdb.Commit(params.Rules{}, 0)
 	sdb, _ = state.New(root, db)
 
 	// Check a few combinations of limit and start/end.
@@ -334,4 +339,99 @@ func TestGetModifiedAccounts(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestExecutionWitnessMissingBlock ensures that debug_executionWitness returns
+// an error, rather than panicking, when the requested block does not exist.
+// BlockByNumberOrHash returns a nil block without an error for an unknown hash,
+// which previously caused a nil pointer dereference.
+func TestExecutionWitnessMissingBlock(t *testing.T) {
+	t.Parallel()
+
+	accounts := newAccounts(1)
+	genesis := &core.Genesis{
+		Config: params.TestChainConfig,
+		Alloc: types.GenesisAlloc{
+			accounts[0].addr: {Balance: big.NewInt(params.Ether)},
+		},
+	}
+	blockChain := newTestBlockChain(t, 1, genesis, func(_ int, _ *core.BlockGen) {})
+	defer blockChain.Stop()
+
+	eth := &Ethereum{blockchain: blockChain}
+	eth.APIBackend = &EthAPIBackend{eth: eth}
+	api := NewDebugAPI(eth)
+
+	// A hash that does not correspond to any known block. This makes
+	// BlockByNumberOrHash return (nil, nil).
+	missing := rpc.BlockNumberOrHashWithHash(common.HexToHash("0xdeadbeef"), false)
+	_, err := api.ExecutionWitness(missing)
+	assert.Error(t, err, "expected an error for a missing block, got nil")
+}
+
+func TestDebugAPI_ClearTxpool(t *testing.T) {
+	// Create test key and genesis
+	testKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testAddress := crypto.PubkeyToAddress(testKey.PublicKey)
+	testFunds := big.NewInt(1000_000_000_000_000)
+	testGspec := &core.Genesis{
+		Config: params.MergedTestChainConfig,
+		Alloc: types.GenesisAlloc{
+			testAddress: {Balance: testFunds},
+		},
+		Difficulty: common.Big0,
+		BaseFee:    big.NewInt(params.InitialBaseFee),
+	}
+	testSigner := types.LatestSignerForChainID(testGspec.Config.ChainID)
+
+	// Initialize backend
+	db := rawdb.NewMemoryDatabase()
+	engine := beacon.New(ethash.NewFaker())
+	chain, _ := core.NewBlockChain(db, testGspec, engine, nil)
+
+	txconfig := legacypool.DefaultConfig
+	txconfig.Journal = "" // Don't litter the disk with test journals
+
+	blobPool := blobpool.New(blobpool.Config{Datadir: ""}, chain, nil)
+	legacyPool := legacypool.New(txconfig, chain)
+	pool, _ := txpool.New(txconfig.PriceLimit, chain, []txpool.SubPool{legacyPool, blobPool})
+
+	eth := &Ethereum{
+		blockchain: chain,
+		txPool:     pool,
+	}
+
+	// Create debug API
+	api := NewDebugAPI(eth)
+
+	// Create and add a test transaction
+	tx := types.NewTransaction(0, common.Address{1}, big.NewInt(1000), params.TxGas, big.NewInt(params.InitialBaseFee), nil)
+	signedTx, err := types.SignTx(tx, testSigner, testKey)
+	if err != nil {
+		t.Fatalf("Failed to sign transaction: %v", err)
+	}
+
+	// Add transaction to pool
+	errs := pool.Add([]*types.Transaction{signedTx}, true)
+	if errs[0] != nil {
+		t.Logf("Note: Transaction addition returned: %v (this may be expected)", errs[0])
+	}
+
+	// Verify we tried to add a transaction
+	t.Logf("Transaction added to pool from: %s", testAddress.Hex())
+
+	// Clear the transaction pool
+	err = api.ClearTxpool()
+	if err != nil {
+		t.Fatalf("ClearTxpool failed: %v", err)
+	}
+
+	// Verify the pool is empty after clear
+	pool.Sync()
+	pending, _ := pool.Pending(txpool.PendingFilter{})
+	if len(pending) > 0 {
+		t.Errorf("Expected empty pool after clear, but found %d accounts with pending transactions", len(pending))
+	}
+
+	t.Log("Successfully cleared transaction pool")
 }

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -66,10 +67,11 @@ func (s *Suite) dialAs(key *ecdsa.PrivateKey) (*Conn, error) {
 		return nil, err
 	}
 	conn.caps = []p2p.Cap{
+		{Name: "eth", Version: eth.ETH71},
 		{Name: "eth", Version: eth.ETH70},
 		{Name: "eth", Version: eth.ETH68},
 	}
-	conn.ourHighestProtoVersion = eth.ETH70
+	conn.ourHighestProtoVersion = eth.ETH71
 	return &conn, nil
 }
 
@@ -84,6 +86,32 @@ func (s *Suite) dialSnap() (*Conn, error) {
 	return conn, nil
 }
 
+// dialSnap2 creates a connection advertising snap/2 as the only snap capability.
+// This is used by the snap/2 (EIP-8189) test suite to force the peer to
+// negotiate snap/2 rather than falling back to snap/1.
+func (s *Suite) dialSnap2() (*Conn, error) {
+	conn, err := s.dial()
+	if err != nil {
+		return nil, fmt.Errorf("dial failed: %v", err)
+	}
+	conn.caps = append(conn.caps, p2p.Cap{Name: "snap", Version: 2})
+	conn.ourHighestSnapProtoVersion = 2
+	return conn, nil
+}
+
+// dialEth71 creates a connection advertising eth/71 as the only eth capability.
+// This is used by the eth/71 (EIP-8159) test suite to force the peer to
+// negotiate eth/71 rather than falling back to an earlier eth version.
+func (s *Suite) dialEth71() (*Conn, error) {
+	conn, err := s.dial()
+	if err != nil {
+		return nil, fmt.Errorf("dial failed: %v", err)
+	}
+	conn.caps = []p2p.Cap{{Name: "eth", Version: eth.ETH71}}
+	conn.ourHighestProtoVersion = eth.ETH71
+	return conn, nil
+}
+
 // Conn represents an individual connection with a peer
 type Conn struct {
 	*rlpx.Conn
@@ -93,6 +121,10 @@ type Conn struct {
 	ourHighestProtoVersion     uint
 	ourHighestSnapProtoVersion uint
 	caps                       []p2p.Cap
+
+	// pending holds messages received by readUntil that did not match the
+	// caller's expected type.
+	pending []any
 }
 
 // Read reads a packet from the connection.
@@ -113,7 +145,7 @@ func (c *Conn) ReadMsg(proto Proto, code uint64, msg any) error {
 		if err != nil {
 			return err
 		}
-		if protoOffset(proto)+code == got {
+		if c.protoOffset(proto)+code == got {
 			return rlp.DecodeBytes(data, msg)
 		}
 	}
@@ -126,8 +158,18 @@ func (c *Conn) Write(proto Proto, code uint64, msg any) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.Conn.Write(protoOffset(proto)+code, payload)
+	_, err = c.Conn.Write(c.protoOffset(proto)+code, payload)
 	return err
+}
+
+// WriteAnnounce encodes an announcement for the negotiated eth version.
+func (c *Conn) WriteAnnounce(ann eth.NewPooledTransactionHashesPacket72) error {
+	if c.negotiatedProtoVersion < eth.ETH72 {
+		return c.Write(ethProto, eth.NewPooledTransactionHashesMsg, eth.NewPooledTransactionHashesPacket71{
+			Types: ann.Types, Sizes: ann.Sizes, Hashes: ann.Hashes,
+		})
+	}
+	return c.Write(ethProto, eth.NewPooledTransactionHashesMsg, ann)
 }
 
 var errDisc error = errors.New("disconnect")
@@ -147,7 +189,7 @@ func (c *Conn) ReadEth() (any, error) {
 			c.Write(baseProto, pongMsg, []byte{})
 			continue
 		}
-		if getProto(code) != ethProto {
+		if c.getProto(code) != ethProto {
 			// Read until eth message.
 			continue
 		}
@@ -168,22 +210,39 @@ func (c *Conn) ReadEth() (any, error) {
 		case eth.TransactionsMsg:
 			msg = new(eth.TransactionsPacket)
 		case eth.NewPooledTransactionHashesMsg:
-			msg = new(eth.NewPooledTransactionHashesPacket)
+			if c.negotiatedProtoVersion < eth.ETH72 {
+				msg = new(eth.NewPooledTransactionHashesPacket71)
+			} else {
+				msg = new(eth.NewPooledTransactionHashesPacket72)
+			}
 		case eth.GetPooledTransactionsMsg:
 			msg = new(eth.GetPooledTransactionsPacket)
 		case eth.PooledTransactionsMsg:
 			msg = new(eth.PooledTransactionsPacket)
+		case eth.GetCellsMsg:
+			msg = new(eth.GetCellsRequestPacket)
+		case eth.CellsMsg:
+			msg = new(eth.CellsPacket)
 		default:
 			panic(fmt.Sprintf("unhandled eth msg code %d", code))
 		}
 		if err := rlp.DecodeBytes(data, msg); err != nil {
 			return nil, fmt.Errorf("unable to decode eth msg: %v", err)
 		}
+		if ann, ok := msg.(*eth.NewPooledTransactionHashesPacket71); ok {
+			// Test readers use one announcement type for all eth versions.
+			return &eth.NewPooledTransactionHashesPacket72{
+				Types: ann.Types, Sizes: ann.Sizes, Hashes: ann.Hashes, Mask: types.CustodyBitmapAll,
+			}, nil
+		}
 		return msg, nil
 	}
 }
 
-// ReadSnap reads a snap/1 response with the given id from the connection.
+// ReadSnap reads a snap protocol response from the connection. It decodes
+// the full message catalog of both snap/1 and snap/2. The caller is
+// expected to only receive codes that were actually valid on the
+// negotiated protocol version.
 func (c *Conn) ReadSnap() (any, error) {
 	c.SetReadDeadline(time.Now().Add(timeout))
 	for {
@@ -191,11 +250,11 @@ func (c *Conn) ReadSnap() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if getProto(code) != snapProto {
+		if c.getProto(code) != snapProto {
 			// Read until snap message.
 			continue
 		}
-		code -= protoOffset(snapProto)
+		code -= c.protoOffset(snapProto)
 
 		var msg any
 		switch int(code) {
@@ -215,6 +274,10 @@ func (c *Conn) ReadSnap() (any, error) {
 			msg = new(snap.GetTrieNodesPacket)
 		case snap.TrieNodesMsg:
 			msg = new(snap.TrieNodesPacket)
+		case snap.GetAccessListsMsg:
+			msg = new(snap.GetAccessListsPacket)
+		case snap.AccessListsMsg:
+			msg = new(snap.AccessListsPacket)
 		default:
 			panic(fmt.Errorf("unhandled snap code: %d", code))
 		}
@@ -235,6 +298,26 @@ func (s *Suite) dialAndPeer(status *eth.StatusPacket) (*Conn, error) {
 		c.Close()
 	}
 	return c, err
+}
+
+// dialPeers creates n connections and peers each of them with the node.
+func (s *Suite) dialPeers(n int) ([]*Conn, error) {
+	conns := make([]*Conn, 0, n)
+	for i := 0; i < n; i++ {
+		c, err := s.dialAndPeer(nil)
+		if err != nil {
+			closeConns(conns)
+			return nil, fmt.Errorf("peering failed: %v", err)
+		}
+		conns = append(conns, c)
+	}
+	return conns, nil
+}
+
+func closeConns(conns []*Conn) {
+	for _, c := range conns {
+		c.Close()
+	}
 }
 
 // peer performs both the protocol handshake and the status message
@@ -319,7 +402,7 @@ func (c *Conn) statusExchange(chain *Chain, status *eth.StatusPacket) error {
 			return fmt.Errorf("failed to read from connection: %w", err)
 		}
 		switch code {
-		case eth.StatusMsg + protoOffset(ethProto):
+		case eth.StatusMsg + c.protoOffset(ethProto):
 			if c.negotiatedProtoVersion == 0 {
 				return errors.New("eth protocol version must be set in Conn")
 			}

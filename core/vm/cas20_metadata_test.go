@@ -110,7 +110,7 @@ func TestCAS20MetadataUpdates(t *testing.T) {
 		{"updateSymbol", cas20CallString(selUpdateSymbol, "STC")},
 		{"updateContractURI", cas20CallString(selUpdateContractURI, "ipfs://static")},
 	} {
-		gas := NewGasBudget(1_000_000)
+		gas := NewGasBudget(1_000_000, 0)
 		roCtx := &PrecompileContext{StateDB: statedb, Self: token, Caller: editor, DirectCall: true, ReadOnly: true, gas: &gas}
 		if _, err := newCAS20Token(roCtx, 18).dispatch(c.input); !errors.Is(err, ErrWriteProtection) {
 			t.Errorf("read-only %s err = %v, want write protection", c.what, err)
@@ -124,7 +124,7 @@ func TestCAS20MetadataDuringBootstrap(t *testing.T) {
 
 	input := encodeCreateCAS20(cas20VariantAsset, common.HexToHash("0xc0"), creator,
 		[][]byte{cas20CallString(selUpdateName, "Configured")})
-	ret, _, err := evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+	ret, _, err := evm.Call(creator, CAS20FactoryAddress, input, NewGasBudget(5_000_000, 0), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createCAS20 with updateName init call: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestCAS20MetadataDuringBootstrap(t *testing.T) {
 	if view.hasRole(roleMetadata, creator) {
 		t.Error("creator holds METADATA_ROLE after bootstrap — the bypass leaked into stored state")
 	}
-	gas := NewGasBudget(1_000_000)
+	gas := NewGasBudget(1_000_000, 0)
 	ctx := &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: creator, DirectCall: true, gas: &gas}
 	if _, err := newCAS20Token(ctx, 18).dispatch(cas20CallString(selUpdateName, "After")); !errors.Is(err, ErrExecutionReverted) {
 		t.Errorf("post-creation updateName err = %v, want revert", err)
@@ -150,7 +150,7 @@ func TestCAS20MetadataEvents(t *testing.T) {
 		s.setRole(roleMetadata, editor, true)
 	})
 	txHash := common.HexToHash("0xbeef")
-	statedb.SetTxContext(txHash, 0)
+	statedb.SetTxContext(txHash, 0, uint32(0+1))
 
 	// Long enough to spill past the single-word case.
 	longName := strings.Repeat("Renamed ", 6) // 48 bytes
@@ -218,7 +218,7 @@ func TestCAS20PausedFeaturesAndSupplyCap(t *testing.T) {
 		s.setSupplyCap(uint256.NewInt(1000))
 	})
 	txHash := common.HexToHash("0xfeed")
-	statedb.SetTxContext(txHash, 0)
+	statedb.SetTxContext(txHash, 0, uint32(0+1))
 
 	ret, err := run(admin, cas20Call(selSupplyCap))
 	if err != nil {

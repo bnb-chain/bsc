@@ -25,9 +25,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // ethHandler implements the eth.Backend interface to handle the various network
@@ -36,6 +39,7 @@ type ethHandler handler
 
 func (h *ethHandler) Chain() *core.BlockChain { return h.chain }
 func (h *ethHandler) TxPool() eth.TxPool      { return h.txpool }
+func (h *ethHandler) BlobPool() eth.BlobPool  { return h.blobpool }
 
 // RunPeer is invoked when a peer joins on the `eth` protocol.
 func (h *ethHandler) RunPeer(peer *eth.Peer, hand eth.Handler) error {
@@ -68,8 +72,19 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 	case *eth.NewBlockPacket:
 		return h.handleBlockBroadcast(peer, packet)
 
-	case *eth.NewPooledTransactionHashesPacket:
-		return h.txFetcher.Notify(peer.ID(), packet.Types, packet.Sizes, packet.Hashes)
+	case *eth.NewPooledTransactionHashesPacket72:
+		hashes, err := h.txFetcher.Notify(peer.ID(), peer.Version(), packet.Types, packet.Sizes, packet.Hashes)
+		if err != nil {
+			return err
+		}
+		if len(hashes) != 0 {
+			return h.blobFetcher.Notify(peer.ID(), hashes, packet.Mask)
+		}
+		return nil
+
+	case *eth.NewPooledTransactionHashesPacket71:
+		_, err := h.txFetcher.Notify(peer.ID(), peer.Version(), packet.Types, packet.Sizes, packet.Hashes)
+		return err
 
 	case *eth.TransactionsPacket:
 		txs, err := packet.Items()
@@ -79,7 +94,7 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		if err := handleTransactions(peer, txs, true); err != nil {
 			return fmt.Errorf("Transactions: %v", err)
 		}
-		return h.txFetcher.Enqueue(peer.ID(), txs, false)
+		return h.txFetcher.Enqueue(peer.ID(), peer.Version(), txs, false)
 
 	case *eth.PooledTransactionsPacket:
 		txs, err := packet.List.Items()
@@ -89,7 +104,38 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		if err := handleTransactions(peer, txs, false); err != nil {
 			return fmt.Errorf("PooledTransactions: %v", err)
 		}
-		return h.txFetcher.Enqueue(peer.ID(), txs, true)
+		return h.txFetcher.Enqueue(peer.ID(), peer.Version(), txs, true)
+
+	case *eth.CellsResponse:
+		outer, err := packet.Cells.Items()
+		if err != nil {
+			return fmt.Errorf("Cells: %v", err)
+		}
+		var (
+			cells = make([][]kzg4844.Cell, len(outer))
+			count = packet.Mask.OneCount()
+		)
+		for i := range outer {
+			n := outer[i].Len()
+			if n == 0 {
+				continue
+			}
+			if n > params.BlobTxMaxBlobs*kzg4844.CellsPerBlob {
+				return fmt.Errorf("Cells: cells per tx exceeded the possible maximum")
+			}
+			if count == 0 || n%count != 0 {
+				return fmt.Errorf("Cells: %d cells inconsistent with %d custody indices", n, count)
+			}
+			cells[i] = make([]kzg4844.Cell, n)
+			blobs := n / count
+			it := outer[i].ContentIterator()
+			for j := 0; it.Next(); j++ {
+				if err := rlp.DecodeBytes(it.Value(), &cells[i][(j%blobs)*count+j/blobs]); err != nil {
+					return fmt.Errorf("Cells: %v", err)
+				}
+			}
+		}
+		return h.blobFetcher.Enqueue(peer.ID(), packet.Hashes, cells, packet.Mask)
 
 	default:
 		return fmt.Errorf("unexpected eth packet type: %T", packet)
@@ -99,7 +145,7 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 // handleTransactions marks all given transactions as known to the peer
 // and performs basic validations.
 func handleTransactions(peer *eth.Peer, list []*types.Transaction, directBroadcast bool) error {
-	seen := make(map[common.Hash]struct{})
+	seen := make(map[common.Hash]struct{}, len(list))
 	for _, tx := range list {
 		if tx.Type() == types.BlobTxType {
 			if directBroadcast {
@@ -113,6 +159,15 @@ func handleTransactions(peer *eth.Peer, list []*types.Transaction, directBroadca
 				}
 				if err := tx.BlobTxSidecar().ValidateBlobCommitmentHashes(tx.BlobHashes()); err != nil {
 					return err
+				}
+				// eth72 delivers blob transactions without the blob payload,
+				// earlier versions with all blobs.
+				if blobs := len(tx.BlobTxSidecar().Blobs); peer.Version() >= eth.ETH72 {
+					if blobs != 0 {
+						return errors.New("received blob transaction with blob payload on eth72")
+					}
+				} else if blobs != len(tx.BlobHashes()) {
+					return errors.New("incorrect number of blobs (len(blobs) != len(vhashes))")
 				}
 			}
 		}

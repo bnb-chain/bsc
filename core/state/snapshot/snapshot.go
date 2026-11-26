@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -214,7 +215,7 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 	if err != nil {
 		log.Warn("Failed to load snapshot", "err", err)
 		if !config.NoBuild {
-			snap.Rebuild(root)
+			snap.Rebuild(root, true)
 			return snap, nil
 		}
 		return nil, err // Bail out the error, don't rebuild automatically.
@@ -505,7 +506,7 @@ func (t *Tree) cap(diff *diffLayer, layers int) *diskLayer {
 			// there's a snapshot being generated currently. In that case, the trie
 			// will move from underneath the generator so we **must** merge all the
 			// partial data down into the snapshot and restart the generation.
-			if flattened.parent.(*diskLayer).genAbort == nil {
+			if flattened.parent.(*diskLayer).cancel == nil {
 				return nil
 			}
 		}
@@ -533,14 +534,10 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	var (
 		base  = bottom.parent.(*diskLayer)
 		batch = base.diskdb.NewBatch()
-		stats *generatorStats
 	)
-	// If the disk layer is running a snapshot generator, abort it
-	if base.genAbort != nil {
-		abort := make(chan *generatorStats)
-		base.genAbort <- abort
-		stats = <-abort
-	}
+	// Attempt to stop generation (if not already stopped)
+	base.stopGeneration()
+
 	// Put the deletion in the batch writer, flush all updates in the final step.
 	rawdb.DeleteSnapshotRoot(batch)
 
@@ -619,8 +616,8 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	// Update the snapshot block marker and write any remainder data
 	rawdb.WriteSnapshotRoot(batch, bottom.root)
 
-	// Write out the generator progress marker and report
-	journalProgress(batch, base.genMarker, stats)
+	// Write out the generator progress marker
+	journalProgress(batch, base.genMarker, base.genStats)
 
 	// Flush all the updates in the single db operation. Ensure the
 	// disk layer transition is atomic.
@@ -639,12 +636,13 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 	// If snapshot generation hasn't finished yet, port over all the starts and
 	// continue where the previous round left off.
 	//
-	// Note, the `base.genAbort` comparison is not used normally, it's checked
+	// Note, the `base.genPending` comparison is not used normally, it's checked
 	// to allow the tests to play with the marker without triggering this path.
-	if base.genMarker != nil && base.genAbort != nil {
+	if base.genMarker != nil && base.genPending != nil {
 		res.genMarker = base.genMarker
-		res.genAbort = make(chan chan *generatorStats)
-		go res.generate(stats)
+		res.cancel = make(chan struct{})
+		res.done = make(chan struct{})
+		go res.generate(base.genStats)
 	}
 	return res
 }
@@ -699,10 +697,12 @@ func (t *Tree) Journal(root common.Hash) (common.Hash, error) {
 	return base, nil
 }
 
-// Rebuild wipes all available snapshot data from the persistent database and
-// discard all caches and diff layers. Afterwards, it starts a new snapshot
-// generator with the given root hash.
-func (t *Tree) Rebuild(root common.Hash) {
+// Rebuild discards all caches and diff layers and re-enables the snapshot
+// feature. With generate set, it starts a new snapshot generator with the
+// given root hash, wiping and regenerating the persistent flat state in the
+// background. Without it, the on-disk flat state is adopted as the fully
+// generated disk layer directly.
+func (t *Tree) Rebuild(root common.Hash, generate bool) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
@@ -730,6 +730,26 @@ func (t *Tree) Rebuild(root common.Hash) {
 		default:
 			panic(fmt.Sprintf("unknown layer type: %T", layer))
 		}
+	}
+	// Adopt the existing flat state as the generated disk layer if
+	// regeneration was not requested.
+	if !generate {
+		batch := t.diskdb.NewBatch()
+		rawdb.WriteSnapshotRoot(batch, root)
+		journalProgress(batch, nil, nil)
+		if err := batch.Write(); err != nil {
+			log.Crit("Failed to write snapshot completion marker", "err", err)
+		}
+		log.Info("Adopted state snapshot", "root", root)
+		t.layers = map[common.Hash]snapshot{
+			root: &diskLayer{
+				diskdb: t.diskdb,
+				triedb: t.triedb,
+				cache:  fastcache.New(t.config.CacheSize * 1024 * 1024),
+				root:   root,
+			},
+		}
+		return
 	}
 	// Start generating a new snapshot from scratch on a background thread. The
 	// generator will run a wiper first if there's not one running right now.

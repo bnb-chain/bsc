@@ -36,7 +36,6 @@ func CheckMaxInitCodeSize(rules *params.Rules, size uint64) error {
 			return fmt.Errorf("%w: code size %v limit %v", ErrMaxInitCodeSizeExceeded, size, params.MaxInitCodeSize)
 		}
 	}
-
 	return nil
 }
 
@@ -106,6 +105,5 @@ func toWordSize(size uint64) uint64 {
 	if size > math.MaxUint64-31 {
 		return math.MaxUint64/32 + 1
 	}
-
 	return (size + 31) / 32
 }
