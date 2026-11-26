@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
@@ -33,6 +34,25 @@ type bidBlockTaskInfo struct {
 }
 
 var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
+
+func validateBidBlockAccessList(header *types.Header, accessList *bal.BlockAccessList, txCount int, amsterdam bool) error {
+	if !amsterdam {
+		if accessList != nil || header.BlockAccessListHash != nil {
+			return errors.New("block had access list before Amsterdam")
+		}
+		return nil
+	}
+	if accessList == nil || header.BlockAccessListHash == nil {
+		return errors.New("missing block access list or hash after Amsterdam")
+	}
+	if err := accessList.Validate(header.GasLimit, txCount); err != nil {
+		return fmt.Errorf("invalid block access list: %w", err)
+	}
+	if hash := accessList.Hash(); hash != *header.BlockAccessListHash {
+		return fmt.Errorf("block access list hash mismatch: have %s, want %s", hash, *header.BlockAccessListHash)
+	}
+	return nil
+}
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
 func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {
@@ -154,6 +174,9 @@ func (w *worker) prepareBidBlockTask(
 		Withdrawals:  make([]*types.Withdrawal, 0),
 	}
 	block := types.NewBlockWithHeader(header).WithBody(*body).WithSidecars(decoded.Sidecars)
+	if decoded.BlockAccessList != nil {
+		block = block.WithAccessList(decoded.BlockAccessList)
+	}
 
 	return &task{
 		block: block,

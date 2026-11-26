@@ -1744,8 +1744,6 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		// TODO: Collect Parlia finalization changes into the BAL and attach it
-		// to the block before enabling Amsterdam on BSC.
 		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, env.bal)
 		env.committed = true
 		if err != nil {

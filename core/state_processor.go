@@ -72,9 +72,7 @@ func (p *StateProcessor) chainConfig() *params.ChainConfig {
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
 func (p *StateProcessor) Process(ctx context.Context, block *types.Block, statedb *state.StateDB, jumpDestCache vm.JumpDestCache, precompileCache *vm.PrecompileCache, cfg vm.Config, execIndex *atomic.Int64) (*ProcessResult, error) {
-	// TODO: Adapt parallel execution to Parlia system transactions, system-contract
-	// upgrades and payment-lane validation before enabling it for BSC.
-	if p.chainConfig().IsNotInBSC() && supportsParallelExecution(block, p.chainConfig(), statedb.Witness() != nil, cfg.Tracer != nil, cfg.DisableParallelExecution) {
+	if supportsParallelExecution(block, p.chainConfig(), statedb.Witness() != nil, cfg.Tracer != nil, cfg.DisableParallelExecution) {
 		return p.processParallel(ctx, block, statedb, jumpDestCache, precompileCache, cfg)
 	}
 	var (
@@ -199,7 +197,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	body := &types.Body{Transactions: commonTxs, Uncles: block.Uncles(), Withdrawals: block.Withdrawals()}
 	finalizeState := tracingStateDB
 	if recordSystemBAL {
-		finalizeState = &systemTxStateDB{StateDB: tracingStateDB, accessList: blockAccessList}
+		finalizeState = NewSystemTxStateDB(tracingStateDB, blockAccessList)
 	}
 	err = p.chain.Engine().Finalize(p.chain, header, finalizeState, body, &receipts, &systemTxs, &gasUsed, cfg.Tracer)
 	if err != nil {
@@ -328,6 +326,12 @@ func PostExecution(ctx context.Context, config *params.ChainConfig, number *big.
 type systemTxStateDB struct {
 	vm.StateDB
 	accessList *bal.ConstructionBlockAccessList
+}
+
+// NewSystemTxStateDB wraps statedb to collect each finalized system transaction
+// into the provided non-nil block access list.
+func NewSystemTxStateDB(statedb vm.StateDB, accessList *bal.ConstructionBlockAccessList) vm.StateDB {
+	return &systemTxStateDB{StateDB: statedb, accessList: accessList}
 }
 
 func (s *systemTxStateDB) Finalise(rules params.Rules) *bal.ConstructionBlockAccessList {
@@ -679,16 +683,14 @@ func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
 
 // blockAssembler is implemented by consensus engines that support FinalizeAndAssemble.
 type blockAssembler interface {
-	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
+	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error)
 }
 
 // AssembleBlock finalizes the state and assembles the block with provided
 // body and receipts.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, blockAccessLists ...*bal.ConstructionBlockAccessList) (*types.Block, []*types.Receipt, error) {
 	if p, ok := engine.(blockAssembler); ok {
-		// TODO: Include Parlia finalization in BAL construction and attach the
-		// completed access list here before enabling Amsterdam on BSC.
-		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
+		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil, blockAccessLists...)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -755,6 +755,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlo
 	if txHash := types.DeriveSha(decoded.Txs, trie.NewStackTrie(nil)); header.TxHash != txHash {
 		return fmt.Errorf("invalid tx root: got %s, want %s", header.TxHash, txHash)
 	}
+	if err := validateBidBlockAccessList(header, decoded.BlockAccessList, len(decoded.Txs), b.chainConfig.IsAmsterdam(header.Number, header.Time)); err != nil {
+		return err
+	}
 
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
 
