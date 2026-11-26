@@ -123,6 +123,21 @@ func TestEthProtocolNegotiation(t *testing.T) {
 			},
 			expected: eth.ETH70,
 		},
+		{
+			conn:     &Conn{ourHighestProtoVersion: eth.ETH71},
+			caps:     []p2p.Cap{{Name: "eth", Version: eth.ETH72}, {Name: "eth", Version: eth.ETH71}, {Name: "eth", Version: eth.ETH70}},
+			expected: eth.ETH71,
+		},
+		{
+			conn:     &Conn{ourHighestProtoVersion: eth.ETH71},
+			caps:     []p2p.Cap{{Name: "eth", Version: eth.ETH70}, {Name: "eth", Version: eth.ETH68}},
+			expected: eth.ETH70,
+		},
+		{
+			conn:     &Conn{ourHighestProtoVersion: eth.ETH71},
+			caps:     []p2p.Cap{{Name: "eth", Version: eth.ETH68}},
+			expected: eth.ETH68,
+		},
 	}
 
 	for i, tt := range tests {

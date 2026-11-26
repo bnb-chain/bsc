@@ -39,6 +39,10 @@ const (
 	// storage.
 	freezerRecheckInterval = time.Minute
 
+	// balRetentionBlocks is the finalized-height window for BAL pruning and range
+	// serving, sized for seven days at BSC's 450 ms block interval.
+	balRetentionBlocks = 1_344_000
+
 	// For BSC, freezing 30,000 blocks at once will seriously affect performance near the chain head.
 	// Set to 200 to keep up with 450ms block interval (~133 blocks/min) while limiting I/O impact.
 	SlowFreezerBatchLimit = 200
@@ -148,6 +152,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 		backoff   bool
 		triggered chan struct{} // Used in tests
 		nfdb      = &nofreezedb{KeyValueStore: db}
+		chainDB   = &freezerdb{KeyValueStore: db, chainFreezer: f}
 	)
 	timer := time.NewTimer(freezerRecheckInterval)
 	defer timer.Stop()
@@ -327,6 +332,9 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			f.tryPruneBlobAncientTable(env, number)
 		}
 		f.tryPruneHistoryBlock(number)
+		if isAmsterdam(env, head.Number, head.Time) {
+			f.tryPruneBALs(chainDB, env.ChainCfg)
+		}
 
 		// TODO(galaio): Temporarily comment that the current BSC is suitable for small-volume writes,
 		// and then the large-volume mode will be enabled after optimizing the freeze performance of ancient.
@@ -556,12 +564,59 @@ func (f *chainFreezer) tryPruneHistoryBlock(best uint64) {
 	log.Debug("Prune block history successful", "oldtail", old, "tail", expectTail, "best", best, "history", blockHistory)
 }
 
+// BALRetentionFloor returns the first block whose BAL must be retained.
+func BALRetentionFloor(finalized uint64) uint64 {
+	if finalized <= balRetentionBlocks {
+		return 0
+	}
+	return finalized - balRetentionBlocks
+}
+
+func (f *chainFreezer) tryPruneBALs(db ethdb.Reader, config *params.ChainConfig) {
+	finalizedHash := ReadFinalizedBlockHash(db)
+	if finalizedHash == (common.Hash{}) {
+		return
+	}
+	finalizedNumber, ok := ReadHeaderNumber(db, finalizedHash)
+	floor := BALRetentionFloor(finalizedNumber)
+	if !ok || floor == 0 {
+		return
+	}
+	tail, err := f.Tail(ChainFreezerBALGroup)
+	if err != nil {
+		log.Warn("Failed to read BAL freezer tail", "err", err)
+		return
+	}
+	if floor <= tail || ReadCanonicalHash(db, finalizedNumber) != finalizedHash {
+		return
+	}
+	finalized := ReadHeader(db, finalizedHash, finalizedNumber)
+	if finalized == nil || !config.IsAmsterdam(finalized.Number, finalized.Time) {
+		return
+	}
+	oldTail, err := f.TruncateTail(ChainFreezerBALGroup, floor)
+	if err != nil {
+		log.Warn("Failed to prune BAL history", "target", floor, "err", err)
+		return
+	}
+	if tail, err := f.Tail(ChainFreezerBALGroup); err == nil && tail > oldTail {
+		log.Debug("Pruned BAL history", "oldtail", oldTail, "tail", tail, "finalized", finalizedNumber)
+	}
+}
+
 func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 	if env == nil || env.ChainCfg == nil {
 		return false
 	}
 
 	return env.ChainCfg.IsCancun(num, time)
+}
+
+func isAmsterdam(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
+	if env == nil || env.ChainCfg == nil {
+		return false
+	}
+	return env.ChainCfg.IsAmsterdam(num, time)
 }
 
 func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {

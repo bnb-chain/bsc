@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
@@ -15,9 +16,13 @@ import (
 
 // Reported from the import path, the only one every node type shares.
 var (
-	paymentLaneImportedQuotaGauge   = metrics.NewRegisteredGauge("paymentlane/imported/paymentLaneQuota", nil)
-	paymentLaneImportedGasUsedGauge = metrics.NewRegisteredGauge("paymentlane/imported/paymentGasUsed", nil)
-	paymentLaneImportedIdleGauge    = metrics.NewRegisteredGauge("paymentlane/imported/paymentLaneIdle", nil)
+	paymentLaneImportedQuotaGauge         = metrics.NewRegisteredGauge("paymentlane/imported/paymentLaneQuota", nil)
+	paymentLaneImportedGasUsedGauge       = metrics.NewRegisteredGauge("paymentlane/imported/paymentGasUsed", nil)
+	paymentLaneImportedIdleGauge          = metrics.NewRegisteredGauge("paymentlane/imported/paymentLaneIdle", nil)
+	paymentLaneImportedExecutionUsedGauge = metrics.NewRegisteredGauge("paymentlane/imported/paymentExecutionUsed", nil)
+	paymentLaneImportedStateUsedGauge     = metrics.NewRegisteredGauge("paymentlane/imported/paymentStateUsed", nil)
+	paymentLaneImportedExecutionIdleGauge = metrics.NewRegisteredGauge("paymentlane/imported/paymentExecutionIdle", nil)
+	paymentLaneImportedStateIdleGauge     = metrics.NewRegisteredGauge("paymentlane/imported/paymentStateIdle", nil)
 
 	laneRejectedCounter    = metrics.NewRegisteredCounter("paymentlane/rejected", nil)
 	laneUnavailableCounter = metrics.NewRegisteredCounter("paymentlane/stateUnavailable", nil)
@@ -35,10 +40,11 @@ func laneReject(err error) error {
 // LaneState is one block's lane: the quota derived from the parent post-state, plus the payment
 // total accumulated as the block executes.
 type LaneState struct {
-	Budget     paymentlane.Budget
+	Budget     paymentlane.Budget // quota and payment usage
 	classifier *paymentlane.Classifier
 	state      laneStateDB
 	gasLimit   uint64
+	amsterdam  bool
 }
 
 // laneStateDB is the live state: what the classifier reads, and whether reading it worked.
@@ -62,6 +68,7 @@ func ResolveLaneState(config *params.ChainConfig, engine consensus.Engine, paren
 		classifier: meta.NewClassifier(systemTxOracle(engine, header), statedb),
 		state:      statedb,
 		gasLimit:   header.GasLimit,
+		amsterdam:  config.IsAmsterdam(header.Number, header.Time),
 	}, nil
 }
 
@@ -87,27 +94,54 @@ func (ls *LaneState) Classify(tx *types.Transaction) paymentlane.LaneType {
 	return ls.classifier.Classify(tx)
 }
 
-// RecordUsedFrom books the gas the pool consumed since usedBefore.
-func (ls *LaneState) RecordUsedFrom(laneType paymentlane.LaneType, gp *GasPool, usedBefore uint64) {
-	if used := gp.Used(); ls.On() && used > usedBefore {
-		ls.Budget.RecordUsed(laneType, used-usedBefore)
+// RecordUsedFrom books payment resources consumed since the pool snapshot.
+func (ls *LaneState) RecordUsedFrom(laneType paymentlane.LaneType, gp, before *GasPool) {
+	if !ls.On() || laneType != paymentlane.PaymentLane {
+		return
 	}
+	if !ls.amsterdam {
+		if used, previous := gp.Used(), before.Used(); used > previous {
+			ls.Budget.RecordUsed(laneType, used-previous)
+		}
+		return
+	}
+	execution, state := gp.CumulativeExecution(), gp.CumulativeState()
+	if execution < before.CumulativeExecution() || state < before.CumulativeState() {
+		return
+	}
+	ls.Budget.RecordUsedAmsterdam(laneType, execution-before.CumulativeExecution(), state-before.CumulativeState())
 }
 
-// Admits takes shared as the shared remainder, i.e. gasPool.Gas().
-func (ls *LaneState) Admits(shared uint64, laneType paymentlane.LaneType, txGasLimit uint64) bool {
+// Admits leaves each resource's unused payment quota available for payments.
+func (ls *LaneState) Admits(gp *GasPool, laneType paymentlane.LaneType, txGasLimit uint64) bool {
 	if !ls.On() {
 		return true
 	}
-	return ls.Budget.Admits(shared, laneType, txGasLimit)
+	if !ls.amsterdam {
+		return ls.Budget.Admits(gp.Available(false), laneType, txGasLimit)
+	}
+	var idleExecution, idleState uint64
+	if laneType != paymentlane.PaymentLane {
+		idleExecution, idleState = ls.Budget.IdleLaneAmsterdam()
+	}
+	execution, executionCarry := bits.Add64(min(txGasLimit, params.MaxTxGas), idleExecution, 0)
+	state, stateCarry := bits.Add64(txGasLimit, idleState, 0)
+	return executionCarry == 0 && stateCarry == 0 && gp.CheckGasAmsterdam(execution, state) == nil
 }
 
-// VerifyPackedBid is the bid path's verdict on an environment it did not pack itself.
-func (ls *LaneState) VerifyPackedBid(shared uint64) error {
+// VerifyPackedBid checks that the re-executed bid leaves the unused quota in the pool.
+func (ls *LaneState) VerifyPackedBid(gp *GasPool) error {
 	if !ls.On() {
 		return nil
 	}
-	if idle := ls.Budget.IdleLane(); idle > shared {
+	if ls.amsterdam {
+		execution, state := ls.Budget.IdleLaneAmsterdam()
+		if err := gp.CheckGasAmsterdam(execution, state); err != nil {
+			return fmt.Errorf("%w: idle payment quota (execution %d, state %d): %v", paymentlane.ErrViolated, execution, state, err)
+		}
+		return nil
+	}
+	if idle, shared := ls.Budget.IdleLane(), gp.Available(false); idle > shared {
 		return fmt.Errorf("%w: idle lane %d exceeds the %d gas left in the pool", paymentlane.ErrViolated, idle, shared)
 	}
 	return nil
@@ -117,21 +151,41 @@ func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 // verdict alike. A failed state read is the local fault it is, not the peer's: StateDB answers
 // such a read with the zero code hash - which classifies as payment - and holds the error until
 // Commit, after every verdict here.
-func (ls *LaneState) Verify(totalGasUsed uint64) error {
+func (ls *LaneState) Verify(totalGasUsed uint64, gp *GasPool) error {
 	if !ls.On() {
 		return nil
 	}
 	if err := ls.state.Error(); err != nil {
 		return fmt.Errorf("%w: %w", paymentlane.ErrStateUnavailable, err)
 	}
-	return ls.Budget.Verify(ls.gasLimit, totalGasUsed)
+	if !ls.amsterdam {
+		return ls.Budget.Verify(ls.gasLimit, totalGasUsed)
+	}
+	userGas := max(gp.CumulativeExecution(), gp.CumulativeState())
+	if totalGasUsed < userGas || totalGasUsed > ls.gasLimit {
+		return fmt.Errorf("%w: total gas %d user gas %d limit %d", paymentlane.ErrViolated, totalGasUsed, userGas, ls.gasLimit)
+	}
+	// Parlia adds system gas after the user pool's maximum, so it reduces both budgets.
+	limit := ls.gasLimit - (totalGasUsed - userGas)
+	return ls.Budget.VerifyAmsterdam(limit, gp.CumulativeExecution(), gp.CumulativeState())
 }
 
 func (ls *LaneState) recordImported() {
-	if !ls.On() {
-		return
+	var quota, used, idle, executionUsed, stateUsed, executionIdle, stateIdle uint64
+	if ls.On() {
+		quota = ls.Budget.PaymentLaneQuota
+		used, idle = ls.Budget.PaymentLaneUsed, ls.Budget.IdleLane()
+		if ls.amsterdam {
+			executionUsed, stateUsed = ls.Budget.PaymentExecutionUsed, ls.Budget.PaymentStateUsed
+			executionIdle, stateIdle = ls.Budget.IdleLaneAmsterdam()
+			used, idle = max(executionUsed, stateUsed), max(executionIdle, stateIdle)
+		}
 	}
-	paymentLaneImportedQuotaGauge.Update(int64(ls.Budget.PaymentLaneQuota))
-	paymentLaneImportedGasUsedGauge.Update(int64(ls.Budget.PaymentLaneUsed))
-	paymentLaneImportedIdleGauge.Update(int64(ls.Budget.IdleLane()))
+	paymentLaneImportedQuotaGauge.Update(int64(quota))
+	paymentLaneImportedGasUsedGauge.Update(int64(used))
+	paymentLaneImportedIdleGauge.Update(int64(idle))
+	paymentLaneImportedExecutionUsedGauge.Update(int64(executionUsed))
+	paymentLaneImportedStateUsedGauge.Update(int64(stateUsed))
+	paymentLaneImportedExecutionIdleGauge.Update(int64(executionIdle))
+	paymentLaneImportedStateIdleGauge.Update(int64(stateIdle))
 }

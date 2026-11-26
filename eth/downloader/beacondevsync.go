@@ -58,7 +58,7 @@ func (d *Downloader) GetHeader(hash common.Hash) (*types.Header, error) {
 		// Found a peer, attempt to retrieve the header whilst blocking and
 		// retry if it fails for whatever reason
 		log.Debug("Attempting to retrieve sync target", "peer", peer.id, "hash", hash)
-		headers, metas, err := d.fetchHeadersByHash(peer, hash, 1, 0, false)
+		headers, metas, err := d.fetchHeadersByHash(peer, hash, 1, 0, false, nil)
 		if err != nil || len(headers) != 1 {
 			continue
 		}

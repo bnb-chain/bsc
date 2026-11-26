@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -96,10 +97,15 @@ var (
 	bidBlockEvidenceRevokeCounter = metrics.NewRegisteredCounter("worker/bidBlockEvidenceRevoke", nil)
 
 	// Producing-side lane metrics; core/payment_lane.go reports the imported side.
-	paymentLaneQuotaGauge     = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)     // gas, at seal
-	paymentLaneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)      // gas wasted, at seal
-	generalLaneYieldedCounter = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
-	paymentLaneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
+	paymentLaneQuotaGauge         = metrics.NewRegisteredGauge("paymentlane/paymentLaneQuota", nil)
+	paymentLaneGasUsedGauge       = metrics.NewRegisteredGauge("paymentlane/paymentGasUsed", nil)
+	paymentLaneIdleGauge          = metrics.NewRegisteredGauge("paymentlane/paymentLaneIdle", nil)
+	paymentLaneExecutionUsedGauge = metrics.NewRegisteredGauge("paymentlane/paymentExecutionUsed", nil)
+	paymentLaneStateUsedGauge     = metrics.NewRegisteredGauge("paymentlane/paymentStateUsed", nil)
+	paymentLaneExecutionIdleGauge = metrics.NewRegisteredGauge("paymentlane/paymentExecutionIdle", nil)
+	paymentLaneStateIdleGauge     = metrics.NewRegisteredGauge("paymentlane/paymentStateIdle", nil)
+	generalLaneYieldedCounter     = metrics.NewRegisteredCounter("paymentlane/generalLaneYielded", nil) // txs dropped for the quota
+	paymentLaneDeclineCounter     = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -740,8 +746,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	prevEnv *environment, witness bool) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
-	// TODO: Use StateAtForkBoundary for UBT while retaining BSC's cached MPT
-	// state path before enabling UBT block production.
+	// TODO(BSC): Handle the MPT-to-UBT transition before enabling UBT.
 	state, err := w.chain.StateWithCacheAt(parent.Root)
 	if err != nil {
 		return nil, err
@@ -847,9 +852,8 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
 	laneType := env.lane.Classify(tx)
 	var (
-		snap       = env.state.Snapshot()
-		gp         = env.gasPool.Snapshot()
-		usedBefore = env.gasPool.Used()
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Snapshot()
 	)
 
 	receipt, txBAL, err := core.ApplyTransaction(context.Background(), env.evm, env.gasPool, env.state, env.header, tx)
@@ -865,8 +869,36 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		}
 	}
 	env.header.GasUsed = env.gasPool.Used()
-	env.lane.RecordUsedFrom(laneType, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(laneType, env.gasPool, gp)
 	return receipt, err
+}
+
+func recordPaymentLaneMetrics(b paymentlane.Budget, amsterdam bool) {
+	used, idle := b.PaymentLaneUsed, b.IdleLane()
+	var executionUsed, stateUsed, executionIdle, stateIdle uint64
+	if amsterdam {
+		executionUsed, stateUsed = b.PaymentExecutionUsed, b.PaymentStateUsed
+		executionIdle, stateIdle = b.IdleLaneAmsterdam()
+		used, idle = max(executionUsed, stateUsed), max(executionIdle, stateIdle)
+	}
+	paymentLaneQuotaGauge.Update(int64(b.PaymentLaneQuota))
+	paymentLaneGasUsedGauge.Update(int64(used))
+	paymentLaneIdleGauge.Update(int64(idle))
+	paymentLaneExecutionUsedGauge.Update(int64(executionUsed))
+	paymentLaneStateUsedGauge.Update(int64(stateUsed))
+	paymentLaneExecutionIdleGauge.Update(int64(executionIdle))
+	paymentLaneStateIdleGauge.Update(int64(stateIdle))
+}
+
+func paymentLaneLogContext(b paymentlane.Budget, amsterdam bool) []any {
+	attrs := []any{"paymentLaneQuota", b.PaymentLaneQuota}
+	if !amsterdam {
+		return append(attrs, "paymentGasUsed", b.PaymentLaneUsed, "paymentLaneIdle", b.IdleLane())
+	}
+	executionIdle, stateIdle := b.IdleLaneAmsterdam()
+	return append(attrs,
+		"paymentExecutionUsed", b.PaymentExecutionUsed, "paymentStateUsed", b.PaymentStateUsed,
+		"paymentExecutionIdle", executionIdle, "paymentStateIdle", stateIdle)
 }
 
 func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *txorder.TransactionsByPriceAndNonce,
@@ -995,10 +1027,12 @@ LOOP:
 		prefetchCurr.Store(tx)
 
 		laneType := env.lane.Classify(tx)
-		if !env.lane.Admits(env.gasPool.Available(env.evm.GetRules().IsAmsterdam), laneType, tx.Gas()) {
+		if !env.lane.Admits(env.gasPool, laneType, tx.Gas()) {
 			generalLaneYieldedCounter.Inc(1)
 			env.generalLaneYielded++
-			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Available(env.evm.GetRules().IsAmsterdam), "paymentLaneIdle", env.lane.Budget.IdleLane())
+			logContext := []any{"hash", ltx.Hash, "left", env.gasPool.Available(isAmsterdam)}
+			logContext = append(logContext, paymentLaneLogContext(env.lane.Budget, isAmsterdam)...)
+			log.Trace("Yielding idle payment lane", logContext...)
 			txs.Pop()
 			continue
 		}
@@ -1146,13 +1180,17 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		}
 	}
 	// Apply EIP-7843.
-	// TODO: Define BSC's slot mapping and supply slotNum from commitWork
-	// before enabling Amsterdam block production.
 	if w.chainConfig.IsAmsterdam(header.Number, header.Time) {
-		if genParams.slotNum == nil {
-			return nil, errors.New("missing slot number")
+		if w.chainConfig.IsInBSC() {
+			// BSC uses block numbers instead of beacon slots.
+			slot := header.Number.Uint64()
+			header.SlotNumber = &slot
+		} else {
+			if genParams.slotNum == nil {
+				return nil, errors.New("missing slot number")
+			}
+			header.SlotNumber = genParams.slotNum
 		}
-		header.SlotNumber = genParams.slotNum
 	}
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
@@ -1337,7 +1375,7 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.Verify(block.GasUsed()); err != nil {
+	if err := work.lane.Verify(block.GasUsed(), work.gasPool); err != nil {
 		paymentLaneDeclineCounter.Inc(1)
 		log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 		return &newPayloadResult{err: err}
@@ -1409,7 +1447,8 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
 	workList := make([]*environment, 0, 10)
-	parentHash := w.chain.CurrentBlock().Hash()
+	parent := w.chain.CurrentBlock()
+	parentHash := parent.Hash()
 	var prevWork *environment
 	// workList clean up
 	defer func() {
@@ -1576,7 +1615,9 @@ LOOP:
 	var simBidBlockReward *uint256.Int
 	var simBidValidatorReward *uint256.Int
 	var localValidatorReward *uint256.Int
-	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+	// Cached builder bids must not replace the validator's Amsterdam activation block.
+	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 &&
+		!w.chainConfig.IsOnAmsterdam(bestWork.header.Number, parent.Time, bestWork.header.Time) {
 		inturnBlocksGauge.Inc(1)
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
@@ -1715,15 +1756,17 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.Verify(block.GasUsed()); err != nil {
+		if err := env.lane.Verify(block.GasUsed(), env.gasPool); err != nil {
 			paymentLaneDeclineCounter.Inc(1)
 			log.Error("Payment lane refused to seal", "number", block.Number(), "err", err)
 			return err
 		}
-		if env.lane.On() {
-			paymentLaneQuotaGauge.Update(int64(env.lane.Budget.PaymentLaneQuota))
-			paymentLaneIdleGauge.Update(int64(env.lane.Budget.IdleLane()))
+		budget := env.lane.Budget
+		if !env.lane.On() {
+			budget = paymentlane.Budget{}
 		}
+		amsterdam := w.chainConfig.IsAmsterdam(env.header.Number, env.header.Time)
+		recordPaymentLaneMetrics(budget, amsterdam)
 
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
@@ -1733,10 +1776,11 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
-			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "paymentLaneQuota", env.lane.Budget.PaymentLaneQuota,
-				"paymentLaneIdle", env.lane.Budget.IdleLane(), "generalLaneYielded", env.generalLaneYielded,
-				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+			logContext := []any{"number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "generalLaneYielded", env.generalLaneYielded,
+				"fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start))}
+			logContext = append(logContext, paymentLaneLogContext(budget, amsterdam)...)
+			log.Info("Commit new sealing work", logContext...)
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

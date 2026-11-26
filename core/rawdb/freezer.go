@@ -397,6 +397,10 @@ func (f *Freezer) TruncateTail(group string, tail uint64) (uint64, error) {
 	f.writeLock.Lock()
 	defer f.writeLock.Unlock()
 
+	if group == ChainFreezerBALGroup {
+		// Use the current head in case the freezer was rewound before pruning.
+		tail = min(tail, f.head.Load())
+	}
 	prev := cached.Load()
 	if prev >= tail {
 		return prev, nil

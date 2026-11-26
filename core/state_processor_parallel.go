@@ -273,7 +273,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		receipt := res.receipt
 
 		gasLimit := txs[i].Gas()
-		usedBefore := gp.Used()
+		usedBefore := gp.Snapshot()
 		if err := gp.CheckGasAmsterdam(min(gasLimit, params.MaxTxGas), gasLimit); err != nil {
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, txs[i].Hash().Hex(), err)
 		}
@@ -355,7 +355,7 @@ func (p *StateProcessor) processParallel(ctx context.Context, block *types.Block
 		return nil, fmt.Errorf("database error in post-execution system calls: %w", err)
 	}
 	systemExec += time.Since(postStart)
-	if err := lane.Verify(gasUsed); err != nil {
+	if err := lane.Verify(gasUsed, gp); err != nil {
 		return nil, laneReject(err)
 	}
 	lane.recordImported()

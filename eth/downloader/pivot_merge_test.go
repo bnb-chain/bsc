@@ -3,29 +3,42 @@ package downloader
 import (
 	"errors"
 	"math/big"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // Only state synchronization is exercised; peer packet methods are unused.
 type pivotMergeSyncer struct {
 	snap.Syncer
-	run func(*types.Header, chan struct{}) error
+	run    func(*types.Header, chan struct{}) error
+	frozen atomic.Pointer[types.Header]
 }
 
 func (s *pivotMergeSyncer) Sync(pivot *types.Header, cancel chan struct{}) error {
 	return s.run(pivot, cancel)
 }
 
-func (*pivotMergeSyncer) FrozenPivot() *types.Header { return nil }
+func (s *pivotMergeSyncer) FrozenPivot() *types.Header {
+	return s.frozen.Load()
+}
+
+func (*pivotMergeSyncer) Version() uint { return snap.SNAP2 }
 
 func newPivotMergeDownloader(t *testing.T, pivot *types.Header, syncer snap.Syncer) *Downloader {
 	t.Helper()
 	d := &Downloader{
 		queue:          newQueue(16, 16),
+		stateDB:        rawdb.NewMemoryDatabase(),
+		headerCache:    lru.NewCache[common.Hash, *types.Header](1024),
 		pivotHeader:    pivot,
 		snapSyncer:     syncer,
 		stateSyncStart: make(chan *stateSync),
@@ -43,6 +56,7 @@ func newPivotMergeDownloader(t *testing.T, pivot *types.Header, syncer snap.Sync
 		close(d.quitCh)
 		d.queue.Close()
 		<-stopped
+		d.stateDB.Close()
 	})
 	return d
 }
@@ -104,4 +118,62 @@ func TestSnapContentRetargetsStateSync(t *testing.T) {
 			checkPivotMergeError(t, d, want)
 		})
 	}
+}
+
+type pivotCommitChain struct {
+	BlockChain
+	importBlocks func(types.Blocks)
+}
+
+func (pivotCommitChain) InsertReceiptChain(types.Blocks, []rlp.RawValue, uint64) (int, error) {
+	return 0, nil
+}
+
+func (pivotCommitChain) SnapSyncComplete(common.Hash, bool) error { return nil }
+
+func (c pivotCommitChain) InsertChain(blocks types.Blocks) (int, error) {
+	c.importBlocks(blocks)
+	return len(blocks), nil
+}
+
+func TestSnapContentFrozenPivotBackpressure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		pivot := &types.Header{Number: big.NewInt(1), Difficulty: common.Big0}
+		tail := &types.Header{Number: big.NewInt(2), Difficulty: common.Big0, ParentHash: pivot.Hash()}
+		finish := make(chan struct{})
+		syncer := &pivotMergeSyncer{run: func(*types.Header, chan struct{}) error {
+			<-finish
+			return nil
+		}}
+		syncer.frozen.Store(pivot)
+		d := newPivotMergeDownloader(t, pivot, syncer)
+		d.moder = new(syncModer)
+		cache := d.queue.resultCache
+		cache.Prepare(1)
+		cache.items[0] = &fetchResult{Header: pivot}
+		var imported bool
+		d.blockchain = pivotCommitChain{importBlocks: func(blocks types.Blocks) {
+			if !d.committed.Load() || len(blocks) != 1 || blocks[0].Hash() != tail.Hash() {
+				t.Error("tail must be imported after the pivot commits")
+			}
+			imported = true
+		}}
+
+		result := make(chan error, 1)
+		go func() { result <- d.processSnapSyncContent() }()
+		synctest.Wait()
+		cache.lock.Lock()
+		cache.items[0] = &fetchResult{Header: tail}
+		cache.lock.Unlock()
+		d.queue.Close()
+		time.Sleep(2 * time.Second) // Advance past the staleness timer.
+		synctest.Wait()
+		if offset := cache.Offset(); offset != tail.Number.Uint64() {
+			t.Errorf("tail was dequeued before the pivot committed: offset %d", offset)
+		}
+		close(finish)
+		if err := <-result; err != nil || !imported {
+			t.Fatalf("tail import did not complete: %v", err)
+		}
+	})
 }

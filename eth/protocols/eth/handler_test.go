@@ -20,6 +20,7 @@ import (
 	"bytes"
 	rand2 "crypto/rand"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -1089,6 +1090,50 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 }
 
+func TestHandleNewBlockBALRetry(t *testing.T) {
+	backend := newTestBackendWithGenerator(0, true, true, nil)
+	defer backend.close()
+	backend.chain.Config().PragueTime = u64(0)
+	backend.chain.Config().AmsterdamTime = u64(0)
+	header := types.CopyHeader(backend.chain.CurrentBlock())
+	header.BlockAccessListHash = &types.EmptyBlockAccessListHash
+	header.SlotNumber = u64(0)
+	header.ParentBeaconRoot = new(common.Hash)
+	header.RequestsHash = &types.EmptyRequestsHash
+	block := types.NewBlockWithHeader(header)
+	td := big.NewInt(1)
+	app, net := p2p.MsgPipe()
+	defer app.Close()
+	peer := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "", nil), net, nil, nil, backend.chain.Config())
+	defer peer.Close()
+	peer.AsyncSendNewBlock(block, td, func() ([]byte, error) {
+		return EncodeNewBlockWithBAL(block, td)
+	})
+	if peer.KnownBlock(block.Hash()) {
+		t.Fatal("a block without its BAL must remain eligible for announcement after import")
+	}
+	for _, tc := range []struct {
+		amsterdam  uint64
+		attachment []byte
+		known      bool
+		wantErr    bool
+	}{
+		{block.Time() + 1, rlp.EmptyList, false, true},
+		{block.Time(), nil, false, false},
+		{block.Time(), rlp.EmptyList, true, false},
+	} {
+		backend.chain.Config().AmsterdamTime = &tc.amsterdam
+		size, payload, err := rlp.EncodeToReader(&NewBlockPacket{Block: block, TD: td, BlockAccessList: tc.attachment})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = handleNewBlock(backend, p2p.Msg{Size: uint32(size), Payload: payload}, peer)
+		if (err != nil) != tc.wantErr || peer.KnownBlock(block.Hash()) != tc.known {
+			t.Fatalf("attachment %x: error %v, known %t", tc.attachment, err, peer.KnownBlock(block.Hash()))
+		}
+	}
+}
+
 func TestHandleNewBlockhashes(t *testing.T) {
 	t.Parallel()
 
@@ -1268,4 +1313,57 @@ func encodeRL[T any](slice []T) rlp.RawList[T] {
 		panic(err)
 	}
 	return rl
+}
+
+type blockPropagationBackend struct {
+	*testBackend
+	packets chan Packet
+}
+
+func (b *blockPropagationBackend) Handle(_ *Peer, packet Packet) error {
+	b.packets <- packet
+	return nil
+}
+
+// BSC still propagates blocks through eth peers, including on eth/71. Exercise
+// dispatch and decoding rather than calling the propagation handlers directly.
+func TestBSCBlockPropagation(t *testing.T) {
+	backend := newTestBackend(2)
+	defer backend.close()
+	block := backend.chain.GetBlockByNumber(1)
+	td := backend.chain.GetTd(block.Hash(), block.NumberU64())
+	for _, version := range []uint{ETH68, ETH70, ETH71} {
+		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
+			receiver := &blockPropagationBackend{testBackend: backend, packets: make(chan Packet, 1)}
+			peer, errc := newTestPeer("propagation", version, receiver)
+			defer peer.close()
+			for _, packet := range []Packet{
+				&NewBlockHashesPacket{{Hash: block.Hash(), Number: block.NumberU64()}},
+				&NewBlockPacket{Block: block, TD: td},
+			} {
+				if err := p2p.Send(peer.app, uint64(packet.Kind()), packet); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case received := <-receiver.packets:
+					switch got := received.(type) {
+					case *NewBlockHashesPacket:
+						if len(*got) != 1 || (*got)[0].Hash != block.Hash() || (*got)[0].Number != block.NumberU64() {
+							t.Fatalf("wrong block announcement: %+v", got)
+						}
+					case *NewBlockPacket:
+						if got.Block.Hash() != block.Hash() || got.TD.Cmp(td) != 0 {
+							t.Fatal("block propagation lost block or TD")
+						}
+					default:
+						t.Fatalf("unexpected packet %T", received)
+					}
+				case err := <-errc:
+					t.Fatalf("propagation rejected: %v", err)
+				case <-time.After(5 * time.Second):
+					t.Fatal("propagation was not delivered")
+				}
+			}
+		})
+	}
 }

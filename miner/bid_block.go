@@ -412,6 +412,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", insertErr)
 		return
 	}
+	if w.chain.GetCanonicalHash(block.NumberU64()) == hash {
+		w.mux.Post(core.NewMinedBlockEvent{Block: block})
+	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.
 	if receipts := w.chain.GetReceiptsByHash(block.Hash()); receipts != nil {
 		avgGasPrice, nonSystemGasUsed, err := validateBidBlockAverageGasPrice(

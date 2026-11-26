@@ -43,16 +43,14 @@ func TestBlockServeRateLimit(t *testing.T) {
 		t.Fatalf("a fresh peer must be under the serve limit")
 	}
 
-	// Serving up to the budget stays under the limit.
-	p.ChargeBlockServe(budget)
+	p.ChargeBlockServe(budget - 1)
 	if p.IsOverBlockServeLimit() {
-		t.Fatalf("serving exactly the budget must not trip the limit")
+		t.Fatalf("the final byte of the budget must still be available")
 	}
 
-	// One more byte crosses it.
 	p.ChargeBlockServe(1)
 	if !p.IsOverBlockServeLimit() {
-		t.Fatalf("serving beyond the budget must trip the limit")
+		t.Fatalf("serving exactly the budget must exhaust it")
 	}
 
 	// Simulate the rolling window elapsing: the next check resets the period

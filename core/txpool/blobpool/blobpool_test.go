@@ -2313,6 +2313,37 @@ func testEncodeForNetwork(t *testing.T, ethVer uint) {
 	}
 }
 
+// BSC retains version-0 sidecars. A protocol upgrade must not drop blobs or
+// convert their proof format when serving a stored transaction.
+func TestEncodeForNetworkV0(t *testing.T) {
+	key, _ := crypto.GenerateKey()
+	tx := makeMultiBlobTx(0, 1, 1, 1, 1, 0, key)
+	sidecar := tx.BlobTxSidecar().Copy()
+	sidecar.Version = types.BlobSidecarVersion0
+	proof, err := kzg4844.ComputeBlobProof(&sidecar.Blobs[0], sidecar.Commitments[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecar.Proofs = []kzg4844.Proof{proof}
+	tx = tx.WithBlobTxSidecar(sidecar)
+	want, err := rlp.EncodeToBytes(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := encodeForPool(tx)
+	for _, version := range []uint{68, 70, 71} {
+		t.Run(fmt.Sprintf("eth/%d", version), func(t *testing.T) {
+			got, err := encodeForNetwork(stored, version)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatal("version-0 blob transaction changed during storage/network conversion")
+			}
+		})
+	}
+}
+
 // fakeBilly is a billy.Database implementation which just drops data on the floor.
 type fakeBilly struct {
 	billy.Database

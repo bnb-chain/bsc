@@ -682,6 +682,9 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 		if header.SlotNumber == nil {
 			return errors.New("header has nil SlotNumber after Amsterdam")
 		}
+		if *header.SlotNumber != number {
+			return fmt.Errorf("invalid SlotNumber: have %d, want %d", *header.SlotNumber, number)
+		}
 	}
 
 	// All basic checks passed, verify cascading fields
