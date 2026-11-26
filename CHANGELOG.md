@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.8.2
+
+v1.8.2 schedules the BSC Mainnet [Jenner hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-718.md) for **2026-12-08 02:30:00 UTC** (`1796697000`). All mainnet node operators must upgrade before activation.
+
+### Key Changes (Hard Fork Required)
+
+- [BEP-702: Compliant Asset Standard](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-702.md): adds CAS20 stateful precompiles. Token creation requires separate activation by a governance-appointed administrator.
+- [BEP-703: Payment Lane](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-703.md): reserves 5% of block gas by default for eligible BNB transfers and transactions to listed payment contracts. The ratio and contract list can be changed through governance.
+- [BEP-706: Millisecond Timestamp](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-706.md): exposes millisecond block time through precompile `0x70`; `block.timestamp` remains in seconds.
+
+### BEP-675 MEV Enhancements (No Hard Fork Required)
+
+This release also includes the MEV enhancements introduced in v1.8.1:
+
+- **Faster BidBlock transport:** gRPC with RLP-encoded binary payloads reduces JSON parsing and hex-conversion overhead. JSON-RPC remains supported. See the [gRPC integration guide](https://github.com/bnb-chain/bsc/blob/v1.8.1/core/types/builder/bep-675-builder-grpc-integration.md).
+- **Stronger validation and builder revocation:** rejects zero-state-root BidBlocks, revokes local `SendBidBlock` access on cross-validator bad-block evidence, and persists revocations across restarts.
+- **Better observability:** adds bad BidBlock and builder revocation metrics.
+
+## MetaInfo
+
+Mandatory Update Required: Yes
+
+Target Audience: all BSC Mainnet node operators, MEV builders and sentry operators
+
+Procedure: replace the binary and restart before activation. If upgrading from v1.7.x or v1.8.0-alpha, first review the [v1.8.0-alpha](https://github.com/bnb-chain/bsc/releases/tag/v1.8.0-alpha) and [v1.8.1](https://github.com/bnb-chain/bsc/releases/tag/v1.8.1) upgrade notes for removed configuration fields, RPC changes and MEV gRPC settings. These non-consensus changes can take effect before the hard fork.
+
+Schedule(Timeline): BSC Mainnet - 2026-12-08 02:30:00 UTC (`1796697000`).
+
 ## v1.8.1
 
 v1.8.1 is for BSC Chapel testnet [Jenner hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-718.md), scheduled for 2026-10-29 02:30:00 AM UTC.
