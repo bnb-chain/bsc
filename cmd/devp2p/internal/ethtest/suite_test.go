@@ -74,6 +74,9 @@ func TestEthSuite(t *testing.T) {
 	suite.requireAvailableBALs = true
 	for _, test := range suite.EthTests() {
 		t.Run(test.Name, func(t *testing.T) {
+			if test.Name == "GetBlockAccessLists" && ethVersion < ethproto.ETH71 {
+				t.Skip("GetBlockAccessLists requires eth/71")
+			}
 			if test.Slow && testing.Short() {
 				t.Skipf("%s: skipping in -short mode", test.Name)
 			}
