@@ -18,11 +18,12 @@ const supportsUnaligned = runtime.GOARCH == "386" || runtime.GOARCH == "amd64" |
 
 // XORBytes xors the bytes in a and b. The destination is assumed to have enough
 // space. Returns the number of bytes xor'd.
+// It processes n = min(len(a), len(b)) bytes and leaves dst[n:] unchanged.
 //
 // If dst does not have length at least n,
 // XORBytes panics without writing anything to dst.
 //
-// dst and x or y may overlap exactly or not at all,
+// dst and a or b may overlap exactly or not at all,
 // otherwise XORBytes may panic.
 //
 // Deprecated: use crypto/subtle.XORBytes
