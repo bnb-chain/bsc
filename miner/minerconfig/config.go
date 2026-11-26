@@ -58,7 +58,7 @@ var (
 	defaultValidatorCommission = uint64(100)
 	defaultMaxBidsPerBuilder   = uint32(2) // Simple strategy: send one bid early, another near deadline
 	defaultGRPCPort            = 8552
-	defaultGRPCConcurrency     = uint32(32)
+	defaultGRPCConcurrency     = uint32(128)
 	defaultGRPCRequestTimeout  = 10 * time.Second
 	// MEV validators accept SendBidBlock by default; the RPC stays gated on the
 	// Pasteur fork and can be disabled via Mev.BidBlockEnabled=false.
