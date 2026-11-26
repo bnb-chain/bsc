@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/naoina/toml"
 )
 
@@ -37,7 +36,7 @@ func TestBuilderRegistryConfig(t *testing.T) {
 	if err := toml.NewDecoder(strings.NewReader(`[Mev.BuilderRegistry]
 Enabled = true
 ContractAddress = "0x0000000000000000000000000000000000000001"
-PollInterval = "30s"
+PollInterval = "250ms"
 `)).Decode(&cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +44,7 @@ PollInterval = "30s"
 	if err := cfg.Mev.BuilderRegistry.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if time.Duration(cfg.Mev.BuilderRegistry.PollInterval) != 30*time.Second {
+	if time.Duration(cfg.Mev.BuilderRegistry.PollInterval) != 250*time.Millisecond {
 		t.Fatalf("explicit interval overwritten: %v", cfg.Mev.BuilderRegistry.PollInterval)
 	}
 	encoded, err := toml.Marshal(cfg.Mev.BuilderRegistry)
@@ -61,20 +60,21 @@ PollInterval = "30s"
 	if defaults.Mev.BuilderRegistry.Enabled || time.Duration(defaults.Mev.BuilderRegistry.PollInterval) != 10*time.Minute {
 		t.Fatalf("unexpected registry defaults: %+v", defaults.Mev.BuilderRegistry)
 	}
-	for _, cfg := range []BuilderRegistryConfig{
-		{Enabled: true},
-		{Enabled: true, ContractAddress: common.HexToAddress("0x1"), PollInterval: RegistryDuration(-time.Second)},
-		{Enabled: true, ContractAddress: common.HexToAddress("0x1"), PollInterval: RegistryDuration(time.Nanosecond)},
-		{Enabled: true, ContractAddress: common.HexToAddress("0x1"), PollInterval: RegistryDuration(time.Second - time.Nanosecond)},
-	} {
-		if err := cfg.Validate(); err == nil {
-			t.Fatalf("invalid config accepted: %+v", cfg)
-		}
+	if err := (BuilderRegistryConfig{Enabled: true}).Validate(); err == nil {
+		t.Fatal("enabled registry without a contract address accepted")
 	}
-	for _, interval := range []time.Duration{0, time.Second, 10 * time.Minute} {
-		cfg := BuilderRegistryConfig{Enabled: true, ContractAddress: common.HexToAddress("0x1"), PollInterval: RegistryDuration(interval)}
-		if err := cfg.Validate(); err != nil {
-			t.Fatalf("valid interval %s rejected: %v", interval, err)
+	for _, interval := range []time.Duration{-time.Second, 0, time.Nanosecond, time.Second} {
+		cfg.Mev.BuilderRegistry.PollInterval = RegistryDuration(interval)
+		if err := cfg.Mev.BuilderRegistry.Validate(); err != nil {
+			t.Fatalf("interval %s rejected: %v", interval, err)
+		}
+		ApplyDefaultMinerConfig(&cfg)
+		want := interval
+		if want <= 0 {
+			want = DefaultBuilderRegistryPollInterval
+		}
+		if got := time.Duration(cfg.Mev.BuilderRegistry.PollInterval); got != want {
+			t.Fatalf("interval %s: got %s, want %s", interval, got, want)
 		}
 	}
 }

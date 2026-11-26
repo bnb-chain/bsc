@@ -494,19 +494,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.dropper = newDropper(eth.p2pServer.MaxDialedConns(), eth.p2pServer.MaxInboundConns())
 
 	eth.miner = miner.New(eth, &config.Miner, eth.handler.eventMux, eth.engine)
-	if cfg := config.Miner.Mev.BuilderRegistry; cfg.Enabled {
-		eth.builderRegistry = &builderRegistry{
-			config: cfg,
-			chain:  eth.blockchain,
-			apply:  eth.miner.ReplaceRegistryBuilders,
-			readRegistry: func(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error) {
-				input, gasLimit := hexutil.Bytes(data), hexutil.Uint64(gas)
-				return ethAPI.Call(ctx, ethapi.TransactionArgs{To: &to, Data: &input, Gas: &gasLimit}, &block, nil, nil)
-			},
-		}
-	}
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 	eth.miner.SetPrioAddresses(config.TxPool.Locals)
+
+	eth.builderRegistry = newBuilderRegistry(eth, ethAPI)
 
 	// Create voteManager instance
 	if posa, ok := eth.engine.(consensus.PoSA); ok {

@@ -11,7 +11,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
@@ -63,6 +65,22 @@ type builderRegistry struct {
 	done         chan struct{}
 }
 
+func newBuilderRegistry(eth *Ethereum, api *ethapi.BlockChainAPI) *builderRegistry {
+	cfg := eth.config.Miner.Mev.BuilderRegistry
+	if !cfg.Enabled {
+		return nil
+	}
+	return &builderRegistry{
+		config: cfg,
+		chain:  eth.blockchain,
+		apply:  eth.miner.ReplaceRegistryBuilders,
+		readRegistry: func(ctx context.Context, block rpc.BlockNumberOrHash, to common.Address, data []byte, gas uint64) ([]byte, error) {
+			input, gasLimit := hexutil.Bytes(data), hexutil.Uint64(gas)
+			return api.Call(ctx, ethapi.TransactionArgs{To: &to, Data: &input, Gas: &gasLimit}, &block, nil, nil)
+		},
+	}
+}
+
 func (r *builderRegistry) start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
@@ -84,7 +102,7 @@ func (r *builderRegistry) run(ctx context.Context) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	interval := time.Duration(r.config.PollInterval)
-	if interval == 0 {
+	if interval <= 0 {
 		interval = minerconfig.DefaultBuilderRegistryPollInterval
 	}
 	retry := min(2*time.Second, interval)

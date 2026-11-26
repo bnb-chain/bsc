@@ -137,7 +137,7 @@ func (d *RegistryDuration) UnmarshalText(text []byte) error {
 type BuilderRegistryConfig struct {
 	Enabled         bool
 	ContractAddress common.Address
-	PollInterval    RegistryDuration // Zero uses ten minutes; otherwise at least one second.
+	PollInterval    RegistryDuration // Non-positive values use the default of ten minutes.
 }
 
 const DefaultBuilderRegistryPollInterval = 10 * time.Minute
@@ -148,9 +148,6 @@ func (c BuilderRegistryConfig) Validate() error {
 	}
 	if c.ContractAddress == (common.Address{}) {
 		return errors.New("Mev.BuilderRegistry.ContractAddress is required")
-	}
-	if c.PollInterval != 0 && time.Duration(c.PollInterval) < time.Second {
-		return errors.New("Mev.BuilderRegistry.PollInterval must be zero (default) or at least 1s")
 	}
 	return nil
 }
@@ -212,7 +209,7 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	}
 
 	// check [Eth.Miner.Mev]
-	if cfg.Mev.BuilderRegistry.PollInterval == 0 {
+	if cfg.Mev.BuilderRegistry.PollInterval <= 0 {
 		cfg.Mev.BuilderRegistry.PollInterval = RegistryDuration(DefaultBuilderRegistryPollInterval)
 	}
 	if cfg.Mev.Enabled == nil {
