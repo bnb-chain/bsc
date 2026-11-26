@@ -1,14 +1,21 @@
 package bsc
 
 import (
+	"bytes"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // mockBackend implements the Backend interface for testing
@@ -74,82 +81,68 @@ func (mp *mockPeer) Log() log.Logger {
 	return mp.logger
 }
 
+type rangeReply struct {
+	p2p.MsgReadWriter
+	packet BlocksByRangePacket
+}
+
+func (r *rangeReply) WriteMsg(msg p2p.Msg) error {
+	return msg.Decode(&r.packet)
+}
+
 func TestHandleGetBlocksByRange(t *testing.T) {
-	t.Skip("Skipping test as it requires a more complete BlockChain mock")
-
-	// Setup test environment
-	backend := &mockBackend{
-		chain: &core.BlockChain{}, // You might want to use a more sophisticated mock
+	db := rawdb.NewMemoryDatabase()
+	defer db.Close()
+	config := *params.MergedTestChainConfig
+	config.AmsterdamTime = new(uint64)
+	chain, err := core.NewBlockChain(db, &core.Genesis{Config: &config, Difficulty: common.Big0}, beacon.NewFaker(), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer chain.Stop()
 
-	// Create a more complete mock peer
-	mockPeer := newMockPeer()
-	peer := mockPeer.Peer
+	// The child has an encoded empty BAL. Its parent has only the commitment.
+	parent := chain.Genesis()
+	header := parent.Header()
+	header.Number = big.NewInt(1)
+	header.Time = parent.Time() + 1
+	header.ParentHash = parent.Hash()
+	child := types.NewBlockWithHeader(header).WithAccessListUnsafe(new(bal.BlockAccessList))
+	rawdb.WriteBlock(db, child)
+	rawdb.DeleteAccessList(db, parent.Hash(), parent.NumberU64())
 
-	// Test cases
-	tests := []struct {
-		name    string
-		msg     *mockMsg
-		wantErr bool
-	}{
-		{
-			name: "Valid request with block hash",
-			msg: &mockMsg{
-				code: GetBlocksByRangeMsg,
-				data: &GetBlocksByRangePacket{
-					RequestId:        1,
-					StartBlockHash:   common.HexToHash("0x123"),
-					StartBlockHeight: 100,
-					Count:            5,
-				},
-			},
-			wantErr: true, // Changed to true since we expect errors due to mock implementation
-		},
-		{
-			name: "Valid request with block height",
-			msg: &mockMsg{
-				code: GetBlocksByRangeMsg,
-				data: &GetBlocksByRangePacket{
-					RequestId:        2,
-					StartBlockHeight: 100,
-					Count:            5,
-				},
-			},
-			wantErr: true, // Changed to true since we expect errors due to mock implementation
-		},
-		{
-			name: "Invalid count",
-			msg: &mockMsg{
-				code: GetBlocksByRangeMsg,
-				data: &GetBlocksByRangePacket{
-					RequestId:        3,
-					StartBlockHeight: 100,
-					Count:            0,
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "Invalid request ID",
-			msg: &mockMsg{
-				code: GetBlocksByRangeMsg,
-				data: &GetBlocksByRangePacket{
-					RequestId:        0,
-					StartBlockHeight: 100,
-					Count:            5,
-				},
-			},
-			wantErr: true,
-		},
+	backend := &mockBackend{chain: chain}
+	peer := newMockPeer().Peer
+	peer.version = Bsc2
+	req := &mockMsg{data: &GetBlocksByRangePacket{RequestId: 1, Count: 2, StartBlockHash: child.Hash()}}
+	for _, tc := range []struct {
+		finalized uint64
+		amsterdam uint64
+		want      int
+	}{{0, 0, 1}, {1_344_000, 0, 1}, {1_344_001, 0, 2}, {1_344_000, child.Time(), 2}} {
+		chain.Config().AmsterdamTime = &tc.amsterdam
+		if tc.finalized != 0 {
+			chain.SetFinalized(&types.Header{Number: new(big.Int).SetUint64(tc.finalized)})
+		}
+		reply := new(rangeReply)
+		peer.rw = reply
+		if err := handleGetBlocksByRange(backend, req, peer); err != nil {
+			t.Fatal(err)
+		}
+		blocks := reply.packet.Blocks
+		if len(blocks) != tc.want || blocks[0].Header.Hash() != child.Hash() || !bytes.Equal(blocks[0].BlockAccessList, rlp.EmptyList) {
+			t.Fatalf("unexpected range response for finalized height %d: %v", tc.finalized, blocks)
+		}
+		if tc.want == 2 && (blocks[1].Header.Hash() != parent.Hash() || len(blocks[1].BlockAccessList) != 0) {
+			t.Fatal("expected parent without a BAL attachment")
+		}
+		if tc.finalized == 0 {
+			// Later requests can only serve the child's BAL from the cached block.
+			rawdb.DeleteAccessList(db, child.Hash(), child.NumberU64())
+		}
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := handleGetBlocksByRange(backend, tt.msg, peer)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("handleGetBlocksByRange() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	if err := handleGetBlocksByRange(backend, &mockMsg{data: &GetBlocksByRangePacket{}}, peer); err == nil {
+		t.Fatal("accepted zero count")
 	}
 }
 

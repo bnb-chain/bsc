@@ -429,6 +429,9 @@ func (f *MemoryFreezer) TruncateTail(group string, tail uint64) (uint64, error) 
 	if !ok {
 		return 0, fmt.Errorf("unknown tail group: %q", group)
 	}
+	if group == ChainFreezerBALGroup {
+		tail = min(tail, f.items)
+	}
 	if prev >= tail {
 		return prev, nil
 	}

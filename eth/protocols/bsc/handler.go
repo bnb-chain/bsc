@@ -2,12 +2,14 @@ package bsc
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -207,14 +209,31 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
 	responseSize := 0
+	finalized := sync.OnceValue(backend.Chain().CurrentFinalBlock)
 	for i := uint64(0); i < req.Count; i++ {
 		if i > 0 {
+			if peer.IsOverBlockServeLimit() {
+				break
+			}
 			block = backend.Chain().GetBlockByHash(block.ParentHash())
 			if block == nil {
 				break
 			}
 		}
-		enc, err := rlp.EncodeToBytes(NewBlockData(block))
+		data := NewBlockData(block)
+		if backend.Chain().Config().IsAmsterdam(data.Header.Number, data.Header.Time) {
+			if data.Header.BlockAccessListHash == nil {
+				break
+			}
+			data.BlockAccessList = backend.Chain().GetAccessListRLPForBlock(block)
+			if len(data.BlockAccessList) == 0 {
+				if head := finalized(); head == nil || block.NumberU64() >= rawdb.BALRetentionFloor(head.Number.Uint64()) {
+					break
+				}
+			}
+		}
+		enc, cost, err := encodeRangeBlock(data, req.RequestId)
+		peer.ChargeBlockServe(cost)
 		if err != nil {
 			log.Error("failed to encode BlockData", "hash", block.Hash(), "err", err)
 			break
@@ -222,18 +241,60 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		if len(blocks) > 0 && responseSize+len(enc) > softResponseLimit {
 			break // already have at least one block; next entry would overflow
 		}
+		if blocksByRangeSize(req.RequestId, uint64(responseSize+len(enc))) > maxMessageSize {
+			break
+		}
 		blocks = append(blocks, enc)
 		responseSize += len(enc)
 	}
-
-	// Account the bytes actually served against the peer's rolling budget.
-	peer.ChargeBlockServe(uint64(responseSize))
 
 	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks), "responseSize", responseSize)
 	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangeRLPPacket{
 		RequestId: req.RequestId,
 		Blocks:    blocks,
 	})
+}
+
+func encodeRangeBlock(data *BlockData, requestID uint64) ([]byte, uint64, error) {
+	if len(data.BlockAccessList) == 0 {
+		encoded, err := rlp.EncodeToBytes(data)
+		return encoded, uint64(len(encoded)), err
+	}
+	fields := [...]any{data.Header, data.Txs, data.Uncles, data.Withdrawals, data.Sidecars}
+	fieldCount := len(fields)
+	if data.Sidecars == nil {
+		fieldCount--
+		if data.Withdrawals == nil {
+			fieldCount--
+		}
+	}
+	enc := rlp.NewEncoderBuffer(nil)
+	defer enc.Flush()
+	list := enc.List()
+	for _, field := range fields[:fieldCount] {
+		if err := rlp.Encode(enc, field); err != nil {
+			return nil, 0, err
+		}
+	}
+	// BAL requires any omitted optional fields to be encoded as one-byte empty lists.
+	missingFields := len(fields) - fieldCount
+	size := rlp.ListSize(uint64(enc.Size()+missingFields) + rlp.BytesSize(data.BlockAccessList))
+	var discardedSize uint64
+	if blocksByRangeSize(requestID, size) <= maxMessageSize {
+		for range missingFields {
+			enc.ListEnd(enc.List())
+		}
+		enc.WriteBytes(data.BlockAccessList)
+	} else {
+		// Keep charging for the oversized candidate, including the BAL read from disk.
+		discardedSize = size
+	}
+	enc.ListEnd(list)
+	return enc.ToBytes(), uint64(enc.Size()) + discardedSize, nil
+}
+
+func blocksByRangeSize(requestID uint64, blocksSize uint64) uint64 {
+	return rlp.ListSize(uint64(rlp.IntSize(requestID)) + rlp.ListSize(blocksSize))
 }
 
 func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {

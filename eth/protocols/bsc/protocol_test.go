@@ -10,6 +10,31 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+func TestEncodeRangeBlockDropsOversizedBAL(t *testing.T) {
+	for _, oversized := range []bool{false, true} {
+		data := &BlockData{Header: new(types.Header), BlockAccessList: rlp.EmptyList}
+		want := *data
+		if oversized {
+			data.BlockAccessList = make([]byte, maxMessageSize)
+			want.BlockAccessList = nil
+		}
+		encoded, cost, err := encodeRangeBlock(data, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantRLP, err := rlp.EncodeToBytes(&want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if oversized && cost <= maxMessageSize {
+			t.Fatalf("serving cost %d excludes oversized BAL", cost)
+		}
+		if !bytes.Equal(encoded, wantRLP) {
+			t.Fatalf("unexpected block encoding (oversized BAL: %t)", oversized)
+		}
+	}
+}
+
 // TestBsc1Messages tests the encoding of defined Bsc1 messages
 func TestBsc1Messages(t *testing.T) {
 	var (

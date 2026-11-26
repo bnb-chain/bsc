@@ -1090,6 +1090,50 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 }
 
+func TestHandleNewBlockBALRetry(t *testing.T) {
+	backend := newTestBackendWithGenerator(0, true, true, nil)
+	defer backend.close()
+	backend.chain.Config().PragueTime = u64(0)
+	backend.chain.Config().AmsterdamTime = u64(0)
+	header := types.CopyHeader(backend.chain.CurrentBlock())
+	header.BlockAccessListHash = &types.EmptyBlockAccessListHash
+	header.SlotNumber = u64(0)
+	header.ParentBeaconRoot = new(common.Hash)
+	header.RequestsHash = &types.EmptyRequestsHash
+	block := types.NewBlockWithHeader(header)
+	td := big.NewInt(1)
+	app, net := p2p.MsgPipe()
+	defer app.Close()
+	peer := NewPeer(ETH68, p2p.NewPeer(enode.ID{1}, "", nil), net, nil, nil, backend.chain.Config())
+	defer peer.Close()
+	peer.AsyncSendNewBlock(block, td, func() ([]byte, error) {
+		return EncodeNewBlockWithBAL(block, td)
+	})
+	if peer.KnownBlock(block.Hash()) {
+		t.Fatal("a block without its BAL must remain eligible for announcement after import")
+	}
+	for _, tc := range []struct {
+		amsterdam  uint64
+		attachment []byte
+		known      bool
+		wantErr    bool
+	}{
+		{block.Time() + 1, rlp.EmptyList, false, true},
+		{block.Time(), nil, false, false},
+		{block.Time(), rlp.EmptyList, true, false},
+	} {
+		backend.chain.Config().AmsterdamTime = &tc.amsterdam
+		size, payload, err := rlp.EncodeToReader(&NewBlockPacket{Block: block, TD: td, BlockAccessList: tc.attachment})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = handleNewBlock(backend, p2p.Msg{Size: uint32(size), Payload: payload}, peer)
+		if (err != nil) != tc.wantErr || peer.KnownBlock(block.Hash()) != tc.known {
+			t.Fatalf("attachment %x: error %v, known %t", tc.attachment, err, peer.KnownBlock(block.Hash()))
+		}
+	}
+}
+
 func TestHandleNewBlockhashes(t *testing.T) {
 	t.Parallel()
 

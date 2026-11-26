@@ -345,8 +345,15 @@ func newHandler(config *handlerConfig) (*handler, error) {
 
 		blocks := make([]*types.Block, len(res))
 		for i, item := range res {
-			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
-			block = block.WithSidecars(item.Sidecars)
+			block, err := item.ToBlock()
+			if err != nil {
+				h.removePeer(peer)
+				return nil, err
+			}
+			if block.AccessList() != nil && !h.chain.Config().IsAmsterdam(block.Number(), block.Time()) {
+				h.removePeer(peer)
+				return nil, errors.New("block access list before Amsterdam")
+			}
 			block.ReceivedAt = time.Now()
 			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
@@ -870,6 +877,9 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
+		balPayload := sync.OnceValues(func() ([]byte, error) {
+			return eth.EncodeNewBlockWithBAL(block, td)
+		})
 
 		// Broadcast the block to peers based on broadcast strategy.
 		totalPeers := len(peers)
@@ -888,7 +898,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 				"hash", hash, "peer", peer.ID(),
 				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 			)
-			peer.AsyncSendNewBlock(block, td)
+			peer.AsyncSendNewBlock(block, td, balPayload)
 		}
 
 		// Step 3: Handle proxyed peers.
@@ -900,7 +910,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 					)
-					peer.AsyncSendNewBlock(block, td)
+					peer.AsyncSendNewBlock(block, td, balPayload)
 					proxyedPeersCnt++
 				}
 			}
@@ -915,7 +925,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
 					)
-					peer.AsyncSendNewBlock(block, td)
+					peer.AsyncSendNewBlock(block, td, balPayload)
 					evnPeersCnt++
 				}
 			}

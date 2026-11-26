@@ -19,6 +19,7 @@ package eth
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 
@@ -406,6 +407,19 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	if hash := types.DeriveSha(ann.Block.Transactions(), trie.NewStackTrie(nil)); hash != ann.Block.TxHash() {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
+	}
+	if peer.isAmsterdamBlock(ann.Block) {
+		if len(ann.BlockAccessList) == 0 {
+			// Leave the block eligible for a later broadcast with its BAL.
+			return nil
+		}
+		block, err := ann.Block.WithAccessListRLP(ann.BlockAccessList)
+		if err != nil {
+			return err
+		}
+		ann.Block = block
+	} else if len(ann.BlockAccessList) != 0 {
+		return errors.New("block access list before Amsterdam")
 	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
