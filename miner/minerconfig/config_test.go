@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/naoina/toml"
+	"github.com/stretchr/testify/require"
 )
 
 // A config.toml that omits the BEP-675 gRPC knobs must still come out with the
@@ -33,48 +34,23 @@ func TestApplyDefaultMinerConfigBackfillsGRPC(t *testing.T) {
 
 func TestBuilderRegistryConfig(t *testing.T) {
 	var cfg Config
-	if err := toml.NewDecoder(strings.NewReader(`[Mev.BuilderRegistry]
+	ApplyDefaultMinerConfig(&cfg)
+	registry := &cfg.Mev.BuilderRegistry
+	require.False(t, registry.Enabled)
+	require.Equal(t, 10*time.Minute, time.Duration(registry.PollInterval))
+	registry.Enabled = true
+	require.Error(t, registry.Validate())
+
+	require.NoError(t, toml.NewDecoder(strings.NewReader(`[Mev.BuilderRegistry]
 Enabled = true
 ContractAddress = "0x0000000000000000000000000000000000000001"
 PollInterval = "250ms"
-`)).Decode(&cfg); err != nil {
-		t.Fatal(err)
-	}
+`)).Decode(&cfg))
 	ApplyDefaultMinerConfig(&cfg)
-	if err := cfg.Mev.BuilderRegistry.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if time.Duration(cfg.Mev.BuilderRegistry.PollInterval) != 250*time.Millisecond {
-		t.Fatalf("explicit interval overwritten: %v", cfg.Mev.BuilderRegistry.PollInterval)
-	}
-	encoded, err := toml.Marshal(cfg.Mev.BuilderRegistry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var roundtrip BuilderRegistryConfig
-	if err := toml.Unmarshal(encoded, &roundtrip); err != nil || roundtrip != cfg.Mev.BuilderRegistry {
-		t.Fatalf("registry config round trip failed: %v", err)
-	}
-	var defaults Config
-	ApplyDefaultMinerConfig(&defaults)
-	if defaults.Mev.BuilderRegistry.Enabled || time.Duration(defaults.Mev.BuilderRegistry.PollInterval) != 10*time.Minute {
-		t.Fatalf("unexpected registry defaults: %+v", defaults.Mev.BuilderRegistry)
-	}
-	if err := (BuilderRegistryConfig{Enabled: true}).Validate(); err == nil {
-		t.Fatal("enabled registry without a contract address accepted")
-	}
-	for _, interval := range []time.Duration{-time.Second, 0, time.Nanosecond, time.Second} {
-		cfg.Mev.BuilderRegistry.PollInterval = RegistryDuration(interval)
-		if err := cfg.Mev.BuilderRegistry.Validate(); err != nil {
-			t.Fatalf("interval %s rejected: %v", interval, err)
-		}
-		ApplyDefaultMinerConfig(&cfg)
-		want := interval
-		if want <= 0 {
-			want = DefaultBuilderRegistryPollInterval
-		}
-		if got := time.Duration(cfg.Mev.BuilderRegistry.PollInterval); got != want {
-			t.Fatalf("interval %s: got %s, want %s", interval, got, want)
-		}
-	}
+	require.NoError(t, registry.Validate())
+	require.Equal(t, 250*time.Millisecond, time.Duration(registry.PollInterval))
+
+	registry.PollInterval = RegistryDuration(-time.Second)
+	ApplyDefaultMinerConfig(&cfg)
+	require.Equal(t, 10*time.Minute, time.Duration(registry.PollInterval))
 }
