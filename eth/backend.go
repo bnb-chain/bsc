@@ -119,6 +119,8 @@ type Config = ethconfig.Config
 
 // Ethereum implements the Ethereum full node service.
 type Ethereum struct {
+	builderRegistry *builderRegistry
+
 	// core protocol objects
 	config         *ethconfig.Config
 	txPool         *txpool.TxPool
@@ -162,6 +164,9 @@ type Ethereum struct {
 // whose lifecycle will be managed by the provided node.
 func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Ensure configuration values are compatible and sane
+	if err := config.Miner.Mev.BuilderRegistry.Validate(); err != nil {
+		return nil, err
+	}
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
 	}
@@ -491,6 +496,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.miner = miner.New(eth, &config.Miner, eth.handler.eventMux, eth.engine)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 	eth.miner.SetPrioAddresses(config.TxPool.Locals)
+
+	eth.builderRegistry = newBuilderRegistry(eth, ethAPI)
 
 	// Create voteManager instance
 	if posa, ok := eth.engine.(consensus.PoSA); ok {
@@ -893,6 +900,9 @@ func (s *Ethereum) Start() error {
 	if err := s.setupDiscovery(); err != nil {
 		return err
 	}
+	if s.builderRegistry != nil {
+		s.builderRegistry.start()
+	}
 
 	// Regularly update shutdown marker
 	s.shutdownTracker.Start()
@@ -1039,6 +1049,9 @@ func (s *Ethereum) setupDiscovery() error {
 // Stop implements node.Lifecycle, terminating all internal goroutines used by the
 // Ethereum protocol.
 func (s *Ethereum) Stop() error {
+	if s.builderRegistry != nil {
+		s.builderRegistry.stop()
+	}
 	if s.miner.Mining() {
 		s.miner.TryWaitProposalDoneWhenStopping()
 	}

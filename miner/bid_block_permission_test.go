@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
-	"github.com/ethereum/go-ethereum/miner/builderclient"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
 
@@ -149,7 +148,7 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 	permMgr := NewBidBlockPermissionManager("")
 	b := &bidSimulator{
-		builders:          make(map[common.Address]*builderclient.Client),
+		builders:          make(map[common.Address]builderEndpoint),
 		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		maxBidsPerBuilder: 2,
 	}
@@ -157,7 +156,7 @@ func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 	builder := common.HexToAddress("0x1")
 	const blockNum uint64 = 100
 
-	b.builders[builder] = nil
+	b.builders[builder] = builderEndpoint{}
 	permMgr.RevokeFor(builder, testInsertChainReason, common.Hash{}, blockNum-1, bidBlockRevokeDuration)
 
 	if !b.ExistBuilder(builder) {

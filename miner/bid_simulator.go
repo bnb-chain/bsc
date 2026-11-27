@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -122,6 +123,15 @@ type newBidBlockPackage struct {
 	feedback chan error
 }
 
+// builderEndpoint holds the report client for a manually added builder or the
+// URL to dial on demand for a registry-managed builder. Membership is the map key.
+type builderEndpoint struct {
+	client *builderclient.Client
+	url    string
+}
+
+const builderReportTimeout = 10 * time.Second
+
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
 // And take care of bid simulation, rewards computing, best bid maintaining.
 type bidSimulator struct {
@@ -142,11 +152,12 @@ type bidSimulator struct {
 	chainHeadCh  chan core.ChainHeadEvent
 	chainHeadSub event.Subscription
 
+	sentryMu  sync.RWMutex
 	sentryCli *builderclient.Client
 
 	// builder info (warning: only keep status in memory!)
 	buildersMu sync.RWMutex
-	builders   map[common.Address]*builderclient.Client
+	builders   map[common.Address]builderEndpoint
 
 	// channels
 	simBidCh chan *simBidReq
@@ -194,7 +205,7 @@ func newBidSimulator(
 		bidWorker:        bidWorker,
 		exitCh:           make(chan struct{}),
 		chainHeadCh:      make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:         make(map[common.Address]*builderclient.Client),
+		builders:         make(map[common.Address]builderEndpoint),
 		simBidCh:         make(chan *simBidReq),
 		newBidCh:         make(chan newBidPackage, 100),
 		pending:          make(map[uint64]map[common.Address]map[common.Hash]struct{}),
@@ -214,12 +225,20 @@ func newBidSimulator(
 	}
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
+	if config.BuilderRegistry.Enabled {
+		for _, builder := range config.Builders {
+			b.builders[builder.Address] = builderEndpoint{url: builder.URL}
+		}
+	}
+	if config.SentryURL != "" {
+		log.Warn("Builder admission delegated to sentry; restrict MEV RPC access to trusted sentries")
+	}
 
 	if config.Enabled != nil && *config.Enabled {
 		b.bidReceiving.Store(true)
 		b.dialSentryAndBuilders()
 
-		if len(b.builders) == 0 {
+		if len(b.builders) == 0 && !config.BuilderRegistry.Enabled && config.SentryURL == "" {
 			log.Warn("BidSimulator: no valid builders")
 		}
 	}
@@ -233,17 +252,20 @@ func newBidSimulator(
 }
 
 func (b *bidSimulator) dialSentryAndBuilders() {
-	var sentryCli *builderclient.Client
-	var err error
-
-	if b.config.SentryURL != "" {
-		sentryCli, err = builderclient.DialOptions(context.Background(), b.config.SentryURL, rpc.WithHTTPClient(client))
+	b.sentryMu.Lock()
+	if b.config.SentryURL != "" && b.sentryCli == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), builderReportTimeout)
+		var err error
+		b.sentryCli, err = builderclient.DialOptions(ctx, b.config.SentryURL, rpc.WithHTTPClient(client))
+		cancel()
 		if err != nil {
 			log.Error("BidSimulator: failed to dial sentry", "url", b.config.SentryURL, "err", err)
 		}
 	}
-
-	b.sentryCli = sentryCli
+	b.sentryMu.Unlock()
+	if b.config.BuilderRegistry.Enabled {
+		return // Registry membership never depends on successfully dialing a URL.
+	}
 
 	for _, v := range b.config.Builders {
 		_ = b.AddBuilder(v.Address, v.URL)
@@ -281,11 +303,17 @@ func (b *bidSimulator) stopReceivingBid() {
 }
 
 func (b *bidSimulator) AddBuilder(builder common.Address, url string) error {
+	if b.config != nil && b.config.BuilderRegistry.Enabled {
+		return errors.New("builder allowlist is managed by Mev.BuilderRegistry")
+	}
 	b.buildersMu.Lock()
 	defer b.buildersMu.Unlock()
 
-	if b.sentryCli != nil {
-		b.builders[builder] = b.sentryCli
+	b.sentryMu.RLock()
+	sentryCli := b.sentryCli
+	b.sentryMu.RUnlock()
+	if sentryCli != nil {
+		b.builders[builder] = builderEndpoint{client: sentryCli}
 	} else {
 		var builderCli *builderclient.Client
 
@@ -299,13 +327,16 @@ func (b *bidSimulator) AddBuilder(builder common.Address, url string) error {
 			}
 		}
 
-		b.builders[builder] = builderCli
+		b.builders[builder] = builderEndpoint{client: builderCli}
 	}
 
 	return nil
 }
 
 func (b *bidSimulator) RemoveBuilder(builder common.Address) error {
+	if b.config != nil && b.config.BuilderRegistry.Enabled {
+		return errors.New("builder allowlist is managed by Mev.BuilderRegistry")
+	}
 	b.buildersMu.Lock()
 	defer b.buildersMu.Unlock()
 
@@ -321,6 +352,15 @@ func (b *bidSimulator) ExistBuilder(builder common.Address) bool {
 	_, ok := b.builders[builder]
 
 	return ok
+}
+
+// builderAllowed selects the allowlist for both bid entry points and mev_hasBuilder.
+// With a sentry configured, the operator delegates the check to the upstream sentry.
+func (b *bidSimulator) builderAllowed(builder common.Address) bool {
+	if b.config != nil && b.config.SentryURL != "" {
+		return true
+	}
+	return b.ExistBuilder(builder)
 }
 
 // best bid here is based on packedBlockReward after the bid is simulated
@@ -1261,9 +1301,19 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 	metrics.GetOrRegisterCounter(fmt.Sprintf("bid/err/%v", bidRuntime.bid.Builder), nil).Inc(1)
 
-	cli := b.builders[bidRuntime.bid.Builder]
+	ctx, cancel := context.WithTimeout(context.Background(), builderReportTimeout)
+	defer cancel()
+	cli, release, dialErr := b.issueClient(ctx, bidRuntime.bid.Builder)
+	if dialErr != nil {
+		log.Warn("BidSimulator: failed to dial issue recipient", "builder", bidRuntime.bid.Builder, "err", dialErr)
+		return
+	}
+	if release != nil {
+		defer release()
+	}
+
 	if cli != nil {
-		err = cli.ReportIssue(context.Background(), &buildertypes.BidIssue{
+		err = cli.ReportIssue(ctx, &buildertypes.BidIssue{
 			Validator: bidRuntime.env.header.Coinbase,
 			Builder:   bidRuntime.bid.Builder,
 			BidHash:   bidRuntime.bid.Hash(),
@@ -1274,6 +1324,42 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 			log.Warn("BidSimulator: failed to report issue", "builder", bidRuntime.bid.Builder, "err", err)
 		}
 	}
+}
+
+// issueClient prefers the sentry even for keys absent from the static list.
+// Registry URLs are dialed only for reports. Short-lived RPC clients share the
+// HTTP transport, and cannot accumulate across key rotations or URL changes.
+func (b *bidSimulator) issueClient(ctx context.Context, builder common.Address) (*builderclient.Client, func(), error) {
+	if b.config != nil && b.config.SentryURL != "" {
+		b.sentryMu.RLock()
+		cli := b.sentryCli
+		b.sentryMu.RUnlock()
+		if cli != nil {
+			return cli, nil, nil
+		}
+		cli, err := builderclient.DialOptions(ctx, b.config.SentryURL, rpc.WithHTTPClient(client))
+		if err != nil {
+			return nil, nil, err
+		}
+		return cli, cli.Close, nil
+	}
+	b.buildersMu.RLock()
+	endpoint := b.builders[builder]
+	b.buildersMu.RUnlock()
+	if endpoint.url == "" {
+		return endpoint.client, nil, nil
+	}
+	// DialOptions also accepts WebSockets and IPC paths. Registry metadata
+	// may select only HTTP report endpoints.
+	parsed, err := url.Parse(endpoint.url)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return nil, nil, errors.New("builder registry report URL must use http or https with a host")
+	}
+	cli, err := builderclient.DialOptions(ctx, endpoint.url, rpc.WithHTTPClient(client))
+	if err != nil {
+		return nil, nil, err
+	}
+	return cli, cli.Close, nil
 }
 
 type BidRuntime struct {
